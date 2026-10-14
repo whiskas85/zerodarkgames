@@ -63,11 +63,17 @@ function initPush() {
 }
 const publicKey = () => vapid?.publicKey;
 
+// Lo stesso telefono può essere usato dalla regia e da un giocatore: l'accesso della regia (userId) e quello
+// del giocatore (teamId / playerId) si aggiornano separatamente, senza cancellarsi a vicenda.
 function saveSubscription(sub, { teamId = null, userId = null, playerId = null }) {
   if (!sub?.endpoint) return;
-  q.run(`INSERT INTO push_subs (endpoint, data, teamId, userId, playerId, createdAt) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, teamId = excluded.teamId, userId = excluded.userId, playerId = excluded.playerId`,
-    sub.endpoint, JSON.stringify(sub), teamId, userId, playerId, Date.now());
+  if (userId) {
+    q.run(`INSERT INTO push_subs (endpoint, data, userId, createdAt) VALUES (?, ?, ?, ?)
+           ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, userId = excluded.userId`, sub.endpoint, JSON.stringify(sub), userId, Date.now());
+  } else {
+    q.run(`INSERT INTO push_subs (endpoint, data, teamId, playerId, createdAt) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, teamId = excluded.teamId, playerId = excluded.playerId`, sub.endpoint, JSON.stringify(sub), teamId, playerId, Date.now());
+  }
 }
 
 // Dispositivi dei giocatori di una partita. Un dispositivo entrato col codice personale segue il giocatore:
@@ -77,7 +83,7 @@ function gameSubs(gameId) {
                 FROM push_subs ps
                 LEFT JOIN players pl ON pl.id = ps.playerId
                 LEFT JOIN teams t ON t.id = COALESCE(ps.teamId, pl.teamId)
-                WHERE ps.userId IS NULL AND (t.gameId = ? OR pl.gameId = ?)`, gameId, gameId);
+                WHERE (ps.teamId IS NOT NULL OR ps.playerId IS NOT NULL) AND (t.gameId = ? OR pl.gameId = ?)`, gameId, gameId);
 }
 
 async function sendPush(subs, payload) {

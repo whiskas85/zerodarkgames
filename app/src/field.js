@@ -539,12 +539,19 @@ function positionsOf(gameId, viewer = 'master') {
 function electSummary(team, player) {
   const squadId = player?.squadId || null;
   const squad = squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', squadId) : null;
-  if (!squad) return { squad: null, todo: null };
+  if (!squad) return { squad: null, todo: null, items: [] };
   const todo = q.get('SELECT COUNT(*) AS n FROM points WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).n
     + q.get("SELECT COUNT(*) AS n FROM gifts WHERE squadId = ? AND status NOT IN ('claimed', 'expired') AND (status = 'draft' OR moveRequestedAt IS NOT NULL)", squad.id).n
     + q.get('SELECT COUNT(*) AS n FROM landmarks WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).n
     + q.get('SELECT COUNT(*) AS n FROM squad_tasks WHERE squadId = ? AND doneAt IS NULL', squad.id).n;
-  return { squad, todo };
+  // Le cose da fare, con una chiave stabile: l'app avvisa quando ne compare una nuova.
+  const items = [
+    ...q.all('SELECT id, label, moveRequestedAt FROM landmarks WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).map((x) => ({ key: `l${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label}` })),
+    ...q.all('SELECT id, label, moveRequestedAt FROM points WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).map((x) => ({ key: `p${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label}` })),
+    ...q.all("SELECT id, label, name, moveRequestedAt FROM gifts WHERE squadId = ? AND status NOT IN ('claimed', 'expired') AND (status = 'draft' OR moveRequestedAt IS NOT NULL)", squad.id).map((x) => ({ key: `g${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label} (${x.name})` })),
+    ...q.all('SELECT id, text FROM squad_tasks WHERE squadId = ? AND doneAt IS NULL', squad.id).map((x) => ({ key: `t${x.id}`, label: x.text })),
+  ];
+  return { squad, todo, items };
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.

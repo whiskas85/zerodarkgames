@@ -132,6 +132,17 @@ function setState(st) {
     if (prev.team.kind === 'lobby' && st.team.kind === 'couple') { vibrate([200, 100, 200, 100, 600]); toast(`Il Consiglio vi ha assegnato il Settore ${st.team.sector?.name || ''}`, 'blood', 9000); }
     if (prev.team.kind === 'lobby' && st.team.kind === 'elect') { vibrate([200, 100, 600]); toast('Siete tra gli Eletti del Consiglio', 'blood', 9000); }
   }
+  // Eletti: un incarico nuovo per la propria squadra si fa sentire anche con l'app aperta.
+  if (prev?.team.kind === 'elect' && st.team.kind === 'elect' && st.field?.items) {
+    const seen = new Set((prev.field?.items || []).map((x) => x.key));
+    const fresh = st.field.items.filter((x) => !seen.has(x.key));
+    if (fresh.length && prev.field) {
+      vibrate([200, 100, 200, 100, 400]);
+      beep();
+      for (const x of fresh.slice(0, 3)) toast(`Nuovo incarico: ${x.label}`, 'blood', 9000);
+      if (document.hidden) localNotify(`Incarico per la squadra ${st.field.squad.name}`, fresh.map((x) => x.label).join(' · '), `task-${fresh[0].key}`, '/#/incarichi');
+    }
+  }
   if (prev?.team.kind === 'lobby' && st.team.kind === 'lobby' && prev.player?.status === 'pending' && st.player?.status === 'accepted') toast('Il Consiglio ha accettato la vostra candidatura', 'ok', 8000);
   // Primo accesso da questo dispositivo: parte il tour dell'app.
   if (!store.get('zdg_tour_done') && !S.tourShown) { S.tourShown = true; setTimeout(() => openTour(), 400); }

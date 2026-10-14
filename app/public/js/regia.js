@@ -1184,7 +1184,7 @@ function viewSquads() {
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa accessi')],
       h('p', { class: 'muted tiny' }, 'Ogni Eletto entra con il proprio accesso personale (QR o codice): vede la sua squadra, i suoi incarichi e i messaggi della sua squadra. Non hanno Sigillo, non usano gli Altari e non sono in classifica.'),
       members.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
-        h('thead', null, h('tr', null, ['Eletto', 'Team softair', 'Squadra', 'Accesso personale', ''].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['Eletto', 'Team softair', 'Squadra', 'Notifiche', 'Accesso personale', ''].map((x) => h('th', null, x)))),
         h('tbody', null, members.map((m) => {
           const p = byId[m.id] || m;
           const loginUrl = `${R.baseUrl}/login/${p.loginToken}`;
@@ -1193,6 +1193,7 @@ function viewSquads() {
             h('td', null, m.softairTeam || h('span', { class: 'muted' }, '—')),
             h('td', null, d.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
               : h('span', { class: 'tiny muted' }, 'crea una squadra')),
+            h('td', null, m.pushDevices ? h('span', { class: 'chip chip-ok' }, `attive (${m.pushDevices})`) : h('span', { class: 'chip chip-warn', title: 'Deve aprire l\'app e premere "Attiva le notifiche"' }, 'non attive')),
             h('td', null, h('span', { class: 'mono' }, p.accessCode || '—'),
               h('div', { class: 'row-actions' },
                 h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),

@@ -661,3 +661,28 @@ test('account: registrazione, accesso, iscrizione come Legati con codice coppia,
   const zoe = A.register({ username: 'zoe', password: 'password4', name: 'Zoe', softairTeam: 'ZDT' });
   assert.throws(() => A.enroll(zoe, { gameId: g.id, mode: 'single' }), /chiuse/);
 });
+
+test('notifiche: stesso telefono per regia ed Eletto, avviso degli incarichi della squadra', () => {
+  const F = require('../src/field');
+  const rt = require('../src/realtime');
+  const g = setupGame(2);
+  const e1 = G.addElectPerson(g.id, { name: 'Telefono condiviso' }, 'test');
+  const { id: nord } = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  F.setMemberSquad(e1, nord, 'test');
+  const sub = { endpoint: 'https://push.example/abc', keys: { p256dh: 'x', auth: 'y' } };
+  rt.saveSubscription(sub, { playerId: e1 });
+  q.run("INSERT OR IGNORE INTO users (username, passHash, role, createdAt) VALUES ('regia2', 'x', 'master', 0)");
+  const uid = q.get("SELECT id FROM users WHERE username = 'regia2'").id;
+  rt.saveSubscription(sub, { userId: uid }); // la regia attiva le notifiche sullo stesso telefono
+  const row = q.get('SELECT * FROM push_subs WHERE endpoint = ?', sub.endpoint);
+  assert.deepEqual([row.playerId, row.userId], [e1, uid]);
+  assert.ok(rt.gameSubs(g.id).some((s) => s.endpoint === sub.endpoint));
+  rt.saveSubscription(sub, { playerId: e1 }); // e poi di nuovo l'Eletto
+  assert.equal(q.get('SELECT userId FROM push_subs WHERE endpoint = ?', sub.endpoint).userId, uid);
+  // Elenco degli incarichi per l'avviso nell'app; la regia vede chi ha le notifiche attive.
+  F.createTask(g.id, { squadId: nord, text: 'Presidiate il ponte' }, 'test');
+  const elect = G.electOf(g.id);
+  const items = F.electSummary(elect, q.get('SELECT * FROM players WHERE id = ?', e1)).items;
+  assert.deepEqual(items.map((x) => x.label), ['Presidiate il ponte']);
+  assert.equal(G.masterState(g.id).elect.members.find((m) => m.id === e1).pushDevices, 1);
+});
