@@ -165,10 +165,15 @@ function sidebar() {
   const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0);
   const pending = R.ms?.players.filter((p) => p.status === 'pending').length || 0;
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
-  return h('nav', { class: 'sidebar' }, TABS.map(([id, label]) => h('a', { href: `#${id}`, class: tab() === id ? 'on' : '' }, label,
+  // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
+  const noGame = !R.gameId;
+  const always = ['settori', 'impostazioni'];
+  return h('nav', { class: 'sidebar' }, TABS.map(([id, label]) => (noGame && !always.includes(id)
+    ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
+    : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
-    id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null)));
+    id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null))));
 }
 
 function tick() {
@@ -1278,7 +1283,9 @@ function publicUrlSection() {
 function viewNewGame(first) {
   return h('div', { class: 'stack' },
     section(first ? 'Benvenuto, Consiglio' : 'Nuova partita',
-      first ? h('p', { class: 'muted' }, 'Crea la prima partita. Poi: iscrizioni e coppie → Sigilli → Altari e Parola → cerchio → VIA.') : null,
+      first ? h('div', { class: 'first-steps' },
+        h('strong', null, 'Non c\'è ancora nessuna partita.'),
+        h('p', { class: 'muted' }, 'Il primo passo è crearne una (qui sotto) oppure una partita di prova: le altre voci del menu si attivano appena esiste una partita. Poi: iscrizioni e coppie → Sigilli → Altari e Parola → cerchio → VIA.')) : null,
       gameForm({ name: '', bookUrl: '/regolamento.html' }, true)),
     section('Vuoi solo provare?',
       h('p', { class: 'muted' }, 'Crea una partita di prova già preparata, con giocatori finti, e fai avanzare il tempo per vedere tutto il gioco in pochi minuti.'),
