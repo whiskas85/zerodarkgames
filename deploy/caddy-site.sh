@@ -7,6 +7,7 @@ DOMAIN="$1"
 PORT="$2"
 DIR="$3"
 APP=zero-dark-games
+DOCKER="${DOCKER:-docker}"
 
 warn() { echo "::warning::$*"; }
 
@@ -15,32 +16,32 @@ UP=""
 VALIDATE=""
 RELOAD=""
 
-CT=$(docker ps --format '{{.Names}} {{.Image}}' | awk 'tolower($2) ~ /caddy/ { print $1; exit }')
+CT=$($DOCKER ps --format '{{.Names}} {{.Image}}' | awk 'tolower($2) ~ /caddy/ { print $1; exit }')
 if [ -n "$CT" ]; then
-  IMAGE=$(docker inspect -f '{{.Config.Image}}' "$CT")
+  IMAGE=$($DOCKER inspect -f '{{.Config.Image}}' "$CT")
   case "$IMAGE" in
     *docker-proxy*)
       warn "Caddy in modalità docker-proxy ($IMAGE): aggiungi le etichette caddy=$DOMAIN e caddy.reverse_proxy={{upstreams 8080}} al container $APP"
       exit 0 ;;
   esac
   # Caddyfile montato nel container (file singolo o cartella /etc/caddy)
-  FILE=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$CT")
+  FILE=$($DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$CT")
   if [ -z "$FILE" ]; then
-    D=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$CT")
+    D=$($DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$CT")
     [ -n "$D" ] && FILE="$D/Caddyfile"
   fi
-  NETMODE=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CT")
+  NETMODE=$($DOCKER inspect -f '{{.HostConfig.NetworkMode}}' "$CT")
   if [ "$NETMODE" = "host" ]; then
     UP="127.0.0.1:$PORT"
   else
     # Caddy in una rete Docker: l'app entra nella stessa rete (ricordata per i prossimi rilasci).
-    NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' "$CT" | grep -v '^$' | head -1)
+    NET=$($DOCKER inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' "$CT" | grep -v '^$' | head -1)
     echo "$NET" > "$DIR/.proxy-network"
-    docker network connect "$NET" "$APP" 2>/dev/null || true
+    $DOCKER network connect "$NET" "$APP" 2>/dev/null || true
     UP="$APP:8080"
   fi
-  VALIDATE="docker exec $CT caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"
-  RELOAD="docker exec $CT caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
+  VALIDATE="$DOCKER exec $CT caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"
+  RELOAD="$DOCKER exec $CT caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
 elif command -v caddy >/dev/null 2>&1 && [ -f /etc/caddy/Caddyfile ]; then
   FILE=/etc/caddy/Caddyfile
   UP="127.0.0.1:$PORT"

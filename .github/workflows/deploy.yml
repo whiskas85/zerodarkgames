@@ -97,11 +97,15 @@ jobs:
           echo "SSH=ssh -i $HOME/.ssh/deploy -p $PORT -o BatchMode=yes $USER@$HOST" >> "$GITHUB_ENV"
           echo "SCP=scp -i $HOME/.ssh/deploy -P $PORT -o BatchMode=yes" >> "$GITHUB_ENV"
 
-      - name: Server pronto?
+      - name: Server pronto? (rileva docker / sudo docker, compose / docker-compose)
         if: steps.check.outputs.ok == 'true'
         run: |
-          $SSH "docker version --format 'Docker {{.Server.Version}}' && docker compose version" || {
-            echo "::error::Sul server serve Docker con il plugin compose, utilizzabile dall'utente $USER (gruppo docker)"; exit 1; }
+          OUT=$($SSH "sh -s" < deploy/docker-detect.sh 2>diag.txt) || {
+            echo "::error::Docker non utilizzabile sul server: $(paste -sd ';' diag.txt)"; cat diag.txt; exit 1; }
+          echo "$OUT"
+          D_PART="${OUT%%|COMPOSE=*}"
+          echo "DOCKER=${D_PART#DOCKER=}" >> "$GITHUB_ENV"
+          echo "COMPOSE=${OUT#*|COMPOSE=}" >> "$GITHUB_ENV"
 
       - name: File di produzione (.env dai secrets)
         if: steps.check.outputs.ok == 'true'
@@ -128,18 +132,18 @@ jobs:
         if: steps.check.outputs.ok == 'true'
         run: |
           $SSH "mkdir -p '$DIR'"
-          $SCP deploy/docker-compose.prod.yml deploy/docker-compose.proxy.yml deploy/caddy-site.sh "$USER@$HOST:$DIR/"
+          $SCP deploy/docker-compose.prod.yml deploy/docker-compose.proxy.yml deploy/caddy-site.sh deploy/docker-detect.sh "$USER@$HOST:$DIR/"
           $SCP deploy.env "$USER@$HOST:$DIR/.env"
           $SSH "chmod 600 '$DIR/.env' && chmod 755 '$DIR/caddy-site.sh'"
 
       - name: Avvio della nuova versione
         if: steps.check.outputs.ok == 'true'
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "$DOCKER login ghcr.io -u '${{ github.actor }}' --password-stdin"
           FILES="-f docker-compose.prod.yml"
           if [ -n "$PROXY_NETWORK" ]; then FILES="$FILES -f docker-compose.proxy.yml"; fi
-          $SSH "cd '$DIR' && docker compose $FILES pull && docker compose $FILES up -d --remove-orphans && docker image prune -f"
-          $SSH "docker logout ghcr.io >/dev/null"
+          $SSH "cd '$DIR' && $COMPOSE $FILES pull && $COMPOSE $FILES up -d --remove-orphans && $DOCKER image prune -f"
+          $SSH "$DOCKER logout ghcr.io >/dev/null"
 
       - name: Controllo di salute
         if: steps.check.outputs.ok == 'true'
@@ -148,14 +152,14 @@ jobs:
             if $SSH "curl -fsS http://127.0.0.1:$ZDG_PORT/api/health || wget -qO- http://127.0.0.1:$ZDG_PORT/api/health" >/dev/null 2>&1; then echo "Zero Dark Games risponde"; exit 0; fi
             sleep 3
           done
-          $SSH "docker logs --tail 50 zero-dark-games" || true
+          $SSH "$DOCKER logs --tail 50 zero-dark-games" || true
           echo "::error::Il container non risponde su 127.0.0.1:$ZDG_PORT"
           exit 1
 
       # Aggiunge una sola volta il sito a Caddy (rilevato sul server), con copia e ripristino se la configurazione non è valida.
       - name: Sito su Caddy
         if: steps.check.outputs.ok == 'true' && vars.CADDY_AUTO != 'false'
-        run: $SSH "sh '$DIR/caddy-site.sh' '$DOMAIN' '$ZDG_PORT' '$DIR'"
+        run: $SSH "DOCKER='$DOCKER' sh '$DIR/caddy-site.sh' '$DOMAIN' '$ZDG_PORT' '$DIR'"
 
       - name: Controllo dall'esterno
         if: steps.check.outputs.ok == 'true'
@@ -169,4 +173,4 @@ jobs:
 
       - name: Pulizia
         if: always()
-        run: rm -f ~/.ssh/deploy deploy.env
+        run: rm -f ~/.ssh/deploy deploy.env diag.txt
