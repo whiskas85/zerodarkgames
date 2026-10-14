@@ -93,6 +93,9 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy
           chmod 600 ~/.ssh/deploy
+          # Impronta della chiave del secret (pubblica): va confrontata con ssh-keygen -lf ~/.ssh/zdg-deploy.pub sul server.
+          FP=$(ssh-keygen -lf ~/.ssh/deploy 2>&1) || { echo "::error::DEPLOY_SSH_KEY non è una chiave privata valida (copiala tutta, comprese le righe BEGIN/END)"; exit 1; }
+          echo "::notice::Chiave del secret: $FP — utente: $USER"
           ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           echo "SSH=ssh -i $HOME/.ssh/deploy -p $PORT -o BatchMode=yes $USER@$HOST" >> "$GITHUB_ENV"
           echo "SCP=scp -i $HOME/.ssh/deploy -P $PORT -o BatchMode=yes" >> "$GITHUB_ENV"
