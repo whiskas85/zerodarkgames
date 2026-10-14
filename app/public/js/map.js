@@ -117,6 +117,19 @@ export function createMapView({ className = '' } = {}) {
   return view;
 }
 
+// Precisione: oltre SEND_MAX_ACC la posizione viene dalla rete (non dal GPS) e non va mandata alla regia;
+// oltre PLACE_MAX_ACC non basta per piazzare un punto (si tocca la mappa).
+export const SEND_MAX_ACC = 300;
+export const PLACE_MAX_ACC = 50;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+export function accuracyHint(acc) {
+  if (acc == null || acc <= PLACE_MAX_ACC) return null;
+  if (acc <= SEND_MAX_ACC) return 'GPS ancora impreciso: restate all\'aperto qualche secondo.';
+  return isIOS()
+    ? 'Posizione approssimativa (non è il GPS): Impostazioni → Privacy → Localizzazione → Siti web di Safari → attiva "Posizione esatta", poi andate all\'aperto.'
+    : 'Posizione approssimativa (non è il GPS): attivate la Posizione del telefono e, per Chrome, "Usa posizione precisa" (Impostazioni → App → Chrome → Autorizzazioni → Posizione), poi andate all\'aperto.';
+}
+
 // Posizione continua dal telefono (solo in contesto sicuro). Restituisce stop().
 export function watchPosition(onPos, onError) {
   if (!window.isSecureContext || !navigator.geolocation) {

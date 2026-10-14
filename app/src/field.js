@@ -508,6 +508,8 @@ function recordPosition(team, player, body) {
   const deviceId = String(body.deviceId || '').replace(/[^\w-]/g, '').slice(0, 40);
   if (deviceId.length < 8) throw err(400, 'Dispositivo non valido');
   const acc = Number.isFinite(parseFloat(body.acc)) ? Math.round(parseFloat(body.acc)) : null;
+  // Posizione di rete (non GPS): non la mostriamo in mappa.
+  if (acc != null && acc > 300) return { ok: true, tracking: true, ignored: 'imprecisa' };
   q.run(`INSERT INTO positions (deviceId, gameId, teamId, playerId, lat, lng, acc, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(deviceId) DO UPDATE SET gameId = excluded.gameId, teamId = excluded.teamId, playerId = excluded.playerId,
          lat = excluded.lat, lng = excluded.lng, acc = excluded.acc, at = excluded.at`,

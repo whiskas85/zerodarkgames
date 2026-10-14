@@ -1,7 +1,7 @@
 // Lavoro sul campo (Altari e Doni da piazzare, incarichi delle squadre, mappa del campo).
 // Usato dall'app degli Eletti (dentro la loro app) e dallo strumento di campo della regia (/campo).
 import { h, mount, api, fmtTime, toast, store, scanQR, vibrate } from './lib.js';
-import { createMapView, watchPosition, positionItem, landmarkItem } from './map.js';
+import { createMapView, watchPosition, positionItem, landmarkItem, accuracyHint, PLACE_MAX_ACC } from './map.js';
 
 const GIFT_STATE = { draft: 'Da piazzare', placed: 'Piazzato · non ancora annunciato', revealed: 'Annunciato: in mappa alle coppie', claimed: 'Preso', expired: 'Svanito (scaduto)' };
 
@@ -33,7 +33,7 @@ export function createField(F, { rerender }) {
   let mapOn = false;
   let loading = false;
 
-  const gpsText = () => (F.me ? `GPS ± ${F.me.acc} m · ${fmtTime(F.me.at, true)}` : F.geoError || 'Ricerca della posizione…');
+  const gpsText = () => (F.me ? `GPS ± ${F.me.acc} m · ${fmtTime(F.me.at, true)}${accuracyHint(F.me.acc) ? ` · ${accuracyHint(F.me.acc)}` : ''}` : F.geoError || 'Ricerca della posizione…');
 
   function startGps() {
     if (stopWatch) return;
@@ -262,10 +262,14 @@ export function createField(F, { rerender }) {
     const position = () => manual || F.me;
     const sync = () => {
       const p = position();
-      posLine.textContent = manual ? `Punto scelto sulla mappa (${manual.lat.toFixed(5)}, ${manual.lng.toFixed(5)})` : p ? `GPS: ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · ± ${p.acc} m` : (F.geoError || 'Ricerca della posizione GPS…');
+      // GPS troppo impreciso per piazzare: si aspetta un valore migliore o si tocca il punto sulla mappa.
+      const tooVague = !manual && p && p.acc > PLACE_MAX_ACC;
+      posLine.textContent = manual ? `Punto scelto sulla mappa (${manual.lat.toFixed(5)}, ${manual.lng.toFixed(5)})`
+        : p ? `GPS: ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · ± ${p.acc} m${tooVague ? ` — troppo impreciso per piazzare: aspetta o tocca il punto esatto sulla mappa. ${accuracyHint(p.acc)}` : ''}`
+          : (F.geoError || 'Ricerca della posizione GPS…');
       posLine.className = `mono small ${p && (manual || p.acc <= 30) ? 'ok-text' : 'bad-text'}`;
       if (goalLine) goalLine.textContent = p ? `⌖ Punto indicato dalla regia a ${fmtDist(meters(p, goal))}` : '⌖ La regia ha indicato un punto sulla mappa';
-      confirmBtn.disabled = !(p && (photo || photoOptional));
+      confirmBtn.disabled = !(p && !tooVague && (photo || photoOptional));
       if (p) sheetMap.setMe(p);
     };
     const tick = setInterval(sync, 1000);
@@ -289,7 +293,7 @@ export function createField(F, { rerender }) {
     const close = () => { clearInterval(tick); sheet.remove(); document.body.classList.remove('no-scroll'); };
     confirmBtn.addEventListener('click', async () => {
       const p = position();
-      if (!p || (!photo && !photoOptional)) return;
+      if (!p || (!manual && p.acc > PLACE_MAX_ACC) || (!photo && !photoOptional)) return;
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Invio in corso…';
       const qs = new URLSearchParams({ gameId: F.gameId, lat: p.lat, lng: p.lng, acc: p.acc ?? '', source: manual ? 'manual' : 'gps', squadId: F.squadId || '' });

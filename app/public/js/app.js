@@ -1,5 +1,5 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
-import { createMapView, watchPosition, landmarkItem } from './map.js';
+import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { createField } from './field-ui.js';
 import { h, mount, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
 
@@ -830,6 +830,8 @@ function trackingOn(st) {
 const meters = (a, b) => Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
 
 function sendPosition(pos) {
+  // Posizione di rete (centinaia di metri o chilometri): meglio niente che un punto sbagliato in mappa.
+  if (pos.acc > SEND_MAX_ACC) return;
   const now = Date.now();
   if (now - lastSent.at < 20000 && meters(pos, lastSent) < 15) return;
   lastSent = { at: now, lat: pos.lat, lng: pos.lng };
@@ -839,7 +841,11 @@ function sendPosition(pos) {
 function updateTracking(st) {
   const on = trackingOn(st);
   if (on && !trackStop) {
-    trackStop = watchPosition((pos) => { trackMsg = null; sendPosition(pos); }, (msg) => { trackMsg = msg; });
+    trackStop = watchPosition((pos) => {
+      const hint = pos.acc > SEND_MAX_ACC ? accuracyHint(pos.acc) : null;
+      if (hint !== trackMsg) { trackMsg = hint; const el = document.getElementById('track-msg'); if (el) el.textContent = hint ? ` ${hint}` : ''; }
+      sendPosition(pos);
+    }, (msg) => { trackMsg = msg; });
   } else if (!on && trackStop) {
     trackStop();
     trackStop = null;
@@ -849,7 +855,7 @@ function updateTracking(st) {
 function trackingNote(st) {
   if (!trackingOn(st)) return null;
   return h('p', { class: 'track-note small' }, '📍 ', st.team.kind === 'elect' ? 'La posizione di questo telefono è visibile alla regia e agli altri Eletti.' : 'Durante la partita la posizione di questo telefono è visibile al Consiglio.',
-    trackMsg ? h('span', { class: 'bad-text' }, ` ${trackMsg}`) : null);
+    h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg ? ` ${trackMsg}` : ''));
 }
 
 // ---------------------------------------------------------------- Mappa
@@ -866,9 +872,10 @@ function startMapGps() {
     gpsMsg = null;
     teamMapView.setMe(p);
     const el = document.getElementById('map-gps');
-    if (el) el.textContent = `La vostra posizione: ± ${p.acc} m`;
+    if (el) el.textContent = gpsLine(p);
   }, (msg) => { gpsMsg = msg; const el = document.getElementById('map-gps'); if (el) el.textContent = msg; });
 }
+const gpsLine = (p) => `La vostra posizione: ± ${p.acc} m${accuracyHint(p.acc) ? ` · ${accuracyHint(p.acc)}` : ''}`;
 function stopMapGps() { stopGps?.(); stopGps = null; }
 
 function viewMap() {
@@ -882,7 +889,7 @@ function viewMap() {
   teamMapView.refresh();
   return h('div', { class: 'stack map-page' },
     h('h2', null, 'Mappa'),
-    h('p', { class: 'mono small', id: 'map-gps' }, myPos ? `La vostra posizione: ± ${myPos.acc} m` : gpsMsg || 'Ricerca della posizione…'),
+    h('p', { class: 'mono small', id: 'map-gps' }, myPos ? gpsLine(myPos) : gpsMsg || 'Ricerca della posizione…'),
     teamMapView.el,
     h('div', { class: 'row-actions' },
       h('button', { class: 'btn btn-sm', onclick: () => teamMapView.centerMe() }, '◎ Dove siamo'),
