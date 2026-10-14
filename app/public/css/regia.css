@@ -255,3 +255,4 @@ tr.rev-skipped td { opacity: .45; text-decoration: line-through; }
 .gt-icon { text-align: center; font-size: 18px; }
 .gt-color { width: 44px; height: 36px; border: 0; padding: 0; background: none; }
 tr.gift-row-claimed td { opacity: .6; }
+.field-list li.contested { border-color: var(--danger); background: rgba(255, 90, 74, .08); }

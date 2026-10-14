@@ -92,6 +92,13 @@ function setState(st) {
   const prev = S.state;
   S.state = st;
   clock.set(st.clock);
+  syncServerTimers(st);
+  if (prev?.combat && st.combat) {
+    const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`)]);
+    const fresh = [...st.combat.incoming.map((r) => [`r${r.id}`, r.kind === 'break' ? `${r.team.sectorName} vuole rompere l'alleanza` : `${r.team.sectorName} vi propone un'alleanza`]),
+      ...st.combat.toConfirm.map((e) => [`e${e.id}`, `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`])].filter(([k]) => !seen.has(k));
+    if (fresh.length) { vibrate([200, 100, 200, 100, 400]); beep(); for (const [, t] of fresh) toast(t, 'blood', 9000); }
+  }
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Allinea gli Altari visitati del server con quelli locali.
   for (const v of st.visited) rememberVisit(v.qrToken, { label: v.label, sectorName: v.sectorName });
@@ -312,14 +319,15 @@ function render() {
   if (S.auth === 'none') return mount($app, viewLogin());
   let { view, arg, query } = route();
   if (isElect() && ['sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
-  if (isLobby() && ['altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni'].includes(view)) view = 'home';
+  if (isLobby() && ['altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri'].includes(view)) view = 'home';
+  if (isElect() && view === 'scontri') view = 'home';
   if (view === 'mappa') startMapGps(); else stopMapGps();
   if (view === 'sigillo') openSeal(); else closeSeal();
   preserveInputs(() => {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings,
-      avvisi: viewNotices, mappa: viewMap, dono: () => viewGift(arg), doni: viewMyGifts,
+      avvisi: viewNotices, mappa: viewMap, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -359,6 +367,7 @@ function banners() {
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
   if (S.queue.length) out.push(h('div', { class: 'banner banner-queue' }, h('strong', null, `${S.queue.length} in attesa di rete`), h('span', null, S.queue.map((q) => q.label).join(' · '))));
+  if (combatPending(st) && route().view !== 'scontri') out.push(h('a', { class: 'banner banner-action', href: '#/scontri' }, h('strong', null, 'Risposta richiesta'), h('span', null, [...st.combat.incoming.map((r) => r.kind === 'break' ? `${r.team.sectorName}: rottura dell'alleanza` : `${r.team.sectorName} propone un'alleanza`), ...st.combat.toConfirm.map((e) => `${e.reporter.sectorName}: confermate la sconfitta?`)].join(' · '))));
   return out.length ? h('div', { class: 'banners' }, out) : null;
 }
 
@@ -567,6 +576,7 @@ function viewHome() {
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
+    st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/scontri' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
     latestNotice(st),
     st.standings ? h('div', { class: 'card final' },
@@ -585,6 +595,7 @@ function viewHome() {
       tile('#/mappa', 'Mappa', '⛰', (st.map?.gifts.length || null), st.map?.gifts.length),
       tile('#/altari', 'Altari visitati', '⛬', allVisited().length || null),
       tile('#/doni', 'I vostri doni', '✦', (st.gifts || []).filter((g) => !g.usedAt).length || null),
+      tile('#/scontri', 'Alleanze e scontri', '⚔', combatPending(st) || null, combatPending(st)),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
       tile('#/codici', 'Codici', '✱'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
@@ -597,6 +608,120 @@ function viewHome() {
 
 function tile(href, label, icon, badge, alert) {
   return h('a', { class: 'tile', href }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, icon), h('span', null, label), badge ? h('span', { class: `badge ${alert ? 'badge-alert' : ''}` }, badge) : null);
+}
+
+// ---------------------------------------------------------------- Alleanze e scontri
+
+const combatPending = (st) => (st?.combat ? st.combat.incoming.length + st.combat.toConfirm.length : 0);
+let combatOpp = null;
+
+async function combatCall(url, body, okMsg) {
+  try {
+    const r = await api('POST', url, body);
+    if (okMsg) toast(okMsg, 'ok', 6000);
+    vibrate(60);
+    await refresh();
+    return r;
+  } catch (e) {
+    toast(e.offline ? 'Serve la rete: riprovate appena c\'è segnale' : e.message, 'error', 7000);
+    return null;
+  }
+}
+
+const teamName = (t) => `${t.roman} ${t.sectorName}`;
+
+function viewCombat() {
+  const st = S.state;
+  const c = st?.combat;
+  if (!c) return h('p', { class: 'empty' }, 'Disponibile per le coppie in gioco.');
+  const status = st.clock.status;
+  const playing = ACTIVE.includes(status);
+  const fighting = ['hunt', 'last_half_hour'].includes(status);
+  const mySize = c.alliance ? c.alliance.members.length : 1;
+  const opponents = c.teams.filter((t) => !t.allied);
+  if (combatOpp && !opponents.some((t) => t.teamId === combatOpp)) combatOpp = null;
+  const opp = opponents.find((t) => t.teamId === combatOpp);
+
+  const report = async (result) => {
+    if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
+    const allies = c.alliance ? c.alliance.members.filter((m) => m.teamId !== st.team.id).map(teamName) : [];
+    const text = {
+      lost: `Confermate di aver perso contro ${teamName(opp)}? Il vostro Sigillo${allies.length ? ' e quelli dei vostri alleati' : ''} andranno a ${opp.sectorName}${opp.allianceSize > 1 ? ' e ai suoi alleati' : ''}. Parte la Veglia: cappellino per 2 minuti.`,
+      won: `Dichiarate di aver vinto contro ${teamName(opp)}? ${opp.sectorName} dovrà confermare: poi riceverete i Sigilli della parte sconfitta${allies.length ? ' (anche i vostri alleati)' : ''}.`,
+      draw: `Pareggio con ${teamName(opp)}? Blocco ingaggio di 5 minuti per tutti.`,
+    }[result];
+    if (!(await dialog({ title: { lost: 'Scontro perso', won: 'Scontro vinto', draw: 'Pareggio' }[result], text, okLabel: 'Registra', danger: result === 'lost' }))) return;
+    const r = await combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result }, result === 'won' ? `In attesa della conferma di ${opp.sectorName}` : 'Scontro registrato');
+    if (r) combatOpp = null;
+  };
+
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Alleanze e scontri'),
+
+    c.incoming.length ? h('div', { class: 'stack-sm' }, c.incoming.map((r) => h('div', { class: 'combat-card ask' },
+      h('div', { class: 'eyebrow' }, r.kind === 'break' ? 'Rottura dell\'alleanza' : 'Proposta di alleanza'),
+      h('strong', null, r.kind === 'break' ? `${teamName(r.team)} vuole lasciare l'alleanza` : `${teamName(r.team)} vi propone un'alleanza`),
+      r.kind === 'join' ? h('p', { class: 'small muted' }, 'Accettando vi scambiate i Sigilli: li ricevete in automatico nel taccuino.') : h('p', { class: 'small muted' }, 'Accettando l\'alleanza è rotta: blocco ingaggio di 5 minuti.'),
+      h('p', { class: 'small' }, 'Scade tra ', h('span', { class: 'mono', 'data-abs': r.expiresAt }, '—')),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: true }, r.kind === 'join' ? 'Alleanza stretta' : 'Alleanza rotta') }, 'Accetta'),
+        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: false }, 'Rifiutata') }, 'Rifiuta'))))) : null,
+
+    c.toConfirm.length ? h('div', { class: 'stack-sm' }, c.toConfirm.map((e) => h('div', { class: 'combat-card ask' },
+      h('div', { class: 'eyebrow' }, 'Esito da confermare'),
+      h('strong', null, `${teamName(e.reporter)} dichiara di avervi sconfitto`),
+      h('p', { class: 'small muted' }, `Confermando, i Sigilli di ${e.losers.map((x) => x.sectorName).join(', ')} vanno a ${e.winners.map((x) => x.sectorName).join(', ')}. Se non è vero, contestate: decide la regia.`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }, 'Sconfitta confermata: Veglia') }, 'Confermo, abbiamo perso'),
+        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto'))))) : null,
+
+    h('section', { class: 'card stack-sm' },
+      h('div', { class: 'eyebrow' }, 'Esito di uno scontro'),
+      !fighting ? h('p', { class: 'muted small' }, status === 'truce' ? 'Tregua: nessun ingaggio.' : 'Gli scontri si registrano a caccia aperta.') : [
+        h('p', { class: 'small muted' }, 'Contro chi avete combattuto?'),
+        h('div', { class: 'opp-grid' }, opponents.map((t) => h('button', { type: 'button', class: `opp ${combatOpp === t.teamId ? 'on' : ''}`, onclick: () => { combatOpp = t.teamId; render(); } },
+          h('strong', null, teamName(t)), t.allianceSize > 1 ? h('span', { class: 'tiny muted' }, `alleanza di ${t.allianceSize}`) : null))),
+        h('div', { class: 'result-btns' },
+          h('button', { class: 'btn btn-xl res-won', disabled: !opp, onclick: () => report('won') }, 'VINTO'),
+          h('button', { class: 'btn btn-xl res-lost', disabled: !opp, onclick: () => report('lost') }, 'PERSO'),
+          h('button', { class: 'btn res-draw', disabled: !opp, onclick: () => report('draw') }, 'Pareggio')),
+        h('p', { class: 'tiny muted' }, 'Niente scambio di Sigilli a mano: chi vince li riceve nel taccuino (anche i suoi alleati), chi perde fa la Veglia.'),
+      ]),
+
+    h('section', { class: 'card stack-sm' },
+      h('div', { class: 'eyebrow' }, c.alliance ? `La vostra alleanza (${c.alliance.members.length}/${c.maxAlliance})` : 'Nessuna alleanza'),
+      c.alliance ? h('ul', { class: 'ally-list' }, c.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => {
+        const asked = c.outgoing.find((r) => r.kind === 'break' && r.team.teamId === m.teamId);
+        return h('li', null, h('strong', null, teamName(m)),
+          asked ? h('span', { class: 'chip chip-brass' }, 'rottura proposta')
+            : h('button', { class: 'btn btn-sm btn-danger', disabled: !playing, onclick: async () => {
+              if (await dialog({ title: 'Rompere l\'alleanza?', text: `${m.sectorName} dovrà accettare. Poi blocco ingaggio di 5 minuti.`, okLabel: 'Proponi la rottura', danger: true })) combatCall('/api/team/alliance/break', { teamId: m.teamId }, `Rottura proposta a ${m.sectorName}`);
+            } }, 'Rompi'));
+      })) : h('p', { class: 'small muted' }, 'Proponete un\'alleanza a un\'altra coppia: dovrà accettarla dal suo telefono.'),
+      c.outgoing.filter((r) => r.kind === 'join').map((r) => h('div', { class: 'pending-row' },
+        h('span', null, `In attesa di ${r.team.sectorName} · scade tra `, h('span', { class: 'mono', 'data-abs': r.expiresAt }, '—')),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => combatCall(`/api/team/alliance/${r.id}/cancel`, {}, 'Proposta ritirata') }, 'Ritira'))),
+      mySize < c.maxAlliance && playing ? [
+        h('p', { class: 'small muted' }, 'Proponi un\'alleanza a:'),
+        h('div', { class: 'opp-grid' }, opponents.map((t) => {
+          const full = mySize + t.allianceSize > c.maxAlliance;
+          const waiting = t.retryAt && t.retryAt > clock.serverNow();
+          const pending = c.outgoing.some((r) => r.kind === 'join' && r.team.teamId === t.teamId);
+          return h('button', { type: 'button', class: 'opp', disabled: full || waiting || pending, onclick: async () => {
+            if (await dialog({ title: `Alleanza con ${t.sectorName}?`, text: `${t.sectorName} riceverà la proposta e dovrà accettarla entro pochi minuti. Accettando vi scambiate i Sigilli.`, okLabel: 'Proponi' })) combatCall('/api/team/alliance/request', { teamId: t.teamId }, `Proposta inviata a ${t.sectorName}`);
+          } }, h('strong', null, teamName(t)),
+          full ? h('span', { class: 'tiny muted' }, 'troppo grande') : waiting ? h('span', { class: 'tiny muted' }, 'riproponi tra ', h('span', { class: 'mono', 'data-abs': t.retryAt }, '—')) : pending ? h('span', { class: 'tiny muted' }, 'in attesa') : null);
+        })),
+      ] : null),
+
+    c.history.length ? h('section', { class: 'stack-sm' },
+      h('div', { class: 'eyebrow' }, 'Ultimi scontri'),
+      h('ul', { class: 'list' }, c.history.map((e) => h('li', { class: `hist hist-${e.mine}` },
+        h('span', { class: 'mono small muted' }, fmtTime(e.createdAt)),
+        h('span', null, e.result === 'draw' ? `Pareggio con ${(e.mine === 'draw' ? [...e.winners, ...e.losers] : e.losers).filter((x) => x.teamId !== st.team.id).map((x) => x.sectorName).join(', ')}`
+          : e.mine === 'won' ? `Vinto contro ${e.losers.map((x) => x.sectorName).join(', ')}` : `Perso contro ${e.winners.map((x) => x.sectorName).join(', ')}`),
+        h('span', { class: `chip ${e.status === 'confirmed' ? (e.mine === 'won' ? 'chip-ok' : e.mine === 'lost' ? 'chip-blood' : '') : 'chip-brass'}` },
+          { pending: 'da confermare', confirmed: 'registrato', contested: 'contestato', cancelled: 'annullato' }[e.status]))))) : null);
 }
 
 // ---------------------------------------------------------------- Mappa (posizione solo sul telefono, mai inviata)
@@ -940,6 +1065,24 @@ function viewNotebook() {
 // ---------------------------------------------------------------- Timer (funzionano offline)
 
 function saveTimers() { store.set('zdg_timers', S.timers); }
+
+// Timer avviati dal server (Veglia dopo una sconfitta, blocchi dopo pareggi o alleanze rotte): partono da soli.
+const syncedTimers = new Set(store.get('zdg_synced_timers', []));
+function syncServerTimers(st) {
+  for (const t of st.serverTimers || []) {
+    const key = `srv-${t.id}`;
+    if (syncedTimers.has(key)) continue;
+    syncedTimers.add(key);
+    const preset = (st.game.timers || []).find((x) => x.id === t.timerId);
+    if (!preset) continue;
+    const endsAt = t.startedAt + preset.minutes * 60000 - clock.offset;
+    if (endsAt <= Date.now()) continue;
+    S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason });
+    toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
+  }
+  store.set('zdg_synced_timers', [...syncedTimers].slice(-200));
+  saveTimers();
+}
 
 function startTimer(preset) {
   S.timers.push({ uid: `${preset.id}-${Date.now()}`, id: preset.id, label: preset.label, endText: preset.endText, endsAt: Date.now() + preset.minutes * 60000, done: false });

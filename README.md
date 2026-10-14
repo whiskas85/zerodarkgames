@@ -74,6 +74,15 @@ Sul telefono l'avviso arriva come **notifica** (Android/Chrome, anche a schermo 
 Con l'app aperta compare subito, con vibrazione. Nell'app c'è un invito ad attivare le notifiche; la regia vede quanti dispositivi le hanno attive.
 Le notifiche richiedono HTTPS (vedi sotto).
 
+## Campo, mappe, doni, alleanze e scontri
+
+- **Strumento di campo** (`/campo`, per Eletti e regia dal telefono): si scansiona il cartello di un Altare o di un Dono, il telefono dà la posizione GPS (o si tocca il punto sulla mappa), si scatta la foto e si conferma. Foto e coordinate arrivano in regia (**Mappa e campo**).
+- **Mappe OpenTopoMap**: la regia vede Altari e doni (grigio = piazzato non comparso, colorato = comparso, barrato = preso); le coppie vedono Altari e doni comparsi più la propria posizione, che resta sul telefono.
+- **Doni QR** (regia → Doni QR): catalogo di tipi modificabile, comparsa a mano / al piazzamento / a un minuto dal via, scadenza facoltativa, stampa dei cartelli. La prima coppia che scansiona il dono lo prende; tutti ricevono una notifica e il dono sparisce dalle mappe.
+- **Scansione degli Altari a tempo**: vale i minuti impostati nella partita (default 15, 0 = sempre); poi va ripetuta. Se il Sigillo è già nel taccuino l'app lo propone, senza scriverlo.
+- **Alleanze**: proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri.
+- **Scontri**: VINTO / PERSO / PAREGGIO contro una coppia. "Perso" vale subito, "vinto" va confermato dallo sconfitto (se contesta decide la regia). I vincitori e i loro alleati ricevono i Sigilli di tutta la parte sconfitta; chi perde riceve in automatico il timer Veglia.
+
 ## Provare dai telefoni in Wi-Fi
 
 In regia, **Impostazioni → Indirizzo per link e QR**: inserisci l'indirizzo del PC sulla rete Wi-Fi (es. `http://192.168.86.105:8090`), premi **Prova** e poi **Salva**.

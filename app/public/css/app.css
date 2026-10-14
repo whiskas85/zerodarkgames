@@ -304,3 +304,22 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .scan-expired { display: grid; gap: 10px; padding: 16px; border: 3px solid var(--warn); background: var(--paper-2); }
 .scan-expired strong { font-family: var(--f-display); font-size: 26px; text-transform: uppercase; color: var(--warn); }
 .scan-expired p { margin: 0; }
+
+/* Alleanze e scontri */
+.banner-action { background: var(--blood); color: #fff; text-decoration: none; }
+.ally-strip { display: flex; gap: 10px; align-items: baseline; padding: 10px 14px; border: 2px solid var(--brass); background: var(--paper); color: inherit; text-decoration: none; }
+.combat-card { display: grid; gap: 8px; padding: 14px; border: 3px solid var(--blood); background: var(--blood-soft); }
+.combat-card p { margin: 0; }
+.combat-card strong { font-size: 18px; }
+.opp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.opp { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 2px; padding: 12px; min-height: 56px; border: 2px solid var(--line); background: var(--bg); font-family: var(--f-display); font-size: 20px; text-transform: uppercase; }
+.opp.on { border-color: var(--blood); background: var(--blood-soft); }
+.opp:disabled { opacity: .45; cursor: default; }
+.opp .tiny { font-family: var(--f-ui); text-transform: none; font-size: 12px; }
+.result-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.result-btns .res-draw { grid-column: 1 / -1; }
+.res-won { background: var(--ok); border-color: var(--ok); color: #0b1a0c; font-family: var(--f-display); font-size: 26px; }
+.res-lost { background: var(--danger); border-color: var(--danger); color: #fff; font-family: var(--f-display); font-size: 26px; }
+.ally-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ally-list li, .pending-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); }
+.hist { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); }

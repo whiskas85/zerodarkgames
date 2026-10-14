@@ -306,6 +306,8 @@ function viewLive() {
             h('button', { class: 'btn btn-sm', onclick: () => { R.msgTeam = t.id; location.hash = 'comunicazioni'; } }, t.unread ? `Messaggi (${t.unread})` : 'Messaggio'),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => fragmentsDialog(t) }, 'Frammenti'))))))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
 
+    combatPanel(),
+
     h('div', { class: 'cols-2' },
       sectionActions('Sigilli', [h('button', { class: 'btn btn-sm btn-ghost', onclick: toggleShowAll }, R.showAll ? 'Nascondi' : 'Mostra tutti')], codesGrid(fresh)),
       section('Annuncio libero', quickAnnounce(), h('h3', { class: 'sub' }, 'Feed eventi'), eventFeed(25))));
@@ -337,6 +339,25 @@ async function createDemo() {
     toast('Partita di prova pronta: segna pronta, apri il cerchio e dai il VIA', 'ok', 7000);
     load();
   } catch (e) { toast(e.message, 'error', 7000); }
+}
+
+// Alleanze in corso, scontri da decidere (contestati o in attesa) ed esiti recenti.
+function combatPanel() {
+  const c = R.ms.combat;
+  if (!c) return null;
+  const tn = (t) => (t ? `${t.roman} ${t.sectorName}` : '?');
+  const outcome = (e) => (e.result === 'draw' ? `Pareggio: ${[...e.winners, ...e.losers].map(tn).join(' · ')}` : `${e.winners.map(tn).join(' + ')} vince su ${e.losers.map(tn).join(' + ')}`);
+  return h('div', { class: 'cols-2' },
+    section(`Alleanze (${c.alliances.length})`,
+      c.alliances.length ? h('ul', { class: 'field-list' }, c.alliances.map((a) => h('li', { class: 'ok' }, h('strong', { class: 'grow' }, a.members.map(tn).join(' + ')), h('span', { class: 'tiny muted' }, `dalle ${fmtTime(a.createdAt)}`)))) : h('p', { class: 'empty' }, 'Nessuna alleanza in corso.'),
+      c.requests.length ? [h('h3', { class: 'sub' }, 'Proposte in attesa'), h('ul', { class: 'field-list' }, c.requests.map((r) => h('li', null, h('span', { class: 'grow' }, `${tn(r.from)} → ${tn(r.to)}`), h('span', { class: 'chip' }, r.kind === 'break' ? 'rottura' : 'alleanza'))))] : null),
+    section('Scontri',
+      c.open.length ? h('ul', { class: 'field-list' }, c.open.map((e) => h('li', { class: e.status === 'contested' ? 'contested' : '' },
+        h('div', { class: 'grow' }, h('strong', null, outcome(e)), h('div', { class: 'tiny muted' }, `${fmtTime(e.createdAt)} · dichiarato da ${tn(e.reporter)} · ${e.status === 'contested' ? 'CONTESTATO' : 'in attesa di conferma'}`)),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Confermare l\'esito?', `${outcome(e)}. I vincitori ricevono i Sigilli degli sconfitti, gli sconfitti fanno la Veglia.`, 'POST', `/api/m/engagements/${e.id}/resolve`, { decision: 'confirm' }, 'Esito confermato') }, 'Conferma'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Annullare lo scontro?', 'Nessun Sigillo passa di mano.', 'POST', `/api/m/engagements/${e.id}/resolve`, { decision: 'cancel' }, 'Scontro annullato', true) }, 'Annulla'))))) : h('p', { class: 'empty' }, 'Nessuno scontro da decidere.'),
+      c.recent.length ? [h('h3', { class: 'sub' }, 'Ultimi esiti'), h('ul', { class: 'feed' }, c.recent.map((e) => h('li', { class: 'ev' }, h('span', { class: 'mono tiny muted' }, fmtTime(e.resolvedAt || e.createdAt)), h('span', { class: 'ev-type' }, e.status === 'cancelled' ? 'Annullato' : e.result === 'draw' ? 'Pareggio' : 'Scontro'), h('span', { class: 'ev-text' }, outcome(e)))))] : null));
 }
 
 function nextCard(title, content) {
@@ -443,6 +464,11 @@ const EVENT_LABELS = {
   free_announcement: 'Annuncio libero', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
+  alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
+  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', engagement_confirmed: 'Scontro registrato',
+  engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
+  point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
+  gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
 };
 
@@ -474,6 +500,16 @@ function eventText(e) {
     case 'elect_removed': return d.name;
     case 'notice': return `${d.title} → ${R.ms.noticeTargets[d.target] || d.target}`;
     case 'notice_deleted': return d.title;
+    case 'alliance_proposed': case 'alliance_break_proposed': case 'alliance_rejected': case 'alliance_break_rejected': return `${d.from} → ${d.to}`;
+    case 'alliance_formed': case 'alliance_broken': return (d.teams || []).join(' + ');
+    case 'engagement_reported': return `${d.reporter} dichiara ${({ won: 'vittoria', lost: 'sconfitta', draw: 'pareggio' })[d.result]} contro ${d.opponent}`;
+    case 'engagement_confirmed': return d.result === 'draw' ? `Pareggio: ${[...(d.winners || []), ...(d.losers || [])].join(', ')}` : `${(d.winners || []).join(' + ')} su ${(d.losers || []).join(' + ')}`;
+    case 'engagement_contested': return `${d.by} contesta ${d.reporter}`;
+    case 'unlock_scan_expired': return `${who} a ${d.point}`;
+    case 'point_placed': return `${d.label}${d.accuracy ? ` · ±${d.accuracy} m` : ''}${d.source === 'manual' ? ' · punto manuale' : ''}`;
+    case 'gift_placed': case 'gift_revealed': case 'gift_expired': case 'gift_deleted': case 'gift_reset': return `${d.label}${d.type ? ` · ${d.type}` : ''}`;
+    case 'gift_claimed': case 'gift_used': return `${who}: ${d.label} · ${d.type}`;
+    case 'gifts_created': return `${d.count} × ${d.type}`;
     default: return who;
   }
 }
@@ -1174,6 +1210,7 @@ function gameForm(g, isNew) {
   f('lastRevelationBeforeEndMin', 'Nessuna rivelazione negli ultimi (min)', 'number', { def: 30, lock: true }),
   f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
   f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
+  f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
   h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, isNew ? 'Crea partita' : 'Salva parametri'),
     locked ? h('span', { class: 'tiny muted' }, 'Tempi e Sigilli non sono più modificabili dopo il via.') : null));
 }
