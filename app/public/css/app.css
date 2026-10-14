@@ -396,3 +396,4 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 @keyframes battle-burst { 0% { transform: scale(.2); opacity: 0; } 40% { opacity: 1; } 100% { transform: scale(1.4); opacity: .5; } }
 @keyframes battle-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
 @media (prefers-reduced-motion: reduce) { .battle-overlay, .battle-title, .battle-burst { animation: none; } }
+.scanner-cam { justify-self: center; max-width: 92vw; min-height: 44px; padding: 8px 12px; border-radius: 22px; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-weight: 700; }

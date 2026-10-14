@@ -366,6 +366,18 @@ function loadJsQR() {
   return jsqrLoading;
 }
 
+// Fotocamere posteriori: su molti telefoni (es. Samsung) la prima offerta dal browser è la grandangolare,
+// che non mette a fuoco da vicino. Preferiamo la principale ("camera2 0", oppure la prima posteriore non "wide").
+async function backCameras() {
+  try {
+    const all = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    const back = all.filter((d) => /back|rear|environment|posterior|retro/i.test(d.label));
+    const list = back.length ? back : all;
+    const score = (d) => (/camera2 0\b|camera 0\b/i.test(d.label) ? 0 : /ultra|wide|grandang|macro|tele|depth/i.test(d.label) ? 2 : 1);
+    return [...list].sort((a, b) => score(a) - score(b));
+  } catch { return []; }
+}
+
 // La fotocamera è concessa dal browser solo in contesto sicuro (https o localhost).
 export function cameraSupported() {
   return !!(window.isSecureContext && navigator.mediaDevices?.getUserMedia);
@@ -380,6 +392,9 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
     let timer = null;
     let done = false;
     let torchOn = false;
+    let zoom2 = false;
+    let cams = [];
+    let open = () => {};
     const video = h('video', { class: 'scanner-video', playsinline: true, muted: true, autoplay: true });
     const status = h('div', { class: 'scanner-status', role: 'status', 'aria-live': 'polite' }, 'Avvio della fotocamera…');
     const torchBtn = h('button', { class: 'scanner-btn hidden', type: 'button', 'aria-label': 'Torcia', onclick: async () => {
@@ -389,6 +404,27 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
         torchBtn.classList.toggle('on', torchOn);
       } catch { /* torcia non disponibile */ }
     } }, '🔦');
+    // Zoom: inquadrare il QR da più lontano, dove la messa a fuoco funziona meglio.
+    const zoomBtn = h('button', { class: 'scanner-btn hidden', type: 'button', 'aria-label': 'Zoom', onclick: async () => {
+      try {
+        const c = track.getCapabilities();
+        zoom2 = !zoom2;
+        await track.applyConstraints({ advanced: [{ zoom: zoom2 ? Math.min(c.zoom.max, Math.max(c.zoom.min, 2)) : Math.max(c.zoom.min, 1) }] });
+        zoomBtn.textContent = zoom2 ? '1×' : '2×';
+      } catch { /* zoom non disponibile */ }
+    } }, '2×');
+    // Scelta della fotocamera: la scelta resta su questo telefono per le prossime scansioni.
+    const camSel = h('select', { class: 'scanner-cam hidden', 'aria-label': 'Fotocamera', onchange: (e) => { store.set('zdg_camera', e.target.value); open(e.target.value); } });
+    const fillCams = () => {
+      const cur = track?.getSettings?.().deviceId;
+      const name = (d, i) => {
+        const main = /camera2 0\b|camera 0\b/i.test(d.label);
+        const wide = /ultra|wide|grandang/i.test(d.label);
+        return `Fotocamera ${i + 1}${main ? ' · principale (consigliata)' : wide ? ' · grandangolare' : ''}`;
+      };
+      camSel.replaceChildren(...cams.map((d, i) => h('option', { value: d.deviceId, selected: d.deviceId === cur }, name(d, i))));
+      camSel.classList.toggle('hidden', cams.length < 2);
+    };
     const finish = (val) => {
       if (done) return;
       done = true;
@@ -404,7 +440,23 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
       video,
       h('div', { class: 'scanner-frame', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i')),
       h('div', { class: 'scanner-top' }, h('strong', null, title), h('button', { class: 'scanner-btn', type: 'button', 'aria-label': 'Chiudi', onclick: () => finish(null) }, '✕')),
-      h('div', { class: 'scanner-bottom' }, status, hint ? h('p', null, hint) : null, torchBtn));
+      h('div', { class: 'scanner-bottom' }, status, hint ? h('p', null, hint) : null,
+        h('div', { class: 'scanner-tools' }, torchBtn, zoomBtn),
+        camSel,
+        h('p', { class: 'scanner-tip' }, 'Non mette a fuoco? Scegli un\'altra fotocamera qui sopra, tocca l\'immagine o usa lo zoom 2×.')));
+    // Tocco sull'immagine: rifà la messa a fuoco (dove il telefono lo consente).
+    video.addEventListener('click', async (e) => {
+      if (!track) return;
+      try {
+        const c = track.getCapabilities?.() || {};
+        const r = video.getBoundingClientRect();
+        const poi = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+        if (c.focusMode?.includes('single-shot')) await track.applyConstraints({ advanced: [{ focusMode: 'single-shot', pointsOfInterest: [poi] }] });
+        if (c.focusMode?.includes('continuous')) setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}), 1200);
+        status.textContent = 'Messa a fuoco…';
+        setTimeout(() => { if (!done) status.textContent = 'Inquadra il QR nel riquadro'; }, 1200);
+      } catch { /* messa a fuoco manuale non disponibile */ }
+    });
     document.addEventListener('keydown', onKey);
     document.body.append(overlay);
     document.body.classList.add('no-scroll');
@@ -414,16 +466,38 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
       if (!cameraSupported()) {
         return fail(window.isSecureContext ? 'Fotocamera non disponibile su questo dispositivo.' : 'Lo scanner usa la fotocamera, che il browser concede solo con l\'indirizzo https del Consiglio.');
       }
+      // Apre una fotocamera (deviceId) oppure la posteriore predefinita; poi messa a fuoco continua.
+      async function openCamera(deviceId) {
+        stream?.getTracks().forEach((t) => t.stop());
+        const base = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+        stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { ...base, deviceId: { exact: deviceId } } : { ...base, facingMode: { ideal: 'environment' } }, audio: false });
+        if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
+        video.srcObject = stream;
+        track = stream.getVideoTracks()[0];
+        zoom2 = false;
+        zoomBtn.textContent = '2×';
+        try {
+          const c = track.getCapabilities?.() || {};
+          torchBtn.classList.toggle('hidden', !c.torch);
+          zoomBtn.classList.toggle('hidden', !(c.zoom && c.zoom.max >= 1.5));
+          if (c.focusMode?.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        } catch { /* capacità non leggibili */ }
+        await video.play().catch(() => {});
+      }
+      open = (id) => openCamera(id).then(() => { fillCams(); status.classList.remove('bad'); status.textContent = 'Inquadra il QR nel riquadro'; }).catch(() => fail('Questa fotocamera non si apre: scegline un\'altra.'));
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        const saved = store.get('zdg_camera');
+        try { await openCamera(saved || null); } catch { if (saved) { store.del('zdg_camera'); await openCamera(null); } else throw new Error(); }
+        // Ora che il permesso c'è, i nomi delle fotocamere sono leggibili: se ne abbiamo aperta una secondaria, passiamo alla principale.
+        cams = await backCameras();
+        const cur = track?.getSettings?.().deviceId;
+        if (!saved && cams[0] && cur && cams[0].deviceId !== cur && /ultra|wide|grandang|macro|tele|depth/i.test(cams.find((d) => d.deviceId === cur)?.label || '')) await openCamera(cams[0].deviceId);
+        else if (!saved && cams[0] && cur && cams[0].deviceId !== cur && /camera2 0\b/i.test(cams[0].label)) await openCamera(cams[0].deviceId);
       } catch {
         return fail('Permesso fotocamera negato: consentilo dalle impostazioni del browser e riprova.');
       }
-      if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
-      video.srcObject = stream;
-      track = stream.getVideoTracks()[0];
-      try { if (track.getCapabilities?.().torch) torchBtn.classList.remove('hidden'); } catch { /* capacità non leggibili */ }
-      await video.play().catch(() => {});
+      if (done) return;
+      fillCams();
       status.textContent = 'Inquadra il QR nel riquadro';
 
       // Lettore nativo se c'è (Chrome Android), altrimenti jsQR sui fotogrammi.
