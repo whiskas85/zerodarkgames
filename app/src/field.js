@@ -492,10 +492,10 @@ function deleteTask(taskId, actor) {
 const POSITION_MAX_AGE = 30 * 60000; // dopo 30 minuti senza aggiornamenti il telefono sparisce dalla mappa
 const POSITION_STALE = 5 * 60000; // dopo 5 minuti il segnaposto si sbiadisce
 
-// Le coppie si vedono in mappa solo a partita iniziata; gli Eletti già dalla preparazione.
+// Le coppie si vedono in mappa solo a partita iniziata; gli Eletti da quando la partita è pronta (non in preparazione).
 function trackingActive(team, status) {
   if (team.kind === 'couple') return [...C.ACTIVE, 'paused'].includes(status) && team.status !== 'withdrawn';
-  if (team.kind === 'elect') return status !== 'ended';
+  if (team.kind === 'elect') return !['draft', 'ended'].includes(status);
   return false;
 }
 

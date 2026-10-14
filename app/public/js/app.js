@@ -807,7 +807,7 @@ function viewCombat() {
 }
 
 // ---------------------------------------------------------------- Posizione condivisa con il Consiglio
-// Coppie: solo a partita iniziata. Eletti: dalla preparazione. Funziona con l'app aperta (limite dei browser).
+// Coppie: solo a partita iniziata. Eletti: da quando la partita è pronta. Funziona con l'app aperta (limite dei browser).
 
 const ACTIVE_OR_PAUSED = ['truce', 'hunt', 'last_half_hour', 'paused'];
 const deviceId = (() => {
@@ -821,7 +821,7 @@ let trackMsg = null;
 
 function trackingOn(st) {
   if (!st) return false;
-  if (st.team.kind === 'elect') return st.clock.status !== 'ended';
+  if (st.team.kind === 'elect') return !['draft', 'ended'].includes(st.clock.status);
   if (st.team.kind === 'couple') return ACTIVE_OR_PAUSED.includes(st.clock.status) && st.team.status !== 'withdrawn';
   return false;
 }

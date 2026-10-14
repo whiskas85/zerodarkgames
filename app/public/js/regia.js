@@ -1015,7 +1015,7 @@ function giftPopup(g) {
   return `<strong>${g.label} · ${g.icon} ${g.name}</strong><br>${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}<br><small>Piazzato ${fmtTime(g.placedAt)} da ${g.placedBy || '?'}${g.accuracy ? ` · ±${g.accuracy} m` : ''}</small>${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}`;
 }
 
-// Posizioni GPS di coppie (a partita iniziata) ed Eletti (dalla preparazione): aggiornate ogni 10 s sulla mappa.
+// Posizioni GPS di coppie (a partita iniziata) ed Eletti (da partita pronta): aggiornate ogni 10 s sulla mappa.
 let fieldPositions = [];
 let positionsTimer = null;
 async function pollPositions() {
@@ -1089,7 +1089,7 @@ function viewFieldMap() {
       h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#ff4fa3' } }), ' Coppia (persona)'),
       h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto (colore della squadra)')),
     h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
-    h('p', { class: 'tiny muted' }, 'Le coppie compaiono a partita iniziata, gli Eletti già dalla preparazione. I telefoni inviano la posizione con l\'app aperta; dopo 5 minuti senza aggiornamenti il segnaposto si sbiadisce.')),
+    h('p', { class: 'tiny muted' }, 'Le coppie compaiono a partita iniziata, gli Eletti da quando la partita è pronta (non in preparazione). I telefoni inviano la posizione con l\'app aperta; dopo 5 minuti senza aggiornamenti il segnaposto si sbiadisce.')),
     h('div', { class: 'cols-2' },
       section(`Altari piazzati ${placed}/${d.points.length}`,
         h('p', { class: 'muted tiny' }, 'Gli Eletti (o tu dal telefono) piazzano gli Altari con lo strumento di campo: foto e coordinate arrivano qui.'),
