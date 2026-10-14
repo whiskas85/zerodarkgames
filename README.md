@@ -135,38 +135,25 @@ Il workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml) a ogni 
 
 I dati restano nel volume `zdg-data` sul server: gli aggiornamenti non li toccano.
 
-### Da configurare una volta su GitHub (Settings → Secrets and variables → Actions)
+### Da configurare una volta
 
-**Secrets**
+Solo tre secrets e il DNS: la procedura passo passo è in [deploy/CHIAVE-SSH.md](deploy/CHIAVE-SSH.md).
 
-| Nome | Valore |
+| Secret | Valore |
 | --- | --- |
-| `DEPLOY_HOST` | IP o nome del server (es. `209.227.239.117`) |
-| `DEPLOY_USER` | utente SSH sul server (deve poter usare `docker`) |
-| `DEPLOY_SSH_KEY` | chiave privata SSH (contenuto completo del file) |
-| `DEPLOY_PORT` | facoltativo, porta SSH (default 22) |
-| `MASTER_PASSWORD` | password dell'utente MASTER in produzione |
-| `MASTER_USER` | facoltativo (default `master`) |
+| `DEPLOY_SSH_KEY` | chiave privata dedicata (vedi procedura) |
+| `DEPLOY_USER` | utente SSH sul server (che può usare `docker`) |
+| `MASTER_PASSWORD` | password della regia in produzione |
 
-**Variables**
+Tutto il resto è già impostato nel workflow: server `209.227.239.117`, cartella `~/zerodarkgames`, porta locale `8090`, dominio `games.zerodarkteam.it`.
+Senza i secrets il deploy viene saltato (i test e l'immagine girano lo stesso). Per spegnerlo: variabile `DEPLOY_ENABLED=false`.
 
-| Nome | Valore |
-| --- | --- |
-| `DEPLOY_ENABLED` | `true` per attivare la pubblicazione |
-| `PUBLIC_URL` | `https://games.zerodarkteam.it` |
-| `DEPLOY_PATH` | facoltativo, cartella sul server (default `/opt/zerodarkgames`) |
-| `ZDG_PORT` | facoltativo, porta locale sul server (default `8090`) |
-| `PROXY_NETWORK` | solo se Caddy gira in un container: nome della sua rete Docker |
-| `CADDYFILE` + `CADDY_RELOAD` | facoltativi: percorso del Caddyfile sul server e comando di ricarica (es. `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`). Il workflow aggiunge una sola volta il blocco del dominio |
-| `CADDY_UPSTREAM` | facoltativo: `zero-dark-games:8080` se Caddy è in Docker sulla stessa rete, altrimenti `127.0.0.1:8090` |
-
-Prerequisiti sul server: Docker con il plugin `compose`, e il record DNS `games.zerodarkteam.it` → IP del server.
-Il blocco Caddy, se lo si preferisce scrivere a mano:
+Caddy viene rilevato da solo sul server (in un container o installato) e il sito viene aggiunto una volta: il workflow salva una copia del Caddyfile, valida la nuova configurazione e, se non è valida, ripristina la copia. Per disattivare questo passo: variabile `CADDY_AUTO=false`. Il blocco, se preferisci scriverlo a mano:
 
 ```
 games.zerodarkteam.it {
 	encode gzip
-	reverse_proxy 127.0.0.1:8090   # oppure zero-dark-games:8080 se Caddy è in Docker sulla rete PROXY_NETWORK
+	reverse_proxy 127.0.0.1:8090   # oppure zero-dark-games:8080 se Caddy è in un container
 }
 ```
 
