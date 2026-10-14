@@ -1035,67 +1035,126 @@ function targetItems(d) {
     .map(([k, x]) => ({ key: `t${k}${x.id}`, kind: 'target', lat: x.targetLat, lng: x.targetLng, title: `Da piazzare qui: ${x.label}`, popup: `<strong>Da piazzare qui</strong><br>${x.label}${squadById(x.squadId) ? `<br>Squadra ${squadById(x.squadId).name}` : ''}` }));
 }
 
+// Segnaposto della mappa della regia, con le azioni nei popup (pulsanti data-act gestiti qui sotto).
+const actBtn = (act, kind, id, label) => `<button type="button" class="btn btn-sm" data-act="${act}" data-kind="${kind}" data-id="${id}">${label}</button>`;
+const placedInfo = (x) => `<small>Piazzato ${fmtTime(x.placedAt)} da ${String(x.placedBy || '?').replace('eletti:', '')}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · punto manuale' : ''}</small>`;
+function fieldMapItems(d) {
+  return [
+    ...fieldPositions.map(positionItem),
+    ...(d.landmarks || []).map((l) => landmarkItem(l, `<br>${placedInfo(l)}${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}
+      <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
+    ...targetItems(d),
+    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
+      popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
+        <div class="popup-actions">${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare')}</div>` })),
+    // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
+    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label,
+      popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('move', 'gift', g.id, 'Fai spostare')}</div>` : '') })),
+  ];
+}
+
 // Aggiorna solo i segnaposto, senza ridisegnare la pagina.
 function viewFieldMapItems() {
+  if (fieldData) fieldMap.setItems(fieldMapItems(fieldData));
+}
+
+const findFieldItem = (kind, id) => {
   const d = fieldData;
-  fieldMap.setItems([
-    ...fieldPositions.map(positionItem),
-    ...(d.landmarks || []).map((l) => landmarkItem(l)),
-    ...targetItems(d),
-    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label })),
-    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, popup: giftPopup(g) })),
-  ]);
+  if (!d) return null;
+  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : d.points).find((x) => x.id === Number(id)) || null;
+};
+
+// Pulsanti dentro i popup della mappa (in cattura: Leaflet ferma i clic nei popup prima che risalgano).
+fieldMap.el.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  e.stopPropagation();
+  const x = findFieldItem(b.dataset.kind, b.dataset.id);
+  if (!x) return;
+  fieldMap.map?.closePopup();
+  if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
+  if (b.dataset.act === 'pick') startPick(x);
+}, true);
+
+// Soglia e Cerchio si possono segnare direttamente dalla regia: un clic sulla mappa (foto facoltativa, si aggiunge dal telefono).
+function startPick(l) {
+  R.mapPick = { id: l.id, label: l.label };
+  render();
+}
+fieldMap.onTap(async (ll) => {
+  const pick = R.mapPick;
+  if (!pick) return;
+  R.mapPick = null;
+  const qs = new URLSearchParams({ gameId: R.gameId, lat: ll.lat, lng: ll.lng, source: 'manual' });
+  try {
+    const res = await fetch(`/api/field/landmarks/${pick.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, credentials: 'same-origin' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
+    toast(`${pick.label} segnato sulla mappa`, 'ok');
+  } catch (err) { toast(err.message, 'error', 6000); }
+  await loadField();
+});
+
+function campoPhoneDialog() {
+  const campoUrl = `${R.baseUrl}/campo`;
+  modal({
+    title: 'Campo sul telefono', okLabel: 'Chiudi', cancelLabel: 'Apri qui',
+    body: h('div', { class: 'stack-sm' },
+      h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(campoUrl)}`, alt: 'QR strumento di campo', width: 130, height: 130 }),
+        h('div', null, h('div', { class: 'mono' }, campoUrl), h('div', { class: 'tiny' }, 'Inquadralo dal tuo telefono ed entra con l\'account della regia. Gli Eletti hanno le stesse funzioni nella loro app.'))),
+      h('ol', { class: 'tiny muted hints' },
+        h('li', null, 'Scansiona il cartello dell\'Altare o del Dono (o sceglilo dall\'elenco).'),
+        h('li', null, 'L\'app prende la posizione GPS del telefono (o tocchi il punto sulla mappa).'),
+        h('li', null, 'Scatta la foto del piazzamento e conferma (per Soglia e Cerchio è facoltativa).')),
+      h('p', { class: 'tiny muted' }, 'GPS, fotocamera interna e scanner richiedono https.')),
+  }).then((r) => { if (r === null) window.open('/campo', '_blank'); });
 }
 
 function viewFieldMap() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento del campo…'); }
-  const campoUrl = `${R.baseUrl}/campo`;
   startPositions();
-  fieldMap.setItems([
-    ...fieldPositions.map(positionItem),
-    ...(d.landmarks || []).map((l) => landmarkItem(l, l.lat != null ? `<br><small>Piazzato ${fmtTime(l.placedAt)} da ${l.placedBy || '?'}</small>${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}` : '')),
-    ...targetItems(d),
-    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
-      popup: `<strong>${p.label}</strong><br><small>Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.placeSource === 'manual' ? ' · punto manuale' : ''}</small>${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
-    // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
-    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, popup: giftPopup(g) })),
-  ]);
+  fieldMap.setItems(fieldMapItems(d));
   fieldMap.refresh();
-  const placed = d.points.filter((p) => p.lat != null).length;
-  return h('div', { class: 'stack' },
-    sectionActions('Mappa del campo', [
-      h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, 'Centra'),
-      h('a', { class: 'btn btn-sm btn-primary', href: '/campo', target: '_blank' }, 'Apri strumento di campo')],
+  const sqName = (id) => squadById(id)?.name;
+  const toPlace = [
+    ...(d.landmarks || []).filter((l) => l.lat == null).map((l) => ({ kind: 'landmark', x: l, icon: l.kind === 'soglia' ? '⛩' : '◯' })),
+    ...d.points.filter((p) => p.lat == null).map((p) => ({ kind: 'point', x: p, icon: p.roman })),
+    ...d.gifts.filter((g) => g.status === 'draft').map((g) => ({ kind: 'gift', x: g, icon: g.icon })),
+  ];
+  const placedA = d.points.filter((p) => p.lat != null).length;
+  const legend = h('div', { class: 'map-legend' },
+    h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
+    h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
+    h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
+    h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato'),
+    h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
+    h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
+    h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
+    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#ff4fa3' } }), ' Coppia'),
+    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto'));
+
+  return h('div', { class: 'map-full' },
     fieldMap.el,
-    h('div', { class: 'map-legend' },
-      h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare piazzato'),
-      h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
-      h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
-      h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato a una squadra'),
-      h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono piazzato, non ancora comparso'),
-      h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono comparso'),
-      h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
-      h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#ff4fa3' } }), ' Coppia (persona)'),
-      h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto (colore della squadra)')),
-    h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
-    h('p', { class: 'tiny muted' }, 'Le coppie compaiono a partita iniziata, gli Eletti da quando la partita è pronta (non in preparazione). I telefoni inviano la posizione con l\'app aperta; dopo 5 minuti senza aggiornamenti il segnaposto si sbiadisce.')),
-    h('div', { class: 'cols-2' },
-      section(`Altari piazzati ${placed}/${d.points.length}`,
-        h('p', { class: 'muted tiny' }, 'Gli Eletti (o tu dal telefono) piazzano gli Altari con lo strumento di campo: foto e coordinate arrivano qui.'),
-        d.points.length ? h('ul', { class: 'field-list' }, d.points.map((p) => h('li', { class: p.lat != null ? 'ok' : '' },
-          p.hasPhoto ? h('a', { href: `/api/media/point/${p.id}?v=${p.placedAt}`, target: '_blank' }, h('img', { src: `/api/media/point/${p.id}?v=${p.placedAt}`, alt: `Foto ${p.label}`, loading: 'lazy' })) : h('span', { class: 'thumb-empty' }, p.roman),
-          h('div', { class: 'grow' }, h('strong', null, p.label),
-            h('div', { class: 'tiny muted' }, p.lat != null ? `${fmtTime(p.placedAt)} · ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''} · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'Da piazzare')),
-          p.lat != null ? h('span', { class: 'chip chip-ok' }, '✓') : h('span', { class: 'chip chip-warn' }, 'manca')))) : h('p', { class: 'empty' }, 'Nessun Altare.')),
-      section('Strumento di campo sul telefono',
-        h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(campoUrl)}`, alt: 'QR strumento di campo', width: 110, height: 110 }),
-          h('div', null, h('div', { class: 'mono' }, campoUrl), h('div', { class: 'tiny' }, 'Inquadralo dal telefono: entra con la regia o con l\'accesso degli Eletti.'))),
-        h('ol', { class: 'tiny muted hints' },
-          h('li', null, 'Scansiona il cartello dell\'Altare o del Dono (o sceglilo dall\'elenco).'),
-          h('li', null, 'L\'app prende la posizione GPS del telefono (o tocchi il punto sulla mappa).'),
-          h('li', null, 'Scatta la foto del piazzamento e conferma.')),
-        h('p', { class: 'tiny muted' }, 'GPS, fotocamera interna e scanner richiedono https; la foto funziona sempre.'))));
+    h('div', { class: 'map-tools' },
+      h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, '◎ Centra'),
+      h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`),
+      h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
+      h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
+    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa dove si trova: ${R.mapPick.label}`),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
+    R.mapSide === false ? null : h('aside', { class: 'map-side' },
+      h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),
+      toPlace.length ? h('ul', { class: 'map-side-list' }, toPlace.map(({ kind, x, icon }) => h('li', null,
+        h('span', { class: `side-ico ${kind}` }, icon),
+        h('div', { class: 'grow' }, h('strong', null, kind === 'gift' ? `${x.label} · ${x.name}` : x.label),
+          h('div', { class: 'tiny muted' }, x.squadId ? `Squadra ${sqName(x.squadId) || '?'}${x.targetLat != null ? ' · punto indicato' : ''}` : 'Nessuna squadra')),
+        h('div', { class: 'row-actions' },
+          kind === 'landmark' ? h('button', { class: 'btn btn-sm btn-primary', title: 'Segna il punto con un clic sulla mappa', onclick: () => startPick(x) }, 'Segna') : null,
+          h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : h('p', { class: 'tiny ok-text' }, 'Tutto piazzato.'),
+      h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
+      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per vederne foto e dettagli e per farlo spostare. Coppie in mappa dal VIA, Eletti da partita pronta.')),
+    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend) : null);
 }
 
 // ---------------------------------------------------------------- SQUADRE ELETTI

@@ -383,3 +383,24 @@ tr.gift-row-claimed td { opacity: .6; }
 .wa-ghost { background: none; color: var(--muted); border: 2px solid var(--line); }
 .wa-rec { flex: 1; display: flex; align-items: center; gap: 10px; padding: 0 8px; min-height: 46px; }
 .wa-bubble .voice-player { min-width: 220px; }
+
+/* Mappa e campo: mappa a tutto schermo con i comandi sopra */
+.map-full { position: relative; height: calc(100vh - 118px); min-height: 480px; margin: -4px 0; }
+.map-full .regia-map { height: 100%; min-height: 0; }
+.map-tools { position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 70%; }
+.map-tools .btn { box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.map-tools .btn.on { border-color: var(--brass); color: var(--brass); }
+.map-side { position: absolute; top: 56px; right: 10px; bottom: 26px; z-index: 1000; width: min(340px, 44%); overflow: auto; padding: 12px; display: grid; gap: 8px; align-content: start; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 2px solid var(--line); box-shadow: 0 4px 16px rgba(0, 0, 0, .5); }
+.map-side-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.map-side-list li { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); background: var(--bg); }
+.side-ico { flex: none; width: 30px; height: 30px; display: grid; place-items: center; font-weight: 900; border: 2px solid var(--line); }
+.side-ico.landmark { border-radius: 50%; border-color: var(--brass); color: var(--brass); }
+.side-ico.point { border-color: #e0603f; }
+.side-ico.gift { border-radius: 50%; }
+.map-pick { position: absolute; top: 10px; left: 56px; z-index: 1001; display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--blood); color: #fff; box-shadow: 0 4px 16px rgba(0, 0, 0, .5); }
+.map-pick .btn { color: #fff; border-color: #fff; }
+.map-legend-box { position: absolute; left: 10px; bottom: 26px; z-index: 1000; max-width: 60%; padding: 10px 12px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 2px solid var(--line); }
+.popup-actions { display: grid; gap: 6px; margin-top: 8px; }
+.leaflet-popup-content .popup-actions .btn { width: 100%; }
+@media (max-width: 860px) { .map-side { width: auto; left: 10px; top: auto; max-height: 45%; } }
+.map-side { bottom: auto; max-height: calc(100% - 90px); }
