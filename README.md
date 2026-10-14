@@ -115,3 +115,50 @@ Stack: Node.js 24 senza framework frontend (nessuna build), Express 5, SQLite in
 - La Parola è una frase scritta dalla regia, divisa automaticamente tra gli Altari (ogni frammento resta modificabile).
 - Alla Soglia il validatore sceglie la coppia dalla lista (niente QR personale).
 - Le finestre armamenti possono essere sia a orario sia lanciate a mano.
+
+## Pubblicazione automatica (GitHub Actions)
+
+Il workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml) a ogni push su `main`:
+
+1. esegue i test (se uno fallisce non si pubblica nulla);
+2. costruisce l'immagine Docker e la carica su `ghcr.io/whiskas85/zerodarkgames` (`latest` e commit);
+3. se `DEPLOY_ENABLED` è `true`, via SSH copia sul server [deploy/docker-compose.prod.yml](deploy/docker-compose.prod.yml), scrive il `.env` dai secrets, scarica la nuova immagine, riavvia il container e verifica che risponda. Facoltativamente aggiunge il sito a Caddy.
+
+I dati restano nel volume `zdg-data` sul server: gli aggiornamenti non li toccano.
+
+### Da configurare una volta su GitHub (Settings → Secrets and variables → Actions)
+
+**Secrets**
+
+| Nome | Valore |
+| --- | --- |
+| `DEPLOY_HOST` | IP o nome del server (es. `209.227.239.117`) |
+| `DEPLOY_USER` | utente SSH sul server (deve poter usare `docker`) |
+| `DEPLOY_SSH_KEY` | chiave privata SSH (contenuto completo del file) |
+| `DEPLOY_PORT` | facoltativo, porta SSH (default 22) |
+| `MASTER_PASSWORD` | password dell'utente MASTER in produzione |
+| `MASTER_USER` | facoltativo (default `master`) |
+
+**Variables**
+
+| Nome | Valore |
+| --- | --- |
+| `DEPLOY_ENABLED` | `true` per attivare la pubblicazione |
+| `PUBLIC_URL` | `https://games.zerodarkteam.it` |
+| `DEPLOY_PATH` | facoltativo, cartella sul server (default `/opt/zerodarkgames`) |
+| `ZDG_PORT` | facoltativo, porta locale sul server (default `8090`) |
+| `PROXY_NETWORK` | solo se Caddy gira in un container: nome della sua rete Docker |
+| `CADDYFILE` + `CADDY_RELOAD` | facoltativi: percorso del Caddyfile sul server e comando di ricarica (es. `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`). Il workflow aggiunge una sola volta il blocco del dominio |
+| `CADDY_UPSTREAM` | facoltativo: `zero-dark-games:8080` se Caddy è in Docker sulla stessa rete, altrimenti `127.0.0.1:8090` |
+
+Prerequisiti sul server: Docker con il plugin `compose`, e il record DNS `games.zerodarkteam.it` → IP del server.
+Il blocco Caddy, se lo si preferisce scrivere a mano:
+
+```
+games.zerodarkteam.it {
+	encode gzip
+	reverse_proxy 127.0.0.1:8090   # oppure zero-dark-games:8080 se Caddy è in Docker sulla rete PROXY_NETWORK
+}
+```
+
+Per pubblicare senza un nuovo commit: GitHub → Actions → "Test e pubblicazione" → Run workflow.

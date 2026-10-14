@@ -1,0 +1,19 @@
+# Produzione: immagine costruita da GitHub Actions (ghcr.io), dati nel volume zdg-data.
+# Il .env accanto a questo file lo scrive il workflow a partire dai secrets di GitHub.
+services:
+  zdg:
+    image: ${ZDG_IMAGE:-ghcr.io/whiskas85/zerodarkgames:latest}
+    container_name: zero-dark-games
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      TZ: Europe/Rome
+    # Solo in locale sul server: dall'esterno si passa da Caddy (HTTPS).
+    ports:
+      - "127.0.0.1:${ZDG_PORT:-8090}:8080"
+    volumes:
+      - zdg-data:/data
+
+volumes:
+  zdg-data:

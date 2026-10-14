@@ -1,0 +1,12 @@
+# Aggiunta usata quando Caddy gira in un container: collega l'app alla rete Docker di Caddy
+# (variabile PROXY_NETWORK). Caddy la raggiunge come zero-dark-games:8080.
+services:
+  zdg:
+    networks:
+      - default
+      - proxy
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK}
+    external: true

@@ -1,0 +1,150 @@
+# Test, immagine Docker su GHCR e pubblicazione sul server (games.zerodarkteam.it).
+# La pubblicazione parte solo se la variabile di repository DEPLOY_ENABLED vale "true" (vedi README).
+name: Test e pubblicazione
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  build:
+    name: Immagine Docker
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Pubblicazione sul server
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL || 'https://games.zerodarkteam.it' }}
+    env:
+      HOST: ${{ secrets.DEPLOY_HOST }}
+      USER: ${{ secrets.DEPLOY_USER }}
+      PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      DIR: ${{ vars.DEPLOY_PATH || '/opt/zerodarkgames' }}
+      ZDG_PORT: ${{ vars.ZDG_PORT || '8090' }}
+      PROXY_NETWORK: ${{ vars.PROXY_NETWORK }}
+      CADDYFILE: ${{ vars.CADDYFILE }}
+      CADDY_RELOAD: ${{ vars.CADDY_RELOAD }}
+      CADDY_UPSTREAM: ${{ vars.CADDY_UPSTREAM }}
+      DOMAIN: ${{ vars.DOMAIN || 'games.zerodarkteam.it' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chiave SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH=ssh -i $HOME/.ssh/deploy -p $PORT -o BatchMode=yes $USER@$HOST" >> "$GITHUB_ENV"
+          echo "SCP=scp -i $HOME/.ssh/deploy -P $PORT -o BatchMode=yes" >> "$GITHUB_ENV"
+
+      - name: File di produzione (.env dai secrets)
+        env:
+          MASTER_USER: ${{ secrets.MASTER_USER || 'master' }}
+          MASTER_PASSWORD: ${{ secrets.MASTER_PASSWORD }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://games.zerodarkteam.it' }}
+          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT || 'mailto:consiglio@zerodarkteam.it' }}
+        run: |
+          if [ -z "$MASTER_PASSWORD" ]; then echo "::error::Manca il secret MASTER_PASSWORD"; exit 1; fi
+          umask 077
+          {
+            echo "ZDG_IMAGE=$IMAGE:$GITHUB_SHA"
+            echo "ZDG_PORT=$ZDG_PORT"
+            echo "PROXY_NETWORK=$PROXY_NETWORK"
+            echo "MASTER_USER=$MASTER_USER"
+            echo "MASTER_PASSWORD=$MASTER_PASSWORD"
+            echo "MASTER_PASSWORD_RESET=0"
+            echo "PUBLIC_URL=$PUBLIC_URL"
+            echo "VAPID_SUBJECT=$VAPID_SUBJECT"
+          } > deploy.env
+
+      - name: Copia sul server
+        run: |
+          $SSH "mkdir -p '$DIR'"
+          $SCP deploy/docker-compose.prod.yml deploy/docker-compose.proxy.yml "$USER@$HOST:$DIR/"
+          $SCP deploy.env "$USER@$HOST:$DIR/.env"
+          $SSH "chmod 600 '$DIR/.env'"
+
+      - name: Avvio della nuova versione
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          $SSH "cd '$DIR' && FILES='-f docker-compose.prod.yml' && if [ -n '$PROXY_NETWORK' ]; then FILES=\"\$FILES -f docker-compose.proxy.yml\"; fi \
+            && docker compose \$FILES pull && docker compose \$FILES up -d --remove-orphans && docker image prune -f"
+          $SSH "docker logout ghcr.io >/dev/null"
+
+      - name: Controllo di salute
+        run: |
+          for i in $(seq 1 20); do
+            if $SSH "curl -fsS http://127.0.0.1:$ZDG_PORT/api/health || wget -qO- http://127.0.0.1:$ZDG_PORT/api/health" >/dev/null 2>&1; then echo "Zero Dark Games risponde"; exit 0; fi
+            sleep 3
+          done
+          $SSH "docker logs --tail 50 zero-dark-games" || true
+          echo "::error::Il container non risponde su 127.0.0.1:$ZDG_PORT"
+          exit 1
+
+      # Facoltativo: aggiunge una sola volta il sito a Caddy (che valida la configurazione prima di applicarla).
+      - name: Sito su Caddy
+        if: env.CADDYFILE != '' && env.CADDY_RELOAD != ''
+        run: |
+          UPSTREAM="${CADDY_UPSTREAM:-127.0.0.1:$ZDG_PORT}"
+          if $SSH "grep -q '^$DOMAIN' '$CADDYFILE'"; then
+            echo "Blocco $DOMAIN già presente in $CADDYFILE"
+          else
+            printf '\n%s {\n\tencode gzip\n\treverse_proxy %s\n}\n' "$DOMAIN" "$UPSTREAM" | $SSH "cat >> '$CADDYFILE'"
+            $SSH "$CADDY_RELOAD"
+            echo "Aggiunto $DOMAIN → $UPSTREAM e ricaricato Caddy"
+          fi
+
+      - name: Pulizia
+        if: always()
+        run: rm -f ~/.ssh/deploy deploy.env
