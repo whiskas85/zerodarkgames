@@ -372,3 +372,7 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .chat-target button { border: 2px solid var(--line); background: var(--paper); color: var(--ink); padding: 6px 10px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
 .chat-target button.on { border-color: var(--blood); background: var(--blood); color: #fff; }
 .bubble-tag { color: var(--brass); font-weight: 600; }
+
+/* Barra dell'account in fondo alla home: con chi sei entrato, profilo, Esci */
+.account-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0 4px; border-top: 1px solid var(--line); }
+.account-bar > span { flex: 1; min-width: 160px; }

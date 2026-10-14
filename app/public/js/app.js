@@ -581,6 +581,7 @@ function viewLobbyHome(st) {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙')),
+    accountBar(st),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
 }
@@ -617,6 +618,7 @@ function viewElectHome(st) {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙')),
+    accountBar(st),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
       h('ul', { class: 'elect-members' }, st.team.members.map((m) => h('li', null, m.name, m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null)))));
 }
@@ -673,7 +675,8 @@ function viewHome() {
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙')));
+      tile('#/impostazioni', 'Impostazioni', '⚙')),
+    accountBar(st));
 }
 
 function supplyCard(st) {
@@ -1446,6 +1449,23 @@ function applyTheme() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', S.settings.sun ? '#f4f2ea' : '#0f1310');
 }
 
+async function logout() {
+  const acc = S.state?.account;
+  if (!(await dialog({ title: 'Uscire?', text: acc ? `Per rientrare ti serviranno username (${acc.username}) e password.` : 'Per rientrare servirà di nuovo il QR o il codice d\'accesso.', okLabel: 'Esci', danger: true }))) return;
+  try { await api('POST', '/api/team/logout'); } catch { /* offline */ }
+  ['zdg_state', 'zdg_queue', 'zdg_visits', 'zdg_altar_results', 'zdg_unveiled'].forEach(store.del);
+  location.href = '/';
+}
+
+// In fondo a ogni home: con chi sei entrato, profilo ed Esci.
+function accountBar(st) {
+  const acc = st?.account;
+  return h('div', { class: 'account-bar' },
+    h('span', { class: 'small muted' }, acc ? ['Entrato come ', h('strong', null, `@${acc.username}`)] : 'Entrato con QR o codice d\'accesso'),
+    acc ? h('a', { class: 'btn btn-sm btn-ghost', href: '/iscrizione#profilo' }, 'Profilo') : null,
+    h('button', { class: 'btn btn-sm', type: 'button', onclick: logout }, 'Esci'));
+}
+
 function viewSettings() {
   const set = (k, v) => { S.settings[k] = v; store.set('zdg_settings', S.settings); applyTheme(); render(); };
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -1465,12 +1485,7 @@ function viewSettings() {
       h('a', { class: 'btn btn-sm', href: '/iscrizione#profilo' }, 'Profilo e password')) : null,
     st?.player?.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, st.player.accessCode), h('p', { class: 'muted small' }, 'Con questo codice entri da qualsiasi telefono e segui sempre la tua coppia.')) : null,
     h('button', { class: 'btn btn-block', onclick: () => openTour() }, '▶ Rivedi il tour dell\'app'),
-    h('button', { class: 'btn btn-danger btn-block', onclick: async () => {
-      if (!(await dialog({ title: 'Uscire?', text: 'Per rientrare servirà di nuovo il codice d\'accesso della coppia.', okLabel: 'Esci', danger: true }))) return;
-      try { await api('POST', '/api/team/logout'); } catch { /* offline */ }
-      ['zdg_state', 'zdg_queue', 'zdg_visits', 'zdg_altar_results', 'zdg_unveiled'].forEach(store.del);
-      location.href = '/';
-    } }, 'Esci da questo dispositivo'));
+    h('button', { class: 'btn btn-danger btn-block', onclick: logout }, 'Esci da questo dispositivo'));
 }
 
 // ---------------------------------------------------------------- tour guidato (primo accesso)
