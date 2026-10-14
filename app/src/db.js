@@ -201,6 +201,16 @@ CREATE TABLE IF NOT EXISTS squad_tasks (
 addColumn('players', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
 addColumn('points', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
 addColumn('gifts', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
+
+// Ultima posizione GPS di ogni telefono (coppie a partita iniziata, Eletti dalla preparazione).
+db.exec(`
+CREATE TABLE IF NOT EXISTS positions (
+  deviceId TEXT PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, playerId INTEGER,
+  lat REAL NOT NULL, lng REAL NOT NULL, acc REAL, at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_positions_game ON positions(gameId, at);
+`);
 db.exec(`
 CREATE TABLE IF NOT EXISTS alliances (
   id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL, endedAt INTEGER

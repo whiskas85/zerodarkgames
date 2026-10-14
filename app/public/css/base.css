@@ -141,3 +141,9 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 .map-legend .pin { width: 22px; height: 22px; font-size: 10px; border-width: 2px; display: inline-grid; box-shadow: none; vertical-align: middle; }
 .map-legend .pin-me { width: 14px; height: 14px; border-width: 2px; box-shadow: none; }
 .pin-gift.pin-expired { background: #444; color: #aaa; border-color: #777; border-style: dashed; opacity: .6; }
+
+/* Posizioni dei telefoni */
+.pin-team { border-radius: 50%; background: #1d4ed8; color: #fff; border: 3px solid #fff; font-family: var(--f-display); font-size: 13px; width: 30px; height: 30px; }
+.pin-elect { width: 26px; height: 26px; background: var(--c); border: 3px solid #111; transform: rotate(45deg); }
+.pin-elect b { transform: rotate(-45deg); font-size: 10px; color: #111; }
+.pin-stale { opacity: .4; filter: grayscale(.7); }

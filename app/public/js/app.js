@@ -93,6 +93,7 @@ function setState(st) {
   S.state = st;
   clock.set(st.clock);
   syncServerTimers(st);
+  updateTracking(st);
   if (prev?.combat && st.combat) {
     const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`)]);
     const fresh = [...st.combat.incoming.map((r) => [`r${r.id}`, r.kind === 'break' ? `${r.team.sectorName} vuole rompere l'alleanza` : `${r.team.sectorName} vi propone un'alleanza`]),
@@ -535,6 +536,10 @@ function viewElectHome(st) {
       h('div', { class: 'eyebrow' }, STATUS_LABELS[c.status]),
       c.running || c.status === 'paused' ? h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—') : h('div', { class: 'phase-big' }, c.status === 'ended' ? 'I Giochi sono finiti' : 'Al servizio del Consiglio'),
       h('p', { class: 'muted' }, 'Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi. Seguite gli avvisi e i messaggi della regia.')),
+    trackingNote(st),
+    st.field?.squad ? h('a', { class: 'squad-home', href: '/campo#incarichi', style: { '--c': st.field.squad.color } },
+      h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
+      h('span', { class: st.field.todo ? 'bad-text small' : 'ok-text small' }, st.field.todo ? `${st.field.todo} incarichi da fare` : 'Nessun incarico in sospeso')) : null,
     pushInvite(),
     latestNotice(st),
     st.standings ? h('div', { class: 'card final' }, h('div', { class: 'eyebrow' }, 'Classifica finale'),
@@ -576,6 +581,7 @@ function viewHome() {
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
+    trackingNote(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/scontri' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
     latestNotice(st),
@@ -724,7 +730,53 @@ function viewCombat() {
           { pending: 'da confermare', confirmed: 'registrato', contested: 'contestato', cancelled: 'annullato' }[e.status]))))) : null);
 }
 
-// ---------------------------------------------------------------- Mappa (posizione solo sul telefono, mai inviata)
+// ---------------------------------------------------------------- Posizione condivisa con il Consiglio
+// Coppie: solo a partita iniziata. Eletti: dalla preparazione. Funziona con l'app aperta (limite dei browser).
+
+const ACTIVE_OR_PAUSED = ['truce', 'hunt', 'last_half_hour', 'paused'];
+const deviceId = (() => {
+  let id = store.get('zdg_device');
+  if (!id) { id = `dev-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; store.set('zdg_device', id); }
+  return id;
+})();
+let trackStop = null;
+let lastSent = { at: 0, lat: 0, lng: 0 };
+let trackMsg = null;
+
+function trackingOn(st) {
+  if (!st) return false;
+  if (st.team.kind === 'elect') return st.clock.status !== 'ended';
+  if (st.team.kind === 'couple') return ACTIVE_OR_PAUSED.includes(st.clock.status) && st.team.status !== 'withdrawn';
+  return false;
+}
+
+// Distanza approssimata in metri (basta per decidere se inviare).
+const meters = (a, b) => Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
+
+function sendPosition(pos) {
+  const now = Date.now();
+  if (now - lastSent.at < 20000 && meters(pos, lastSent) < 15) return;
+  lastSent = { at: now, lat: pos.lat, lng: pos.lng };
+  api('POST', '/api/team/position', { deviceId, lat: pos.lat, lng: pos.lng, acc: pos.acc }).catch(() => { lastSent.at = 0; });
+}
+
+function updateTracking(st) {
+  const on = trackingOn(st);
+  if (on && !trackStop) {
+    trackStop = watchPosition((pos) => { trackMsg = null; sendPosition(pos); }, (msg) => { trackMsg = msg; });
+  } else if (!on && trackStop) {
+    trackStop();
+    trackStop = null;
+  }
+}
+
+function trackingNote(st) {
+  if (!trackingOn(st)) return null;
+  return h('p', { class: 'track-note small' }, '📍 ', st.team.kind === 'elect' ? 'La posizione di questo telefono è visibile alla regia e agli altri Eletti.' : 'Durante la partita la posizione di questo telefono è visibile al Consiglio.',
+    trackMsg ? h('span', { class: 'bad-text' }, ` ${trackMsg}`) : null);
+}
+
+// ---------------------------------------------------------------- Mappa
 
 const teamMapView = createMapView({ className: 'team-map' });
 let stopGps = null;
@@ -763,7 +815,8 @@ function viewMap() {
       h('span', null, h('span', { class: 'pin pin-altar pin-mine' }, 'I'), ' Il vostro'),
       h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono'),
       h('span', null, h('span', { class: 'pin pin-me' }), ' Voi')),
-    h('p', { class: 'muted small' }, 'La vostra posizione resta su questo telefono: il Consiglio non vi traccia. La mappa già vista funziona anche con poco segnale.'));
+    trackingNote(S.state) || h('p', { class: 'muted small' }, 'Prima del via la vostra posizione resta su questo telefono.'),
+    h('p', { class: 'muted small' }, 'La mappa già vista funziona anche con poco segnale.'));
 }
 
 // ---------------------------------------------------------------- Doni del Consiglio (QR)

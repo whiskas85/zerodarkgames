@@ -77,7 +77,9 @@ Le notifiche richiedono HTTPS (vedi sotto).
 ## Campo, mappe, doni, alleanze e scontri
 
 - **Strumento di campo** (`/campo`, per Eletti e regia dal telefono): si scansiona il cartello di un Altare o di un Dono, il telefono dà la posizione GPS (o si tocca il punto sulla mappa), si scatta la foto e si conferma. Foto e coordinate arrivano in regia (**Mappa e campo**).
-- **Mappe OpenTopoMap**: la regia vede Altari e doni (grigio = piazzato non comparso, colorato = comparso, barrato = preso); le coppie vedono Altari e doni comparsi più la propria posizione, che resta sul telefono.
+- **Mappe OpenTopoMap**: la regia vede Altari e doni (grigio = piazzato non comparso, colorato = comparso, barrato = preso); le coppie vedono Altari e doni comparsi più la propria posizione.
+- **Posizioni GPS in mappa**: i telefoni delle coppie inviano la posizione solo a partita iniziata (dal VIA alla fine, anche in pausa), quelli degli Eletti già dalla preparazione. La regia vede tutti (coppie con il numero romano, Eletti con il colore della squadra), gli Eletti vedono solo gli Eletti. L'app avvisa chi è visibile; i browser inviano la posizione solo con l'app aperta. *Nota: la specifica iniziale escludeva il tracciamento delle coppie; è stato aggiunto su richiesta dell'organizzazione.*
+- **Squadre di Eletti** (regia → Squadre Eletti): squadre con colore, membri, Altari e Doni da piazzare assegnati e incarichi liberi; ogni Eletto li trova nella scheda Incarichi dello strumento di campo.
 - **Doni QR** (regia → Doni QR): catalogo di tipi modificabile, comparsa a mano / al piazzamento / a un minuto dal via, scadenza facoltativa, stampa dei cartelli. La prima coppia che scansiona il dono lo prende; tutti ricevono una notifica e il dono sparisce dalle mappe.
 - **Scansione degli Altari a tempo**: vale i minuti impostati nella partita (default 15, 0 = sempre); poi va ripetuta. Se il Sigillo è già nel taccuino l'app lo propone, senza scriverlo.
 - **Alleanze**: proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri.

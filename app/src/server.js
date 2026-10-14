@@ -232,6 +232,15 @@ app.post('/api/team/alliance/:id/respond', needTeam, teamRateLimit, wrap((req) =
 app.post('/api/team/alliance/:id/cancel', needTeam, wrap((req) => K.cancelRequest(req.team, req.params.id)));
 app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result)));
 app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm)));
+// Posizione GPS del telefono (nessun limite di frequenza condiviso con le azioni: arriva ogni ~20 s).
+const lastPos = new Map();
+app.post('/api/team/position', needTeam, wrap((req) => {
+  const key = String(req.body.deviceId || '');
+  const now = Date.now();
+  if (now - (lastPos.get(key) || 0) < 5000) return { ok: true, throttled: true };
+  lastPos.set(key, now);
+  return F.recordPosition(req.team, req.player, req.body || {});
+}));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));
 app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));
@@ -293,6 +302,7 @@ app.get('/api/field/whoami', (req, res) => {
   res.status(401).json({ error: 'Accesso riservato alla regia e agli Eletti' });
 });
 app.get('/api/field/state', needField, wrap((req) => F.fieldState(fieldGame(req))));
+app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame(req), req.user?.role === 'master' ? 'master' : 'elect')));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
 const placement = (req) => ({ buffer: req.body, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source });

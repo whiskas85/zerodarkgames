@@ -1,6 +1,6 @@
 // Strumento di campo per Eletti e Master: piazza Altari e Doni con foto e posizione del proprio telefono.
 import { h, mount, api, fmtTime, toast, stream, store, scanQR, cameraSupported, vibrate, STATUS_LABELS } from './lib.js';
-import { createMapView, watchPosition } from './map.js';
+import { createMapView, watchPosition, positionItem } from './map.js';
 
 const $root = document.getElementById('root');
 const F = {
@@ -41,6 +41,7 @@ function startGps() {
   stopWatch?.();
   stopWatch = watchPosition((pos) => {
     F.me = pos;
+    sendPosition(pos);
     F.geoError = null;
     mapView.setMe(pos);
     const el = document.getElementById('gps-now');
@@ -87,7 +88,7 @@ function render() {
           tabLink('altari', `Altari ${placedA}/${d.points.length}`),
           tabLink('doni', `Doni ${placedG}/${d.gifts.length}`),
           tabLink('mappa', 'Mappa')),
-        F.tab === 'doni' ? viewGifts(d) : F.tab === 'mappa' ? viewMap(d) : F.tab === 'altari' ? viewAltars(d) : viewTasks(d),
+        F.tab === 'doni' ? viewGifts(d) : F.tab === 'mappa' ? (loadPositionsOnce(), viewMap(d)) : F.tab === 'altari' ? viewAltars(d) : viewTasks(d),
       ]));
   if (F.tab === 'mappa') { updateMap(d); mapView.refresh(); }
 }
@@ -124,6 +125,13 @@ function viewTasks(d) {
       h('div', { class: 'campo-info' }, h('strong', null, t.text), t.doneAt ? h('span', { class: 'tiny muted' }, `Fatto ${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null),
       h('button', { class: `btn btn-sm ${t.doneAt ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto')))) : h('p', { class: 'muted small' }, 'Nessun incarico libero.'),
     done.length ? h('p', { class: 'small ok-text' }, `Già piazzati: ${done.join(', ')}`) : null);
+}
+
+let positionsLoaded = false;
+function loadPositionsOnce() {
+  if (positionsLoaded) return;
+  positionsLoaded = true;
+  api('GET', `/api/field/positions?gameId=${F.gameId}`).then((p) => { positions = p; updateMap(F.data); }).catch(() => {});
 }
 
 const tabLink = (id, label) => h('a', { href: `#${id}`, class: F.tab === id ? 'on' : '' }, label);
@@ -173,9 +181,30 @@ function viewMap(d) {
     d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null);
 }
 
+// Gli Eletti condividono la posizione dalla preparazione (la regia la vede in mappa).
+const deviceId = (() => {
+  let id = store.get('zdg_device');
+  if (!id) { id = `dev-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; store.set('zdg_device', id); }
+  return id;
+})();
+let lastSent = 0;
+function sendPosition(pos) {
+  if (F.who?.role !== 'elect' || Date.now() - lastSent < 20000) return;
+  lastSent = Date.now();
+  api('POST', '/api/team/position', { deviceId, lat: pos.lat, lng: pos.lng, acc: pos.acc }).catch(() => { lastSent = 0; });
+}
+
+// Posizioni degli altri telefoni (regia: tutti; Eletti: gli Eletti), aggiornate ogni 15 secondi sulla mappa.
+let positions = [];
+setInterval(async () => {
+  if (F.tab !== 'mappa' || !F.gameId) return;
+  try { positions = await api('GET', `/api/field/positions?gameId=${F.gameId}`); updateMap(F.data); } catch { /* senza rete */ }
+}, 15000);
+
 function updateMap(d) {
   if (!d) return;
   mapView.setItems([
+    ...positions.filter((p) => p.deviceId !== deviceId).map(positionItem),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
       popup: `<strong>${p.label}</strong><br>Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
     // Agli Eletti i doni presi o svaniti spariscono dalla mappa; la regia li vede ancora (barrati).

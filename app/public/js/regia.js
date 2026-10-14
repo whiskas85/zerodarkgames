@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import { h, mount, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
-import { createMapView } from './map.js';
+import { createMapView, positionItem } from './map.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -911,11 +911,45 @@ function giftPopup(g) {
   return `<strong>${g.label} · ${g.icon} ${g.name}</strong><br>${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}<br><small>Piazzato ${fmtTime(g.placedAt)} da ${g.placedBy || '?'}${g.accuracy ? ` · ±${g.accuracy} m` : ''}</small>${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}`;
 }
 
+// Posizioni GPS di coppie (a partita iniziata) ed Eletti (dalla preparazione): aggiornate ogni 10 s sulla mappa.
+let fieldPositions = [];
+let positionsTimer = null;
+async function pollPositions() {
+  if (tab() !== 'mappa' || !R.gameId) { clearInterval(positionsTimer); positionsTimer = null; return; }
+  try {
+    fieldPositions = await api('GET', `/api/field/positions?gameId=${R.gameId}`);
+    const el = document.getElementById('pos-count');
+    if (el) el.textContent = positionsSummary();
+    if (fieldData) viewFieldMapItems();
+  } catch { /* senza rete */ }
+}
+function startPositions() {
+  if (positionsTimer) return;
+  positionsTimer = setInterval(pollPositions, 10000);
+  pollPositions();
+}
+const positionsSummary = () => {
+  const teams = fieldPositions.filter((p) => p.kind === 'team').length;
+  const elect = fieldPositions.filter((p) => p.kind === 'elect').length;
+  return `In mappa: ${teams} telefoni delle coppie · ${elect} degli Eletti`;
+};
+// Aggiorna solo i segnaposto, senza ridisegnare la pagina.
+function viewFieldMapItems() {
+  const d = fieldData;
+  fieldMap.setItems([
+    ...fieldPositions.map(positionItem),
+    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label })),
+    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, popup: giftPopup(g) })),
+  ]);
+}
+
 function viewFieldMap() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento del campo…'); }
   const campoUrl = `${R.baseUrl}/campo`;
+  startPositions();
   fieldMap.setItems([
+    ...fieldPositions.map(positionItem),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
       popup: `<strong>${p.label}</strong><br><small>Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.placeSource === 'manual' ? ' · punto manuale' : ''}</small>${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
@@ -932,7 +966,11 @@ function viewFieldMap() {
       h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare piazzato'),
       h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono piazzato, non ancora comparso'),
       h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono comparso'),
-      h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'))),
+      h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
+      h('span', null, h('span', { class: 'pin pin-team' }, 'I'), ' Coppia'),
+      h('span', null, h('span', { class: 'pin pin-elect', style: { '--c': '#d1ad62' } }, h('b', null, 'EL')), ' Eletto')),
+    h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
+    h('p', { class: 'tiny muted' }, 'Le coppie compaiono a partita iniziata, gli Eletti già dalla preparazione. I telefoni inviano la posizione con l\'app aperta; dopo 5 minuti senza aggiornamenti il segnaposto si sbiadisce.')),
     h('div', { class: 'cols-2' },
       section(`Altari piazzati ${placed}/${d.points.length}`,
         h('p', { class: 'muted tiny' }, 'Gli Eletti (o tu dal telefono) piazzano gli Altari con lo strumento di campo: foto e coordinate arrivano qui.'),

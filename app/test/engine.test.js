@@ -469,3 +469,28 @@ test('squadre di Eletti: membri, incarichi di piazzamento e incarichi liberi', (
   assert.equal(q.get('SELECT squadId FROM players WHERE id = ?', e1).squadId, null);
   assert.equal(q.get('SELECT squadId FROM points WHERE id = ?', p2.id).squadId, null);
 });
+
+test('posizioni GPS: coppie solo a partita iniziata, Eletti dalla preparazione', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.addElectPerson(g.id, { name: 'Vedetta' }, 'test');
+  const elect = G.electOf(g.id);
+  const pos = (deviceId) => ({ deviceId, lat: 45.07, lng: 7.68, acc: 9 });
+  // In preparazione: la coppia non viene registrata, l'Eletto sì.
+  assert.equal(F.recordPosition(A, null, pos('coppia-A-tel1')).tracking, false);
+  assert.equal(F.recordPosition(elect, null, pos('eletto-tel-01')).tracking, true);
+  assert.deepEqual(F.positionsOf(g.id).map((p) => p.kind), ['elect']);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  assert.equal(F.recordPosition(A, null, pos('coppia-A-tel1')).tracking, false);
+  G.control(g.id, 'start', 'test');
+  assert.equal(F.recordPosition(A, null, pos('coppia-A-tel1')).tracking, true);
+  assert.deepEqual(F.positionsOf(g.id).map((p) => p.kind).sort(), ['elect', 'team']);
+  // Gli Eletti vedono solo gli Eletti.
+  assert.deepEqual(F.positionsOf(g.id, 'elect').map((p) => p.kind), ['elect']);
+  assert.throws(() => F.recordPosition(A, null, { deviceId: 'x', lat: 1, lng: 1 }), /Dispositivo/);
+  G.control(g.id, 'end', 'test');
+  assert.equal(F.recordPosition(A, null, pos('coppia-A-tel1')).tracking, false);
+  assert.equal(F.recordPosition(elect, null, pos('eletto-tel-01')).tracking, false);
+});

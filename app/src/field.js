@@ -393,6 +393,52 @@ function deleteTask(taskId, actor) {
   notifySquad(t.squadId, null);
 }
 
+// ---------------------------------------------------------------- posizioni GPS
+
+const POSITION_MAX_AGE = 30 * 60000; // dopo 30 minuti senza aggiornamenti il telefono sparisce dalla mappa
+const POSITION_STALE = 5 * 60000; // dopo 5 minuti il segnaposto si sbiadisce
+
+// Le coppie si vedono in mappa solo a partita iniziata; gli Eletti già dalla preparazione.
+function trackingActive(team, status) {
+  if (team.kind === 'couple') return [...C.ACTIVE, 'paused'].includes(status) && team.status !== 'withdrawn';
+  if (team.kind === 'elect') return status !== 'ended';
+  return false;
+}
+
+function recordPosition(team, player, body) {
+  const game = G.getGame(team.gameId);
+  if (!trackingActive(team, game.status)) return { ok: true, tracking: false };
+  const lat = parseFloat(body.lat);
+  const lng = parseFloat(body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw err(400, 'Posizione non valida');
+  const deviceId = String(body.deviceId || '').replace(/[^\w-]/g, '').slice(0, 40);
+  if (deviceId.length < 8) throw err(400, 'Dispositivo non valido');
+  const acc = Number.isFinite(parseFloat(body.acc)) ? Math.round(parseFloat(body.acc)) : null;
+  q.run(`INSERT INTO positions (deviceId, gameId, teamId, playerId, lat, lng, acc, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(deviceId) DO UPDATE SET gameId = excluded.gameId, teamId = excluded.teamId, playerId = excluded.playerId,
+         lat = excluded.lat, lng = excluded.lng, acc = excluded.acc, at = excluded.at`,
+    deviceId, game.id, team.id, player?.id ?? null, lat, lng, acc, Date.now());
+  return { ok: true, tracking: true };
+}
+
+// viewer: 'master' (tutti) oppure 'elect' (solo gli Eletti).
+function positionsOf(gameId, viewer = 'master') {
+  const now = Date.now();
+  const rows = q.all(`SELECT pos.*, t.kind, t.displayName, s.name AS sectorName, s.roman, pl.name AS playerName, pl.nickname, pl.squadId,
+                        sq.name AS squadName, sq.color AS squadColor
+                      FROM positions pos JOIN teams t ON t.id = pos.teamId
+                      LEFT JOIN sectors s ON s.id = t.sectorId
+                      LEFT JOIN players pl ON pl.id = pos.playerId
+                      LEFT JOIN elect_squads sq ON sq.id = pl.squadId
+                      WHERE pos.gameId = ? AND pos.at > ?`, Number(gameId), now - POSITION_MAX_AGE);
+  return rows.filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
+    deviceId: r.deviceId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
+    label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
+    who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),
+    roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : '#3b82f6',
+  }));
+}
+
 // Riepilogo per la home degli Eletti: la propria squadra e cosa resta da fare.
 function electSummary(team, player) {
   const squadId = player?.squadId || null;
@@ -458,7 +504,7 @@ function useGift(team, giftId) {
 }
 
 module.exports = {
-  squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
+  recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, updateGift, deleteGift, resetGift, revealGift, tickAll,
   placePoint, placeGift, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

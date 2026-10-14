@@ -28,6 +28,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export function pinHtml(item) {
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}">${esc(item.text)}</span>`;
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
+  // Posizioni dei telefoni: coppie (numero romano) ed Eletti (colore della squadra).
+  if (item.kind === 'team') return `<span class="pin pin-team ${item.stale ? 'pin-stale' : ''}">${esc(item.text)}</span>`;
+  if (item.kind === 'elect') return `<span class="pin pin-elect ${item.stale ? 'pin-stale' : ''}" style="--c:${esc(item.color || '#d1ad62')}"><b>${esc(item.text)}</b></span>`;
   return '<span class="pin pin-me"></span>';
 }
 
@@ -121,4 +124,14 @@ export function watchPosition(onPos, onError) {
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
   );
   return () => navigator.geolocation.clearWatch(id);
+}
+
+// Telefono → segnaposto per la mappa (popup con chi è e da quanto non si aggiorna).
+export function positionItem(p) {
+  const ago = Math.max(0, Math.round((Date.now() - p.at) / 60000));
+  return {
+    key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color,
+    text: p.kind === 'team' ? p.roman || '?' : (p.label || '?').slice(0, 2).toUpperCase(), title: p.label,
+    popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}<br><small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,
+  };
 }
