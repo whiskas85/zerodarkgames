@@ -493,6 +493,9 @@ m.post('/gifts/:gid/schedule', wrap((req) => F.scheduleGiftReveal(req.params.gid
 m.post('/gifts/:gid/reset', wrap((req) => { F.resetGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.body.text, actor(req))));
 
+m.get('/accounts', (_req, res) => res.json(A.listAccounts()));
+m.delete('/accounts/:aid', wrap((req) => { A.deleteAccount(req.params.aid, actor(req)); return { ok: true }; }));
+m.post('/accounts/cleanup', wrap((req) => A.deleteOrphanAccounts(actor(req))));
 m.post('/accounts/:aid/password', wrap((req) => { A.resetPassword(req.params.aid, req.body.password, actor(req)); return { ok: true }; }));
 m.get('/users', (_req, res) => res.json(q.all('SELECT id, username, role, displayName, createdAt FROM users ORDER BY role, username')));
 m.post('/users', wrap((req) => {

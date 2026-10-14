@@ -118,4 +118,44 @@ function enroll(account, data) {
   return { ok: true, playerId, mode, pairCode: mode === 'pair' && !partner ? group : null, partner: partner ? partner.name : null };
 }
 
-module.exports = { register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, publicAccount };
+// ---- gestione dalla regia
+
+function listAccounts() {
+  return q.all(`SELECT a.id, a.username, a.name, a.nickname, a.softairTeam, a.phone, a.createdAt,
+                  (SELECT COUNT(*) FROM players p WHERE p.accountId = a.id) AS enrollments,
+                  (SELECT COUNT(*) FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = a.id AND g.status != 'ended') AS active,
+                  (SELECT group_concat(g.name, ' · ') FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = a.id) AS games
+                FROM accounts a ORDER BY a.username`);
+}
+
+// Elimina un account: le iscrizioni a partite non finite vanno prima tolte dalla partita (coppia, Eletti, iscrizione).
+function deleteAccount(id, actor) {
+  const a = q.get('SELECT * FROM accounts WHERE id = ?', Number(id));
+  if (!a) throw err(404, 'Account non trovato');
+  const busy = q.get(`SELECT g.name FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = ? AND g.status != 'ended' AND p.teamId IS NOT NULL`, a.id);
+  if (busy) throw err(409, `${a.username} è in una coppia o tra gli Eletti nella partita «${busy.name}»: toglilo prima da lì`);
+  tx(() => {
+    // Iscrizioni non ancora in squadra (in attesa o accettate senza coppia): si cancellano con l'account.
+    q.run(`DELETE FROM players WHERE accountId = ? AND teamId IS NULL AND gameId IN (SELECT id FROM games WHERE status != 'ended')`, a.id);
+    q.run('UPDATE players SET accountId = NULL WHERE accountId = ?', a.id);
+    q.run("DELETE FROM sessions WHERE kind = 'account' AND refId = ?", a.id);
+    q.run('DELETE FROM accounts WHERE id = ?', a.id);
+  });
+  G.log(null, actor, 'account_deleted', { username: a.username });
+}
+
+// Account senza alcuna iscrizione (es. dopo aver eliminato una partita).
+function deleteOrphanAccounts(actor) {
+  const ids = q.all('SELECT id FROM accounts a WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.accountId = a.id)').map((r) => r.id);
+  tx(() => {
+    for (const id of ids) {
+      q.run("DELETE FROM sessions WHERE kind = 'account' AND refId = ?", id);
+      q.run('DELETE FROM accounts WHERE id = ?', id);
+    }
+  });
+  if (ids.length) G.log(null, actor, 'accounts_cleanup', { count: ids.length });
+  return { deleted: ids.length };
+}
+
+module.exports = {
+  listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, publicAccount };

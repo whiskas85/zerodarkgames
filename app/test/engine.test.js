@@ -686,3 +686,28 @@ test('notifiche: stesso telefono per regia ed Eletto, avviso degli incarichi del
   assert.deepEqual(items.map((x) => x.label), ['Presidiate il ponte']);
   assert.equal(G.masterState(g.id).elect.members.find((m) => m.id === e1).pushDevices, 1);
 });
+
+test('account: restano dopo aver eliminato la partita; la regia li elimina uno a uno o tutti quelli senza iscrizioni', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Da eliminare', registrationOpen: true }, 'test');
+  const a1 = A.register({ username: 'orfano1', password: 'password1', name: 'Orfano Uno', softairTeam: 'ZDT' });
+  const a2 = A.register({ username: 'orfano2', password: 'password2', name: 'Orfano Due', softairTeam: 'ZDT' });
+  const a3 = A.register({ username: 'attivo3', password: 'password3', name: 'Attivo Tre', softairTeam: 'ZDT' });
+  A.enroll(a1, { gameId: g.id, mode: 'single' });
+  A.enroll(a2, { gameId: g.id, mode: 'single' });
+  const g2 = G.createGame({ name: 'Resta', registrationOpen: true }, 'test');
+  A.enroll(a3, { gameId: g2.id, mode: 'single' });
+  G.deleteGame(g.id, 'test');
+  const list = A.listAccounts().filter((a) => ['orfano1', 'orfano2', 'attivo3'].includes(a.username));
+  assert.deepEqual(list.map((a) => [a.username, a.enrollments]), [['attivo3', 1], ['orfano1', 0], ['orfano2', 0]]);
+  const before = A.listAccounts().length;
+  const r = A.deleteOrphanAccounts('test');
+  assert.ok(r.deleted >= 2);
+  assert.equal(A.authenticate('orfano1', 'password1'), null);
+  assert.ok(A.authenticate('attivo3', 'password3'));
+  assert.equal(A.listAccounts().length, before - r.deleted);
+  // Eliminazione singola: l'iscrizione in attesa sparisce con l'account.
+  A.deleteAccount(a3.id, 'test');
+  assert.equal(A.authenticate('attivo3', 'password3'), null);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g2.id).n, 0);
+});

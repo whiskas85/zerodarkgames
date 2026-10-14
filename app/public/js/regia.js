@@ -2053,6 +2053,44 @@ function publicUrlSection() {
       h('li', null, 'In Wi-Fi (http) il gioco funziona, ma notifiche push, installazione dell\'app e fotocamera interna richiedono https: per provarle usa il tunnel.')));
 }
 
+// Account dei giocatori: restano tra una partita e l'altra; qui si cercano, si eliminano, si reimposta la password.
+let accountsCache = null;
+let accountsFilter = '';
+async function loadAccounts() {
+  try { accountsCache = await api('GET', '/api/m/accounts'); } catch (e) { toast(e.message, 'error'); accountsCache = []; }
+  if (tab() === 'impostazioni') render();
+}
+function accountsSection() {
+  if (!accountsCache) { loadAccounts(); return section('Account dei giocatori', h('p', { class: 'muted' }, 'Caricamento…')); }
+  const f = accountsFilter.trim().toLowerCase();
+  const list = accountsCache.filter((a) => !f || [a.username, a.name, a.nickname, a.softairTeam].some((x) => (x || '').toLowerCase().includes(f)));
+  const orphans = accountsCache.filter((a) => !a.enrollments).length;
+  const reset = async (a) => {
+    const pwd = await dialog({ title: `Nuova password per @${a.username}`, text: `${a.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
+    if (pwd) call('POST', `/api/m/accounts/${a.id}/password`, { password: pwd }, 'Password reimpostata');
+  };
+  const del = async (a) => {
+    if (!(await dialog({ title: `Eliminare @${a.username}?`, text: `${a.name} non potrà più entrare con questo account.${a.active ? ' Le sue iscrizioni in attesa vengono cancellate.' : ''}`, okLabel: 'Elimina', danger: true }))) return;
+    try { await api('DELETE', `/api/m/accounts/${a.id}`); toast('Account eliminato', 'ok'); loadAccounts(); load(); } catch (e) { toast(e.message, 'error', 7000); }
+  };
+  return sectionActions(`Account dei giocatori (${accountsCache.length})`, [
+    h('button', { class: 'btn btn-sm', disabled: !orphans, title: 'Account che non sono iscritti a nessuna partita (es. di partite eliminate)', onclick: async () => {
+      if (!(await dialog({ title: `Eliminare ${orphans} account senza iscrizioni?`, text: 'Sono account non iscritti a nessuna partita, per esempio di partite eliminate. Chi vorrà giocare dovrà registrarsi di nuovo.', okLabel: 'Elimina', danger: true }))) return;
+      try { const r = await api('POST', '/api/m/accounts/cleanup'); toast(`${r.deleted} account eliminati`, 'ok'); loadAccounts(); } catch (e) { toast(e.message, 'error'); }
+    } }, `Elimina senza iscrizioni (${orphans})`)],
+    h('p', { class: 'muted tiny' }, 'Ogni giocatore si registra una volta e usa lo stesso account per tutte le partite: eliminando una partita si cancellano le iscrizioni, non gli account.'),
+    h('input', { class: 'input input-sm', type: 'search', placeholder: 'Cerca per username, nome, team…', value: accountsFilter, 'data-keep': 'acc-filter', oninput: (e) => { accountsFilter = e.target.value; render(); } }),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
+      h('thead', null, h('tr', null, ['Account', 'Team softair', 'Iscrizioni', ''].map((x) => h('th', null, x)))),
+      h('tbody', null, list.map((a) => h('tr', null,
+        h('td', null, h('strong', null, a.name), a.nickname ? h('span', { class: 'muted' }, ` «${a.nickname}»`) : null, h('div', { class: 'tiny brass' }, `@${a.username}`)),
+        h('td', null, a.softairTeam || '—'),
+        h('td', { class: 'tiny' }, a.enrollments ? a.games : h('span', { class: 'chip' }, 'nessuna')),
+        h('td', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => reset(a) }, 'Password'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(a) }, 'Elimina'))))))) : h('p', { class: 'empty' }, f ? 'Nessun account trovato.' : 'Nessun account registrato.'));
+}
+
 function viewNewGame(first) {
   return h('div', { class: 'stack' },
     section(first ? 'Benvenuto, Consiglio' : 'Nuova partita',
@@ -2060,6 +2098,7 @@ function viewNewGame(first) {
         h('strong', null, 'Non c\'è ancora nessuna partita.'),
         h('p', { class: 'muted' }, 'Il primo passo è crearne una (qui sotto) oppure una partita di prova: le altre voci del menu si attivano appena esiste una partita. Poi: iscrizioni e coppie → Sigilli → Altari e Parola → cerchio → VIA.')) : null,
       gameForm({ name: '', bookUrl: '/regolamento.html' }, true)),
+    first ? accountsSection() : null,
     section('Vuoi solo provare?',
       h('p', { class: 'muted' }, 'Crea una partita di prova già preparata, con giocatori finti, e fai avanzare il tempo per vedere tutto il gioco in pochi minuti.'),
       h('button', { class: 'btn btn-primary', onclick: createDemo }, 'Crea partita di prova')));
@@ -2078,6 +2117,7 @@ function viewSettings() {
   return h('div', { class: 'stack' },
     publicUrlSection(),
     section('Parametri della partita', gameForm(g, false)),
+    accountsSection(),
     h('div', { class: 'cols-2' },
       section('Testi degli annunci',
         h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
@@ -2103,6 +2143,6 @@ function viewSettings() {
           h('button', { class: 'btn', onclick: createDemo }, 'Crea partita di prova')),
         section('Zona pericolosa',
           h('button', { class: 'btn btn-danger', disabled: ACTIVE.includes(g.status) || g.status === 'paused', onclick: async () => {
-            if (await confirmCall('Eliminare la partita?', `«${g.name}» e tutti i suoi dati (coppie, Sigilli, registro) verranno cancellati definitivamente.`, 'DELETE', `/api/m/games/${g.id}`, undefined, 'Partita eliminata', true)) { await loadGames(); load(); }
+            if (await confirmCall('Eliminare la partita?', `«${g.name}» e tutti i suoi dati (coppie, Sigilli, iscrizioni, registro) verranno cancellati definitivamente. Gli account dei giocatori restano: puoi eliminarli in "Account dei giocatori".`, 'DELETE', `/api/m/games/${g.id}`, undefined, 'Partita eliminata', true)) { accountsCache = null; await loadGames(); load(); }
           } }, 'Elimina partita')))));
 }
