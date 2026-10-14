@@ -45,6 +45,14 @@
     .access { display: grid; gap: 6px; }
     .access p { margin: 0; }
     .code { font-size: 32px; font-weight: 600; letter-spacing: .18em; }
+    .auth-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 2px solid var(--line); }
+    .auth-tabs button { background: none; border: 0; color: var(--ink); font: inherit; font-weight: 700; padding: 12px 8px; cursor: pointer; }
+    .auth-tabs button + button { border-left: 2px solid var(--line); }
+    .auth-tabs button.on { background: var(--blood); color: #fff; }
+    .who { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+    .who a, .linkish { color: var(--brass); background: none; border: 0; font: inherit; padding: 0; cursor: pointer; text-decoration: underline; }
+    .card { display: grid; gap: 4px; }
+    .stack { display: grid; gap: 12px; }
   </style>
 </head>
 <body>
@@ -52,7 +60,7 @@
   <script type="module">
     import { h, mount, api, toast } from '/js/lib.js';
 
-    // Le tre strade, presentate come sfide. La chiave è anche l'indirizzo della pagina 2 (#legati, #temerario, #eletti).
+    // Le tre strade, presentate come sfide. La chiave è anche l'indirizzo della pagina (#legati, #temerario, #eletti).
     const PATHS = {
       legati: {
         mode: 'pair',
@@ -89,33 +97,99 @@
         ],
         dare: 'Siete degni di servire il Consiglio?',
         cta: 'Mi offro al Consiglio',
-        done: 'La tua candidatura agli Eletti del Consiglio è arrivata. Se verrà accettata, entrerai nel gruppo degli Eletti e riceverai le istruzioni del Consiglio.',
+        done: 'La tua candidatura agli Eletti del Consiglio è arrivata. Se verrà accettata, entrerai nella tua squadra e riceverai le istruzioni del Consiglio.',
       },
     };
+    const MODE_KEY = { pair: 'legati', single: 'temerario', elect: 'eletti' };
+    const STATUS = { pending: 'in attesa di approvazione', accepted: 'accettata dal Consiglio' };
 
     const root = document.getElementById('root');
-    let games = [];
-    let gameId = null;
-    let sent = null; // chiave della sfida appena inviata
-    let access = []; // codici personali restituiti dall'iscrizione
+    const S = { account: null, enrollments: [], games: [], gameId: null, sent: null, authTab: 'nuovo' };
 
-    try { games = await api('GET', '/api/public/games'); } catch (e) { toast(e.message, 'error'); }
-    gameId = games[0]?.id ?? null;
+    async function loadAccount() {
+      try {
+        const r = await api('GET', '/api/account');
+        S.account = r.account;
+        S.enrollments = r.enrollments;
+        S.games = r.games;
+      } catch (e) {
+        S.account = null;
+        if (e.status !== 401) toast(e.message, 'error');
+        try { S.games = await api('GET', '/api/public/games'); } catch { S.games = []; }
+      }
+      if (!S.games.some((g) => g.id === S.gameId)) S.gameId = S.games[0]?.id ?? null;
+    }
 
-    const steps = (n) => h('div', { class: 'steps', 'aria-hidden': 'true' }, h('i', { class: 'on' }), h('i', { class: n === 2 ? 'on' : '' }));
+    const brand = () => [h('div', { class: 'emblem' }, h('span', null, '0')), h('p', { class: 'eyebrow' }, 'Consiglio Zero · Chiamata ai Giochi del Buio')];
+    const steps = (n) => h('div', { class: 'steps', 'aria-hidden': 'true' }, [1, 2, 3].map((i) => h('i', { class: i <= n ? 'on' : '' })));
+    const enrolledIn = (gameId) => S.enrollments.find((e) => e.gameId === gameId);
+    const whoBar = () => h('div', { class: 'who' }, h('span', null, 'Account ', h('strong', null, S.account.username)),
+      h('a', { href: '#profilo' }, 'Profilo'),
+      h('button', { class: 'linkish', type: 'button', onclick: async () => { await api('POST', '/api/team/logout').catch(() => {}); S.account = null; location.hash = ''; render(); } }, 'Esci'));
 
-    // ---- pagina 1: scelta della sfida
-    function pageChoose() {
+    // ---- passo 1: account (nuovo o esistente)
+    function pageAccount() {
+      const tab = (id, label) => h('button', { type: 'button', class: S.authTab === id ? 'on' : '', onclick: () => { S.authTab = id; render(); } }, label);
+      const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
+      const reg = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(reg).entries());
+        if (fd.password !== fd.password2) return toast('Le due password non coincidono', 'error');
+        try {
+          await api('POST', '/api/auth/register', fd);
+          toast('Account creato', 'ok');
+          await loadAccount();
+          location.hash = 'scelta';
+        } catch (err) { toast(err.message, 'error', 6000); }
+      } },
+      h('fieldset', null, h('legend', null, 'Chi sei'),
+        field('Nome e cognome', { name: 'name', required: true, autocomplete: 'name' }),
+        field('Nome di battaglia (facoltativo)', { name: 'nickname' }),
+        field('Team di softair di appartenenza', { name: 'softairTeam', required: true, maxlength: 60, placeholder: 'es. Zero Dark Team — oppure "nessuno"', autocomplete: 'organization' }),
+        field('Telefono (facoltativo, solo per l\'organizzazione)', { name: 'phone', type: 'tel', autocomplete: 'tel' })),
+      h('fieldset', null, h('legend', null, 'Il tuo accesso'),
+        field('Username', { name: 'username', required: true, minlength: 3, maxlength: 30, pattern: '[A-Za-z0-9._\\-]{3,30}', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', title: 'Lettere, numeri, punto, trattino; da 3 a 30 caratteri' }),
+        field('Password (almeno 8 caratteri)', { name: 'password', type: 'password', required: true, minlength: 8, autocomplete: 'new-password' }),
+        field('Ripeti la password', { name: 'password2', type: 'password', required: true, minlength: 8, autocomplete: 'new-password' })),
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Crea il mio account'),
+      h('p', { class: 'muted small' }, 'Con username e password entrerai nell\'app da qualsiasi telefono, anche per le prossime partite. I dati servono solo all\'organizzazione.'));
+      const login = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(login).entries());
+        try {
+          const r = await api('POST', '/api/auth/login', fd);
+          if (r.role !== 'player') { location.href = r.home; return; }
+          await loadAccount();
+          location.hash = 'scelta';
+          render();
+        } catch (err) { toast(err.message, 'error', 6000); }
+      } },
+      field('Username', { name: 'username', required: true, autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false' }),
+      field('Password', { name: 'password', type: 'password', required: true, autocomplete: 'current-password' }),
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Accedi'));
       return [
-        h('div', { class: 'emblem' }, h('span', null, '0')),
-        h('p', { class: 'eyebrow' }, 'Consiglio Zero · Chiamata ai Giochi del Buio'),
+        ...brand(),
         h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
-        h('p', { class: 'lede' }, 'Il Consiglio chiama. Tre strade portano nel bosco: sceglietene una. Il Consiglio valuterà ogni candidatura e deciderà chi entra, con chi e sotto quale Sigillo.'),
+        h('p', { class: 'lede' }, 'Il Consiglio chiama. Prima dicci chi sei, poi scegli la tua sfida: il Consiglio valuterà ogni candidatura e deciderà chi entra, con chi e sotto quale Sigillo.'),
         steps(1),
-        h('div', { class: 'step' }, 'Passo 1 di 2 · Scegli la tua sfida'),
-        games.length > 1 ? h('label', { class: 'field' }, h('span', null, 'Partita'),
-          h('select', { class: 'input', onchange: (e) => { gameId = Number(e.target.value); } }, games.map((g) => h('option', { value: g.id, selected: g.id === gameId }, g.name)))) : h('h2', null, games[0].name),
-        h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => h('a', { class: 'path', href: `#${key}` },
+        h('div', { class: 'step' }, 'Passo 1 di 3 · Il tuo account'),
+        h('nav', { class: 'auth-tabs' }, tab('nuovo', 'Sono nuovo'), tab('accedi', 'Ho già un account')),
+        S.authTab === 'accedi' ? login : reg,
+      ];
+    }
+
+    // ---- passo 2: scelta della sfida
+    function pageChoose() {
+      const game = S.games.find((g) => g.id === S.gameId);
+      const mine = game ? enrolledIn(game.id) : null;
+      return [
+        ...brand(), whoBar(),
+        h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
+        steps(2),
+        h('div', { class: 'step' }, 'Passo 2 di 3 · Scegli la tua sfida'),
+        S.games.length > 1 ? h('label', { class: 'field' }, h('span', null, 'Partita'),
+          h('select', { class: 'input', onchange: (e) => { S.gameId = Number(e.target.value); render(); } }, S.games.map((g) => h('option', { value: g.id, selected: g.id === S.gameId }, g.name)))) : h('h2', null, game.name),
+        mine ? enrolledCard(mine) : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => h('a', { class: 'path', href: `#${key}` },
           h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
           c.text.map((t) => h('p', null, t)),
           h('div', { class: 'dare' }, c.dare),
@@ -123,99 +197,132 @@
       ];
     }
 
-    // ---- pagina 2: dati per la sfida scelta
+    async function sharePairCode(code) {
+      const text = `I Giochi del Buio: siamo Legati! Registrati su ${location.origin}/iscrizione, scegli "I Legati" e inserisci il codice coppia ${code}`;
+      try {
+        if (navigator.share) await navigator.share({ title: 'I Giochi del Buio', text });
+        else { await navigator.clipboard.writeText(text); toast('Invito copiato: incollalo al tuo Legato', 'ok'); }
+      } catch { /* condivisione annullata */ }
+    }
+
+    function pairCodeCard(code) {
+      return h('div', { class: 'card access' },
+        h('div', { class: 'eyebrow' }, 'Codice coppia per il tuo Legato'),
+        h('div', { class: 'mono code' }, code),
+        h('p', { class: 'muted small' }, 'Il tuo compagno si registra, sceglie "I Legati" e inserisce questo codice: così il Consiglio vi valuta insieme.'),
+        h('button', { class: 'btn btn-block', type: 'button', onclick: () => sharePairCode(code) }, 'Manda l\'invito al tuo Legato'));
+    }
+
+    function enrolledCard(e) {
+      const c = PATHS[MODE_KEY[e.requestedRole]] || {};
+      return h('div', { class: 'stack' },
+        h('div', { class: 'done' },
+          h('h2', null, 'Sei già iscritto'),
+          h('p', null, `${c.title || 'Iscrizione'} · ${STATUS[e.status] || e.status}${e.teamId ? ' · sei già nella tua squadra' : ''}.`),
+          h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
+        e.pairCode ? pairCodeCard(e.pairCode) : null);
+    }
+
+    // ---- passo 3: conferma della sfida (i dati personali vengono dall'account)
     function pageForm(key) {
       const c = PATHS[key];
-      const person = (n, legend) => h('fieldset', null, h('legend', null, legend),
-        h('label', { class: 'field' }, h('span', null, 'Nome e cognome'), h('input', { class: 'input', name: `name${n}`, required: true, autocomplete: n === 1 ? 'name' : 'off' })),
-        h('label', { class: 'field' }, h('span', null, 'Nome di battaglia (facoltativo)'), h('input', { class: 'input', name: `nick${n}` })),
-        h('label', { class: 'field' }, h('span', null, 'Team di softair di appartenenza'), h('input', { class: 'input', name: `team${n}`, required: true, maxlength: 60, placeholder: 'es. Zero Dark Team — oppure "nessuno"', autocomplete: 'organization' })),
-        h('label', { class: 'field' }, h('span', null, 'Telefono (facoltativo, solo per l\'organizzazione)'), h('input', { class: 'input', name: `phone${n}`, type: 'tel', autocomplete: n === 1 ? 'tel' : 'off' })));
-      const fields = {
-        pair: [person(1, 'Il primo Legato'), person(2, 'Il secondo Legato'),
-          h('label', { class: 'field' }, h('span', null, 'Nome della coppia (facoltativo)'), h('input', { class: 'input', name: 'teamName' }))],
-        single: [person(1, 'Chi sei')],
-        elect: [person(1, 'Chi sei'),
-          h('label', { class: 'field' }, h('span', null, 'Come puoi servire il Consiglio? (facoltativo)'),
-            h('textarea', { class: 'input', name: 'note', rows: 3, maxlength: 300, placeholder: 'es. logistica al Cuore, presidio degli Altari, radio, primo soccorso…' }))],
-      }[c.mode];
-
+      const game = S.games.find((g) => g.id === S.gameId);
+      if (enrolledIn(S.gameId)) { location.hash = 'scelta'; return pageChoose(); }
+      const pairMode = { value: 'new' };
+      const pairBox = h('div', { class: 'stack' });
+      const drawPair = () => mount(pairBox,
+        h('div', { class: 'auth-tabs' },
+          h('button', { type: 'button', class: pairMode.value === 'new' ? 'on' : '', onclick: () => { pairMode.value = 'new'; drawPair(); } }, 'Creo io la coppia'),
+          h('button', { type: 'button', class: pairMode.value === 'join' ? 'on' : '', onclick: () => { pairMode.value = 'join'; drawPair(); } }, 'Ho il codice del compagno')),
+        pairMode.value === 'new'
+          ? [h('p', { class: 'muted small' }, 'Riceverai un codice coppia da mandare al tuo Legato.'),
+            h('label', { class: 'field' }, h('span', null, 'Nome della coppia (facoltativo)'), h('input', { class: 'input', name: 'teamName', maxlength: 60 }))]
+          : h('label', { class: 'field' }, h('span', null, 'Codice coppia ricevuto dal tuo Legato'), h('input', { class: 'input mono', name: 'pairCode', required: true, maxlength: 8, autocapitalize: 'characters', spellcheck: 'false' })));
+      if (c.mode === 'pair') drawPair();
       const form = h('form', { onsubmit: async (e) => {
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(form).entries());
-        const players = [{ name: fd.name1, nickname: fd.nick1, softairTeam: fd.team1, phone: fd.phone1, note: c.mode === 'elect' ? fd.note : undefined }];
-        if (c.mode === 'pair') players.push({ name: fd.name2, nickname: fd.nick2, softairTeam: fd.team2, phone: fd.phone2 });
         const btn = form.querySelector('button[type=submit]');
         btn.disabled = true;
         try {
-          const r = await api('POST', '/api/public/register', { gameId, mode: c.mode, players, teamName: c.mode === 'pair' ? fd.teamName : null });
-          access = r.access || [];
-          sent = key;
-          render();
-          window.scrollTo({ top: 0 });
+          const r = await api('POST', '/api/account/enroll', { gameId: S.gameId, mode: c.mode, teamName: fd.teamName, pairCode: pairMode.value === 'join' ? fd.pairCode : '', note: fd.note });
+          S.sent = { key, ...r };
+          await loadAccount();
+          location.hash = 'fatto';
         } catch (err) {
           toast(err.message, 'error', 6000);
           btn.disabled = false;
         }
       } },
-        fields,
-        h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, c.cta),
-        h('p', { class: 'muted small' }, 'I dati servono solo all\'organizzazione per gestire la partita.'));
-
+      h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Ti iscrivi come'), h('strong', null, S.account.name), h('span', { class: 'muted small' }, [S.account.nickname ? `«${S.account.nickname}»` : null, S.account.softairTeam].filter(Boolean).join(' · ')), h('a', { class: 'small', href: '#profilo' }, 'Modifica i tuoi dati')),
+      c.mode === 'pair' ? pairBox : null,
+      c.mode === 'elect' ? h('label', { class: 'field' }, h('span', null, 'Come puoi servire il Consiglio? (facoltativo)'),
+        h('textarea', { class: 'input', name: 'note', rows: 3, maxlength: 300, placeholder: 'es. logistica al Cuore, presidio degli Altari, radio, primo soccorso…' })) : null,
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, c.cta));
       return [
-        h('a', { class: 'btn btn-sm btn-ghost back', href: '#' }, '‹ Cambia sfida'),
-        steps(2),
-        h('div', { class: 'step' }, `Passo 2 di 2 · Iscrizione${games.length > 1 ? ` · ${games.find((g) => g.id === gameId)?.name || ''}` : ''}`),
+        whoBar(),
+        h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Cambia sfida'),
+        steps(3),
+        h('div', { class: 'step' }, `Passo 3 di 3 · ${game?.name || ''}`),
         h('div', { class: 'chosen' }, h('span', { class: 'path-tag' }, c.tag), h('span', { class: 'path-title' }, c.title), h('div', { class: 'dare' }, c.dare)),
         form,
       ];
     }
 
-    // Condivisione dell'accesso del secondo Legato (WhatsApp, SMS… tramite il menu di condivisione del telefono).
-    async function shareAccess(a) {
-      const text = `I Giochi del Buio: entra nell'app con il tuo accesso personale ${a.loginUrl} (codice ${a.accessCode})`;
-      try {
-        if (navigator.share) await navigator.share({ title: 'I Giochi del Buio', text, url: a.loginUrl });
-        else { await navigator.clipboard.writeText(text); toast('Accesso copiato: incollalo al tuo Legato', 'ok'); }
-      } catch { /* condivisione annullata */ }
-    }
-
-    function pageDone(key) {
-      const [me, partner] = access;
+    function pageDone() {
+      const r = S.sent;
+      const c = PATHS[r.key];
       return [
-        h('div', { class: 'emblem' }, h('span', null, '0')),
+        ...brand(),
         h('div', { class: 'done' },
           h('h2', null, 'Il Consiglio ha ricevuto'),
-          h('p', null, PATHS[key].done),
-          h('p', null, "Non serve aspettare il giorno dei Giochi: entrate subito nell'app per conoscerla. Vi faremo fare un giro guidato."),
-          h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, "Entra nell'app")),
-        me ? h('div', { class: 'card access' },
-          h('div', { class: 'eyebrow' }, `Codice personale di ${me.name}`),
-          h('div', { class: 'mono code' }, me.accessCode),
-          h('p', { class: 'muted small' }, 'Questo telefono è già collegato. Il codice serve per entrare da un altro dispositivo: conservatelo.')) : null,
-        partner ? h('div', { class: 'card access' },
-          h('div', { class: 'eyebrow' }, `Accesso per ${partner.name}`),
-          h('div', { class: 'mono code' }, partner.accessCode),
-          h('p', { class: 'muted small' }, "Mandatelo al vostro Legato: entrerà nell'app dal suo telefono, con il suo accesso personale."),
-          h('button', { class: 'btn btn-block', type: 'button', onclick: () => shareAccess(partner) }, 'Condividi con il tuo Legato')) : null,
-        h('p', { class: 'muted small' }, "Quando il Consiglio vi avrà assegnato il Settore, l'app si aggiornerà da sola. Il giorno dei Giochi riceverete comunque nel cerchio il QR della coppia."),
-        h('a', { class: 'btn btn-ghost', href: '/regolamento.html' }, 'Leggete il regolamento'),
+          h('p', null, r.partner ? `Sei Legato con ${r.partner}. ${c.done}` : c.done),
+          h('p', null, 'Non serve aspettare il giorno dei Giochi: entra subito nell\'app per conoscerla, con il giro guidato. Da qualsiasi telefono entri con username e password.'),
+          h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
+        r.pairCode ? pairCodeCard(r.pairCode) : null,
+        h('a', { class: 'btn btn-ghost', href: '/regolamento.html' }, 'Leggi il regolamento'),
       ];
     }
 
-    function render() {
-      if (!games.length) {
-        return mount(root, h('div', { class: 'emblem' }, h('span', null, '0')), h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
-          h('div', { class: 'card' }, h('strong', null, 'Le iscrizioni sono chiuse.'), h('p', { class: 'muted' }, 'Non ci sono partite aperte alle iscrizioni in questo momento.')));
-      }
-      const key = location.hash.slice(1);
-      if (sent && sent === key) return mount(root, pageDone(key));
-      sent = null;
-      mount(root, PATHS[key] ? pageForm(key) : pageChoose());
-      window.scrollTo({ top: 0 });
+    // ---- profilo e password
+    function pageProfile() {
+      const a = S.account;
+      const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
+      const form = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(form).entries());
+        if (fd.password && fd.password !== fd.password2) return toast('Le due password nuove non coincidono', 'error');
+        if (!fd.password) { delete fd.password; delete fd.currentPassword; }
+        try { await api('PATCH', '/api/account', fd); toast('Profilo aggiornato', 'ok'); await loadAccount(); location.hash = 'scelta'; } catch (err) { toast(err.message, 'error', 6000); }
+      } },
+      h('fieldset', null, h('legend', null, 'I tuoi dati'),
+        field('Nome e cognome', { name: 'name', required: true, value: a.name }),
+        field('Nome di battaglia', { name: 'nickname', value: a.nickname || '' }),
+        field('Team di softair di appartenenza', { name: 'softairTeam', required: true, value: a.softairTeam || '' }),
+        field('Telefono', { name: 'phone', type: 'tel', value: a.phone || '' })),
+      h('fieldset', null, h('legend', null, 'Cambia password (facoltativo)'),
+        field('Password attuale', { name: 'currentPassword', type: 'password', autocomplete: 'current-password' }),
+        field('Nuova password', { name: 'password', type: 'password', minlength: 8, autocomplete: 'new-password' }),
+        field('Ripeti la nuova password', { name: 'password2', type: 'password', minlength: 8, autocomplete: 'new-password' })),
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Salva'));
+      return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'), form];
     }
 
-    window.addEventListener('hashchange', render);
+    function render() {
+      const key = location.hash.slice(1);
+      if (!S.account) return mount(root, pageAccount());
+      if (key === 'profilo') return mount(root, pageProfile());
+      if (!S.games.length && !S.enrollments.length) {
+        return mount(root, ...brand(), whoBar(), h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
+          h('div', { class: 'card' }, h('strong', null, 'Le iscrizioni sono chiuse.'), h('p', { class: 'muted' }, 'Non ci sono partite aperte alle iscrizioni in questo momento. Il tuo account resta valido per le prossime.')));
+      }
+      if (key === 'fatto' && S.sent) return mount(root, pageDone());
+      if (!S.games.length) return mount(root, ...brand(), whoBar(), S.enrollments[0] ? enrolledCard(S.enrollments[0]) : null);
+      mount(root, PATHS[key] ? pageForm(key) : pageChoose());
+    }
+
+    window.addEventListener('hashchange', () => { render(); window.scrollTo({ top: 0 }); });
+    await loadAccount();
     render();
   </script>
 </body>

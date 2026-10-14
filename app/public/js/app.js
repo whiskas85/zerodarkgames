@@ -74,6 +74,15 @@ async function refresh() {
   try {
     const st = await api('GET', '/api/team/state');
     S.online = true;
+    // Account senza iscrizione a una partita: si sceglie come partecipare.
+    if (st.noEnrollment) {
+      S.account = st.account;
+      S.state = null;
+      S.auth = 'account';
+      store.del('zdg_state');
+      render();
+      return;
+    }
     const first = S.auth !== 'team';
     setState(st);
     S.auth = 'team';
@@ -332,6 +341,7 @@ function preserveInputs(fn) {
 function render() {
   if (S.auth === 'unknown' && !S.state) return mount($app, h('div', { class: 'boot' }, h('div', { class: 'emblem' }, h('span', null, '0')), h('p', { class: 'eyebrow' }, 'Il Consiglio vi osserva…')));
   if (S.auth === 'none') return mount($app, viewLogin());
+  if (S.auth === 'account') return mount($app, viewNoEnrollment());
   let { view, arg, query } = route();
   if (isElect() && ['sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
   if (isLobby() && ['altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri'].includes(view)) view = 'home';
@@ -386,6 +396,7 @@ function banners() {
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
   if (S.queue.length) out.push(h('div', { class: 'banner banner-queue' }, h('strong', null, `${S.queue.length} in attesa di rete`), h('span', null, S.queue.map((q) => q.label).join(' · '))));
+  if (st.openNew) out.push(h('a', { class: 'banner banner-action', href: '/iscrizione#scelta' }, h('strong', null, 'Nuova partita aperta'), h('span', null, 'Iscriviti ai prossimi Giochi del Buio')));
   if (combatPending(st) && route().view !== 'scontri') out.push(h('a', { class: 'banner banner-action', href: '#/scontri' }, h('strong', null, 'Risposta richiesta'), h('span', null, [...st.combat.incoming.map((r) => r.kind === 'break' ? `${r.team.sectorName}: rottura dell'alleanza` : `${r.team.sectorName} propone un'alleanza`), ...st.combat.toConfirm.map((e) => `${e.reporter.sectorName}: confermate la sconfitta?`)].join(' · '))));
   return out.length ? h('div', { class: 'banners' }, out) : null;
 }
@@ -458,11 +469,23 @@ function unveilOnce(key) {
 
 function viewLogin() {
   const pendingAltar = Object.keys(S.visits).length && location.hash.startsWith('#/altare/');
-  const input = h('input', { class: 'input input-code', id: 'access', autocomplete: 'one-time-code', autocapitalize: 'characters', spellcheck: 'false', maxlength: 12, placeholder: '········', 'aria-label': 'Codice d\'accesso' });
-  const submit = async (e) => {
+  const user = h('input', { class: 'input', id: 'login-user', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true });
+  const pass = h('input', { class: 'input', id: 'login-pass', type: 'password', autocomplete: 'current-password', required: true });
+  const code = h('input', { class: 'input input-code', id: 'access', autocomplete: 'one-time-code', autocapitalize: 'characters', spellcheck: 'false', maxlength: 12, placeholder: '········', 'aria-label': 'Codice d\'accesso' });
+  // Username e password: la regia va in regia (o alla Soglia), i giocatori restano nell'app.
+  const login = async (e) => {
     e.preventDefault();
     try {
-      await api('POST', '/api/team/login', { accessCode: input.value });
+      const r = await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
+      vibrate(80);
+      if (r.role !== 'player') { location.href = r.home; return; }
+      await refresh();
+    } catch (err) { toast(err.offline ? 'Serve la rete per accedere' : err.message, 'error'); }
+  };
+  const byCode = async (e) => {
+    e.preventDefault();
+    try {
+      await api('POST', '/api/team/login', { accessCode: code.value });
       vibrate(80);
       await refresh();
     } catch (err) { toast(err.offline ? 'Serve la rete per il primo accesso' : err.message, 'error'); }
@@ -471,14 +494,33 @@ function viewLogin() {
     h('div', { class: 'emblem big' }, h('span', null, '0')),
     h('p', { class: 'eyebrow' }, 'Consiglio Zero · Zero Dark Games'),
     h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
-    pendingAltar ? h('p', { class: 'note' }, 'Avete inquadrato un Altare. Entrate con il codice della coppia: l\'Altare resterà nella vostra lista.') : null,
-    h('form', { class: 'login-form', onsubmit: submit },
-      h('label', { class: 'field', for: 'access' }, h('span', null, 'Codice d\'accesso (personale, della coppia o degli Eletti)')),
-      input,
+    pendingAltar ? h('p', { class: 'note' }, 'Avete inquadrato un Altare. Entrate: l\'Altare resterà nella vostra lista.') : null,
+    h('form', { class: 'login-form', onsubmit: login },
+      h('label', { class: 'field', for: 'login-user' }, h('span', null, 'Username')), user,
+      h('label', { class: 'field', for: 'login-pass' }, h('span', null, 'Password')), pass,
       h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Entra')),
-    h('button', { class: 'btn btn-block', type: 'button', onclick: scanLogin }, '⌖ Scansiona il QR di accesso'),
-    h('p', { class: 'muted small' }, 'Avete ricevuto un QR dal Consiglio? Scansionatelo qui: entrerete direttamente.'),
-    h('p', { class: 'small' }, h('a', { href: '/iscrizione' }, 'Non siete ancora iscritti? Iscrivetevi ai Giochi')));
+    h('a', { class: 'btn btn-block', href: '/iscrizione' }, 'Non hai un account? Registrati'),
+    h('details', { class: 'login-alt' },
+      h('summary', null, 'Hai un QR o un codice d\'accesso del Consiglio?'),
+      h('form', { class: 'login-form', onsubmit: byCode },
+        h('label', { class: 'field', for: 'access' }, h('span', null, 'Codice d\'accesso')), code,
+        h('button', { class: 'btn btn-block', type: 'submit' }, 'Entra con il codice')),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: scanLogin }, '⌖ Scansiona il QR di accesso')));
+}
+
+// Account senza iscrizione alla partita aperta: si sceglie la sfida dalla pagina di iscrizione.
+function viewNoEnrollment() {
+  const a = S.account || {};
+  return h('main', { class: 'login' },
+    h('div', { class: 'emblem big' }, h('span', null, '0')),
+    h('p', { class: 'eyebrow' }, `Account · ${a.username || ''}`),
+    h('h1', null, a.nickname || a.name || 'Benvenuto'),
+    h('p', { class: 'muted' }, 'Non sei ancora iscritto a una partita. Scegli come entrare nel buio: Legati, Temerario Solitario o Eletti del Consiglio.'),
+    h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/iscrizione#scelta' }, 'Scegli la tua sfida'),
+    h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: async () => {
+      try { await api('POST', '/api/team/logout'); } catch { /* offline */ }
+      location.href = '/';
+    } }, 'Esci'));
 }
 
 // ---------------------------------------------------------------- home
@@ -1419,6 +1461,8 @@ function viewSettings() {
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
       h('button', { class: `btn ${S.settings.sun ? 'btn-primary' : ''}`, onclick: () => set('sun', !S.settings.sun) }, S.settings.sun ? 'Attiva' : 'Spenta')),
     st ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? 'Iscrizione' : 'Coppia'), h('p', null, st.team.members.map((m) => m.name + (m.nickname ? ` «${m.nickname}»` : '')).join(isElect() ? ', ' : ' e ')), h('p', { class: 'muted small' }, st.game.name)) : null,
+    st?.account ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo account'), h('p', null, h('strong', null, st.account.username), ` · ${st.account.name}`),
+      h('a', { class: 'btn btn-sm', href: '/iscrizione#profilo' }, 'Profilo e password')) : null,
     st?.player?.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, st.player.accessCode), h('p', { class: 'muted small' }, 'Con questo codice entri da qualsiasi telefono e segui sempre la tua coppia.')) : null,
     h('button', { class: 'btn btn-block', onclick: () => openTour() }, '▶ Rivedi il tour dell\'app'),
     h('button', { class: 'btn btn-danger btn-block', onclick: async () => {

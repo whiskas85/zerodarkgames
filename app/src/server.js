@@ -9,6 +9,7 @@ const rt = require('./realtime');
 const { randomToken, hashPassword, verifyPassword, HttpError } = require('./util');
 const print = require('./print');
 const F = require('./field');
+const A = require('./accounts');
 const K = require('./combat');
 
 const PORT = Number(process.env.PORT || 8080);
@@ -99,7 +100,13 @@ function loadAuth(req, _res, next) {
     if (s) req.user = q.get('SELECT id, username, role, displayName FROM users WHERE id = ?', s.refId);
   }
   if (c[COOKIE_TEAM]) {
-    const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind IN ('team','player')", c[COOKIE_TEAM]);
+    const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind IN ('team','player','account')", c[COOKIE_TEAM]);
+    if (s?.kind === 'account') {
+      // Account del giocatore: segue la sua iscrizione attuale (anteprima, coppia o Eletti).
+      req.account = q.get('SELECT * FROM accounts WHERE id = ?', s.refId);
+      req.player = req.account ? A.currentPlayer(req.account) : null;
+      if (req.player?.teamId) req.team = q.get('SELECT * FROM teams WHERE id = ?', req.player.teamId);
+    }
     // Gli Eletti entrano solo con l'accesso personale: le vecchie sessioni col codice comune non valgono più.
     if (s?.kind === 'team') req.team = q.get("SELECT * FROM teams WHERE id = ? AND kind != 'elect'", s.refId);
     if (s?.kind === 'player') {
@@ -114,7 +121,7 @@ function loadAuth(req, _res, next) {
 const needMaster = (req, _res, next) => (req.user?.role === 'master' ? next() : next(new HttpError(401, 'Accesso riservato alla regia')));
 const needStaff = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Accesso riservato all\'organizzazione')));
 const needTeam = (req, _res, next) => (req.team ? next() : next(new HttpError(req.player ? 403 : 401, req.player ? 'Disponibile quando il Consiglio vi avrà assegnato il Settore' : 'Accesso coppia richiesto')));
-const needMember = (req, _res, next) => (req.team || req.player ? next() : next(new HttpError(401, 'Accesso richiesto')));
+const needMember = (req, _res, next) => (req.team || req.player || req.account ? next() : next(new HttpError(401, 'Accesso richiesto')));
 const actor = (req) => req.user?.username || 'regia';
 
 // Limite tecnico anti-abuso: 30 richieste al minuto per coppia sulle azioni.
@@ -153,13 +160,36 @@ app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '
 app.get('/api/time', (_req, res) => res.json({ now: Date.now() }));
 
 // ---- autenticazione staff
+// Un solo accesso per tutti: la regia (master e validatori) va in regia o alla Soglia, i giocatori nella loro app.
 app.post('/api/auth/login', loginLimit, wrap((req, res) => {
-  const u = q.get('SELECT * FROM users WHERE username = ?', String(req.body.username || '').trim());
-  if (!u || !verifyPassword(req.body.password || '', u.passHash)) throw new HttpError(401, 'Credenziali non valide');
-  setCookie(req, res, COOKIE_USER, newSession('user', u.id), 30 * 24 * 3600);
-  G.log(null, u.username, 'login');
-  return { id: u.id, username: u.username, role: u.role, displayName: u.displayName };
+  const name = String(req.body.username || '').trim();
+  const u = q.get('SELECT * FROM users WHERE username = ?', name) || q.get('SELECT * FROM users WHERE lower(username) = lower(?)', name);
+  if (u && verifyPassword(req.body.password || '', u.passHash)) {
+    setCookie(req, res, COOKIE_USER, newSession('user', u.id), 30 * 24 * 3600);
+    G.log(null, u.username, 'login');
+    return { id: u.id, username: u.username, role: u.role, displayName: u.displayName, home: u.role === 'master' ? '/regia' : '/soglia' };
+  }
+  const a = A.authenticate(name, req.body.password);
+  if (!a) throw new HttpError(401, 'Username o password non validi');
+  setCookie(req, res, COOKIE_TEAM, newSession('account', a.id));
+  const p = A.currentPlayer(a);
+  if (p) G.log(p.gameId, `giocatore:${p.id}`, 'player_login', { playerId: p.id });
+  return { role: 'player', username: a.username, home: '/#/home' };
 }));
+app.post('/api/auth/register', loginLimit, wrap((req, res) => {
+  const a = A.register(req.body || {});
+  setCookie(req, res, COOKIE_TEAM, newSession('account', a.id));
+  return { role: 'player', username: a.username };
+}));
+// Account del giocatore: profilo, iscrizioni, partite aperte; iscrizione a una partita.
+const needAccount = (req, _res, next) => (req.account ? next() : next(new HttpError(401, 'Accedi con il tuo account')));
+app.get('/api/account', needAccount, (req, res) => res.json({
+  account: A.publicAccount(req.account),
+  enrollments: A.enrollments(req.account),
+  games: q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"),
+}));
+app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.account, req.body || {}); return { ok: true }; }));
+app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
 app.post('/api/auth/logout', wrap((req, res) => {
   const c = cookies(req);
   if (c[COOKIE_USER]) q.run('DELETE FROM sessions WHERE token = ?', c[COOKIE_USER]);
@@ -172,14 +202,7 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: r
 app.get('/api/public/games', (_req, res) => {
   res.json(q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"));
 });
-app.post('/api/public/register', loginLimit, wrap((req, res) => {
-  const r = G.publicRegister(req.body || {});
-  // Il dispositivo con cui ci si iscrive entra subito nell'app (anteprima) con l'accesso personale del primo iscritto.
-  const players = r.playerIds.map((id) => q.get('SELECT id, name, nickname, gameId, accessCode, loginToken FROM players WHERE id = ?', id));
-  deviceLogin(req, res, 'player', players[0].id, players[0].gameId);
-  const base = baseUrl(req);
-  return { ok: true, mode: r.mode, access: players.map((p) => ({ name: p.name, accessCode: p.accessCode, loginUrl: `${base}/login/${p.loginToken}` })) };
-}));
+// Le iscrizioni passano dall'account del giocatore (/api/auth/register + /api/account/enroll).
 
 // ---- accesso coppie
 // Un dispositivo entra come coppia/Eletti (codice della squadra) o come giocatore (codice personale).
@@ -217,13 +240,19 @@ app.post('/api/team/logout', wrap((req, res) => {
 
 // ---- API coppia
 app.get('/api/team/state', needMember, wrap((req) => {
-  if (!req.team) return G.lobbyState(req.player);
+  if (!req.player && !req.team) return { noEnrollment: true, account: A.publicAccount(req.account) };
+  // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
+  const openNew = req.account && G.getGame(req.player?.gameId ?? req.team.gameId).status === 'ended'
+    && q.get("SELECT 1 FROM games g WHERE g.registrationOpen = 1 AND g.status = 'draft' AND NOT EXISTS (SELECT 1 FROM players p WHERE p.gameId = g.id AND p.accountId = ?)", req.account.id);
+  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), openNew: !!openNew };
   const st = G.teamState(req.team, req.player);
   st.map = F.teamMap(req.team);
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
+  st.account = A.publicAccount(req.account);
+  st.openNew = !!openNew;
   return st;
 }));
 // Alleanze: proposta, accettazione/rifiuto, rottura (stesso schema). Scontri: vinto / perso / pareggio.
@@ -278,7 +307,7 @@ app.post('/api/push/subscribe', wrap((req) => {
 
 app.get('/api/stream', (req, res, next) => {
   const asStaff = req.query.as === 'staff';
-  if (asStaff ? !req.user : !req.team && !req.player) return next(new HttpError(401, 'Non autenticato'));
+  if (asStaff ? !req.user : !req.team && !req.player) return next(new HttpError(req.account ? 409 : 401, 'Non autenticato'));
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 4000\n\n');
   res.write(`event: hello\ndata: ${JSON.stringify({ now: Date.now() })}\n\n`);
@@ -464,6 +493,7 @@ m.post('/gifts/:gid/schedule', wrap((req) => F.scheduleGiftReveal(req.params.gid
 m.post('/gifts/:gid/reset', wrap((req) => { F.resetGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.body.text, actor(req))));
 
+m.post('/accounts/:aid/password', wrap((req) => { A.resetPassword(req.params.aid, req.body.password, actor(req)); return { ok: true }; }));
 m.get('/users', (_req, res) => res.json(q.all('SELECT id, username, role, displayName, createdAt FROM users ORDER BY role, username')));
 m.post('/users', wrap((req) => {
   const { username, password, role, displayName } = req.body || {};

@@ -43,7 +43,12 @@ function login() {
   const p = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'password' });
   return h('main', { class: 'login-page' }, h('form', { class: 'card login-card', onsubmit: async (e) => {
     e.preventDefault();
-    try { V.me = await api('POST', '/api/auth/login', { username: u.value, password: p.value }); await start(); } catch (err) { toast(err.message, 'error'); }
+    try {
+      const me = await api('POST', '/api/auth/login', { username: u.value, password: p.value });
+      if (me.role === 'player') { location.href = '/'; return; }
+      V.me = me;
+      await start();
+    } catch (err) { toast(err.message, 'error'); }
   } }, h('div', { class: 'emblem' }, h('span', null, '0')), h('h1', null, 'La Soglia'), h('p', { class: 'muted' }, 'Accesso per gli Ufficiali del Consiglio.'), u, p, h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Entra')));
 }
 

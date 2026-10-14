@@ -1600,7 +1600,8 @@ function masterState(gameId) {
     readiness: readiness(g),
     next: nextEvents(g),
     sectors: sectors(),
-    players: q.all('SELECT * FROM players WHERE gameId = ? ORDER BY teamId IS NOT NULL, regGroup IS NULL, regGroup, id', g.id),
+    players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
+                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id),
     teams: teams.map((t) => ({
       id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName,
       status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken,

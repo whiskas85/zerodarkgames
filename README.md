@@ -42,8 +42,9 @@ Il browser tiene una sola coppia alla volta: per più coppie sullo stesso PC usa
 
 0. **Settori e Altari** (una volta sola): l'elenco parte dai 12 Settori della specifica; puoi aggiungerne, modificarli (nome, articolo, elemento, motto, nome dell'Altare personalizzato, ordine) ed eliminarli. Un Settore assegnato a una coppia di una partita non terminata non si elimina; uno usato solo in partite finite viene archiviato e si può ripristinare.
 1. **Impostazioni**: crea la partita (nome, data, canale radio, parametri).
-2. **Iscrizioni e coppie**: dal modulo `/iscrizione` ci si candida per una delle tre strade, presentate come sfide:
-   - **I Legati** (coppia): due persone che rappresenteranno un Settore;
+2. **Account e iscrizioni**: ognuno crea il proprio **account** (username e password) dal modulo `/iscrizione`; l'account resta valido anche per le partite successive. Dall'app (`/`) si entra con username e password: i **master** finiscono in automatico in regia, i validatori alla Soglia, i giocatori nella loro app (coppia, anteprima o Eletti). Nessuno può registrarsi come master: i master li crea un master in **Impostazioni**. QR e codici d'accesso stampati restano come scorciatoia per il giorno dell'evento. Se un giocatore dimentica la password, la regia ne imposta una nuova (pulsante **Password** accanto al nome).
+   Con l'account ci si candida per una delle tre strade, presentate come sfide:
+   - **I Legati** (coppia): due persone che rappresenteranno un Settore. Ognuno ha il suo account: il primo crea la coppia e riceve un **codice coppia**, il compagno lo inserisce scegliendo "I Legati";
    - **Il Temerario Solitario**: da solo, verrà accoppiato a caso con un altro temerario;
    - **Gli Eletti del Consiglio**: funzioni logistiche e difensive del gioco.
    Per ogni persona si chiede anche il **team di softair di appartenenza** (obbligatorio, si può scrivere "nessuno").

@@ -229,6 +229,14 @@ CREATE TABLE IF NOT EXISTS landmarks (
   UNIQUE (gameId, kind)
 );
 `);
+// Account dei giocatori (username e password); per ogni partita l'iscrizione è una riga di players.
+db.exec(`
+CREATE TABLE IF NOT EXISTS accounts (
+  id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, passHash TEXT NOT NULL,
+  name TEXT NOT NULL, nickname TEXT, softairTeam TEXT, phone TEXT, createdAt INTEGER NOT NULL
+);
+`);
+addColumn('players', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
 // Messaggi con una singola squadra di Eletti (null = tutti gli Eletti).
 addColumn('messages', 'squadId', 'INTEGER');
 

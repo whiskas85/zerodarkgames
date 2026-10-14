@@ -209,6 +209,7 @@ function viewLogin() {
       e.preventDefault();
       try {
         const me = await api('POST', '/api/auth/login', { username: u.value, password: p.value });
+        if (me.role === 'player') { location.href = '/'; return; }
         if (me.role !== 'master') { toast('Questo account è un validatore: usa la pagina Soglia', 'error'); setTimeout(() => (location.href = '/soglia'), 1200); return; }
         R.me = me;
         await start();
@@ -589,8 +590,19 @@ const pairSel = new Set();
 const ROLE_LABELS = { pair: 'Coppia', single: 'Temerario solitario', elect: 'Candidato agli Eletti' };
 
 function personLine(p) {
-  return [h('strong', null, p.name), p.nickname ? h('span', { class: 'muted' }, ` «${p.nickname}»`) : null];
+  const acc = p.username || R.ms?.players.find((x) => x.id === p.id)?.username;
+  return [h('strong', null, p.name), p.nickname ? h('span', { class: 'muted' }, ` «${p.nickname}»`) : null, acc ? h('span', { class: 'tiny brass' }, ` @${acc}`) : null];
 }
+
+// Il giocatore ha dimenticato la password: la regia ne imposta una nuova e gliela comunica.
+async function resetPassword(p) {
+  const pl = R.ms.players.find((x) => x.id === p.id) || p;
+  if (!pl.accountId) return;
+  const pwd = await dialog({ title: `Nuova password per @${pl.username}`, text: `${pl.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
+  if (!pwd) return;
+  await call('POST', `/api/m/accounts/${pl.accountId}/password`, { password: pwd }, 'Password reimpostata');
+}
+const resetBtn = (p) => ((R.ms.players.find((x) => x.id === p.id) || p).accountId ? h('button', { class: 'btn btn-sm btn-ghost', title: "Reimposta la password dell'account", onclick: () => resetPassword(p) }, 'Password') : null);
 
 function viewTeams() {
   const ms = R.ms;
@@ -630,6 +642,7 @@ function viewTeams() {
           grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? h('span', { class: 'tiny muted' }, ` · ${p.phone}`) : null)),
           h('div', null, h('span', { class: `chip ${grp[0].requestedRole === 'elect' ? 'chip-blood' : grp[0].requestedRole === 'single' ? 'chip-brass' : 'chip-ok'}` }, ROLE_LABELS[grp[0].requestedRole] || (grp.length === 2 ? 'Coppia' : 'Singolo'))),
           grp[0].note ? h('div', { class: 'tiny' }, `«${grp[0].note}»`) : null,
+          grp[0].requestedRole === 'pair' && grp.length < 2 ? h('div', { class: 'tiny bad' }, `In attesa del compagno (codice coppia ${grp[0].regGroup})`) : null,
           h('div', { class: 'tiny muted' }, [grp[0].requestedTeamName ? `coppia «${grp[0].requestedTeamName}»` : null, fmtTime(grp[0].createdAt)].filter(Boolean).join(' · '))),
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', `/api/m/players/${grp[0].id}/review`, { decision: 'accept' }, grp[0].requestedRole === 'elect' ? `${grp[0].name} è tra gli Eletti` : 'Iscrizione accettata') },
@@ -639,7 +652,7 @@ function viewTeams() {
     h('div', { class: 'cols-2' },
       section('Iscrizioni',
         h('div', { class: 'toggle-row' },
-          h('div', null, h('strong', null, ms.game.registrationOpen ? 'Iscrizioni aperte' : 'Iscrizioni chiuse'), h('div', { class: 'tiny muted' }, 'I giocatori si iscrivono online, da soli o in coppia; tu li approvi e assegni il Settore.')),
+          h('div', null, h('strong', null, ms.game.registrationOpen ? 'Iscrizioni aperte' : 'Iscrizioni chiuse'), h('div', { class: 'tiny muted' }, 'I giocatori creano il loro account (username e password) e si candidano online; tu li approvi e assegni il Settore. Chi ha dimenticato la password: pulsante "Password" accanto al nome.')),
           h('button', { class: `btn btn-sm ${ms.game.registrationOpen ? '' : 'btn-primary'}`, disabled: st !== 'draft', onclick: () => call('PATCH', `/api/m/games/${R.gameId}`, { registrationOpen: !ms.game.registrationOpen }) }, ms.game.registrationOpen ? 'Chiudi' : 'Apri')),
         ms.game.registrationOpen ? h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(regUrl)}`, alt: 'QR iscrizione', width: 96, height: 96 }), h('div', null, h('div', { class: 'mono' }, regUrl), h('a', { href: regUrl, target: '_blank', class: 'tiny' }, 'Apri il modulo'))) : null,
         h('h3', { class: 'sub' }, 'Aggiungi giocatore a mano (già accettato)'),
@@ -679,6 +692,7 @@ function viewTeams() {
           h('div', { class: 'row-actions' },
             grp?.length === 2 && editable && grp[0].id === p.id ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/teams'), { playerIds: grp.map((x) => x.id) }, 'Coppia formata') }, 'Accoppia come richiesto') : null,
             h('button', { class: 'btn btn-sm', onclick: () => call('POST', G('/elect'), { playerIds: [p.id] }, `${p.name} è tra gli Eletti`) }, 'Agli Eletti'),
+            resetBtn(p),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il giocatore?', p.name, 'DELETE', `/api/m/players/${p.id}`, undefined, 'Eliminato', true) }, 'Elimina')));
       })) : h('p', { class: 'empty' }, pending.length ? 'Nessun giocatore accettato libero: approva le iscrizioni qui sopra.' : 'Tutti i giocatori accettati sono in coppia o tra gli Eletti.')),
 
@@ -710,7 +724,7 @@ function teamCard(t, editable) {
           : h('strong', { class: 'team-sector' }, `Settore ${t.sectorName}`),
         h('input', { class: 'input input-sm', 'data-keep': `tname-${t.id}`, value: t.displayName || '', placeholder: 'Nome della coppia', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { displayName: e.target.value }) })),
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
-    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, h('strong', null, m.name), m.nickname ? ` «${m.nickname}»` : '', m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null))),
+    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null, resetBtn(m)))),
     h('div', { class: 'team-access' },
       h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso', width: 84, height: 84, loading: 'lazy' }),
       h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso'), h('div', { class: 'mono access' }, t.accessCode),
@@ -1196,7 +1210,7 @@ function viewSquads() {
               h('div', { class: 'row-actions' },
                 h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                 ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)),
-            h('td', null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
+            h('td', { class: 'row-actions' }, resetBtn(m), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
         })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto o con "Agli Eletti" in Iscrizioni e coppie.'),
       h('h3', { class: 'sub' }, 'Aggiungi un Eletto a mano (già accettato)'),
       h('form', { class: 'form-grid', onsubmit: async (ev) => {

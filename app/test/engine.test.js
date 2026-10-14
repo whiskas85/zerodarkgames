@@ -613,3 +613,49 @@ test('messaggi: tutti gli Eletti o una sola squadra', () => {
   G.markRead(elect.id, nord);
   assert.equal(G.masterState(g.id).squads.find((s) => s.id === nord).unread, 0);
 });
+
+test('account: registrazione, accesso, iscrizione come Legati con codice coppia, Temerario o Eletto', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Account', registrationOpen: true }, 'test');
+  assert.throws(() => A.register({ username: 'x', password: 'lunga-abbastanza', name: 'X', softairTeam: 'ZDT' }), /Username/);
+  assert.throws(() => A.register({ username: 'mario', password: 'corta', name: 'Mario', softairTeam: 'ZDT' }), /8 caratteri/);
+  assert.throws(() => A.register({ username: 'mario', password: 'password1', name: 'Mario' }), /softair/);
+  assert.throws(() => A.register({ username: 'VAL', password: 'password1', name: 'Finto', softairTeam: 'ZDT' }), /già in uso/); // come un account della regia
+  const mario = A.register({ username: 'Mario.Rossi', password: 'password1', name: 'Mario Rossi', softairTeam: 'Lupi', nickname: 'Orso' });
+  assert.equal(mario.username, 'mario.rossi');
+  assert.equal(A.authenticate('MARIO.ROSSI', 'password1').id, mario.id);
+  assert.equal(A.authenticate('mario.rossi', 'sbagliata'), null);
+  assert.equal(A.currentPlayer(mario), undefined);
+  // Coppia: il primo riceve il codice, il secondo si unisce con il codice.
+  const r1 = A.enroll(mario, { gameId: g.id, mode: 'pair', teamName: 'Ombre' });
+  assert.ok(r1.pairCode);
+  assert.throws(() => A.enroll(mario, { gameId: g.id, mode: 'single' }), /già iscritto/);
+  const luca = A.register({ username: 'luca', password: 'password2', name: 'Luca Bianchi', softairTeam: 'Lupi' });
+  assert.throws(() => A.enroll(luca, { gameId: g.id, mode: 'pair', pairCode: 'NOPE99' }), /non trovato/);
+  const r2 = A.enroll(luca, { gameId: g.id, mode: 'pair', pairCode: r1.pairCode.toLowerCase() });
+  assert.equal(r2.partner, 'Mario Rossi');
+  const anna = A.register({ username: 'anna', password: 'password3', name: 'Anna', softairTeam: 'nessuno' });
+  assert.throws(() => A.enroll(anna, { gameId: g.id, mode: 'pair', pairCode: r1.pairCode }), /completa/);
+  A.enroll(anna, { gameId: g.id, mode: 'elect', note: 'radio' });
+  const pm = A.currentPlayer(mario);
+  const pl = A.currentPlayer(luca);
+  assert.equal(pm.regGroup, pl.regGroup);
+  assert.equal(pl.requestedTeamName, 'Ombre');
+  assert.deepEqual([pm.status, pm.softairTeam, pm.nickname, pm.accountId], ['pending', 'Lupi', 'Orso', mario.id]);
+  // Approvati insieme, poi formano la coppia: l'account segue la coppia.
+  G.reviewPlayer(pm.id, 'accept', 'test');
+  assert.equal(A.currentPlayer(luca).status, 'accepted');
+  G.createTeam(g.id, { playerIds: [pm.id, pl.id] }, 'test');
+  assert.ok(A.currentPlayer(mario).teamId);
+  // Profilo e password.
+  A.updateProfile(mario, { nickname: 'Lupo', password: 'nuovapass1', currentPassword: 'password1' });
+  assert.equal(A.authenticate('mario.rossi', 'nuovapass1').nickname, 'Lupo');
+  assert.equal(q.get('SELECT nickname FROM players WHERE id = ?', pm.id).nickname, 'Lupo');
+  assert.throws(() => A.updateProfile(mario, { password: 'altrapass1', currentPassword: 'sbagliata' }), /attuale/);
+  A.resetPassword(luca.id, 'resettata1', 'regia');
+  assert.ok(A.authenticate('luca', 'resettata1'));
+  // Iscrizioni chiuse.
+  G.updateGame(g.id, { registrationOpen: false }, 'test');
+  const zoe = A.register({ username: 'zoe', password: 'password4', name: 'Zoe', softairTeam: 'ZDT' });
+  assert.throws(() => A.enroll(zoe, { gameId: g.id, mode: 'single' }), /chiuse/);
+});
