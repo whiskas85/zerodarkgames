@@ -1220,7 +1220,8 @@ const MAX_AUDIO_MS = 120000;
 
 // Messaggio di testo o vocale (audio = { buffer, mime, ms }).
 // squadId: solo per gli Eletti, conversazione con una singola squadra (null = tutti gli Eletti).
-function postMessage(team, fromRole, text, author, audio = null, squadId = null) {
+// senderId: il giocatore che scrive (gli Eletti scrivono in un canale di gruppo: gli altri membri lo ricevono).
+function postMessage(team, fromRole, text, author, audio = null, squadId = null, senderId = null) {
   const t = String(text || '').trim().slice(0, 1000);
   let ext = null;
   let ms = null;
@@ -1256,6 +1257,13 @@ function postMessage(team, fromRole, text, author, audio = null, squadId = null)
     rt.toTeams(team.gameId, 'message', m, team.id);
     rt.pushTeams(team.gameId, { title: 'Messaggio dal Consiglio', body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' }, team.id);
   } else {
+    // Canali degli Eletti: il messaggio arriva subito a tutti i membri del canale (tutti gli Eletti o la squadra).
+    if (team.kind === 'elect') {
+      const members = squad ? new Set(q.all('SELECT id FROM players WHERE squadId = ?', squad.id).map((x) => x.id)) : null;
+      rt.toTeamsWhere(team.gameId, 'message', m, (c) => c.teamId === team.id && (!members || members.has(c.playerId)));
+      const subs = rt.gameSubs(team.gameId).filter((x) => x.effTeamId === team.id && x.playerId !== senderId && (!members || members.has(x.playerId)));
+      rt.pushSubs(subs, { title: `${author || 'Eletto'} · ${squad ? `squadra ${squad.name}` : 'Tutti gli Eletti'}`, body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' });
+    }
     const s = team.sectorId ? sectorById(team.sectorId) : null;
     const from = team.kind === 'elect' ? (squad ? `squadra ${squad.name}` : 'Eletti del Consiglio') : s ? 'Settore ' + s.name : 'coppia';
     rt.pushMasters({ title: `Messaggio da ${from}${author ? ` (${author})` : ''}`, body: preview, url: '/regia#comunicazioni' });

@@ -172,10 +172,14 @@ function connect() {
       refresh();
     },
     message: (m) => {
+      const me = S.state?.player ? S.state.player.nickname || S.state.player.name : null;
+      if (m.fromRole === 'team' && m.author === me) { refresh(); return; }
       vibrate([150, 80, 150]);
       const preview = m.audioMime ? '🎤 Messaggio vocale' : m.text;
-      if (route().view !== 'messaggi') toast(`Messaggio dal Consiglio: ${preview}`, 'info', 8000);
-      if (document.hidden) localNotify('Messaggio dal Consiglio', preview, `msg-${m.id}`, '/#/messaggi');
+      const from = m.fromRole === 'master' ? 'Consiglio' : m.author || 'Eletto';
+      const where = isElect() ? (m.squadId ? ' · squadra' : ' · Tutti gli Eletti') : '';
+      if (route().view !== 'messaggi') toast(`${from}${where}: ${preview}`, 'info', 8000);
+      if (document.hidden) localNotify(`${from}${where}`, preview, `msg-${m.id}`, '/#/messaggi');
       S.chatScroll = true;
       refresh();
     },
@@ -1336,7 +1340,11 @@ function viewAnnouncements() {
 
 // Chat con la regia, stile WhatsApp: fumetti, composer fisso in fondo, vocali.
 function viewMessages() {
-  const msgs = S.state?.messages || [];
+  // Eletti con una squadra: due canali di gruppo, ognuno con i suoi messaggi.
+  const sq = mySquad();
+  const channel = sq && S.chatChannel === 'squad' ? 'squad' : 'all';
+  const all = S.state?.messages || [];
+  const msgs = !isElect() ? all : all.filter((m) => (channel === 'squad' ? m.squadId === sq.id : !m.squadId));
   let lastDay = '';
   const items = [];
   for (const m of msgs) {
@@ -1347,25 +1355,33 @@ function viewMessages() {
     const mine = m.fromRole === 'team' && (!isElect() || !m.author || m.author === me);
     const who = m.fromRole === 'master' ? 'Consiglio' : mine ? null : m.author;
     items.push(h('li', { class: `bubble ${mine ? 'mine' : 'theirs'} ${m.audioMime ? 'voice' : ''}` },
-      who || m.squadName ? h('div', { class: 'bubble-who' }, who || '', m.squadName ? h('span', { class: 'bubble-tag' }, `${who ? ' · ' : ''}squadra ${m.squadName}`) : null) : null,
+      who ? h('div', { class: 'bubble-who' }, who) : null,
       m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'bubble-text' }, m.text),
       h('div', { class: 'bubble-time mono' }, fmtTime(m.createdAt))));
   }
   return h('div', { class: 'chat-wrap' },
-    h('div', { class: 'chat-head' }, h('strong', null, 'Consiglio Zero'), h('span', { class: 'muted small' }, isElect() ? 'Con la regia e gli altri Eletti · emergenze sempre via radio' : 'Messaggi con la regia · emergenze sempre via radio')),
-    chatTargetBar(),
-    msgs.length ? h('ul', { class: 'chat' }, items) : h('p', { class: 'empty chat-empty' }, 'Nessun messaggio. Scrivete o registrate un vocale alla regia.'),
+    h('div', { class: 'chat-head' },
+      h('strong', null, !isElect() ? 'Consiglio Zero' : channel === 'squad' ? `Squadra ${sq.name}` : 'Tutti gli Eletti'),
+      h('span', { class: 'muted small' }, !isElect() ? 'Messaggi con la regia · emergenze sempre via radio'
+        : channel === 'squad' ? 'Canale della squadra: lo leggono i membri e la regia' : 'Canale di tutti gli Eletti: lo leggono tutti gli Eletti e la regia')),
+    channelTabs(all),
+    msgs.length ? h('ul', { class: 'chat' }, items) : h('p', { class: 'empty chat-empty' }, isElect() ? 'Nessun messaggio in questo canale.' : 'Nessun messaggio. Scrivete o registrate un vocale alla regia.'),
     composer());
 }
 
-// Eletti con una squadra: scrivono a tutti gli Eletti oppure solo alla propria squadra (sempre con la regia).
+// Canali degli Eletti: "Tutti gli Eletti" e, per chi è in una squadra, il canale della squadra.
 const mySquad = () => (isElect() ? S.state?.field?.squad || null : null);
-const msgSquadId = () => (mySquad() && S.msgTarget !== 'all' ? mySquad().id : null);
-function chatTargetBar() {
+const msgSquadId = () => (mySquad() && S.chatChannel === 'squad' ? mySquad().id : null);
+function channelTabs(all) {
   const sq = mySquad();
   if (!sq) return null;
-  const btn = (key, label) => h('button', { type: 'button', class: (S.msgTarget === 'all') === (key === 'all') ? 'on' : '', onclick: () => { S.msgTarget = key; render(); } }, label);
-  return h('div', { class: 'chat-target', role: 'group', 'aria-label': 'A chi scrivi' }, h('span', { class: 'small muted' }, 'Scrivi a:'), btn('squad', `Squadra ${sq.name}`), btn('all', 'Tutti gli Eletti'));
+  const me = S.state.player ? S.state.player.nickname || S.state.player.name : null;
+  const unread = (inSquad) => all.filter((m) => (inSquad ? m.squadId === sq.id : !m.squadId) && m.id > S.seenMsg && !(m.fromRole === 'team' && m.author === me)).length;
+  const tab = (key, label, n) => h('button', { type: 'button', class: (S.chatChannel === 'squad') === (key === 'squad') ? 'on' : '', onclick: () => { S.chatChannel = key; S.chatScroll = true; render(); } },
+    label, n ? h('span', { class: 'badge badge-alert' }, n) : null);
+  const current = S.chatChannel === 'squad';
+  return h('div', { class: 'chat-target', role: 'tablist', 'aria-label': 'Canali' },
+    tab('all', 'Tutti gli Eletti', current ? unread(false) : 0), tab('squad', `Squadra ${sq.name}`, current ? 0 : unread(true)));
 }
 
 function composer() {

@@ -1759,46 +1759,89 @@ function chatTarget() {
 function viewComms() {
   const ms = R.ms;
   const cur = chatTarget();
+  const key = `${cur.kind}-${cur.id ?? ''}`;
+  if (R.chatKey !== key) { R.chatKey = key; R.chatStick = true; }
   R.chat = { kind: cur.kind, id: cur.id };
   if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
   const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
   const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; render(); } },
     h('span', { class: 'tree-label' }, label, sub ? h('span', { class: 'tiny muted' }, sub) : null), unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
 
+  // Tutte le coppie: broadcast (annunci). Coppie: chat privata. Eletti e squadre: canali di gruppo.
+  const list = cur.kind === 'all'
+    ? [...ms.announcements].reverse().map((a) => ({ id: `a${a.id}`, mine: true, who: null, tag: ms.templateLabels[a.type] || 'Annuncio', text: a.text, createdAt: a.createdAt }))
+    : cur.msgs.map((m) => ({ id: m.id, mine: m.fromRole === 'master', who: m.fromRole === 'master' ? m.author || 'regia' : m.author || cur.who, text: m.text, audioMime: m.audioMime, audioMs: m.audioMs, createdAt: m.createdAt }));
+  const thread = chatThread(list, cur.kind === 'all' ? 'Nessun annuncio: quello che scrivi qui arriva a tutte le coppie.' : 'Nessun messaggio.');
+  queueMicrotask(() => { if (R.chatStick !== false) thread.scrollTop = thread.scrollHeight; });
+  thread.addEventListener('scroll', () => { R.chatStick = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 40; });
+
   return h('div', { class: 'comms' },
     h('nav', { class: 'comms-tree', 'aria-label': 'Destinatari' },
-      node('all', null, '📣 Tutte le coppie', 'annunci'),
-      ms.teams.map((t) => node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || null, t.unread, { child: true })),
-      node('elect', ms.elect.id, '⛨ Tutti gli Eletti', `${ms.elect.members.length} persone`, ms.elect.unread),
-      ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
+      node('all', null, '📣 Tutte le coppie', 'annuncio a tutti'),
+      ms.teams.map((t) => node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || 'chat privata', t.unread, { child: true })),
+      node('elect', ms.elect.id, '⛨ Tutti gli Eletti', `canale · ${ms.elect.members.length} persone`, ms.elect.unread),
+      ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `canale · ${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
       ms.squads.length ? null : h('p', { class: 'tiny muted tree-hint' }, 'Le squadre degli Eletti compaiono qui quando le crei.')),
-    h('div', { class: 'panel comms-pane' },
-      h('div', { class: 'panel-head' }, h('div', null, h('h2', null, cur.title), h('div', { class: 'tiny muted' }, cur.sub))),
-      cur.kind === 'all' ? [quickAnnounce(),
-        h('h3', { class: 'sub' }, 'Storico annunci'),
-        ms.announcements.length ? h('ul', { class: 'feed' }, ms.announcements.map((a) => h('li', { class: 'ev' },
-          h('span', { class: 'mono tiny muted' }, fmtTime(a.createdAt, true)), h('span', { class: 'ev-type' }, ms.templateLabels[a.type] || 'Libero'), h('span', { class: 'ev-text' }, a.text)))) : h('p', { class: 'empty' }, 'Nessun annuncio.')]
-        : chatPane(cur)));
+    h('section', { class: 'wa-pane', style: cur.color ? { '--c': cur.color } : null },
+      h('header', { class: 'wa-head' }, h('strong', null, cur.title), h('span', { class: 'tiny muted' }, cur.sub)),
+      thread,
+      waComposer(cur)));
 }
 
-function chatPane(cur) {
-  const reply = h('textarea', { class: 'input', rows: 2, 'data-keep': `reply-${cur.kind}-${cur.id}`, placeholder: `Scrivi a ${cur.title}…`, maxlength: 1000 });
-  return h('div', { class: 'inbox-thread' },
-    h('div', { class: 'thread' }, cur.msgs.length ? cur.msgs.map((m) => h('div', { class: `bubble ${m.fromRole === 'master' ? 'mine' : 'theirs'}` },
-      h('div', { class: 'tiny muted mono' }, `${m.fromRole === 'master' ? m.author || 'regia' : m.author || cur.who} · ${fmtTime(m.createdAt)}`),
-      m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', null, m.text))) : h('p', { class: 'empty' }, 'Nessun messaggio.')),
-    R.rec ? h('div', { class: 'regia-rec' },
-      h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { class: 'mono', id: 'rec-time-regia' }, fmtSec(Date.now() - R.rec.startedAt)),
-      h('span', { class: 'tiny muted grow' }, `Vocale per ${cur.title}…`),
-      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { R.rec.cancel(); R.rec = null; render(); } }, 'Annulla'),
-      h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => sendRegiaVoice() }, 'Invia vocale'))
-      : h('form', { class: 'stack-sm', onsubmit: async (e) => {
-        e.preventDefault();
-        if (!reply.value.trim()) return;
-        await sendClearing(reply, (text) => call('POST', `${cur.url}/message`, { text }, 'Messaggio inviato'));
-      } }, reply, h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-primary btn-sm', type: 'submit' }, `Invia a ${cur.title}`),
-        voiceSupported() ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => startRegiaVoice() }, '🎤 Vocale') : null)));
+function chatThread(list, empty) {
+  const box = h('div', { class: 'wa-thread' });
+  if (!list.length) { box.append(h('p', { class: 'empty' }, empty)); return box; }
+  let lastDay = '';
+  for (const m of list) {
+    const day = new Date(m.createdAt).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+    if (day !== lastDay) { box.append(h('div', { class: 'wa-day' }, h('span', null, day))); lastDay = day; }
+    box.append(h('div', { class: `wa-bubble ${m.mine ? 'mine' : 'theirs'}` },
+      m.who && !m.mine ? h('div', { class: 'wa-who' }, m.who) : null,
+      m.tag ? h('div', { class: 'wa-who' }, m.tag) : null,
+      m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'wa-text' }, m.text),
+      h('div', { class: 'wa-time mono' }, m.mine && m.who ? `${m.who} · ${fmtTime(m.createdAt)}` : fmtTime(m.createdAt))));
+  }
+  return box;
+}
+
+// Casella in fondo stile WhatsApp: si allunga mentre scrivi, Invio manda (Maiusc+Invio va a capo),
+// pulsante tondo: microfono quando è vuota, freccia quando c'è testo.
+function waComposer(cur) {
+  const broadcast = cur.kind === 'all';
+  if (R.rec) {
+    return h('div', { class: 'wa-composer recording' },
+      h('button', { class: 'wa-btn wa-ghost', type: 'button', title: 'Annulla', 'aria-label': 'Annulla il vocale', onclick: () => { R.rec.cancel(); R.rec = null; render(); } }, '🗑'),
+      h('div', { class: 'wa-rec' }, h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { class: 'mono', id: 'rec-time-regia' }, fmtSec(Date.now() - R.rec.startedAt)), h('span', { class: 'tiny muted' }, `Vocale per ${cur.title}…`)),
+      h('button', { class: 'wa-btn wa-send', type: 'button', title: 'Invia il vocale', 'aria-label': 'Invia il vocale', onclick: () => sendRegiaVoice() }, '➤'));
+  }
+  const canVoice = !broadcast && voiceSupported();
+  const ta = h('textarea', { class: 'wa-input', rows: 1, maxlength: broadcast ? 500 : 1000, 'data-keep': `reply-${cur.kind}-${cur.id ?? ''}`, placeholder: broadcast ? 'Annuncio a tutte le coppie…' : `Scrivi a ${cur.title}…`, 'aria-label': 'Messaggio' });
+  const btn = h('button', { class: 'wa-btn wa-send', type: 'submit' });
+  const sync = () => {
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
+    const voice = canVoice && !ta.value.trim();
+    btn.textContent = voice ? '🎤' : '➤';
+    btn.title = voice ? 'Registra un vocale' : broadcast ? 'Invia a tutte le coppie' : 'Invia';
+    btn.setAttribute('aria-label', btn.title);
+    btn.dataset.mode = voice ? 'voice' : 'text';
+  };
+  ta.addEventListener('input', sync);
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } });
+  const form = h('form', { class: 'wa-composer', onsubmit: async (e) => {
+    e.preventDefault();
+    if (btn.dataset.mode === 'voice') return startRegiaVoice();
+    if (!ta.value.trim()) return;
+    R.chatStick = true;
+    if (broadcast) {
+      if (!(await dialog({ title: 'Inviare l\'annuncio a tutte le coppie?', text: ta.value, okLabel: 'Invia a tutti' }))) return;
+      await sendClearing(ta, (text) => call('POST', G('/announce'), { text }, 'Annuncio inviato'));
+    } else {
+      await sendClearing(ta, (text) => call('POST', `${cur.url}/message`, { text }));
+    }
+  } }, ta, btn);
+  queueMicrotask(sync);
+  return form;
 }
 
 // Vocali dalla regia (microfono del PC).

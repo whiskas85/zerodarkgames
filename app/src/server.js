@@ -284,10 +284,10 @@ const msgSquad = (req, value) => {
   return Number(value);
 };
 const msgAuthor = (req) => (req.team.kind === 'elect' && req.player ? req.player.nickname || req.player.name : null);
-app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text, msgAuthor(req), null, msgSquad(req, req.body.squadId))));
+app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text, msgAuthor(req), null, msgSquad(req, req.body.squadId), req.player?.id ?? null)));
 // Vocali: corpo binario (audio/*), durata in ?ms=. Massimo ~2 minuti.
 const rawAudio = express.raw({ type: 'audio/*', limit: '4mb' });
-app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', msgAuthor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, msgSquad(req, req.query.squadId))));
+app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', msgAuthor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, msgSquad(req, req.query.squadId), req.player?.id ?? null)));
 app.get('/api/media/message/:id', (req, res, next) => {
   try {
     const a = G.messageAudio(req.params.id, { team: req.team, user: req.user });
