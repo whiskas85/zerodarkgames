@@ -129,6 +129,7 @@
       const person = (n, legend) => h('fieldset', null, h('legend', null, legend),
         h('label', { class: 'field' }, h('span', null, 'Nome e cognome'), h('input', { class: 'input', name: `name${n}`, required: true, autocomplete: n === 1 ? 'name' : 'off' })),
         h('label', { class: 'field' }, h('span', null, 'Nome di battaglia (facoltativo)'), h('input', { class: 'input', name: `nick${n}` })),
+        h('label', { class: 'field' }, h('span', null, 'Team di softair di appartenenza'), h('input', { class: 'input', name: `team${n}`, required: true, maxlength: 60, placeholder: 'es. Zero Dark Team — oppure "nessuno"', autocomplete: 'organization' })),
         h('label', { class: 'field' }, h('span', null, 'Telefono (facoltativo, solo per l\'organizzazione)'), h('input', { class: 'input', name: `phone${n}`, type: 'tel', autocomplete: n === 1 ? 'tel' : 'off' })));
       const fields = {
         pair: [person(1, 'Il primo Legato'), person(2, 'Il secondo Legato'),
@@ -142,8 +143,8 @@
       const form = h('form', { onsubmit: async (e) => {
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(form).entries());
-        const players = [{ name: fd.name1, nickname: fd.nick1, phone: fd.phone1, note: c.mode === 'elect' ? fd.note : undefined }];
-        if (c.mode === 'pair') players.push({ name: fd.name2, nickname: fd.nick2, phone: fd.phone2 });
+        const players = [{ name: fd.name1, nickname: fd.nick1, softairTeam: fd.team1, phone: fd.phone1, note: c.mode === 'elect' ? fd.note : undefined }];
+        if (c.mode === 'pair') players.push({ name: fd.name2, nickname: fd.nick2, softairTeam: fd.team2, phone: fd.phone2 });
         const btn = form.querySelector('button[type=submit]');
         btn.disabled = true;
         try {

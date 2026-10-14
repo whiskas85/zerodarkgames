@@ -27,6 +27,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 // Segnaposto: Altare (quadrato con numero romano), Dono (cerchio con icona), io (punto blu).
 export function pinHtml(item) {
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}">${esc(item.text)}</span>`;
+  if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
+  if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
   // Posizioni dei telefoni: coppie (numero romano) ed Eletti (colore della squadra).
   if (item.kind === 'team') return `<span class="pin pin-team ${item.stale ? 'pin-stale' : ''}">${esc(item.text)}</span>`;
@@ -124,6 +126,11 @@ export function watchPosition(onPos, onError) {
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
   );
   return () => navigator.geolocation.clearWatch(id);
+}
+
+// Soglia e Cerchio di inizio.
+export function landmarkItem(l, popupExtra = '') {
+  return { key: `l${l.id}`, kind: 'place', place: l.kind, lat: l.lat, lng: l.lng, title: l.label, popup: `<strong>${esc(l.label)}</strong>${popupExtra}` };
 }
 
 // Telefono → segnaposto per la mappa (popup con chi è e da quanto non si aggiorna).

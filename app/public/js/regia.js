@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
-import { h, mount, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
-import { createMapView, positionItem } from './map.js';
+import { h, mount, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
+import { createMapView, positionItem, landmarkItem } from './map.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -11,7 +11,7 @@ const R = {
   ms: null,
   baseUrl: location.origin,
   users: [],
-  msgTeam: null,
+  chat: null, // conversazione aperta in Annunci e messaggi: { kind: 'all'|'team'|'elect'|'squad', id }
   showAll: false,
   seenRevealed: null,
 };
@@ -163,8 +163,9 @@ function topbar() {
 }
 
 function sidebar() {
-  const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0);
-  const pending = R.ms?.players.filter((p) => p.status === 'pending').length || 0;
+  const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0) + (R.ms?.squads?.reduce((a, s) => a + s.unread, 0) || 0);
+  const pending = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect').length || 0;
+  const pendingElect = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length || 0;
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
@@ -174,6 +175,7 @@ function sidebar() {
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
+    id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null))));
 }
 
@@ -187,6 +189,7 @@ function tick() {
     if (c) {
       if (k === 'remaining') t = c.startedAt ? fmtDuration(clock.remaining()) : fmtDuration(c.durationMs);
       else if (k === 'elapsed') t = fmtDuration(clock.elapsed());
+      else if (k.startsWith('abs:')) t = fmtDuration(Math.max(0, Number(k.slice(4)) - clock.serverNow()));
       else if (k.startsWith('until:')) {
         const at = Number(k.slice(6));
         t = c.startedAt ? fmtDuration(Math.max(0, at - clock.elapsed())) : fmtMin(at / 60000);
@@ -309,7 +312,7 @@ function viewLive() {
           h('td', null, t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}° posto`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : h('span', { class: 'chip chip-brass' }, 'in gioco')),
           h('td', null, h('span', { class: `dot ${t.online ? 'dot-ok' : ''}` }), ' ', t.online || ''),
           h('td', { class: 'row-actions' },
-            h('button', { class: 'btn btn-sm', onclick: () => { R.msgTeam = t.id; location.hash = 'comunicazioni'; } }, t.unread ? `Messaggi (${t.unread})` : 'Messaggio'),
+            h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'team', id: t.id }; location.hash = 'comunicazioni'; } }, t.unread ? `Messaggi (${t.unread})` : 'Messaggio'),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => fragmentsDialog(t) }, 'Frammenti'))))))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
 
     combatPanel(),
@@ -445,13 +448,23 @@ function codesGrid(fresh = []) {
           : h('span', { class: 'chip' }, `in calendario ${fmtMin(c.revelation?.scheduledMin)}`)))));
 }
 
+// Svuota il campo prima di inviare (la pagina si ridisegna durante l'invio); se l'invio fallisce il testo torna al suo posto.
+async function sendClearing(field, send) {
+  const text = field.value;
+  const key = field.dataset.keep;
+  field.value = '';
+  const ok = await send(text);
+  if (!ok) { const el = key ? $root.querySelector(`[data-keep="${CSS.escape(key)}"]`) : field; if (el) el.value = text; }
+  return ok;
+}
+
 function quickAnnounce() {
   const ta = h('textarea', { class: 'input', rows: 2, 'data-keep': 'quick-ann', placeholder: 'Testo a tutte le coppie…', maxlength: 500 });
   return h('form', { class: 'stack-sm', onsubmit: async (e) => {
     e.preventDefault();
     if (!ta.value.trim()) return;
     if (!(await dialog({ title: 'Inviare l\'annuncio?', text: ta.value, okLabel: 'Invia a tutti' }))) return;
-    if (await call('POST', G('/announce'), { text: ta.value }, 'Annuncio inviato')) { ta.value = ''; ta.dataset.fresh = '1'; }
+    await sendClearing(ta, (text) => call('POST', G('/announce'), { text }, 'Annuncio inviato'));
   } }, ta, h('button', { class: 'btn btn-primary btn-sm', type: 'submit' }, 'Invia a tutte le coppie'));
 }
 
@@ -468,7 +481,9 @@ const EVENT_LABELS = {
   point_token_regenerated: 'QR rigenerato', fragment_edited: 'Frammento modificato', team_token_regenerated: 'Accesso rigenerato',
   team_sector_changed: 'Settore cambiato', team_members_changed: 'Membri cambiati', player_updated: 'Giocatore modificato', player_deleted: 'Giocatore eliminato',
   free_announcement: 'Annuncio libero', squad_created: 'Squadra creata', squad_updated: 'Squadra modificata', squad_deleted: 'Squadra eliminata',
-  squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
+  squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_move: 'Spostamento richiesto', squad_unassigned: 'Incarico annullato',
+  point_moved: 'Altare spostato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
+  supply_closed: 'Armamenti chiusi', supply_shifted: 'Armamenti spostati', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
   alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
@@ -581,7 +596,8 @@ function viewTeams() {
   const ms = R.ms;
   const st = ms.clock.status;
   const editable = ['draft', 'ready'].includes(st);
-  const pending = ms.players.filter((p) => p.status === 'pending');
+  const pending = ms.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect');
+  const pendingElect = ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length;
   const free = ms.players.filter((p) => !p.teamId && p.status === 'accepted');
   const usedSectors = new Set(ms.teams.map((t) => t.sectorId));
   const freeSectors = ms.sectors.filter((s) => !usedSectors.has(s.id) && !s.archived);
@@ -600,16 +616,18 @@ function viewTeams() {
   const name = h('input', { class: 'input', 'data-keep': 'pl-name', placeholder: 'Nome e cognome' });
   const nick = h('input', { class: 'input', 'data-keep': 'pl-nick', placeholder: 'Nome di battaglia' });
   const phone = h('input', { class: 'input', 'data-keep': 'pl-phone', placeholder: 'Telefono (facoltativo)' });
+  const sTeam = h('input', { class: 'input', 'data-keep': 'pl-team', placeholder: 'Team di softair' });
   const sectorSel = h('select', { class: 'input', 'data-keep': 'pair-sector' }, freeSectors.map((s) => h('option', { value: s.id }, `${s.roman} · ${s.name}`)));
   const teamName = h('input', { class: 'input', 'data-keep': 'pair-name', placeholder: 'Nome della coppia (facoltativo)' });
 
   return h('div', { class: 'stack' },
+    pendingElect ? h('a', { class: 'notice-link', href: '#squadre' }, `${pendingElect} candidature agli Eletti da approvare: si gestiscono in Squadre Eletti →`) : null,
     pendingGroups.length ? h('div', { class: 'panel pending-panel' },
       h('div', { class: 'panel-head' }, h('h2', null, `Iscrizioni da approvare (${pending.length})`)),
       h('p', { class: 'muted tiny' }, 'Arrivate dal modulo online. Accetta chi vuoi far giocare: solo dopo potrai accoppiarli o metterli tra gli Eletti. Rifiutando, l\'iscrizione viene cancellata.'),
       h('div', { class: 'players' }, pendingGroups.map((grp) => h('div', { class: `player ${grp.length === 2 ? 'grouped' : ''}` },
         h('div', { class: 'player-main' },
-          grp.map((p) => h('div', null, personLine(p), p.phone ? h('span', { class: 'tiny muted' }, ` · ${p.phone}`) : null)),
+          grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? h('span', { class: 'tiny muted' }, ` · ${p.phone}`) : null)),
           h('div', null, h('span', { class: `chip ${grp[0].requestedRole === 'elect' ? 'chip-blood' : grp[0].requestedRole === 'single' ? 'chip-brass' : 'chip-ok'}` }, ROLE_LABELS[grp[0].requestedRole] || (grp.length === 2 ? 'Coppia' : 'Singolo'))),
           grp[0].note ? h('div', { class: 'tiny' }, `«${grp[0].note}»`) : null,
           h('div', { class: 'tiny muted' }, [grp[0].requestedTeamName ? `coppia «${grp[0].requestedTeamName}»` : null, fmtTime(grp[0].createdAt)].filter(Boolean).join(' · '))),
@@ -628,8 +646,8 @@ function viewTeams() {
         h('form', { class: 'form-grid', onsubmit: async (e) => {
           e.preventDefault();
           if (!name.value.trim()) return;
-          if (await call('POST', G('/players'), { name: name.value, nickname: nick.value, phone: phone.value }, 'Giocatore aggiunto')) { [name, nick, phone].forEach((x) => { x.value = ''; }); }
-        } }, name, nick, phone, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
+          if (await call('POST', G('/players'), { name: name.value, nickname: nick.value, phone: phone.value, softairTeam: sTeam.value }, 'Giocatore aggiunto')) { [name, nick, phone, sTeam].forEach((x) => { x.value = ''; }); }
+        } }, name, nick, sTeam, phone, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
 
       section('Accoppiamento',
         editable ? [
@@ -656,7 +674,7 @@ function viewTeams() {
         return h('div', { class: `player ${sel ? 'sel' : ''} ${grp?.length === 2 ? 'grouped' : ''}` },
           h('button', { class: 'player-main', disabled: !editable, onclick: () => { if (sel) pairSel.delete(p.id); else { if (pairSel.size >= 2) pairSel.delete([...pairSel][0]); pairSel.add(p.id); } render(); } },
             personLine(p),
-            h('div', { class: 'tiny muted' }, [p.phone, p.requestedRole === 'single' ? 'temerario solitario: da accoppiare a caso' : p.selfRegistered ? 'iscritto online' : 'aggiunto dalla regia', p.requestedTeamName ? `coppia «${p.requestedTeamName}»` : null].filter(Boolean).join(' · ')),
+            h('div', { class: 'tiny muted' }, [p.softairTeam, p.phone, p.requestedRole === 'single' ? 'temerario solitario: da accoppiare a caso' : p.selfRegistered ? 'iscritto online' : 'aggiunto dalla regia', p.requestedTeamName ? `coppia «${p.requestedTeamName}»` : null].filter(Boolean).join(' · ')),
             grp?.length === 2 ? h('div', { class: 'tiny brass' }, `Iscritto con ${grp.find((x) => x.id !== p.id).name}`) : null),
           h('div', { class: 'row-actions' },
             grp?.length === 2 && editable && grp[0].id === p.id ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/teams'), { playerIds: grp.map((x) => x.id) }, 'Coppia formata') }, 'Accoppia come richiesto') : null,
@@ -671,32 +689,12 @@ function viewTeams() {
 }
 
 function electSection() {
-  const ms = R.ms;
-  const e = ms.elect;
-  const loginUrl = `${R.baseUrl}/login/${e.loginToken}`;
-  const en = h('input', { class: 'input', 'data-keep': 'el-name', placeholder: 'Nome e cognome' });
-  const ek = h('input', { class: 'input', 'data-keep': 'el-nick', placeholder: 'Nome di battaglia' });
+  const e = R.ms.elect;
   return h('div', { class: 'panel elect-panel' },
     h('div', { class: 'panel-head' }, h('h2', null, `Eletti del Consiglio (${e.members.length})`),
-      h('div', { class: 'row-actions' }, h('span', { class: 'chip' }, `${e.online} online · ${e.pushDevices} con notifiche`))),
-    h('p', { class: 'muted tiny' }, 'Un gruppo con un numero qualsiasi di persone e un solo accesso all\'app (QR o codice, su tutti i loro telefoni). Ricevono annunci, avvisi e messaggi della regia; non hanno Sigillo, non usano gli Altari e non sono in classifica.'),
-    h('div', { class: 'elect-grid' },
-      h('div', { class: 'stack-sm' },
-        e.members.length ? h('ul', { class: 'elect-list' }, e.members.map((m) => h('li', null,
-          h('span', null, personLine(m), m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null),
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')))) : h('p', { class: 'empty' }, 'Nessun Eletto. Aggiungili qui sotto o con "Agli Eletti" sui giocatori accettati.'),
-        h('form', { class: 'form-grid', onsubmit: async (ev) => {
-          ev.preventDefault();
-          if (!en.value.trim()) return;
-          if (await call('POST', G('/elect/person'), { name: en.value, nickname: ek.value }, 'Aggiunto agli Eletti')) { en.value = ''; ek.value = ''; }
-        } }, en, ek, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi agli Eletti'))),
-      h('div', { class: 'team-access' },
-        h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso degli Eletti', width: 96, height: 96, loading: 'lazy' }),
-        h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso degli Eletti'), h('div', { class: 'mono access' }, e.accessCode),
-          h('div', { class: 'row-actions' },
-            h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
-            ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank' }, 'Apri app') : null,
-            h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare l\'accesso degli Eletti?', 'Il vecchio QR e il vecchio codice smettono di funzionare.', 'POST', `/api/m/teams/${e.id}/regen-token`, {}, 'Accesso rigenerato', true) }, 'Rigenera'))))));
+      h('div', { class: 'row-actions' }, h('a', { class: 'btn btn-sm btn-primary', href: '#squadre' }, 'Gestisci in Squadre Eletti'))),
+    h('p', { class: 'muted tiny' }, 'Candidature, squadre e accessi personali degli Eletti si gestiscono nella sezione Squadre Eletti. Da qui puoi mandare tra gli Eletti un giocatore accettato (pulsante "Agli Eletti").'),
+    e.members.length ? h('div', { class: 'squad-members' }, e.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name))) : null);
 }
 
 function teamCard(t, editable) {
@@ -802,10 +800,85 @@ function viewSectors() {
 
 // ---------------------------------------------------------------- ALTARI E PAROLA
 
+const squadById = (id) => R.ms.squads.find((s) => s.id === id) || null;
+
+// Stato di piazzamento di un Altare o di un Dono: piazzato da chi, incarico a quale squadra, spostamento richiesto.
+function placementChips(x, placed) {
+  const sq = squadById(x.squadId);
+  const by = squadById(x.placedSquadId);
+  return h('div', { class: 'place-chips' },
+    placed ? h('span', { class: 'chip chip-ok' }, `Piazzato ${fmtTime(x.placedAt)}${by ? ` · squadra ${by.name}` : x.placedBy ? ` · ${String(x.placedBy).replace('eletti:', '')}` : ''}`)
+      : h('span', { class: 'chip chip-warn' }, 'Da piazzare'),
+    x.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
+    sq ? h('span', { class: 'chip squad-chip', style: { '--c': sq.color } }, `Incarico: ${sq.name}${x.targetLat != null ? ' · ⌖ punto indicato' : ' · punto libero'}`)
+      : !placed ? h('span', { class: 'chip' }, 'Nessuna squadra incaricata') : null);
+}
+
+function placementButtons(kind, x, placed) {
+  const pending = !placed || x.moveRequestedAt;
+  return [
+    !placed ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia incarico' : 'Assegna a una squadra') : null,
+    placed ? h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, true) }, x.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare') : null,
+    x.squadId && pending ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Annullare l\'incarico?', `${x.label}: la squadra non dovrà più ${placed ? 'spostarlo' : 'piazzarlo'}.`, 'POST', '/api/m/assign', { kind, id: x.id, squadId: null }, 'Incarico annullato').then(() => loadField(false)) }, 'Annulla incarico') : null,
+  ];
+}
+
+// Modale: squadra (di default quella che lo ha piazzato, per gli spostamenti), punto sulla mappa o libero, nota.
+async function assignDialog(kind, item, move) {
+  const squads = R.ms.squads;
+  if (!squads.length) { toast('Crea prima una squadra in "Squadre Eletti"', 'error', 6000); location.hash = 'squadre'; return; }
+  const def = move ? (item.placedSquadId || item.squadId) : item.squadId;
+  const sel = h('select', { class: 'input' }, squads.map((s) => h('option', { value: s.id, selected: s.id === def }, `${s.name} · ${s.members.length} Eletti`)));
+  let target = item.targetLat != null && !move ? { lat: item.targetLat, lng: item.targetLng } : null;
+  const free = h('input', { type: 'radio', name: 'where', value: 'free', checked: !target });
+  const pick = h('input', { type: 'radio', name: 'where', value: 'pick', checked: !!target });
+  const info = h('p', { class: 'tiny muted' });
+  const note = h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'Nota per la squadra (facoltativa): es. dietro la quercia caduta' });
+  note.value = move ? '' : item.taskNote || '';
+  const pickMap = createMapView({ className: 'pick-map' });
+  const draw = () => {
+    const items = [
+      ...R.ms.landmarks.filter((l) => l.lat != null).map((l) => landmarkItem(l)),
+      ...R.ms.points.filter((p) => p.lat != null).map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label, mine: kind === 'point' && p.id === item.id })),
+      ...(fieldData?.gifts || []).filter((g) => g.lat != null && !['claimed', 'expired'].includes(g.status)).map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label })),
+    ];
+    if (target && pick.checked) items.push({ key: 'target', kind: 'target', lat: target.lat, lng: target.lng, title: 'Punto indicato' });
+    pickMap.setItems(items);
+    info.textContent = pick.checked ? (target ? `Punto indicato: ${target.lat.toFixed(5)}, ${target.lng.toFixed(5)} (tocca di nuovo per cambiarlo)` : 'Tocca la mappa nel punto in cui va piazzato.') : 'La squadra decide dove piazzarlo.';
+  };
+  free.addEventListener('change', draw);
+  pick.addEventListener('change', draw);
+  pickMap.ready.then(() => {
+    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; pick.checked = true; draw(); });
+    draw();
+    setTimeout(() => { pickMap.refresh(); pickMap.fit(); }, 60);
+    setTimeout(() => pickMap.refresh(), 400);
+  });
+  const what = kind === 'gift' ? `${item.label} · ${item.icon || ''} ${item.name || ''}` : item.label;
+  const ok = await modal({
+    title: move ? `Fai spostare: ${what}` : `Assegna: ${what}`,
+    wide: true,
+    okLabel: move ? 'Manda a spostare' : 'Assegna l\'incarico',
+    body: h('div', { class: 'stack-sm' },
+      move ? h('p', { class: 'muted tiny' }, 'Proposta la squadra che lo ha piazzato. Riceve una notifica e trova l\'incarico nella sua app; quando lo ripiazzano, foto e posizione si aggiornano qui.') : h('p', { class: 'muted tiny' }, 'La squadra riceve una notifica e trova l\'incarico nella sua app, con il punto sulla mappa se lo indichi.'),
+      h('label', { class: 'field' }, h('span', null, 'Squadra'), sel),
+      h('div', { class: 'radio-row' }, h('label', null, free, ' Lasciali liberi di decidere'), h('label', null, pick, ' Indico io il punto sulla mappa')),
+      pickMap.el, info,
+      h('label', { class: 'field' }, h('span', null, 'Nota'), note)),
+    onOk: async () => {
+      if (pick.checked && !target) { toast('Tocca la mappa per indicare il punto', 'error'); return false; }
+      await api('POST', '/api/m/assign', { kind, id: item.id, squadId: Number(sel.value), targetLat: pick.checked ? target.lat : null, targetLng: pick.checked ? target.lng : null, note: note.value, move });
+      return true;
+    },
+  });
+  if (ok) { toast(move ? 'Spostamento assegnato: la squadra è stata avvisata' : 'Incarico assegnato: la squadra è stata avvisata', 'ok'); load(); loadField(false); }
+}
+
 function viewAltars() {
   const ms = R.ms;
   const pre = PRE.includes(ms.clock.status);
   const phrase = h('textarea', { class: 'input', rows: 3, 'data-keep': 'phrase', placeholder: `Una frase di almeno ${ms.teams.length} parole`, value: ms.game.phrase || '' });
+  const placed = ms.points.filter((p) => p.lat != null).length;
   return h('div', { class: 'stack' },
     section('La Parola',
       h('p', { class: 'muted tiny' }, 'La frase viene divisa in tanti frammenti quanti sono gli Altari (uno per coppia) e i pezzi vengono assegnati agli Altari in ordine casuale. Puoi poi correggere ogni frammento.'),
@@ -814,15 +887,30 @@ function viewAltars() {
         h('button', { class: 'btn btn-primary', disabled: !pre, onclick: () => confirmCall('Dividere la Parola?', 'I frammenti attuali vengono sostituiti (e tolti a chi li aveva).', 'POST', G('/phrase'), { phrase: phrase.value }, 'Parola divisa tra gli Altari') }, 'Dividi tra gli Altari'),
         ms.game.phrase ? h('span', { class: 'muted tiny' }, `Attuale: «${ms.game.phrase}»`) : null)),
 
-    sectionActions(`Altari (${ms.points.length})`, [
+    section('Luoghi del gioco',
+      h('p', { class: 'muted tiny' }, 'Il Cerchio di inizio e la Soglia si piazzano sul campo come gli Altari (la foto è facoltativa) e compaiono sulla mappa di regia, Eletti e coppie.'),
+      h('div', { class: 'places' }, ms.landmarks.map((l) => h('div', { class: `place-card ${l.lat != null ? 'is-placed' : ''}` },
+        h('div', { class: 'place-ico' }, l.kind === 'soglia' ? '⛩' : '◯'),
+        h('div', { class: 'stack-sm grow' },
+          h('strong', null, l.label),
+          placementChips(l, l.lat != null),
+          l.lat != null ? h('div', { class: 'tiny muted mono' }, `${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}${l.accuracy ? ` · ±${l.accuracy} m` : ''}`) : null,
+          h('div', { class: 'row-actions' }, ...placementButtons('landmark', l, l.lat != null),
+            l.photoFile ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/landmark/${l.id}?v=${l.placedAt}`, target: '_blank' }, 'Foto') : null,
+            h('a', { class: 'btn btn-sm btn-ghost', href: '/campo', target: '_blank' }, 'Piazzalo io'))))))),
+
+    sectionActions(`Altari (${ms.points.length}) · piazzati ${placed}/${ms.points.length}`, [
       h('button', { class: 'btn btn-sm', disabled: !pre, onclick: () => call('POST', G('/points'), {}, 'Altari sincronizzati con le coppie') }, 'Sincronizza con le coppie'),
+      h('a', { class: 'btn btn-sm', href: '#mappa' }, 'Vedi in mappa'),
       h('a', { class: 'btn btn-sm btn-primary', href: `/regia/stampa/altari/${R.gameId}`, target: '_blank' }, 'Stampa cartelli A4')],
     ms.points.length ? h('div', { class: 'altars' }, ms.points.map((p) => {
       const url = `${R.baseUrl}/a/${p.qrToken}`;
-      return h('div', { class: 'altar-card' },
+      const isPlaced = p.lat != null;
+      return h('div', { class: `altar-card ${isPlaced ? 'is-placed' : ''}` },
         h('img', { class: 'altar-qr', src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: `QR ${p.label}`, width: 120, height: 120, loading: 'lazy' }),
         h('div', { class: 'stack-sm grow' },
           h('div', { class: 'eyebrow' }, `${p.roman} · Settore ${p.sectorName}`),
+          placementChips(p, isPlaced),
           h('input', { class: 'input input-sm', 'data-keep': `pl-${p.id}`, value: p.label, onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { label: e.target.value }, 'Nome aggiornato') }),
           h('input', { class: 'input input-sm', 'data-keep': `pn-${p.id}`, value: p.locationNote || '', placeholder: 'Posizione nel bosco (solo regia)', onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { locationNote: e.target.value }, 'Posizione salvata') }),
           p.fragmentId ? h('div', { class: 'frag-edit' },
@@ -830,6 +918,8 @@ function viewAltars() {
             h('input', { class: 'input input-sm', 'data-keep': `pf-${p.fragmentId}`, value: p.fragmentText, disabled: !pre, onchange: (e) => call('PATCH', `/api/m/fragments/${p.fragmentId}`, { text: e.target.value }, 'Frammento aggiornato') }))
             : h('div', { class: 'tiny bad' }, 'Nessun frammento: dividi la Parola'),
           h('div', { class: 'row-actions' },
+            ...placementButtons('point', p, isPlaced),
+            isPlaced && p.photoFile ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/point/${p.id}?v=${p.placedAt}`, target: '_blank' }, 'Foto') : null,
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(url); toast('Link dell\'Altare copiato', 'ok'); } }, 'Copia link'),
             pre ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare il QR?', 'Il cartello già stampato non funzionerà più: andrà ristampato.', 'POST', `/api/m/points/${p.id}/regen`, {}, 'QR rigenerato', true) }, 'Rigenera QR') : null)));
     })) : h('p', { class: 'empty' }, 'Nessun Altare: forma le coppie e premi "Sincronizza".')));
@@ -890,7 +980,7 @@ function viewCodes() {
 
 // ---------------------------------------------------------------- MAPPA E CAMPO
 
-const FIELD_TABS = ['mappa', 'doniqr', 'squadre'];
+const FIELD_TABS = ['mappa', 'doniqr', 'squadre', 'altari'];
 const fieldMap = createMapView({ className: 'regia-map' });
 let fieldData = null;
 let giftTypesDraft = null;
@@ -933,11 +1023,21 @@ const positionsSummary = () => {
   const elect = fieldPositions.filter((p) => p.kind === 'elect').length;
   return `In mappa: ${teams} telefoni delle coppie · ${elect} degli Eletti`;
 };
+// Punti indicati alle squadre per i piazzamenti ancora da fare.
+function targetItems(d) {
+  const todo = (x, k) => x.targetLat != null && (k === 'gift' ? x.status === 'draft' || x.moveRequestedAt : x.lat == null || x.moveRequestedAt);
+  return [...d.points.map((p) => ['point', p]), ...d.gifts.map((g) => ['gift', g]), ...(d.landmarks || []).map((l) => ['landmark', l])]
+    .filter(([k, x]) => todo(x, k))
+    .map(([k, x]) => ({ key: `t${k}${x.id}`, kind: 'target', lat: x.targetLat, lng: x.targetLng, title: `Da piazzare qui: ${x.label}`, popup: `<strong>Da piazzare qui</strong><br>${x.label}${squadById(x.squadId) ? `<br>Squadra ${squadById(x.squadId).name}` : ''}` }));
+}
+
 // Aggiorna solo i segnaposto, senza ridisegnare la pagina.
 function viewFieldMapItems() {
   const d = fieldData;
   fieldMap.setItems([
     ...fieldPositions.map(positionItem),
+    ...(d.landmarks || []).map((l) => landmarkItem(l)),
+    ...targetItems(d),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label })),
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, popup: giftPopup(g) })),
   ]);
@@ -950,6 +1050,8 @@ function viewFieldMap() {
   startPositions();
   fieldMap.setItems([
     ...fieldPositions.map(positionItem),
+    ...(d.landmarks || []).map((l) => landmarkItem(l, l.lat != null ? `<br><small>Piazzato ${fmtTime(l.placedAt)} da ${l.placedBy || '?'}</small>${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}` : '')),
+    ...targetItems(d),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
       popup: `<strong>${p.label}</strong><br><small>Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.placeSource === 'manual' ? ' · punto manuale' : ''}</small>${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
@@ -964,6 +1066,9 @@ function viewFieldMap() {
     fieldMap.el,
     h('div', { class: 'map-legend' },
       h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare piazzato'),
+      h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
+      h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
+      h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato a una squadra'),
       h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono piazzato, non ancora comparso'),
       h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono comparso'),
       h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
@@ -995,31 +1100,54 @@ async function squadCall(method, url, body, okMsg) {
   try {
     const r = await api(method, url, body);
     if (okMsg) toast(okMsg, 'ok');
-    await loadField();
+    await Promise.all([load(), loadField(false)]);
+    render();
     return r || true;
   } catch (e) { toast(e.message, 'error', 6000); return null; }
 }
+
+const squadOptions = (value, none = '— nessuna —') => [h('option', { value: '' }, none), ...R.ms.squads.map((sq) => h('option', { value: sq.id, selected: sq.id === value }, sq.name))];
 
 function viewSquads() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento delle squadre…'); }
   const ms = R.ms;
   const members = ms.elect.members;
-  const squadOf = {};
-  for (const sq of d.squads) for (const m of sq.members) squadOf[m.id] = sq.id;
-  const squadSelect = (value, onchange, label) => h('select', { class: 'input input-sm', 'aria-label': label, onchange: (e) => onchange(Number(e.target.value) || null) },
-    h('option', { value: '' }, '— nessuna —'), d.squads.map((sq) => h('option', { value: sq.id, selected: sq.id === value }, sq.name)));
+  const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
+  const candidates = ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect');
   const progress = (sq) => {
-    const pts = d.points.filter((p) => p.squadId === sq.id);
-    const gifts = d.gifts.filter((g) => g.squadId === sq.id);
-    return { pts, gifts, ptsDone: pts.filter((p) => p.lat != null).length, giftsDone: gifts.filter((g) => g.status !== 'draft').length, tasksDone: sq.tasks.filter((t) => t.doneAt).length };
+    const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id);
+    const gifts = d.gifts.filter((g) => g.squadId === sq.id && !['claimed', 'expired'].includes(g.status));
+    const todo = pts.filter((p) => p.lat == null || p.moveRequestedAt).length + gifts.filter((g) => g.status === 'draft' || g.moveRequestedAt).length;
+    return { pts, gifts, todo, tasksDone: sq.tasks.filter((t) => t.doneAt).length };
   };
   const newName = h('input', { class: 'input', 'data-keep': 'sq-name', placeholder: 'es. Squadra Nord', maxlength: 40 });
   const newColor = h('input', { class: 'gt-color', type: 'color', value: '#e0603f', 'aria-label': 'Colore' });
+  const en = h('input', { class: 'input', 'data-keep': 'el-name', placeholder: 'Nome e cognome' });
+  const ek = h('input', { class: 'input', 'data-keep': 'el-nick', placeholder: 'Nome di battaglia' });
+  const et = h('input', { class: 'input', 'data-keep': 'el-team', placeholder: 'Team di softair' });
+  const es = h('select', { class: 'input', 'data-keep': 'el-squad', 'aria-label': 'Squadra' }, squadOptions(null, 'Squadra: nessuna'));
 
   return h('div', { class: 'stack' },
+    candidates.length ? h('div', { class: 'panel pending-panel' },
+      h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${candidates.length})`)),
+      h('p', { class: 'muted tiny' }, 'Arrivano dal modulo di iscrizione. Accettando, la persona entra tra gli Eletti (nella squadra scelta) e il suo telefono passa subito all\'app degli Eletti con il suo accesso personale.'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
+        h('thead', null, h('tr', null, ['Candidato', 'Team softair', 'Come vuole servire', 'Squadra', ''].map((x) => h('th', null, x)))),
+        h('tbody', null, candidates.map((p) => {
+          const sel = h('select', { class: 'input input-sm', 'aria-label': `Squadra per ${p.name}` }, squadOptions(null));
+          return h('tr', null,
+            h('td', null, personLine(p), h('div', { class: 'tiny muted' }, [p.phone, fmtTime(p.createdAt)].filter(Boolean).join(' · '))),
+            h('td', null, p.softairTeam || h('span', { class: 'muted' }, '—')),
+            h('td', { class: 'tiny' }, p.note ? `«${p.note}»` : h('span', { class: 'muted' }, '—')),
+            h('td', null, sel),
+            h('td', { class: 'row-actions' },
+              h('button', { class: 'btn btn-sm btn-primary', onclick: () => squadCall('POST', `/api/m/players/${p.id}/review`, { decision: 'accept', squadId: Number(sel.value) || null }, `${p.name} è tra gli Eletti`) }, 'Accetta'),
+              h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare la candidatura?', `${p.name}: la candidatura verrà cancellata.`, 'POST', `/api/m/players/${p.id}/review`, { decision: 'reject' }, 'Candidatura rifiutata', true) }, 'Rifiuta')));
+        }))))) : null,
+
     section('Squadre degli Eletti',
-      h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare Altari e Doni o a svolgere incarichi. I membri ricevono una notifica a ogni incarico e lo trovano nello strumento di campo (/campo); i piazzamenti si chiudono da soli quando il punto viene piazzato.'),
+      h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare o spostare Altari e Doni (dalle sezioni Altari e Doni) o a svolgere incarichi liberi. I membri ricevono una notifica e trovano tutto nella loro app, nella voce Incarichi.'),
       h('form', { class: 'form-grid', onsubmit: async (e) => {
         e.preventDefault();
         if (await squadCall('POST', G('/squads'), { name: newName.value, color: newColor.value }, 'Squadra creata')) newName.value = '';
@@ -1032,12 +1160,13 @@ function viewSquads() {
         h('div', { class: 'squad-head' },
           h('input', { class: 'gt-color', type: 'color', value: sq.color, 'aria-label': 'Colore', onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { color: e.target.value }) }),
           h('input', { class: 'input input-sm squad-name', value: sq.name, 'data-keep': `sq-n-${sq.id}`, onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { name: e.target.value }, 'Nome aggiornato') }),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; location.hash = 'comunicazioni'; } }, 'Scrivi'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina')),
-        h('div', { class: 'tiny muted' }, `Altari piazzati ${pr.ptsDone}/${pr.pts.length} · Doni piazzati ${pr.giftsDone}/${pr.gifts.length} · Incarichi fatti ${pr.tasksDone}/${sq.tasks.length}`),
+        h('div', { class: `tiny ${pr.todo ? 'bad' : 'muted'}` }, `${pr.todo} piazzamenti da fare · Incarichi fatti ${pr.tasksDone}/${sq.tasks.length}`),
         h('div', { class: 'squad-members' }, sq.members.length ? sq.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name)) : h('span', { class: 'tiny muted' }, 'Nessun membro: assegnali qui sotto')),
         pr.pts.length || pr.gifts.length ? h('ul', { class: 'squad-items' },
-          pr.pts.map((p) => h('li', { class: p.lat != null ? 'done' : '' }, p.lat != null ? '✓ ' : '○ ', p.label)),
-          pr.gifts.map((g) => h('li', { class: g.status !== 'draft' ? 'done' : '' }, g.status !== 'draft' ? '✓ ' : '○ ', `${g.label} · ${g.icon} ${g.name}`))) : null,
+          pr.pts.map((p) => { const todo = p.lat == null || p.moveRequestedAt; return h('li', { class: todo ? '' : 'done' }, todo ? '○ ' : '✓ ', p.label, p.moveRequestedAt ? ' (da spostare)' : '', p.targetLat != null && todo ? ' ⌖' : ''); }),
+          pr.gifts.map((g) => { const todo = g.status === 'draft' || g.moveRequestedAt; return h('li', { class: todo ? '' : 'done' }, todo ? '○ ' : '✓ ', `${g.label} · ${g.icon} ${g.name}`, g.moveRequestedAt ? ' (da spostare)' : '', g.targetLat != null && todo ? ' ⌖' : ''); })) : null,
         sq.tasks.length ? h('ul', { class: 'squad-tasks' }, sq.tasks.map((t) => h('li', { class: t.doneAt ? 'done' : '' },
           h('label', null, h('input', { type: 'checkbox', checked: !!t.doneAt, onchange: (e) => squadCall('POST', `/api/m/tasks/${t.id}/done`, { done: e.target.checked }) }), h('span', null, t.text)),
           t.doneAt ? h('span', { class: 'tiny muted' }, `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null,
@@ -1049,25 +1178,263 @@ function viewSquads() {
         } }, taskIn, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')));
     })) : h('p', { class: 'empty' }, 'Nessuna squadra: creane una qui sopra.'),
 
-    h('div', { class: 'cols-2' },
-      section(`Eletti (${members.length})`,
-        members.length ? h('ul', { class: 'field-list' }, members.map((m) => h('li', null,
-          h('span', { class: 'grow' }, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null),
-          d.squads.length ? squadSelect(squadOf[m.id] || null, (sid) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: sid }, sid ? 'Eletto assegnato' : 'Tolto dalla squadra'), `Squadra di ${m.name}`) : null)))
-          : h('p', { class: 'empty' }, 'Nessun Eletto: aggiungili in Iscrizioni e coppie.'),
-        h('p', { class: 'tiny muted' }, 'Ogni Eletto vede gli incarichi della sua squadra entrando con il proprio codice personale; chi usa il codice comune degli Eletti sceglie la squadra nello strumento di campo.')),
-      section('Chi piazza cosa',
-        d.squads.length ? h('div', { class: 'table-wrap' }, h('table', null,
-          h('thead', null, h('tr', null, ['Punto', 'Stato', 'Squadra'].map((x) => h('th', null, x)))),
-          h('tbody', null,
-            d.points.map((p) => h('tr', null, h('td', null, h('strong', null, p.label)), h('td', null, p.lat != null ? h('span', { class: 'chip chip-ok' }, 'piazzato') : h('span', { class: 'chip chip-warn' }, 'da piazzare')),
-              h('td', null, squadSelect(p.squadId || null, (sid) => squadCall('POST', '/api/m/assign', { kind: 'point', id: p.id, squadId: sid }, sid ? 'Altare assegnato' : 'Assegnazione tolta'), `Squadra per ${p.label}`)))),
-            d.gifts.filter((g) => g.status !== 'claimed' && g.status !== 'expired').map((g) => h('tr', null, h('td', null, h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` ${g.icon} ${g.name}`)),
-              h('td', null, g.status === 'draft' ? h('span', { class: 'chip chip-warn' }, 'da piazzare') : h('span', { class: 'chip chip-ok' }, 'piazzato')),
-              h('td', null, squadSelect(g.squadId || null, (sid) => squadCall('POST', '/api/m/assign', { kind: 'gift', id: g.id, squadId: sid }, sid ? 'Dono assegnato' : 'Assegnazione tolta'), `Squadra per ${g.label}`))))))) : h('p', { class: 'empty' }, 'Crea prima una squadra.'))));
+    sectionActions(`Eletti del Consiglio (${members.length})`, [
+      h('span', { class: 'chip' }, `${ms.elect.online} online · ${ms.elect.pushDevices} con notifiche`),
+      h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa accessi')],
+      h('p', { class: 'muted tiny' }, 'Ogni Eletto entra con il proprio accesso personale (QR o codice): vede la sua squadra, i suoi incarichi e i messaggi della sua squadra. Non hanno Sigillo, non usano gli Altari e non sono in classifica.'),
+      members.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
+        h('thead', null, h('tr', null, ['Eletto', 'Team softair', 'Squadra', 'Accesso personale', ''].map((x) => h('th', null, x)))),
+        h('tbody', null, members.map((m) => {
+          const p = byId[m.id] || m;
+          const loginUrl = `${R.baseUrl}/login/${p.loginToken}`;
+          return h('tr', null,
+            h('td', null, personLine(m), m.phone ? h('div', { class: 'tiny muted' }, m.phone) : null),
+            h('td', null, m.softairTeam || h('span', { class: 'muted' }, '—')),
+            h('td', null, d.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
+              : h('span', { class: 'tiny muted' }, 'crea una squadra')),
+            h('td', null, h('span', { class: 'mono' }, p.accessCode || '—'),
+              h('div', { class: 'row-actions' },
+                h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
+                ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)),
+            h('td', null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
+        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto o con "Agli Eletti" in Iscrizioni e coppie.'),
+      h('h3', { class: 'sub' }, 'Aggiungi un Eletto a mano (già accettato)'),
+      h('form', { class: 'form-grid', onsubmit: async (ev) => {
+        ev.preventDefault();
+        if (!en.value.trim()) return;
+        const r = await squadCall('POST', G('/elect/person'), { name: en.value, nickname: ek.value, softairTeam: et.value }, 'Aggiunto agli Eletti');
+        if (r?.id && Number(es.value)) await squadCall('POST', `/api/m/players/${r.id}/squad`, { squadId: Number(es.value) });
+        if (r) [en, ek, et].forEach((x) => { x.value = ''; });
+      } }, en, ek, et, es, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
+
+    section('Chi piazza cosa',
+      h('p', { class: 'muted tiny' }, 'Assegna Altari e Doni alle squadre, con un punto preciso sulla mappa o lasciandoli liberi. Per i punti già piazzati puoi chiedere uno spostamento.'),
+      h('div', { class: 'table-wrap' }, h('table', null,
+        h('thead', null, h('tr', null, ['Punto', 'Stato e incarico', ''].map((x) => h('th', null, x)))),
+        h('tbody', null,
+          (d.landmarks || []).map((l) => h('tr', null, h('td', null, h('strong', null, l.label)), h('td', null, placementChips(l, l.lat != null)), h('td', { class: 'row-actions' }, ...placementButtons('landmark', l, l.lat != null)))),
+          d.points.map((p) => h('tr', null, h('td', null, h('strong', null, p.label)), h('td', null, placementChips(p, p.lat != null)), h('td', { class: 'row-actions' }, ...placementButtons('point', p, p.lat != null)))),
+          d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((g) => h('tr', null,
+            h('td', null, h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` ${g.icon} ${g.name}`)),
+            h('td', null, placementChips(g, g.status !== 'draft')),
+            h('td', { class: 'row-actions' }, ...placementButtons('gift', g, g.status !== 'draft')))))))));
+}
+
+// ---------------------------------------------------------------- TIMELINE DEL TORNEO
+
+// Conversione tra minuti dal via e orari reali. Partita iniziata: si parte da adesso; non iniziata: dall'inizio previsto.
+function timeBase() {
+  const ms = R.ms;
+  const c = clock.snap;
+  const now = clock.serverNow();
+  if (c?.startedAt) {
+    const el = clock.elapsed() / 60000;
+    return { known: true, started: true, nowMin: el, toWall: (m) => now + (m - el) * 60000, toMin: (ts) => el + (ts - now) / 60000 };
+  }
+  const start = ms.game.scheduledStart ? new Date(ms.game.scheduledStart).getTime() : null;
+  if (start) return { known: true, started: false, nowMin: (now - start) / 60000, toWall: (m) => start + m * 60000, toMin: (ts) => (ts - start) / 60000 };
+  return { known: false, started: false, nowMin: null, toWall: () => null, toMin: () => null };
+}
+
+// Tutti gli avvenimenti del torneo, in minuti dal via: punti (at) e finestre (at → to).
+function timelineEvents(exclude = null) {
+  const ms = R.ms;
+  const g = ms.game;
+  const tb = timeBase();
+  const ev = [
+    { at: 0, label: 'VIA', kind: 'phase' },
+    { at: g.truceMin, label: 'Fine tregua: si apre la caccia', kind: 'phase' },
+    { at: g.durationMin - 30, label: 'Ultima mezz\'ora', kind: 'phase' },
+    { at: g.durationMin, label: 'Fine dei Giochi', kind: 'phase' },
+  ];
+  for (const r of ms.revelations) {
+    if (r.status === 'skipped') continue;
+    const at = r.firedAt ? tb.toMin(r.firedAt) : r.scheduledMin;
+    if (at != null) ev.push({ at, label: `Tradimento: ${r.sectorName}${r.firedAt ? ' (fatto)' : ''}`, kind: 'revelation', done: !!r.firedAt });
+  }
+  for (const s of ms.supply) {
+    if (exclude?.kind === 'supply' && exclude.id === s.id) continue;
+    const at = s.firedAt ? tb.toMin(s.firedAt) : s.scheduledMin ?? (s.scheduledAt ? tb.toMin(s.scheduledAt) : null);
+    if (at == null) continue;
+    const end = s.closedAt ? tb.toMin(s.closedAt) : s.closesAt ? tb.toMin(s.closesAt) : s.durationMin ? at + s.durationMin : null;
+    ev.push({ at, to: end, label: `Armamenti${s.description ? `: ${s.description}` : ''}${s.status === 'closed' ? ' (chiusa)' : s.status === 'fired' ? ' (aperta)' : ''}`, kind: 'supply', done: s.status === 'closed' });
+  }
+  for (const gf of fieldData?.gifts || []) {
+    if (exclude?.kind === 'gift' && exclude.id === gf.id) continue;
+    const at = gf.revealedAt ? tb.toMin(gf.revealedAt) : gf.revealMode === 'at' && gf.revealAt ? tb.toMin(gf.revealAt) : gf.revealMode === 'time' ? gf.revealAtMin : null;
+    if (at == null) continue;
+    const end = gf.expiresAfterMin ? at + gf.expiresAfterMin : null;
+    ev.push({ at, to: end, label: `Dono ${gf.label} (${gf.name})${gf.status === 'claimed' ? ' · preso' : gf.status === 'expired' ? ' · svanito' : gf.revealedAt ? ' · in mappa' : ''}`, kind: 'gift', done: ['claimed', 'expired'].includes(gf.status) });
+  }
+  return ev.filter((e) => Number.isFinite(e.at)).sort((a, b) => a.at - b.at);
+}
+
+const fmtClockMin = (m) => `${m < 0 ? '−' : ''}${fmtMin(Math.abs(m))}`;
+
+/**
+ * Finestra "quando (e per quanto)": timeline del torneo con tutti gli avvenimenti; il momento si sceglie
+ * toccando la timeline, oppure Ora / Tra X minuti / Alle HH:MM / Al minuto M dal via.
+ * Restituisce { mode: 'now' } | { mode: 'min', min } | { mode: 'at', at } più durationMin (se richiesto), o null.
+ */
+async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration = false, durationLabel = 'Per quanti minuti', defaultDuration = 15, allowDurationEmpty = true, nowLabel = 'Ora', exclude = null, initial = null }) {
+  const g = R.ms.game;
+  const tb = timeBase();
+  const events = timelineEvents(exclude);
+  const span = Math.max(g.durationMin, ...events.map((e) => e.to ?? e.at)) + 5;
+  const lo = Math.min(-5, tb.nowMin != null && tb.nowMin < 0 ? Math.max(tb.nowMin, -120) : -5);
+  const pct = (m) => `${((Math.min(Math.max(m, lo), span) - lo) / (span - lo)) * 100}%`;
+  const soon = new Date(Date.now() + 15 * 60000);
+
+  const radios = ['now', 'in', 'at', 'min'].map((v) => h('input', { type: 'radio', name: 'tl-when', value: v }));
+  const minutes = h('input', { class: 'input input-sm w-90', type: 'number', min: 1, max: 600, value: 10, 'aria-label': 'Tra quanti minuti' });
+  const time = h('input', { class: 'input input-sm w-120', type: 'time', value: `${pad2(soon.getHours())}:${pad2(soon.getMinutes())}`, 'aria-label': 'Orario' });
+  const minAt = h('input', { class: 'input input-sm w-90', type: 'number', min: 0, max: g.durationMin, step: 1, value: Math.max(0, Math.round(tb.nowMin ?? 0) + 15), 'aria-label': 'Minuto dal via' });
+  const dur = withDuration ? h('input', { class: 'input input-sm w-90', type: 'number', min: 1, max: 600, step: 1, value: defaultDuration ?? '', placeholder: allowDurationEmpty ? 'nessuna' : '' }) : null;
+  const sel = h('div', { class: 'tl-sel', hidden: true });
+  const selLabel = h('p', { class: 'tl-sel-label mono' });
+  const tip = h('div', { class: 'tl-tip', hidden: true });
+
+  // Minuto dal via della scelta attuale (null = non rappresentabile).
+  const chosenMin = () => {
+    const m = radios.find((r) => r.checked)?.value;
+    if (m === 'now') return tb.nowMin ?? 0;
+    if (m === 'in') return tb.nowMin != null ? tb.nowMin + Number(minutes.value || 0) : null;
+    if (m === 'min') return Number(minAt.value);
+    if (m === 'at') {
+      const [hh, mm] = time.value.split(':').map(Number);
+      const d = new Date(); d.setHours(hh, mm, 0, 0);
+      return tb.toMin(d.getTime() + clock.offset);
+    }
+    return null;
+  };
+  const update = () => {
+    const m = chosenMin();
+    const d = withDuration ? Number(dur.value) || 0 : 0;
+    if (m == null || !Number.isFinite(m)) { sel.hidden = true; selLabel.textContent = tb.known ? '' : 'Partita senza orario di inizio: la timeline è in minuti dal via.'; return; }
+    sel.hidden = false;
+    sel.style.left = pct(m);
+    sel.style.width = d ? `calc(${pct(m + d)} - ${pct(m)})` : '0';
+    sel.classList.toggle('tl-point', !d);
+    const wall = tb.toWall(m);
+    selLabel.textContent = `Scelto: ${fmtClockMin(m)} dal via${wall ? ` · alle ${fmtTime(wall)}` : ''}${d ? ` → fino a ${fmtClockMin(m + d)}${wall ? ` (${fmtTime(tb.toWall(m + d))})` : ''}` : ''}`;
+  };
+  for (const r of radios) r.addEventListener('change', update);
+  [[minutes, 1], [time, 2], [minAt, 3]].forEach(([el, i]) => { el.addEventListener('focus', () => { radios[i].checked = true; update(); }); el.addEventListener('input', update); });
+  dur?.addEventListener('input', update);
+
+  // Riga della timeline: tacche ogni 15′, fasi, avvenimenti (punti o finestre), adesso.
+  const track = h('div', { class: 'tl-track', title: 'Tocca per scegliere il minuto' },
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: 'tl-tick', style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
+    h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
+    h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
+    events.map((e, i) => h('span', {
+      class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.done ? 'tl-done' : ''}`,
+      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${18 + (i % 4) * 9}px` },
+      title: `${fmtClockMin(e.at)} · ${e.label}`,
+    })),
+    tb.nowMin != null ? h('span', { class: 'tl-now', style: { left: pct(tb.nowMin) } }, h('i', null, 'adesso')) : null,
+    sel, tip);
+  track.addEventListener('click', (e) => {
+    const r = track.getBoundingClientRect();
+    const m = Math.round(lo + ((e.clientX - r.left) / r.width) * (span - lo));
+    minAt.value = Math.max(0, m);
+    radios[3].checked = true;
+    update();
+  });
+
+  const list = h('ol', { class: 'tl-list' }, events.map((e) => h('li', { class: `tl-row tl-${e.kind} ${e.done ? 'tl-done' : ''} ${tb.nowMin != null && e.at < tb.nowMin ? 'past' : ''}` },
+    h('span', { class: 'mono' }, fmtClockMin(e.at), e.to != null ? `–${fmtClockMin(e.to)}` : ''),
+    h('span', { class: 'mono muted' }, tb.toWall(e.at) ? fmtTime(tb.toWall(e.at)) : ''),
+    h('span', null, e.label))));
+
+  if (initial?.mode === 'min') { radios[3].checked = true; minAt.value = Math.round(initial.min); }
+  else if (initial?.mode === 'at' && initial.at) { radios[2].checked = true; const d = new Date(initial.at - clock.offset); time.value = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+  else radios[0].checked = true;
+
+  const result = await modal({
+    title, okLabel, wide: true,
+    onOpen: () => update(),
+    body: h('div', { class: 'stack-sm timeline-modal' },
+      intro ? h('p', { class: 'muted tiny' }, intro) : null,
+      h('div', { class: 'tl-legend tiny' },
+        h('span', null, h('i', { class: 'tl-key tl-truce-k' }), 'tregua'), h('span', null, h('i', { class: 'tl-key tl-last-k' }), 'ultima mezz\'ora'),
+        h('span', null, h('i', { class: 'tl-key tl-revelation' }), 'tradimenti'), h('span', null, h('i', { class: 'tl-key tl-supply' }), 'armamenti'),
+        h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-sel-k' }), 'la tua scelta')),
+      track, selLabel,
+      h('div', { class: 'tl-choices' },
+        h('label', { class: 'radio-line' }, radios[0], ` ${nowLabel}`),
+        h('label', { class: 'radio-line' }, radios[1], ' Tra ', minutes, ' minuti'),
+        h('label', { class: 'radio-line' }, radios[2], ' Alle ', time),
+        h('label', { class: 'radio-line' }, radios[3], ' Al minuto ', minAt, ' dal via')),
+      withDuration ? h('label', { class: 'radio-line' }, `${durationLabel}: `, dur, allowDurationEmpty ? h('span', { class: 'tiny muted' }, ' (vuoto = nessun limite)') : null) : null,
+      h('details', { class: 'tl-details' }, h('summary', null, `Tutti gli avvenimenti (${events.length})`), list)),
+    onOk: () => {
+      const mode = radios.find((r) => r.checked).value;
+      const out = {};
+      if (withDuration) {
+        const d = dur.value === '' ? null : Number(dur.value);
+        if (d != null && !(d > 0)) { toast('Durata non valida', 'error'); return false; }
+        if (d == null && !allowDurationEmpty) { toast('Indica la durata', 'error'); return false; }
+        out.durationMin = d;
+      }
+      if (mode === 'now') return { ...out, mode: 'now' };
+      if (mode === 'min') {
+        const m = Number(minAt.value);
+        if (!(m >= 0)) { toast('Minuto non valido', 'error'); return false; }
+        return { ...out, mode: 'min', min: m };
+      }
+      if (mode === 'in') {
+        const m = Number(minutes.value);
+        if (!(m > 0)) { toast('Indica i minuti', 'error'); return false; }
+        return { ...out, mode: 'at', at: clock.serverNow() + m * 60000 };
+      }
+      const [hh, mm] = time.value.split(':').map(Number);
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) { toast('Indica l\'orario', 'error'); return false; }
+      const d = new Date(); d.setHours(hh, mm, 0, 0);
+      if (d.getTime() < Date.now() - 60000) { toast('Quell\'orario è già passato', 'error'); return false; }
+      return { ...out, mode: 'at', at: d.getTime() + clock.offset };
+    },
+  });
+  return result || null;
 }
 
 // ---------------------------------------------------------------- DONI QR
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// Quando annunciare il dono alle coppie (e dopo quanto svanisce), scelto sulla timeline del torneo.
+async function scheduleGiftDialog(g) {
+  const placed = g.status === 'placed';
+  const initial = g.revealMode === 'at' && g.revealAt ? { mode: 'at', at: g.revealAt } : g.revealMode === 'time' ? { mode: 'min', min: g.revealAtMin } : null;
+  const r = await timelineModal({
+    title: `Annuncia ${g.label} · ${g.icon} ${g.name}`,
+    intro: placed
+      ? 'Al momento scelto il dono compare sulla mappa di tutte le coppie, con annuncio e notifica. La prima coppia che lo scansiona lo prende e sparisce dalle mappe di tutti. L\'annuncio parte solo a partita in corso.'
+      : 'Il dono non è ancora piazzato: verrà annunciato al momento scelto, o appena viene piazzato se quel momento è già passato. L\'annuncio parte solo a partita in corso.',
+    nowLabel: placed ? 'Ora' : 'Appena viene piazzato',
+    withDuration: true, durationLabel: 'Svanisce dopo (minuti)', defaultDuration: g.expiresAfterMin ?? '', allowDurationEmpty: true,
+    exclude: { kind: 'gift', id: g.id }, initial, okLabel: 'Programma',
+  });
+  if (!r) return;
+  try {
+    await api('PATCH', `/api/m/gifts/${g.id}`, { expiresAfterMin: r.durationMin ?? '' });
+    let revealed = false;
+    if (r.mode === 'min') await api('PATCH', `/api/m/gifts/${g.id}`, { revealMode: 'time', revealAtMin: r.min });
+    else revealed = (await api('POST', `/api/m/gifts/${g.id}/schedule`, r.mode === 'now' ? { mode: 'now' } : { mode: 'at', at: r.at })).revealed;
+    toast(revealed ? 'Dono annunciato a tutte le coppie' : 'Annuncio programmato', 'ok');
+    loadField();
+  } catch (e) { toast(e.message, 'error', 6000); }
+}
+
+function giftRevealCell(g) {
+  if (g.status === 'revealed') return h('span', null, `Annunciato ${fmtTime(g.revealedAt)}`);
+  if (['claimed', 'expired'].includes(g.status)) return g.revealedAt ? h('span', { class: 'muted' }, `Annunciato ${fmtTime(g.revealedAt)}`) : '—';
+  if (g.revealMode === 'at' && g.revealAt) return h('span', null, `alle ${fmtTime(g.revealAt)} · tra `, h('span', { class: 'mono', 'data-clock': `abs:${g.revealAt}` }, '—'));
+  if (g.revealMode === 'onplace') return 'appena piazzato';
+  if (g.revealMode === 'time') return `a ${g.revealAtMin}′ dal via`;
+  return h('span', { class: 'muted' }, 'quando decidi tu');
+}
 
 function viewGiftsQR() {
   const d = fieldData;
@@ -1075,10 +1442,9 @@ function viewGiftsQR() {
   const types = giftTypesDraft || d.giftTypes;
   const typeSel = h('select', { class: 'input', 'data-keep': 'gq-type' }, d.giftTypes.map((t) => h('option', { value: t.id }, `${t.icon} ${t.name}`)));
   const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1, 'data-keep': 'gq-count' });
-  const at = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'minuto dal via', 'data-keep': 'gq-at' });
   const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai', 'data-keep': 'gq-exp' });
-  const mode = h('select', { class: 'input', 'data-keep': 'gq-mode', onchange: () => at.classList.toggle('hidden', mode.value !== 'time') }, Object.entries(REVEAL_MODE).map(([k, v]) => h('option', { value: k }, v)));
-  queueMicrotask(() => at.classList.toggle('hidden', mode.value !== 'time'));
+  const squadSel = h('select', { class: 'input', 'data-keep': 'gq-squad' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
+  const mode = h('select', { class: 'input', 'data-keep': 'gq-mode' }, h('option', { value: 'manual' }, 'Lo annuncio io (ora, tra X minuti o a un orario)'), h('option', { value: 'onplace' }, 'Appena viene piazzato'));
 
   const typeRow = (t, i) => h('div', { class: 'gt-row' },
     h('input', { class: 'input input-sm gt-icon', value: t.icon, maxlength: 2, 'aria-label': 'Icona', oninput: (e) => { types[i].icon = e.target.value; } }),
@@ -1087,24 +1453,50 @@ function viewGiftsQR() {
     h('textarea', { class: 'input input-sm gt-desc', rows: 2, value: t.description, 'aria-label': 'Effetto', oninput: (e) => { types[i].description = e.target.value; } }),
     h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { types.splice(i, 1); render(); } }, '✕'));
 
+  const live = d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
+  const gone = d.gifts.filter((g) => ['claimed', 'expired'].includes(g.status));
+  const row = (g) => h('tr', { class: `gift-row-${g.status}` },
+    h('td', null, h('strong', null, g.label), h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`)),
+    h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
+      : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
+        : g.status === 'revealed' ? h('span', { class: 'chip chip-blood' }, 'In mappa alle coppie') : placementChips(g, g.status !== 'draft')),
+    h('td', { class: 'tiny' }, giftRevealCell(g)),
+    h('td', { class: 'tiny' }, !g.expiresAfterMin ? 'mai' : g.status === 'revealed' && g.expiresAtElapsedMs != null ? h('span', null, 'tra ', h('span', { class: 'mono', 'data-clock': `until:${g.expiresAtElapsedMs}` }, '—')) : `${g.expiresAfterMin}′ dopo l'annuncio`),
+    h('td', { class: 'row-actions' },
+      ['draft', 'placed'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => scheduleGiftDialog(g) }, ['at', 'onplace', 'time'].includes(g.revealMode) ? '◷ Cambia annuncio' : '◷ Annuncia…') : null,
+      ['draft', 'placed'].includes(g.status) && ['at', 'onplace', 'time'].includes(g.revealMode) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => call('POST', `/api/m/gifts/${g.id}/schedule`, { mode: 'cancel' }, 'Annuncio annullato').then(() => loadField()) }, 'Annulla annuncio') : null,
+      ['draft', 'placed', 'revealed'].includes(g.status) ? placementButtons('gift', g, g.status !== 'draft') : null,
+      g.hasPhoto ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/gift/${g.id}?v=${g.placedAt}`, target: '_blank' }, 'Foto') : null,
+      ['placed', 'revealed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Riportare da piazzare?', 'Posizione e foto vengono cancellate e il dono sparisce dalle mappe.', 'POST', `/api/m/gifts/${g.id}/reset`, {}, 'Dono da ripiazzare', true).then(() => loadField()) }, 'Da ripiazzare') : null,
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il dono?', g.label, 'DELETE', `/api/m/gifts/${g.id}`, undefined, 'Dono eliminato', true).then(() => loadField()) }, 'Elimina')));
+  const table = (list) => h('div', { class: 'table-wrap' }, h('table', null,
+    h('thead', null, h('tr', null, ['Dono', 'Stato e incarico', 'Annuncio', 'Scadenza', ''].map((x) => h('th', null, x)))),
+    h('tbody', null, list.map(row))));
+
   return h('div', { class: 'stack' },
+    section('Come funzionano i doni',
+      h('ol', { class: 'how-steps' },
+        h('li', null, h('strong', null, 'Crea'), ' il dono qui sotto e stampa il suo cartello QR (il tipo non è stampato: è una sorpresa).'),
+        h('li', null, h('strong', null, 'Fallo piazzare'), ' a una squadra di Eletti: indichi tu il punto sulla mappa o li lasci liberi. Piazzandolo, l\'Eletto scatta la foto e il dono prende la posizione del suo telefono.'),
+        h('li', null, h('strong', null, 'Annuncialo'), ': ora, tra X minuti o a un orario. Compare sulla mappa di tutte le coppie, con notifica.'),
+        h('li', null, h('strong', null, 'La prima coppia'), ' che lo scansiona lo prende: notifica a tutti, sparisce dalle mappe di coppie ed Eletti. Tu lo vedi qui e in mappa (barrato). Se ha una scadenza e nessuno lo prende, svanisce.'))),
     h('div', { class: 'cols-2' },
       section('Nuovi doni',
-        h('p', { class: 'muted tiny' }, 'Crea i doni, stampane i cartelli e falli piazzare agli Eletti: piazzandolo, l\'Eletto lo attiva con la posizione del suo telefono. La prima coppia che lo scansiona lo prende. Il tipo non è stampato sul cartello.'),
         h('form', { class: 'form-grid', onsubmit: async (e) => {
           e.preventDefault();
           try {
-            const r = await api('POST', G('/gifts'), { typeId: typeSel.value, count: count.value, revealMode: mode.value, revealAtMin: at.value, expiresAfterMin: exp.value });
-            toast(`${r.ids.length} doni creati`, 'ok');
+            const r = await api('POST', G('/gifts'), { typeId: typeSel.value, count: count.value, revealMode: mode.value, expiresAfterMin: exp.value, squadId: Number(squadSel.value) || null });
+            toast(`${r.ids.length} doni creati${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
             loadField();
           } catch (err) { toast(err.message, 'error', 6000); }
         } },
         h('label', { class: 'field' }, h('span', null, 'Tipo'), typeSel),
         h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
-        h('label', { class: 'field' }, h('span', null, 'Comparsa'), mode),
-        at,
-        h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea'))),
+        h('label', { class: 'field' }, h('span', null, 'Squadra che li piazza'), squadSel),
+        h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
+        h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo l\'annuncio'), exp),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea')),
+        h('p', { class: 'tiny muted' }, 'Per indicare il punto esatto sulla mappa usa "Assegna a una squadra" sul dono creato.')),
       section('Tipi di dono',
         h('p', { class: 'muted tiny' }, 'Icona, nome, colore in mappa ed effetto (lo legge la coppia quando prende il dono). Le modifiche valgono per i doni creati dopo.'),
         h('div', { class: 'gt-list' }, types.map(typeRow)),
@@ -1113,87 +1505,140 @@ function viewGiftsQR() {
           h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: async () => {
             try { await api('PUT', '/api/m/gift-types', { types }); giftTypesDraft = null; toast('Tipi di dono salvati', 'ok'); loadField(); } catch (err) { toast(err.message, 'error', 6000); }
           } }, 'Salva tipi')))),
-    sectionActions(`Doni (${d.gifts.length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
-      d.gifts.length ? h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['Dono', 'Tipo', 'Stato', 'Comparsa', 'Scadenza', 'Piazzamento', ''].map((x) => h('th', null, x)))),
-        h('tbody', null, d.gifts.map((g) => h('tr', { class: `gift-row-${g.status}` },
-          h('td', null, h('strong', null, g.label)),
-          h('td', null, h('span', { style: { color: g.color } }, `${g.icon} ${g.name}`)),
-          h('td', null, h('span', { class: `chip ${g.status === 'revealed' ? 'chip-blood' : g.status === 'placed' ? 'chip-ok' : g.status === 'draft' ? 'chip-warn' : g.status === 'claimed' ? 'chip-brass' : ''}` },
-            g.status === 'claimed' ? `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}` : g.status === 'expired' ? `Svanito alle ${fmtTime(g.expiredAt)}` : GIFT_STATE[g.status])),
-          h('td', { class: 'tiny' }, g.revealMode === 'time' ? `a ${g.revealAtMin}′` : REVEAL_MODE[g.revealMode]),
-          h('td', { class: 'tiny' }, !g.expiresAfterMin ? 'mai' : g.status === 'revealed' && g.expiresAtElapsedMs != null ? h('span', null, 'tra ', h('span', { class: 'mono', 'data-clock': `until:${g.expiresAtElapsedMs}` }, '—')) : `${g.expiresAfterMin}′ dopo la comparsa`),
-          h('td', { class: 'tiny' }, g.lat != null ? `${fmtTime(g.placedAt)} · ${g.placedBy || '?'}${g.accuracy ? ` · ±${g.accuracy} m` : ''}` : '—'),
-          h('td', { class: 'row-actions' },
-            g.status === 'placed' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Far comparire il dono?', `${g.label} apparirà sulla mappa di tutte le coppie, con un annuncio.`, 'POST', `/api/m/gifts/${g.id}/reveal`, {}, 'Dono comparso').then(() => loadField()) }, 'Fai comparire') : null,
-            ['placed', 'revealed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Riportare da piazzare?', 'Posizione e foto vengono cancellate e il dono sparisce dalle mappe.', 'POST', `/api/m/gifts/${g.id}/reset`, {}, 'Dono da ripiazzare', true).then(() => loadField()) }, 'Da ripiazzare') : null,
-            h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il dono?', g.label, 'DELETE', `/api/m/gifts/${g.id}`, undefined, 'Dono eliminato', true).then(() => loadField()) }, 'Elimina'))))))) : h('p', { class: 'empty' }, 'Nessun dono creato.')));
+    sectionActions(`Doni in gioco (${live.length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
+      live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco.')),
+    gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null);
 }
 
-// ---------------------------------------------------------------- DONI
+// ---------------------------------------------------------------- ARMAMENTI
+
+function supplyWhen(s) {
+  if (s.scheduledMin != null) return `a ${fmtMin(s.scheduledMin)} dal via`;
+  if (s.scheduledAt) return `alle ${fmtTime(s.scheduledAt)}`;
+  return 'a mano';
+}
+
+function supplyState(s) {
+  if (s.status === 'closed') return h('span', { class: 'chip' }, `chiusa alle ${fmtTime(s.closedAt)}`);
+  if (s.status === 'fired' && s.closesAt) return h('span', { class: 'chip chip-blood' }, 'APERTA · chiude tra ', h('span', { class: 'mono', 'data-clock': `abs:${s.closesAt}` }, '—'));
+  if (s.status === 'fired') return h('span', { class: 'chip chip-blood' }, `annunciata alle ${fmtTime(s.firedAt)}`);
+  const cd = s.scheduledMin != null ? `until:${s.scheduledMin * 60000}` : s.scheduledAt ? `abs:${s.scheduledAt}` : null;
+  return h('span', { class: 'chip chip-brass' }, 'in attesa', cd ? [' · tra ', h('span', { class: 'mono', 'data-clock': cd }, '—')] : null);
+}
+
+// Quando aprire la finestra e per quanto: scelto sulla timeline del torneo.
+async function supplyDialog(s = null) {
+  const ms = R.ms;
+  const initial = s ? (s.scheduledMin != null ? { mode: 'min', min: s.scheduledMin } : s.scheduledAt ? { mode: 'at', at: s.scheduledAt } : null) : null;
+  const r = await timelineModal({
+    title: s ? 'Sposta la finestra armamenti' : 'Nuova finestra armamenti',
+    intro: 'All\'apertura parte l\'annuncio a tutte le coppie e nelle app compare il conto alla rovescia della chiusura; allo scadere della durata la finestra si chiude con un secondo annuncio. Si apre solo a partita in corso.',
+    nowLabel: 'Apri adesso', withDuration: true, durationLabel: 'Resta aperta per (minuti)', defaultDuration: s?.durationMin ?? 15, allowDurationEmpty: true,
+    exclude: s ? { kind: 'supply', id: s.id } : null, initial, okLabel: s ? 'Sposta' : 'Programma',
+  });
+  if (!r) return;
+  const body = { description: s ? s.description : supplyDraft.desc, message: s ? s.message : supplyDraft.msg, durationMin: r.durationMin ?? '' };
+  if (r.mode === 'min') body.scheduledMin = r.min;
+  if (r.mode === 'at') body.scheduledAt = r.at;
+  try {
+    const res = s ? await api('PATCH', `/api/m/supply/${s.id}`, body) : await api('POST', G('/supply'), body);
+    const id = s ? s.id : res.id;
+    if (r.mode === 'now') await api('POST', `/api/m/supply/${id}/fire`, {});
+    toast(r.mode === 'now' ? 'Armamenti aperti' : 'Finestra programmata', 'ok');
+    if (!s) { supplyDraft.desc = ''; supplyDraft.msg = ''; }
+  } catch (e) { toast(e.message, 'error', 7000); }
+  load();
+}
+const supplyDraft = { desc: '', msg: '' };
 
 function viewSupply() {
   const ms = R.ms;
   const active = ACTIVE.includes(ms.clock.status);
-  const when = h('input', { class: 'input', type: 'number', step: '1', min: 0, max: ms.game.durationMin, 'data-keep': 'sup-when', placeholder: 'Minuti dal via (vuoto = a mano)' });
-  const desc = h('input', { class: 'input', 'data-keep': 'sup-desc', placeholder: 'Cosa viene lasciato al Cuore (solo regia)' });
-  const msg = h('textarea', { class: 'input', rows: 2, 'data-keep': 'sup-msg', placeholder: `Annuncio (vuoto = testo predefinito)` });
+  const desc = h('input', { class: 'input', placeholder: 'Cosa viene lasciato al Cuore (solo regia)', value: supplyDraft.desc, oninput: (e) => { supplyDraft.desc = e.target.value; } });
+  const msg = h('textarea', { class: 'input', rows: 2, placeholder: 'Annuncio (vuoto = testo predefinito)', oninput: (e) => { supplyDraft.msg = e.target.value; } });
+  msg.value = supplyDraft.msg;
+  const shift = (s, m, label) => h('button', { class: 'btn btn-sm', title: label, onclick: () => call('POST', `/api/m/supply/${s.id}/shift`, { minutes: m }, label) }, `${m > 0 ? '+' : '−'}${Math.abs(m)}′`);
+
   return h('div', { class: 'stack' },
     section('Nuova finestra armamenti',
-      h('p', { class: 'muted tiny' }, `Testo predefinito: «${ms.game.templates.supply}»`),
-      h('form', { class: 'form-grid', onsubmit: async (e) => {
-        e.preventDefault();
-        if (await call('POST', G('/supply'), { scheduledMin: when.value, description: desc.value, message: msg.value }, 'Finestra salvata')) [when, desc, msg].forEach((x) => { x.value = ''; x.dataset.fresh = '1'; });
-      } }, when, desc, msg, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
-    section('Doni del Consiglio',
+      h('p', { class: 'muted tiny' }, `Testo predefinito dell'annuncio: «${ms.game.templates.supply}». Il momento e la durata si scelgono sulla timeline del torneo, accanto a tradimenti, doni e fasi.`),
+      h('div', { class: 'form-grid' }, desc, msg,
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => supplyDialog() }, '◷ Scegli quando e per quanto…'))),
+    sectionActions('Finestre armamenti', [h('button', { class: 'btn btn-sm', onclick: () => timelineModal({ title: 'Timeline del torneo', intro: 'Tutti gli avvenimenti programmati e passati.', okLabel: 'Chiudi' }) }, 'Vedi la timeline')],
       ms.supply.length ? h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['Quando', 'Descrizione', 'Annuncio', 'Stato', ''].map((x) => h('th', null, x)))),
-        h('tbody', null, ms.supply.map((s) => h('tr', null,
-          h('td', { class: 'mono' }, s.scheduledMin != null ? fmtMin(s.scheduledMin) : 'a mano'),
-          h('td', null, s.description || '—'),
-          h('td', { class: 'tiny' }, s.message || h('span', { class: 'muted' }, 'predefinito')),
-          h('td', null, s.status === 'fired' ? h('span', { class: 'chip chip-blood' }, `lanciato ${fmtTime(s.firedAt)}`) : h('span', { class: 'chip chip-brass' }, 'in attesa')),
-          h('td', { class: 'row-actions' },
-            s.status !== 'fired' && active ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Lanciare ora?', 'Annuncio a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/fire`, {}, 'Doni lanciati') }, 'Lancia ora') : null,
-            s.status !== 'fired' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true) }, 'Elimina') : null)))))) : h('p', { class: 'empty' }, 'Nessuna finestra armamenti.')));
+        h('thead', null, h('tr', null, ['Apertura', 'Durata', 'Stato', 'Descrizione', ''].map((x) => h('th', null, x)))),
+        h('tbody', null, ms.supply.map((s) => {
+          const open = s.status === 'fired' && s.closesAt;
+          return h('tr', { class: open ? 'row-open' : '' },
+            h('td', { class: 'mono' }, s.status === 'scheduled' ? supplyWhen(s) : `aperta ${fmtTime(s.firedAt)}`),
+            h('td', { class: 'mono' }, s.durationMin ? `${s.durationMin}′` : '—'),
+            h('td', null, supplyState(s)),
+            h('td', { class: 'tiny' }, s.description || '—', s.message ? h('div', { class: 'muted' }, `«${s.message}»`) : null),
+            h('td', { class: 'row-actions' },
+              s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !active, title: active ? '' : 'Si apre solo a partita in corso', onclick: () => confirmCall('Aprire adesso?', 'Parte subito l\'annuncio a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/fire`, {}, 'Armamenti aperti') }, 'Apri ora') : null,
+              s.status === 'scheduled' ? h('button', { class: 'btn btn-sm', onclick: () => supplyDialog(s) }, '◷ Sposta…') : null,
+              s.status === 'scheduled' && (s.scheduledMin != null || s.scheduledAt) ? [shift(s, -5, 'Anticipata di 5 minuti'), shift(s, 5, 'Posticipata di 5 minuti')] : null,
+              open ? [shift(s, -5, 'Accorciata di 5 minuti'), shift(s, 5, 'Prolungata di 5 minuti'),
+                h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true) }, 'Chiudi ora')] : null,
+              s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true) }, 'Elimina') : null));
+        })))) : h('p', { class: 'empty' }, 'Nessuna finestra armamenti.')));
 }
 
 // ---------------------------------------------------------------- ANNUNCI E MESSAGGI
 
+// Vista gerarchica: tutte le coppie (annunci) → ogni coppia; tutti gli Eletti → ogni squadra. A destra la conversazione.
+function chatTarget() {
+  const ms = R.ms;
+  const c = R.chat || { kind: 'all' };
+  if (c.kind === 'team') { const t = ms.teams.find((x) => x.id === c.id); if (t) return { ...c, title: `${t.roman} Settore ${t.sectorName}`, sub: t.members.map((m) => m.nickname || m.name).join(' · '), unread: t.unread, url: `/api/m/teams/${t.id}`, msgs: ms.messages.filter((m) => m.teamId === t.id), who: 'coppia' }; }
+  if (c.kind === 'elect') return { ...c, id: ms.elect.id, title: 'Tutti gli Eletti', sub: `${ms.elect.members.length} Eletti · ogni messaggio arriva a tutti`, unread: ms.elect.unread, url: `/api/m/teams/${ms.elect.id}`, msgs: ms.messages.filter((m) => m.teamId === ms.elect.id && !m.squadId), who: 'Eletto' };
+  if (c.kind === 'squad') { const s = ms.squads.find((x) => x.id === c.id); if (s) return { ...c, title: `Squadra ${s.name}`, sub: s.members.map((m) => m.nickname || m.name).join(' · ') || 'nessun membro', unread: s.unread, url: `/api/m/squads/${s.id}`, msgs: ms.messages.filter((m) => m.squadId === s.id), who: 'Eletto', color: s.color }; }
+  return { kind: 'all', title: 'Tutte le coppie', sub: 'Annunci a tutte le coppie (notifica sui telefoni)' };
+}
+
 function viewComms() {
   const ms = R.ms;
-  const teams = [...ms.teams, { ...ms.elect, roman: '0', sectorName: 'Eletti del Consiglio' }];
-  if (!R.msgTeam && teams.length) R.msgTeam = (teams.find((t) => t.unread) || teams[0]).id;
-  const t = teams.find((x) => x.id === R.msgTeam);
-  const thread = ms.messages.filter((m) => m.teamId === R.msgTeam);
-  if (t?.unread) api('POST', `/api/m/teams/${t.id}/read`).catch(() => {});
-  const reply = h('textarea', { class: 'input', rows: 2, 'data-keep': `reply-${R.msgTeam}`, placeholder: 'Rispondi alla coppia…', maxlength: 1000 });
-  return h('div', { class: 'stack' },
-    h('div', { class: 'cols-2' },
-      section('Annuncio a tutte le coppie', quickAnnounce(),
+  const cur = chatTarget();
+  R.chat = { kind: cur.kind, id: cur.id };
+  if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
+  const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
+  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; render(); } },
+    h('span', { class: 'tree-label' }, label, sub ? h('span', { class: 'tiny muted' }, sub) : null), unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
+
+  return h('div', { class: 'comms' },
+    h('nav', { class: 'comms-tree', 'aria-label': 'Destinatari' },
+      node('all', null, '📣 Tutte le coppie', 'annunci'),
+      ms.teams.map((t) => node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || null, t.unread, { child: true })),
+      node('elect', ms.elect.id, '⛨ Tutti gli Eletti', `${ms.elect.members.length} persone`, ms.elect.unread),
+      ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
+      ms.squads.length ? null : h('p', { class: 'tiny muted tree-hint' }, 'Le squadre degli Eletti compaiono qui quando le crei.')),
+    h('div', { class: 'panel comms-pane' },
+      h('div', { class: 'panel-head' }, h('div', null, h('h2', null, cur.title), h('div', { class: 'tiny muted' }, cur.sub))),
+      cur.kind === 'all' ? [quickAnnounce(),
         h('h3', { class: 'sub' }, 'Storico annunci'),
         ms.announcements.length ? h('ul', { class: 'feed' }, ms.announcements.map((a) => h('li', { class: 'ev' },
-          h('span', { class: 'mono tiny muted' }, fmtTime(a.createdAt, true)), h('span', { class: 'ev-type' }, ms.templateLabels[a.type] || 'Libero'), h('span', { class: 'ev-text' }, a.text)))) : h('p', { class: 'empty' }, 'Nessun annuncio.')),
-      section('Messaggi con le coppie',
-        teams.length ? h('div', { class: 'inbox' },
-          h('div', { class: 'inbox-list' }, teams.map((x) => h('button', { class: `inbox-item ${x.id === R.msgTeam ? 'on' : ''}`, onclick: () => { R.msgTeam = x.id; render(); } },
-            h('span', null, `${x.roman || ''} ${x.sectorName}`), x.unread ? h('span', { class: 'badge badge-alert' }, x.unread) : null))),
-          h('div', { class: 'inbox-thread' },
-            h('div', { class: 'thread' }, thread.length ? thread.map((m) => h('div', { class: `bubble ${m.fromRole === 'master' ? 'mine' : 'theirs'}` },
-              h('div', { class: 'tiny muted mono' }, `${m.fromRole === 'master' ? m.author || 'regia' : 'coppia'} · ${fmtTime(m.createdAt)}`),
-              m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', null, m.text))) : h('p', { class: 'empty' }, 'Nessun messaggio.')),
-            R.rec ? h('div', { class: 'regia-rec' },
-              h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { class: 'mono', id: 'rec-time-regia' }, fmtSec(Date.now() - R.rec.startedAt)),
-              h('span', { class: 'tiny muted grow' }, `Vocale per ${t ? t.sectorName : ''}…`),
-              h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { R.rec.cancel(); R.rec = null; render(); } }, 'Annulla'),
-              h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => sendRegiaVoice() }, 'Invia vocale'))
-              : h('form', { class: 'stack-sm', onsubmit: async (e) => {
-                e.preventDefault();
-                if (!reply.value.trim()) return;
-                if (await call('POST', `/api/m/teams/${R.msgTeam}/message`, { text: reply.value }, 'Messaggio inviato')) { reply.value = ''; reply.dataset.fresh = '1'; }
-              } }, reply, h('div', { class: 'row-actions' },
-                h('button', { class: 'btn btn-primary btn-sm', type: 'submit' }, `Invia a ${t ? t.sectorName : ''}`),
-                voiceSupported() ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => startRegiaVoice() }, '🎤 Vocale') : null)))) : h('p', { class: 'empty' }, 'Nessuna coppia.'))));
+          h('span', { class: 'mono tiny muted' }, fmtTime(a.createdAt, true)), h('span', { class: 'ev-type' }, ms.templateLabels[a.type] || 'Libero'), h('span', { class: 'ev-text' }, a.text)))) : h('p', { class: 'empty' }, 'Nessun annuncio.')]
+        : chatPane(cur)));
+}
+
+function chatPane(cur) {
+  const reply = h('textarea', { class: 'input', rows: 2, 'data-keep': `reply-${cur.kind}-${cur.id}`, placeholder: `Scrivi a ${cur.title}…`, maxlength: 1000 });
+  return h('div', { class: 'inbox-thread' },
+    h('div', { class: 'thread' }, cur.msgs.length ? cur.msgs.map((m) => h('div', { class: `bubble ${m.fromRole === 'master' ? 'mine' : 'theirs'}` },
+      h('div', { class: 'tiny muted mono' }, `${m.fromRole === 'master' ? m.author || 'regia' : m.author || cur.who} · ${fmtTime(m.createdAt)}`),
+      m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', null, m.text))) : h('p', { class: 'empty' }, 'Nessun messaggio.')),
+    R.rec ? h('div', { class: 'regia-rec' },
+      h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { class: 'mono', id: 'rec-time-regia' }, fmtSec(Date.now() - R.rec.startedAt)),
+      h('span', { class: 'tiny muted grow' }, `Vocale per ${cur.title}…`),
+      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { R.rec.cancel(); R.rec = null; render(); } }, 'Annulla'),
+      h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => sendRegiaVoice() }, 'Invia vocale'))
+      : h('form', { class: 'stack-sm', onsubmit: async (e) => {
+        e.preventDefault();
+        if (!reply.value.trim()) return;
+        await sendClearing(reply, (text) => call('POST', `${cur.url}/message`, { text }, 'Messaggio inviato'));
+      } }, reply, h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-primary btn-sm', type: 'submit' }, `Invia a ${cur.title}`),
+        voiceSupported() ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => startRegiaVoice() }, '🎤 Vocale') : null)));
 }
 
 // Vocali dalla regia (microfono del PC).
@@ -1207,12 +1652,14 @@ async function startRegiaVoice() {
 async function sendRegiaVoice() {
   const rec = R.rec;
   if (!rec) return;
+  const cur = chatTarget();
   R.rec = null;
   render();
   const voice = await rec.stop();
   if (voice.ms < 700) return toast('Vocale troppo breve', 'info');
+  if (!cur.url) return;
   try {
-    await uploadAudio(`/api/m/teams/${R.msgTeam}/message/audio`, voice);
+    await uploadAudio(`${cur.url}/message/audio`, voice);
     toast('Vocale inviato', 'ok');
     load();
   } catch (e) { toast(e.message, 'error', 6000); }

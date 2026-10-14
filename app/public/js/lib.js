@@ -170,6 +170,33 @@ export function dialog({ title, text, okLabel = 'Conferma', cancelLabel = 'Annul
   });
 }
 
+// Finestra modale con contenuto libero. onOk() restituisce false per restare aperta (es. dati mancanti).
+export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annulla', onOk, wide = false, onOpen }) {
+  return new Promise((resolve) => {
+    const close = (val) => { dlg.close(); dlg.remove(); resolve(val); };
+    const ok = h('button', { type: 'submit', class: 'btn btn-primary' }, okLabel);
+    const dlg = h('dialog', { class: `dlg ${wide ? 'dlg-wide' : ''}` },
+      h('form', { method: 'dialog', onsubmit: async (e) => {
+        e.preventDefault();
+        ok.disabled = true;
+        try {
+          const r = onOk ? await onOk() : true;
+          if (r !== false) close(r ?? true);
+        } catch (err) { toast(err.message, 'error', 6000); }
+        ok.disabled = false;
+      } },
+      title && h('h3', null, title),
+      body,
+      h('div', { class: 'dlg-actions' },
+        h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel),
+        ok)));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(null); });
+    document.body.append(dlg);
+    dlg.showModal();
+    onOpen?.(dlg);
+  });
+}
+
 // ---- stream SSE con riconnessione
 export function stream(url, handlers) {
   let es;
@@ -275,7 +302,7 @@ export async function startRecording({ onLimit } = {}) {
 export async function uploadAudio(url, { blob, mime, ms }) {
   let res;
   try {
-    res = await fetch(`${url}?ms=${Math.round(ms)}`, { method: 'POST', headers: { 'Content-Type': mime }, body: blob, credentials: 'same-origin' });
+    res = await fetch(`${url}${url.includes('?') ? '&' : '?'}ms=${Math.round(ms)}`, { method: 'POST', headers: { 'Content-Type': mime }, body: blob, credentials: 'same-origin' });
   } catch {
     throw new ApiError('Nessuna rete: il vocale non è stato inviato', 0, true);
   }

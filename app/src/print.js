@@ -73,14 +73,17 @@ async function credentialsPage(g, base) {
   }));
   const elect = G.electOf(g.id);
   const electMembers = elect ? G.membersOf(elect.id) : [];
-  if (elect && electMembers.length) {
+  // Eletti: ognuno ha il proprio accesso personale (niente codice comune).
+  for (const m of electMembers) {
+    const p = q.get('SELECT p.loginToken, p.accessCode, s.name AS squad FROM players p LEFT JOIN elect_squads s ON s.id = p.squadId WHERE p.id = ?', m.id);
     cards.push(`<div class="card">
-      <div class="head"><span class="display roman">0</span><div><div class="display name">Eletti del Consiglio</div>
-      <div class="members">${electMembers.map((m) => esc(m.name + (m.nickname ? ` «${m.nickname}»` : ''))).join(' · ')}</div></div></div>
-      <div class="body"><div class="qr">${await qr(`${base}/login/${elect.loginToken}`)}</div>
-      <div class="info"><div class="mono small">Inquadrate per entrare nell'app<br>oppure aprite</div><div class="mono url">${esc(base)}</div>
-      <div class="mono small">e inserite il codice d'accesso</div><div class="mono code">${esc(elect.accessCode)}</div>
-      <div class="mono small">Un solo accesso per tutti gli Eletti.</div></div></div>
+      <div class="head"><span class="display roman">0</span><div><div class="display name">Eletto del Consiglio</div>
+      <div class="members">${esc(m.name + (m.nickname ? ` «${m.nickname}»` : ''))}</div>
+      ${p.squad ? `<div class="mono small">Squadra ${esc(p.squad)}</div>` : ''}</div></div>
+      <div class="body"><div class="qr">${await qr(`${base}/login/${p.loginToken}`)}</div>
+      <div class="info"><div class="mono small">Inquadra per entrare nell'app<br>oppure apri</div><div class="mono url">${esc(base)}</div>
+      <div class="mono small">e inserisci il tuo codice personale</div><div class="mono code">${esc(p.accessCode)}</div>
+      <div class="mono small">Accesso personale: non condividerlo.</div></div></div>
     </div>`);
   }
   const pages = [];

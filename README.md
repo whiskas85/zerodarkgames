@@ -46,12 +46,13 @@ Il browser tiene una sola coppia alla volta: per più coppie sullo stesso PC usa
    - **I Legati** (coppia): due persone che rappresenteranno un Settore;
    - **Il Temerario Solitario**: da solo, verrà accoppiato a caso con un altro temerario;
    - **Gli Eletti del Consiglio**: funzioni logistiche e difensive del gioco.
-   Ogni candidatura resta **da approvare**: in regia la accetti o la rifiuti. Il Settore (e il suo Altare) lo assegna sempre il Consiglio.
-   Poi formi le coppie (selezione manuale, "Accoppia come richiesto" o "Accoppia automaticamente"); i candidati agli Eletti accettati entrano subito nel gruppo.
+   Per ogni persona si chiede anche il **team di softair di appartenenza** (obbligatorio, si può scrivere "nessuno").
+   Ogni candidatura resta **da approvare**: coppie e temerari in **Iscrizioni e coppie**, candidati agli Eletti in **Squadre Eletti** (accettandoli scegli subito la squadra). Il Settore (e il suo Altare) lo assegna sempre il Consiglio.
+   Poi formi le coppie (selezione manuale, "Accoppia come richiesto" o "Accoppia automaticamente").
    Puoi anche aggiungere persone a mano (già accettate) e spostare chiunque tra gli Eletti.
 3. **Sigilli e tradimenti**: genera i Sigilli; si estraggono i mai rivelati e si calcola il calendario (sezione 7.1), modificabile fino al via.
 4. **Altari e Parola**: scrivi la Parola, che viene divisa tra gli Altari; poi stampa i cartelli A4 con il QR.
-5. **Doni** (facoltativo): finestre armamenti a orario o da lanciare a mano.
+5. **Armamenti** (facoltativo): finestre con apertura (minuto dal via, orario o a mano) e durata, scelte sulla timeline del torneo.
 6. **Stampa credenziali**: un QR di accesso e un codice per coppia.
 7. **Regia**: Segna pronta → Apri il cerchio (le coppie vedono il Sigillo) → **VIA!** Da qui il motore gestisce da solo tregua, caccia, rivelazioni, doni, ultima mezz'ora e fine; puoi sospendere, riprendere, rivelare a mano, posticipare o saltare.
 8. **La Soglia**: il validatore sceglie la coppia e registra l'esito; vittoria e podio partono in automatico.
@@ -64,8 +65,8 @@ In regia i Sigilli veri sono sfocati e si leggono tenendo premuto; il prossimo t
 
 ## Eletti del Consiglio
 
-Un gruppo per partita con un numero qualsiasi di persone e **un solo accesso** all'app (QR o codice, valido su tutti i loro telefoni, stampato insieme alle credenziali delle coppie).
-Ricevono annunci, avvisi e messaggi della regia, hanno timer e regolamento; non hanno Sigillo, non usano gli Altari e non entrano in classifica.
+Un gruppo per partita con un numero qualsiasi di persone, divise in **squadre**. Non esiste un codice comune: ogni Eletto, una volta accettato, entra con il proprio **accesso personale** (QR o codice, stampato in "Stampa accessi").
+Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza Altari e Doni** (con scanner, GPS e foto), mappa del campo, messaggi con la regia (a tutti gli Eletti o solo alla propria squadra), avvisi, annunci, timer e regolamento. Non hanno Sigillo, non usano gli Altari e non entrano in classifica.
 
 ## Avvisi e notifiche
 
@@ -76,11 +77,16 @@ Le notifiche richiedono HTTPS (vedi sotto).
 
 ## Campo, mappe, doni, alleanze e scontri
 
-- **Strumento di campo** (`/campo`, per Eletti e regia dal telefono): si scansiona il cartello di un Altare o di un Dono, il telefono dà la posizione GPS (o si tocca il punto sulla mappa), si scatta la foto e si conferma. Foto e coordinate arrivano in regia (**Mappa e campo**).
+- **Piazzamento sul campo** (nell'app degli Eletti; per la regia dal telefono in `/campo`): si scansiona il cartello di un Altare o di un Dono, il telefono dà la posizione GPS (o si tocca il punto sulla mappa), si scatta la foto e si conferma. Foto e coordinate arrivano in regia (**Mappa e campo**).
 - **Mappe OpenTopoMap**: la regia vede Altari e doni (grigio = piazzato non comparso, colorato = comparso, barrato = preso); le coppie vedono Altari e doni comparsi più la propria posizione.
 - **Posizioni GPS in mappa**: i telefoni delle coppie inviano la posizione solo a partita iniziata (dal VIA alla fine, anche in pausa), quelli degli Eletti già dalla preparazione. La regia vede tutti (coppie con il numero romano, Eletti con il colore della squadra), gli Eletti vedono solo gli Eletti. L'app avvisa chi è visibile; i browser inviano la posizione solo con l'app aperta. *Nota: la specifica iniziale escludeva il tracciamento delle coppie; è stato aggiunto su richiesta dell'organizzazione.*
-- **Squadre di Eletti** (regia → Squadre Eletti): squadre con colore, membri, Altari e Doni da piazzare assegnati e incarichi liberi; ogni Eletto li trova nella scheda Incarichi dello strumento di campo.
-- **Doni QR** (regia → Doni QR): catalogo di tipi modificabile, comparsa a mano / al piazzamento / a un minuto dal via, scadenza facoltativa, stampa dei cartelli. La prima coppia che scansiona il dono lo prende; tutti ricevono una notifica e il dono sparisce dalle mappe.
+- **Squadre di Eletti** (regia → Squadre Eletti): candidature, squadre con colore, membri, accessi personali e incarichi liberi; ogni Eletto trova tutto nella voce **Incarichi** della sua app.
+- **Incarichi di piazzamento** (Altari e Parola, Doni QR, Squadre Eletti): per ogni Altare, Dono o luogo vedi se è piazzato e da quale squadra, e lo assegni a una squadra con una finestra che chiede il **punto sulla mappa** (o lascia libera la scelta) e una nota. Un punto già piazzato si può **far spostare**: viene proposta la squadra che lo aveva piazzato.
+- **Luoghi del gioco**: il **Cerchio di inizio** e la **Soglia** si piazzano come gli Altari (foto facoltativa) e compaiono sulle mappe di regia, Eletti e coppie.
+- **Doni QR**: crea il dono, fallo piazzare a una squadra, **annuncialo** (ora, tra X minuti, alle HH:MM o a un minuto dal via) con la timeline del torneo; scadenza facoltativa. La prima coppia che lo scansiona lo prende; tutti ricevono una notifica e il dono sparisce dalle mappe.
+- **Timeline del torneo**: ovunque si sceglie "quando e per quanto" (annuncio dei doni, finestre armamenti) si apre una finestra con la linea del tempo della partita: fasi, tradimenti, armamenti, doni e il momento attuale. Si tocca la timeline o si sceglie ora / tra X minuti / alle HH:MM / al minuto dal via.
+- **Armamenti**: finestre con apertura e durata; all'apertura annuncio e conto alla rovescia nelle app, alla chiusura un secondo annuncio. Si possono aprire subito, anticipare, posticipare, prolungare o chiudere prima.
+- **Annunci e messaggi**: vista ad albero — tutte le coppie (annunci) e sotto ogni coppia; tutti gli Eletti e sotto ogni squadra — con la conversazione a destra (testo e vocali).
 - **Scansione degli Altari a tempo**: vale i minuti impostati nella partita (default 15, 0 = sempre); poi va ripetuta. Se il Sigillo è già nel taccuino l'app lo propone, senza scriverlo.
 - **Alleanze**: proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri.
 - **Scontri**: VINTO / PERSO / PAREGGIO contro una coppia. "Perso" vale subito, "vinto" va confermato dallo sconfitto (se contesta decide la regia). I vincitori e i loro alleati ricevono i Sigilli di tutta la parte sconfitta; chi perde riceve in automatico il timer Veglia.

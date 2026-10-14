@@ -238,8 +238,8 @@ test('Settori e Altari: crea, modifica, elimina o archivia', () => {
 
 test('iscrizione: da approvare, il Settore lo assegna il Consiglio', () => {
   const g = G.createGame({ name: 'Iscrizioni' }, 'test');
-  G.publicRegister({ gameId: g.id, players: [{ name: 'A' }, { name: 'B' }], sectorId: G.sectors()[0].id });
-  G.publicRegister({ gameId: g.id, players: [{ name: 'C' }] });
+  G.publicRegister({ gameId: g.id, players: [{ name: 'A', softairTeam: 'ZDT' }, { name: 'B', softairTeam: 'ZDT' }], sectorId: G.sectors()[0].id });
+  G.publicRegister({ gameId: g.id, players: [{ name: 'C', softairTeam: 'ZDT' }] });
   const pl = (n) => q.get('SELECT * FROM players WHERE gameId = ? AND name = ?', g.id, n);
   assert.equal(pl('A').status, 'pending');
   assert.equal(pl('A').requestedSectorId, null);
@@ -296,10 +296,10 @@ test('Avvisi: destinatari e cancellazione', () => {
 
 test('iscrizione: le tre strade (coppia, temerario solitario, Eletti)', () => {
   const g = G.createGame({ name: 'Tre strade' }, 'test');
-  assert.throws(() => G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'Solo' }] }), /due Legati/);
-  G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'L1' }, { name: 'L2' }] });
-  G.publicRegister({ gameId: g.id, mode: 'single', players: [{ name: 'T1' }, { name: 'ignorato' }] });
-  G.publicRegister({ gameId: g.id, mode: 'elect', players: [{ name: 'E1', note: 'logistica al Cuore' }] });
+  assert.throws(() => G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'Solo', softairTeam: 'ZDT' }] }), /due Legati/);
+  G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'L1', softairTeam: 'ZDT' }, { name: 'L2', softairTeam: 'ZDT' }] });
+  G.publicRegister({ gameId: g.id, mode: 'single', players: [{ name: 'T1', softairTeam: 'ZDT' }, { name: 'ignorato', softairTeam: 'ZDT' }] });
+  G.publicRegister({ gameId: g.id, mode: 'elect', players: [{ name: 'E1', note: 'logistica al Cuore', softairTeam: 'ZDT' }] });
   const pl = (n) => q.get('SELECT * FROM players WHERE gameId = ? AND name = ?', g.id, n);
   assert.equal(pl('ignorato'), undefined);
   assert.equal(pl('T1').requestedRole, 'single');
@@ -311,7 +311,7 @@ test('iscrizione: le tre strade (coppia, temerario solitario, Eletti)', () => {
 
 test('accesso personale: anteprima subito dopo l\'iscrizione, poi passa da solo alla coppia', () => {
   const g = G.createGame({ name: 'Anteprima' }, 'test');
-  const r = G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'P1' }, { name: 'P2' }] });
+  const r = G.publicRegister({ gameId: g.id, mode: 'pair', players: [{ name: 'P1', softairTeam: 'ZDT' }, { name: 'P2', softairTeam: 'ZDT' }] });
   const get = (id) => q.get('SELECT * FROM players WHERE id = ?', id);
   const p1 = get(r.playerIds[0]);
   assert.match(p1.accessCode, /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{8}$/);
@@ -493,4 +493,123 @@ test('posizioni GPS: coppie solo a partita iniziata, Eletti dalla preparazione',
   G.control(g.id, 'end', 'test');
   assert.equal(F.recordPosition(A, null, pos('coppia-A-tel1')).tracking, false);
   assert.equal(F.recordPosition(elect, null, pos('eletto-tel-01')).tracking, false);
+});
+
+test('iscrizione: il team di softair è obbligatorio; candidati Eletti accettati direttamente in squadra', () => {
+  const F = require('../src/field');
+  const g = G.createGame({ name: 'Softair', registrationOpen: true }, 'test');
+  assert.throws(() => G.publicRegister({ gameId: g.id, mode: 'single', players: [{ name: 'Senza team' }] }), /team di softair/);
+  const { playerIds: [eid] } = G.publicRegister({ gameId: g.id, mode: 'elect', players: [{ name: 'Vedetta', softairTeam: 'Lupi Grigi' }] });
+  const { id: sq } = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  G.reviewPlayer(eid, 'accept', 'test', { squadId: sq });
+  const p = q.get('SELECT * FROM players WHERE id = ?', eid);
+  assert.equal(p.teamId, G.electOf(g.id).id);
+  assert.equal(p.squadId, sq);
+  assert.equal(p.softairTeam, 'Lupi Grigi');
+});
+
+test('incarichi: punto indicato sulla mappa, spostamento alla squadra che ha piazzato, Soglia e Cerchio senza foto', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const { id: nord } = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  const { id: sud } = F.createSquad(g.id, { name: 'Sud' }, 'test');
+  const p = q.get('SELECT * FROM points WHERE gameId = ? LIMIT 1', g.id);
+  const photo = { buffer: Buffer.from([0xff, 0xd8]), mime: 'image/jpeg', lat: 45, lng: 9, acc: 5 };
+  F.assignToSquad('point', p.id, nord, 'test', { targetLat: 45.1, targetLng: 9.1, note: 'vicino al ponte' });
+  let row = q.get('SELECT * FROM points WHERE id = ?', p.id);
+  assert.deepEqual([row.squadId, row.targetLat, row.taskNote, row.moveRequestedAt], [nord, 45.1, 'vicino al ponte', null]);
+  assert.throws(() => F.assignToSquad('point', p.id, nord, 'test', { move: true }), /ancora piazzato/i);
+  F.placePoint(p.id, g.id, photo, 'eletti:Uno', nord);
+  row = q.get('SELECT * FROM points WHERE id = ?', p.id);
+  assert.equal(row.placedSquadId, nord);
+  // Spostamento: torna "da fare" per la squadra scelta, si chiude ripiazzando.
+  F.assignToSquad('point', p.id, sud, 'test', { move: true, targetLat: null, targetLng: null });
+  row = q.get('SELECT * FROM points WHERE id = ?', p.id);
+  assert.ok(row.moveRequestedAt);
+  assert.equal(row.squadId, sud);
+  assert.equal(row.targetLat, null);
+  F.placePoint(p.id, g.id, { ...photo, lat: 45.2 }, 'eletti:Due', sud);
+  row = q.get('SELECT * FROM points WHERE id = ?', p.id);
+  assert.deepEqual([row.moveRequestedAt, row.placedSquadId, row.lat], [null, sud, 45.2]);
+  // Luoghi del gioco: due per partita, piazzabili senza foto, visibili alle coppie solo se piazzati.
+  const st = F.fieldState(g.id);
+  assert.deepEqual(st.landmarks.map((l) => l.kind), ['cerchio', 'soglia']);
+  const soglia = st.landmarks.find((l) => l.kind === 'soglia');
+  F.assignToSquad('landmark', soglia.id, nord, 'test');
+  F.placeLandmark(soglia.id, g.id, { lat: 45.3, lng: 9.3, acc: 4 }, 'regia');
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  assert.deepEqual(F.teamMap(A).landmarks.map((l) => l.kind), ['soglia']);
+  assert.equal(F.fieldState(g.id).landmarks.find((l) => l.kind === 'soglia').hasPhoto, false);
+  assert.throws(() => F.placePoint(p.id, g.id, { lat: 45, lng: 9 }, 'x'), /Foto/);
+});
+
+test('doni: incarico alla squadra e annuncio programmato a un orario', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const { id: nord } = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'riscatto', count: 1, squadId: nord }, 'test');
+  assert.equal(q.get('SELECT squadId FROM gifts WHERE id = ?', gid).squadId, nord);
+  // Programmato prima del piazzamento: compare solo dopo che è piazzato e a partita in corso.
+  F.scheduleGiftReveal(gid, { mode: 'at', at: Date.now() + 1000 }, 'test');
+  assert.throws(() => F.scheduleGiftReveal(gid, { mode: 'at', at: Date.now() - 3600000 }, 'test'), /Orario/);
+  F.placeGift(gid, g.id, { buffer: Buffer.from([0xff, 0xd8]), mime: 'image/jpeg', lat: 45, lng: 9 }, 'eletti:Uno', nord);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  q.run('UPDATE gifts SET revealAt = ? WHERE id = ?', Date.now() - 10, gid);
+  F.tickAll();
+  assert.equal(q.get('SELECT status FROM gifts WHERE id = ?', gid).status, 'revealed');
+  // "Ora" su un dono non piazzato: compare appena piazzato; annullare riporta all'annuncio manuale.
+  const { ids: [g2] } = F.createGifts(g.id, { typeId: 'spacca', count: 1 }, 'test');
+  F.scheduleGiftReveal(g2, { mode: 'now' }, 'test');
+  assert.equal(q.get('SELECT revealMode FROM gifts WHERE id = ?', g2).revealMode, 'onplace');
+  F.scheduleGiftReveal(g2, { mode: 'cancel' }, 'test');
+  assert.equal(q.get('SELECT revealMode FROM gifts WHERE id = ?', g2).revealMode, 'manual');
+});
+
+test('armamenti: finestra con durata, prolunga, chiusura automatica e apertura a un orario', () => {
+  const g = setupGame(2);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const id = G.saveSupply(g.id, { scheduledMin: 1, durationMin: 10, description: 'BB' }, 'test');
+  G.shiftSupply(id, -1, 'test'); // anticipata al minuto 0
+  G.tickAll();
+  let s = q.get('SELECT * FROM supply_drops WHERE id = ?', id);
+  assert.equal(s.status, 'fired');
+  assert.ok(Math.abs(s.closesAt - (Date.now() + 600000)) < 5000);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  assert.equal(G.teamState(A).supplyOpen.length, 1);
+  G.shiftSupply(id, 5, 'test');
+  assert.ok(q.get('SELECT closesAt FROM supply_drops WHERE id = ?', id).closesAt > s.closesAt + 290000);
+  q.run('UPDATE supply_drops SET closesAt = ? WHERE id = ?', Date.now() - 1, id);
+  G.tickAll();
+  s = q.get('SELECT * FROM supply_drops WHERE id = ?', id);
+  assert.equal(s.status, 'closed');
+  assert.ok(q.get("SELECT 1 FROM announcements WHERE gameId = ? AND type = 'supply_end'", g.id));
+  assert.equal(G.teamState(A).supplyOpen.length, 0);
+  // Apertura a un orario preciso.
+  const id2 = G.saveSupply(g.id, { scheduledAt: Date.now() + 60000, durationMin: 5 }, 'test');
+  q.run('UPDATE supply_drops SET scheduledAt = ? WHERE id = ?', Date.now() - 1, id2);
+  G.tickAll();
+  assert.equal(q.get('SELECT status FROM supply_drops WHERE id = ?', id2).status, 'fired');
+  G.closeSupply(id2, 'test');
+  assert.throws(() => G.closeSupply(id2, 'test'), /non è aperta/);
+});
+
+test('messaggi: tutti gli Eletti o una sola squadra', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const e1 = G.addElectPerson(g.id, { name: 'Uno' }, 'test');
+  const e2 = G.addElectPerson(g.id, { name: 'Due' }, 'test');
+  const { id: nord } = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  F.setMemberSquad(e1, nord, 'test');
+  const elect = G.electOf(g.id);
+  G.postMessage(elect, 'master', 'a tutti', 'regia');
+  G.postMessage(elect, 'master', 'solo Nord', 'regia', null, nord);
+  G.postMessage(elect, 'team', 'ricevuto', 'Uno', null, nord);
+  const pl = (id) => q.get('SELECT * FROM players WHERE id = ?', id);
+  assert.deepEqual(G.teamState(elect, pl(e1)).messages.map((m) => m.text), ['a tutti', 'solo Nord', 'ricevuto']);
+  assert.deepEqual(G.teamState(elect, pl(e2)).messages.map((m) => m.text), ['a tutti']);
+  const ms = G.masterState(g.id);
+  assert.equal(ms.squads.find((s) => s.id === nord).unread, 1);
+  assert.equal(ms.elect.unread, 0);
+  G.markRead(elect.id, nord);
+  assert.equal(G.masterState(g.id).squads.find((s) => s.id === nord).unread, 0);
 });

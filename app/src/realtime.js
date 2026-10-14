@@ -23,6 +23,11 @@ function toTeams(gameId, event, data, teamId = null) {
   }
 }
 
+// Telefoni della partita scelti con un filtro (es. i membri di una squadra di Eletti).
+function toTeamsWhere(gameId, event, data, pred) {
+  for (const c of clients) if (c.kind === 'team' && c.gameId === gameId && pred(c)) write(c, event, data);
+}
+
 // Regia e validatori: ricevono un "refresh" con debounce per non saturare la rete.
 const pendingStaff = new Map();
 function toStaff(gameId, reason = 'update') {
@@ -100,4 +105,4 @@ function pushSubs(subs, payload) {
   sendPush(subs, payload).catch(() => {});
 }
 
-module.exports = { addClient, toTeams, toStaff, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushSubs, gameSubs };
+module.exports = { addClient, toTeams, toTeamsWhere, toStaff, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushSubs, gameSubs };

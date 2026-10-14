@@ -38,7 +38,7 @@ function teamsOf(gameId) {
 }
 
 function membersOf(teamId) {
-  return q.all('SELECT id, name, nickname, phone FROM players WHERE teamId = ? ORDER BY id', teamId);
+  return q.all('SELECT id, name, nickname, phone, softairTeam, squadId FROM players WHERE teamId = ? ORDER BY id', teamId);
 }
 
 // ---------------------------------------------------------------- tempo
@@ -176,9 +176,10 @@ function requirePreStart(g, what = 'Questa modifica') {
 // Chi si iscrive online resta "da approvare" finché la regia non lo accetta; chi aggiunge la regia è già accettato.
 function addPlayer(gameId, p, { actor, self = false, regGroup = null, requestedTeamName = null, requestedRole = null } = {}) {
   if (!p?.name?.trim()) throw err(400, 'Il nome del giocatore è obbligatorio');
-  const r = q.run(`INSERT INTO players (gameId, name, nickname, phone, note, regGroup, requestedTeamName, requestedRole, status, selfRegistered, loginToken, accessCode, createdAt)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    gameId, p.name.trim().slice(0, 80), p.nickname?.trim().slice(0, 40) || null, p.phone?.trim().slice(0, 30) || null,
+  if (self && !String(p.softairTeam || '').trim()) throw err(400, `Indica il team di softair di ${p.name.trim()} (o "nessuno")`);
+  const r = q.run(`INSERT INTO players (gameId, name, nickname, softairTeam, phone, note, regGroup, requestedTeamName, requestedRole, status, selfRegistered, loginToken, accessCode, createdAt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    gameId, p.name.trim().slice(0, 80), p.nickname?.trim().slice(0, 40) || null, String(p.softairTeam || '').trim().slice(0, 60) || null, p.phone?.trim().slice(0, 30) || null,
     p.note?.trim().slice(0, 300) || null, regGroup, requestedTeamName, requestedRole, self ? 'pending' : 'accepted', self ? 1 : 0,
     randomToken(24), uniqueAccessCode(), Date.now());
   log(gameId, actor || 'iscrizione', 'player_added', { name: p.name, pending: self });
@@ -197,12 +198,13 @@ function publicRegister(data) {
   const teamName = mode === 'pair' ? data.teamName?.trim().slice(0, 60) || null : null;
   const ids = tx(() => players.map((p) => addPlayer(g.id, p, { self: true, regGroup: group, requestedTeamName: teamName, requestedRole: mode })));
   const what = { pair: 'Iscrizione coppia', single: 'Temerario solitario', elect: 'Candidatura agli Eletti' }[mode];
-  rt.pushMasters({ title: `${what} da approvare`, body: `${players.map((p) => p.name).join(' e ')} — ${g.name}`, url: '/regia#coppie' });
+  rt.pushMasters({ title: `${what} da approvare`, body: `${players.map((p) => p.name).join(' e ')} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie' });
   return { ok: true, mode, paired: mode === 'pair', playerIds: ids };
 }
 
 // Accetta o rifiuta un'iscrizione: chi si è iscritto insieme viene deciso insieme.
-function reviewPlayer(id, decision, actor) {
+// opts.squadId: per i candidati agli Eletti, la squadra in cui entrano subito.
+function reviewPlayer(id, decision, actor, opts = {}) {
   const pl = q.get('SELECT * FROM players WHERE id = ?', id);
   if (!pl) throw err(404, 'Giocatore non trovato');
   const group = pl.regGroup ? q.all('SELECT * FROM players WHERE gameId = ? AND regGroup = ?', pl.gameId, pl.regGroup) : [pl];
@@ -210,7 +212,11 @@ function reviewPlayer(id, decision, actor) {
     tx(() => group.forEach((p) => q.run("UPDATE players SET status = 'accepted' WHERE id = ?", p.id)));
     // Un candidato agli Eletti accettato entra subito nel gruppo.
     const electIds = group.filter((p) => p.requestedRole === 'elect' && !p.teamId).map((p) => p.id);
-    if (electIds.length) addToElect(pl.gameId, electIds, actor);
+    if (electIds.length) {
+      addToElect(pl.gameId, electIds, actor);
+      const sq = opts.squadId ? q.get('SELECT id FROM elect_squads WHERE id = ? AND gameId = ?', Number(opts.squadId), pl.gameId) : null;
+      if (sq) for (const pid of electIds) q.run('UPDATE players SET squadId = ? WHERE id = ?', sq.id, pid);
+    }
     const subs = q.all(`SELECT * FROM push_subs WHERE playerId IN (${group.map(() => '?').join(',')})`, ...group.map((p) => p.id));
     rt.pushSubs(subs, { title: 'Il Consiglio vi ha accettati', body: electIds.length ? 'Siete tra gli Eletti del Consiglio.' : 'Presto riceverete il vostro Settore.', tag: 'accepted', url: '/#/home' });
     rt.toTeams(pl.gameId, 'state', {});
@@ -228,8 +234,9 @@ function reviewPlayer(id, decision, actor) {
 function updatePlayer(id, p, actor) {
   const pl = q.get('SELECT * FROM players WHERE id = ?', id);
   if (!pl) throw err(404, 'Giocatore non trovato');
-  q.run('UPDATE players SET name = COALESCE(?, name), nickname = ?, phone = ?, note = ? WHERE id = ?',
-    p.name?.trim() || null, p.nickname?.trim() || null, p.phone?.trim() || null, p.note?.trim() || null, id);
+  q.run('UPDATE players SET name = COALESCE(?, name), nickname = ?, phone = ?, note = ?, softairTeam = ? WHERE id = ?',
+    p.name?.trim() || null, p.nickname?.trim() || null, p.phone?.trim() || null, p.note?.trim() || null,
+    p.softairTeam !== undefined ? String(p.softairTeam || '').trim() || null : pl.softairTeam, id);
   log(pl.gameId, actor, 'player_updated', { id });
 }
 
@@ -364,6 +371,13 @@ function removeFromElect(playerId, actor) {
   q.run('UPDATE players SET teamId = NULL WHERE id = ?', p.id);
   log(p.gameId, actor, 'elect_removed', { name: p.name });
   notifyState(p.gameId);
+}
+
+// Luoghi del gioco (la Soglia, il Cerchio di inizio): una riga per partita, creata alla prima richiesta.
+const LANDMARKS = [{ kind: 'cerchio', label: 'Cerchio di inizio' }, { kind: 'soglia', label: 'La Soglia' }];
+function landmarksOf(gameId) {
+  for (const l of LANDMARKS) q.run('INSERT OR IGNORE INTO landmarks (gameId, kind, label) VALUES (?, ?, ?)', gameId, l.kind, l.label);
+  return q.all("SELECT * FROM landmarks WHERE gameId = ? ORDER BY kind = 'soglia', id", gameId);
 }
 
 function requireCouple(team) {
@@ -946,35 +960,84 @@ function skipRevelation(revId, actor, restore = false) {
   notifyState(r.gameId);
 }
 
+// Finestra armamenti: si apre a un minuto dal via (scheduledMin), a un orario (scheduledAt, ms) o a mano;
+// resta aperta durationMin minuti (vuoto = solo l'annuncio, senza chiusura).
+// Stati: scheduled → fired (aperta) → closed.
 function saveSupply(gameId, data, actor, id = null) {
   const g = getGame(gameId);
-  const m = data.scheduledMin === '' || data.scheduledMin == null ? null : parseFloat(data.scheduledMin);
-  if (m != null && (!Number.isFinite(m) || m < 0 || m > g.durationMin)) throw err(400, 'Orario non valido');
-  if (id) {
-    q.run('UPDATE supply_drops SET scheduledMin = ?, description = ?, message = ? WHERE id = ? AND gameId = ?', m, data.description || null, data.message || null, id, g.id);
-  } else {
-    q.run('INSERT INTO supply_drops (gameId, scheduledMin, description, message) VALUES (?, ?, ?, ?)', g.id, m, data.description || null, data.message || null);
-  }
-  log(g.id, actor, 'supply_saved', { scheduledMin: m });
+  const old = id ? q.get('SELECT * FROM supply_drops WHERE id = ? AND gameId = ?', id, g.id) : null;
+  if (id && !old) throw err(404, 'Finestra non trovata');
+  if (old && old.status !== 'scheduled') throw err(409, 'Finestra già aperta: usa prolunga o chiudi');
+  const num = (v) => (v === '' || v == null ? null : parseFloat(v));
+  const m = num(data.scheduledMin);
+  if (m != null && (!Number.isFinite(m) || m < 0 || m > g.durationMin)) throw err(400, 'Minuto dal via non valido');
+  const at = num(data.scheduledAt);
+  if (at != null && (!Number.isFinite(at) || at < Date.now() - 60000)) throw err(400, 'Orario di apertura non valido (già passato?)');
+  const dur = num(data.durationMin);
+  if (dur != null && (!Number.isFinite(dur) || dur <= 0 || dur > 600)) throw err(400, 'Durata non valida (minuti)');
+  const vals = [m, at == null ? null : Math.round(at), dur, data.description || null, data.message || null];
+  if (id) q.run('UPDATE supply_drops SET scheduledMin = ?, scheduledAt = ?, durationMin = ?, description = ?, message = ? WHERE id = ?', ...vals, id);
+  else id = Number(q.run('INSERT INTO supply_drops (gameId, scheduledMin, scheduledAt, durationMin, description, message) VALUES (?, ?, ?, ?, ?, ?)', g.id, ...vals).lastInsertRowid);
+  log(g.id, actor, 'supply_saved', { scheduledMin: m, scheduledAt: at, durationMin: dur });
+  notifyState(g.id);  return id;
+}
+
+function getSupply(id) {
+  const s = q.get('SELECT * FROM supply_drops WHERE id = ?', Number(id));
+  if (!s) throw err(404, 'Finestra non trovata');
+  return s;
 }
 
 function deleteSupply(id, actor) {
-  const s = q.get('SELECT * FROM supply_drops WHERE id = ?', id);
-  if (!s) throw err(404, 'Finestra non trovata');
-  q.run('DELETE FROM supply_drops WHERE id = ?', id);
+  const s = getSupply(id);
+  q.run('DELETE FROM supply_drops WHERE id = ?', s.id);
   log(s.gameId, actor, 'supply_deleted', { id });
+  notifyState(s.gameId);
 }
 
 function fireSupply(id, actor) {
-  const s = q.get('SELECT * FROM supply_drops WHERE id = ?', id);
-  if (!s) throw err(404, 'Finestra non trovata');
+  const s = getSupply(id);
   const g = getGame(s.gameId);
-  if (!C.ACTIVE.includes(g.status)) throw err(409, 'I doni si lanciano solo a partita in corso');
-  if (s.status === 'fired') throw err(409, 'Finestra già lanciata');
-  q.run("UPDATE supply_drops SET status = 'fired', firedAt = ? WHERE id = ?", Date.now(), s.id);
-  log(g.id, actor, 'supply_fired', { id: s.id });
-  announce(g.id, 'supply', {}, { supplyId: s.id }, s.message || null);
+  if (!C.ACTIVE.includes(g.status)) throw err(409, 'Gli armamenti si aprono solo a partita in corso');
+  if (s.status !== 'scheduled') throw err(409, 'Finestra già aperta');
+  const now = Date.now();
+  const closesAt = s.durationMin ? now + s.durationMin * 60000 : null;
+  q.run("UPDATE supply_drops SET status = 'fired', firedAt = ?, closesAt = ? WHERE id = ?", now, closesAt, s.id);
+  log(g.id, actor, 'supply_fired', { id: s.id, durationMin: s.durationMin });
+  const base = s.message || templatesOf(g).supply;
+  const text = s.durationMin ? `${base} La finestra resta aperta ${s.durationMin} minuti.` : base;
+  announce(g.id, 'supply', {}, { supplyId: s.id, closesAt }, text);
   notifyState(g.id);
+}
+
+function closeSupply(id, actor) {
+  const s = getSupply(id);
+  if (s.status !== 'fired' || s.closedAt) throw err(409, 'La finestra non è aperta');
+  q.run("UPDATE supply_drops SET status = 'closed', closedAt = ?, closesAt = MIN(COALESCE(closesAt, ?), ?) WHERE id = ?", Date.now(), Date.now(), Date.now(), s.id);
+  log(s.gameId, actor, 'supply_closed', { id: s.id });
+  announce(s.gameId, 'supply_end', {}, { supplyId: s.id });
+  notifyState(s.gameId);
+}
+
+// Sposta l'apertura (finestra in attesa: minuti negativi = anticipa) o prolunga/accorcia la finestra aperta.
+function shiftSupply(id, minutes, actor) {
+  const s = getSupply(id);
+  const m = parseFloat(minutes);
+  if (!Number.isFinite(m) || !m) throw err(400, 'Minuti non validi');
+  if (s.status === 'scheduled') {
+    if (s.scheduledMin != null) q.run('UPDATE supply_drops SET scheduledMin = MAX(0, scheduledMin + ?) WHERE id = ?', m, s.id);
+    else if (s.scheduledAt != null) q.run('UPDATE supply_drops SET scheduledAt = MAX(?, scheduledAt + ?) WHERE id = ?', Date.now(), m * 60000, s.id);
+    else throw err(409, 'Finestra a mano: aprila con "Apri ora"');
+  } else if (s.status === 'fired' && s.closesAt) {
+    q.run('UPDATE supply_drops SET closesAt = MAX(?, closesAt + ?), durationMin = MAX(1, durationMin + ?) WHERE id = ?', Date.now() + 30000, m * 60000, m, s.id);
+  } else throw err(409, 'Finestra già chiusa');
+  log(s.gameId, actor, 'supply_shifted', { id: s.id, minutes: m, open: s.status === 'fired' });
+  notifyState(s.gameId);
+}
+
+// Finestre aperte, per le app (le coppie vedono il conto alla rovescia della chiusura).
+function openSupply(gameId) {
+  return q.all("SELECT s.id, s.firedAt, s.closesAt, a.text FROM supply_drops s LEFT JOIN announcements a ON a.gameId = s.gameId AND a.type = 'supply' AND json_extract(a.payload, '$.supplyId') = s.id WHERE s.gameId = ? AND s.status = 'fired' AND s.closesAt IS NOT NULL ORDER BY s.closesAt", gameId);
 }
 
 function freeAnnouncement(gameId, text, actor) {
@@ -1002,8 +1065,11 @@ function tickGame(g) {
     for (const r of due) fireRevelation(g, r, 'sistema');
     if (due.length) notifyState(g.id);
   }
-  const drops = q.all("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'scheduled' AND scheduledMin IS NOT NULL AND scheduledMin <= ?", g.id, e);
+  const now = Date.now();
+  const drops = q.all("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'scheduled' AND ((scheduledMin IS NOT NULL AND scheduledMin <= ?) OR (scheduledAt IS NOT NULL AND scheduledAt <= ?))", g.id, e, now);
   for (const s of drops) fireSupply(s.id, 'sistema');
+  const closing = q.all("SELECT id FROM supply_drops WHERE gameId = ? AND status = 'fired' AND closesAt IS NOT NULL AND closesAt <= ?", g.id, now);
+  for (const s of closing) closeSupply(s.id, 'sistema');
   if (g.status === 'hunt' && e >= lastStart) {
     setStatus(g, 'last_half_hour');
     const skipped = q.run("UPDATE revelations SET status = 'skipped' WHERE gameId = ? AND status = 'scheduled'", g.id).changes;
@@ -1153,7 +1219,8 @@ const AUDIO_DIR = path.join(DATA_DIR, 'audio');
 const MAX_AUDIO_MS = 120000;
 
 // Messaggio di testo o vocale (audio = { buffer, mime, ms }).
-function postMessage(team, fromRole, text, author, audio = null) {
+// squadId: solo per gli Eletti, conversazione con una singola squadra (null = tutti gli Eletti).
+function postMessage(team, fromRole, text, author, audio = null, squadId = null) {
   const t = String(text || '').trim().slice(0, 1000);
   let ext = null;
   let ms = null;
@@ -1166,8 +1233,10 @@ function postMessage(team, fromRole, text, author, audio = null) {
     audio.mime = mime;
   } else if (!t) throw err(400, 'Messaggio vuoto');
   const now = Date.now();
-  const r = q.run('INSERT INTO messages (gameId, teamId, fromRole, author, text, audioMime, audioMs, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    team.gameId, team.id, fromRole, author || null, t, audio ? audio.mime : null, ms, now);
+  const squad = squadId && team.kind === 'elect' ? q.get('SELECT * FROM elect_squads WHERE id = ? AND gameId = ?', Number(squadId), team.gameId) : null;
+  if (squadId && !squad) throw err(400, 'Squadra non trovata');
+  const r = q.run('INSERT INTO messages (gameId, teamId, squadId, fromRole, author, text, audioMime, audioMs, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    team.gameId, team.id, squad?.id ?? null, fromRole, author || null, t, audio ? audio.mime : null, ms, now);
   const id = Number(r.lastInsertRowid);
   if (audio) {
     fs.mkdirSync(AUDIO_DIR, { recursive: true });
@@ -1175,14 +1244,21 @@ function postMessage(team, fromRole, text, author, audio = null) {
     fs.writeFileSync(path.join(AUDIO_DIR, file), audio.buffer);
     q.run('UPDATE messages SET audioFile = ? WHERE id = ?', file, id);
   }
-  const m = { id, teamId: team.id, fromRole, author, text: t, audioMime: audio ? audio.mime : null, audioMs: ms, createdAt: now };
+  const m = { id, teamId: team.id, squadId: squad?.id ?? null, fromRole, author, text: t, audioMime: audio ? audio.mime : null, audioMs: ms, createdAt: now };
   const preview = audio ? `🎤 Messaggio vocale (${Math.round((ms || 0) / 1000)}″)` : t;
-  if (fromRole === 'master') {
+  if (fromRole === 'master' && squad) {
+    // Solo i telefoni dei membri della squadra.
+    const members = new Set(q.all('SELECT id FROM players WHERE squadId = ?', squad.id).map((x) => x.id));
+    rt.toTeamsWhere(team.gameId, 'message', m, (c) => c.teamId === team.id && members.has(c.playerId));
+    rt.pushSubs(q.all('SELECT ps.* FROM push_subs ps JOIN players p ON p.id = ps.playerId WHERE p.squadId = ?', squad.id),
+      { title: `Consiglio, squadra ${squad.name}`, body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' });
+  } else if (fromRole === 'master') {
     rt.toTeams(team.gameId, 'message', m, team.id);
     rt.pushTeams(team.gameId, { title: 'Messaggio dal Consiglio', body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' }, team.id);
   } else {
     const s = team.sectorId ? sectorById(team.sectorId) : null;
-    rt.pushMasters({ title: `Messaggio da ${team.kind === 'elect' ? 'Eletti del Consiglio' : s ? 'Settore ' + s.name : 'coppia'}`, body: preview, url: '/regia#comunicazioni' });
+    const from = team.kind === 'elect' ? (squad ? `squadra ${squad.name}` : 'Eletti del Consiglio') : s ? 'Settore ' + s.name : 'coppia';
+    rt.pushMasters({ title: `Messaggio da ${from}${author ? ` (${author})` : ''}`, body: preview, url: '/regia#comunicazioni' });
   }
   log(team.gameId, fromRole === 'master' ? author : `coppia:${team.id}`, 'message', { teamId: team.id, fromRole });
   return m;
@@ -1196,8 +1272,10 @@ function messageAudio(id, { team, user }) {
   return { file: path.join(AUDIO_DIR, m.audioFile), mime: m.audioMime };
 }
 
-function markRead(teamId) {
-  q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), teamId);
+// squadId: undefined = tutta la conversazione, null = solo quella con tutti gli Eletti, numero = una squadra.
+function markRead(teamId, squadId) {
+  if (squadId === undefined) q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), teamId);
+  else q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND squadId IS ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), teamId, squadId);
 }
 
 // ---------------------------------------------------------------- correzioni di regia
@@ -1357,8 +1435,10 @@ function revealedCodes(gameId) {
                 WHERE r.gameId = ? AND r.status IN ('fired','manual')`, gameId);
 }
 
-function electState(team) {
+function electState(team, player = null) {
   const g = gameForTeam(team);
+  const squadId = player?.squadId ?? null;
+  const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   return {
     clock: clockOf(g),
     game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart },
@@ -1366,7 +1446,10 @@ function electState(team) {
     seal: null, fragments: [], notebook: [], visited: [],
     announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
     notices: noticesFor(team),
-    messages: q.all('SELECT id, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? ORDER BY id', team.id),
+    // Conversazione con tutti gli Eletti più quella della propria squadra.
+    messages: q.all('SELECT id, squadId, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? AND (squadId IS NULL OR squadId = ?) ORDER BY id', team.id, squadId)
+      .map((m) => ({ ...m, squadName: m.squadId ? squads[m.squadId] || null : null })),
+    supplyOpen: openSupply(g.id),
     standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, status: r.status, finishPosition: r.finishPosition, mine: false })) : null,
   };
 }
@@ -1392,13 +1475,13 @@ function lobbyState(player) {
 }
 
 function teamState(team, player = null) {
-  const st = teamStateCore(team);
+  const st = teamStateCore(team, player);
   st.player = playerInfo(player);
   return st;
 }
 
-function teamStateCore(team) {
-  if (team.kind === 'elect') return electState(team);
+function teamStateCore(team, player = null) {
+  if (team.kind === 'elect') return electState(team, player);
   const g = gameForTeam(team);
   const s = team.sectorId ? sectorById(team.sectorId) : null;
   const sealVisible = !['draft', 'ready'].includes(g.status);
@@ -1458,6 +1541,7 @@ function teamStateCore(team) {
       .map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
     notices: noticesFor(team),
     messages: q.all('SELECT id, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? ORDER BY id', team.id),
+    supplyOpen: openSupply(g.id),
     // A fine partita la classifica è pubblica.
     standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, status: r.status, finishPosition: r.finishPosition, mine: r.teamId === team.id })) : null,
   };
@@ -1465,7 +1549,11 @@ function teamStateCore(team) {
 
 function nextEvents(g) {
   const nextRev = q.get("SELECT * FROM revelations WHERE gameId = ? AND status = 'scheduled' AND scheduledMin IS NOT NULL ORDER BY scheduledMin, ord LIMIT 1", g.id);
-  const nextSupply = q.get("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'scheduled' AND scheduledMin IS NOT NULL ORDER BY scheduledMin LIMIT 1", g.id);
+  // Prossima apertura degli armamenti, in ms dal via (gli orari fissi vengono convertiti).
+  const el = elapsedMs(g);
+  const nextSupply = q.all("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'scheduled' AND (scheduledMin IS NOT NULL OR scheduledAt IS NOT NULL)", g.id)
+    .map((s) => ({ ...s, scheduledMin: s.scheduledMin ?? (g.startedAt ? (el + (s.scheduledAt - Date.now())) / 60000 : null) }))
+    .filter((s) => s.scheduledMin != null).sort((a, b) => a.scheduledMin - b.scheduledMin)[0];
   return {
     revelation: nextRev ? { id: nextRev.id, sectorId: nextRev.sectorId, sectorName: sectorById(nextRev.sectorId).name, atMs: nextRev.scheduledMin * 60000 } : null,
     supply: nextSupply ? { id: nextSupply.id, atMs: nextSupply.scheduledMin * 60000, description: nextSupply.description } : null,
@@ -1488,7 +1576,8 @@ function masterState(gameId) {
   const lastUnlock = Object.fromEntries(q.all(`SELECT tf.teamId, p.label, tf.acquiredAt FROM team_fragments tf
       JOIN fragments f ON f.id = tf.fragmentId JOIN points p ON p.id = f.pointId JOIN teams t ON t.id = tf.teamId
       WHERE t.gameId = ? ORDER BY tf.acquiredAt`, g.id).map((r) => [r.teamId, r]));
-  const unread = Object.fromEntries(q.all("SELECT teamId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL GROUP BY teamId", g.id).map((r) => [r.teamId, r.n]));
+  const unread = Object.fromEntries(q.all("SELECT teamId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND squadId IS NULL GROUP BY teamId", g.id).map((r) => [r.teamId, r.n]));
+  const unreadSquad = Object.fromEntries(q.all("SELECT squadId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND squadId IS NOT NULL GROUP BY squadId", g.id).map((r) => [r.squadId, r.n]));
   const owned = {};
   for (const r of q.all('SELECT tf.teamId, tf.fragmentId, tf.source FROM team_fragments tf JOIN teams t ON t.id = tf.teamId WHERE t.gameId = ?', g.id)) {
     (owned[r.teamId] ||= []).push({ fragmentId: r.fragmentId, source: r.source });
@@ -1522,6 +1611,9 @@ function masterState(gameId) {
       id: elect.id, displayName: elect.displayName, accessCode: elect.accessCode, loginToken: elect.loginToken,
       members: membersOf(elect.id), online: online[elect.id] || 0, unread: unread[elect.id] || 0, pushDevices: pushDevices[elect.id] || 0,
     },
+    squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id).map((x) => ({
+      ...x, members: q.all('SELECT id, name, nickname FROM players WHERE squadId = ?', x.id), unread: unreadSquad[x.id] || 0,
+    })),
     notices: q.all('SELECT * FROM notices WHERE gameId = ? ORDER BY id DESC', g.id),
     noticeTargets: NOTICE_TARGETS,
     codes,
@@ -1530,7 +1622,8 @@ function masterState(gameId) {
                    LEFT JOIN fragments f ON f.pointId = p.id WHERE p.gameId = ?`, g.id)
       .map((p) => ({ ...p, sectorName: sectorById(p.sectorId).name, roman: sectorById(p.sectorId).roman, sectorOrd: sectorById(p.sectorId).ord }))
       .sort((a, b) => a.sectorOrd - b.sectorOrd),
-    supply: q.all('SELECT * FROM supply_drops WHERE gameId = ? ORDER BY COALESCE(scheduledMin, 99999), id', g.id),
+    landmarks: landmarksOf(g.id),
+    supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
     announcements: q.all('SELECT * FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 100', g.id),
     messages: q.all('SELECT * FROM messages WHERE gameId = ? ORDER BY id', g.id),
     validations: q.all('SELECT v.*, u.username FROM validations v LEFT JOIN users u ON u.id = v.validatorId WHERE v.gameId = ? ORDER BY v.id DESC', g.id),
@@ -1561,12 +1654,13 @@ function boardState(gameId) {
 }
 
 module.exports = {
+  landmarksOf,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
   ensurePoints, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
-  saveSupply, deleteSupply, fireSupply, freeAnnouncement, tickAll,
+  saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
   validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,

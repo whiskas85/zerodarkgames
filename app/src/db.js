@@ -201,6 +201,36 @@ CREATE TABLE IF NOT EXISTS squad_tasks (
 addColumn('players', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
 addColumn('points', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
 addColumn('gifts', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
+// Incarichi di piazzamento: punto indicato dalla regia (facoltativo), nota, richiesta di spostamento,
+// squadra che ha piazzato davvero (proposta di default quando si chiede di spostare).
+for (const t of ['points', 'gifts']) {
+  addColumn(t, 'targetLat', 'REAL');
+  addColumn(t, 'targetLng', 'REAL');
+  addColumn(t, 'taskNote', 'TEXT');
+  addColumn(t, 'moveRequestedAt', 'INTEGER');
+  addColumn(t, 'placedSquadId', 'INTEGER');
+}
+// Annuncio del dono programmato a un orario preciso (ms).
+addColumn('gifts', 'revealAt', 'INTEGER');
+// Armamenti: finestra con inizio (minuto dal via o orario) e durata.
+addColumn('supply_drops', 'scheduledAt', 'INTEGER');
+addColumn('supply_drops', 'durationMin', 'REAL');
+addColumn('supply_drops', 'closesAt', 'INTEGER');
+addColumn('supply_drops', 'closedAt', 'INTEGER');
+// Team di softair di appartenenza (chiesto all'iscrizione).
+addColumn('players', 'softairTeam', 'TEXT');
+// Luoghi del gioco da piazzare sul campo come gli Altari (foto facoltativa): la Soglia e il Cerchio di inizio.
+db.exec(`
+CREATE TABLE IF NOT EXISTS landmarks (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, label TEXT NOT NULL,
+  lat REAL, lng REAL, accuracy REAL, photoFile TEXT, placedAt INTEGER, placedBy TEXT, placeSource TEXT, placedSquadId INTEGER,
+  squadId INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL, targetLat REAL, targetLng REAL, taskNote TEXT, moveRequestedAt INTEGER,
+  UNIQUE (gameId, kind)
+);
+`);
+// Messaggi con una singola squadra di Eletti (null = tutti gli Eletti).
+addColumn('messages', 'squadId', 'INTEGER');
 
 // Ultima posizione GPS di ogni telefono (coppie a partita iniziata, Eletti dalla preparazione).
 db.exec(`

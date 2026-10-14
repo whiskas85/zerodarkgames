@@ -1,5 +1,6 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
-import { createMapView, watchPosition } from './map.js';
+import { createMapView, watchPosition, landmarkItem } from './map.js';
+import { createField } from './field-ui.js';
 import { h, mount, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
@@ -26,6 +27,11 @@ if (cached?.state) {
   S.state = cached.state;
   clock.set(cached.state.clock, cached.offset);
 }
+
+// Lavoro sul campo degli Eletti (incarichi, piazzamenti, mappa del campo), dentro la loro app.
+const FE = { who: { role: 'elect', squad: null }, gameId: null, squadId: store.get('zdg_campo_squad'), data: null, me: null, geoError: null };
+const field = createField(FE, { rerender: (tab) => { if (tab === 'mappa') location.hash = '#/mappa'; else render(); } });
+const FIELD_VIEWS = ['campo', 'incarichi', 'mappa'];
 
 const $app = document.getElementById('app');
 const $overlay = document.getElementById('overlay');
@@ -94,6 +100,14 @@ function setState(st) {
   clock.set(st.clock);
   syncServerTimers(st);
   updateTracking(st);
+  if (st.team.kind === 'elect') {
+    const squad = st.field?.squad || null;
+    const changed = FE.gameId !== st.game.id;
+    FE.gameId = st.game.id;
+    FE.who.squad = squad;
+    if (squad) FE.squadId = squad.id;
+    if (changed || FIELD_VIEWS.includes(route().view)) field.load();
+  }
   if (prev?.combat && st.combat) {
     const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`)]);
     const fresh = [...st.combat.incoming.map((r) => [`r${r.id}`, r.kind === 'break' ? `${r.team.sectorName} vuole rompere l'alleanza` : `${r.team.sectorName} vi propone un'alleanza`]),
@@ -322,13 +336,16 @@ function render() {
   if (isElect() && ['sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
   if (isLobby() && ['altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri'].includes(view)) view = 'home';
   if (isElect() && view === 'scontri') view = 'home';
-  if (view === 'mappa') startMapGps(); else stopMapGps();
+  if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
+  if (view === 'mappa' && !isElect()) startMapGps(); else stopMapGps();
+  if (isElect() && FIELD_VIEWS.includes(view)) { field.startGps(); if (!FE.data) field.load(); } else field.stopGps();
+  if (view !== 'mappa') field.leaveMap();
   if (view === 'sigillo') openSeal(); else closeSeal();
   preserveInputs(() => {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings,
-      avvisi: viewNotices, mappa: viewMap, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat,
+      avvisi: viewNotices, mappa: isElect() ? viewElectMap : viewMap, campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -350,7 +367,8 @@ function header(view) {
     view !== 'home' ? h('a', { class: 'back', href: '#/home', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? `Settore ${sec.name}` : 'Legati'),
-      h('div', { class: 'top-sub' }, st?.team.displayName || st?.team.members.map((m) => m.nickname || m.name).join(' · ') || '')),
+      h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
+        : st?.team.displayName || st?.team.members.map((m) => m.nickname || m.name).join(' · ') || '')),
     h('div', { class: 'top-clock' },
       h('div', { class: 'top-time' },
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
@@ -536,8 +554,9 @@ function viewElectHome(st) {
       h('div', { class: 'eyebrow' }, STATUS_LABELS[c.status]),
       c.running || c.status === 'paused' ? h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—') : h('div', { class: 'phase-big' }, c.status === 'ended' ? 'I Giochi sono finiti' : 'Al servizio del Consiglio'),
       h('p', { class: 'muted' }, 'Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi. Seguite gli avvisi e i messaggi della regia.')),
+    supplyCard(st),
     trackingNote(st),
-    st.field?.squad ? h('a', { class: 'squad-home', href: '/campo#incarichi', style: { '--c': st.field.squad.color } },
+    st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
       h('span', { class: st.field.todo ? 'bad-text small' : 'ok-text small' }, st.field.todo ? `${st.field.todo} incarichi da fare` : 'Nessun incarico in sospeso')) : null,
     pushInvite(),
@@ -545,9 +564,11 @@ function viewElectHome(st) {
     st.standings ? h('div', { class: 'card final' }, h('div', { class: 'eyebrow' }, 'Classifica finale'),
       h('ol', { class: 'final-list' }, st.standings.map((r) => h('li', { class: r.status === 'won' ? 'won-row' : '' }, h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`), h('span', { class: 'mono' }, r.status === 'won' ? 'Soglia' : r.fragments))))) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
-    h('a', { class: 'btn btn-primary btn-seal', href: '/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
+    h('a', { class: 'btn btn-primary btn-seal', href: '#/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
     h('nav', { class: 'grid' },
-      tile('#/mappa', 'Mappa', '⛰'),
+      h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
+      tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
+      tile('#/mappa', 'Mappa del campo', '⛰'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
@@ -581,6 +602,7 @@ function viewHome() {
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
+    supplyCard(st),
     trackingNote(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/scontri' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
@@ -610,6 +632,15 @@ function viewHome() {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙')));
+}
+
+function supplyCard(st) {
+  const open = (st.supplyOpen || []).filter((x) => x.closesAt > clock.serverNow());
+  if (!open.length) return null;
+  return open.map((x) => h('a', { class: 'supply-card', href: '#/annunci' },
+    h('span', { class: 'eyebrow' }, 'Armamenti al Cuore · aperti'),
+    h('strong', null, 'Chiude tra ', h('span', { class: 'mono', 'data-abs': x.closesAt }, '—')),
+    x.text ? h('span', { class: 'small muted' }, x.text) : null));
 }
 
 function tile(href, label, icon, badge, alert) {
@@ -798,6 +829,7 @@ function stopMapGps() { stopGps?.(); stopGps = null; }
 function viewMap() {
   const m = S.state?.map || { points: [], gifts: [] };
   teamMapView.setItems([
+    ...(m.landmarks || []).map((l) => landmarkItem(l)),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
   ]);
@@ -813,10 +845,46 @@ function viewMap() {
     h('div', { class: 'map-legend' },
       h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
       h('span', null, h('span', { class: 'pin pin-altar pin-mine' }, 'I'), ' Il vostro'),
+      h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
+      h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
       h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono'),
       h('span', null, h('span', { class: 'pin pin-me' }), ' Voi')),
     trackingNote(S.state) || h('p', { class: 'muted small' }, 'Prima del via la vostra posizione resta su questo telefono.'),
     h('p', { class: 'muted small' }, 'La mappa già vista funziona anche con poco segnale.'));
+}
+
+// ---------------------------------------------------------------- Campo degli Eletti
+
+function electFieldHead() {
+  return h('div', { class: 'campo-head' },
+    h('div', { class: 'mono small', id: 'gps-now' }, field.gpsText()),
+    h('button', { class: 'btn btn-primary btn-block btn-xl', onclick: () => field.scanSign() }, '⌖ Scansiona un cartello'),
+    cameraSupported() ? null : h('p', { class: 'muted small' }, 'Scanner e GPS richiedono l\'indirizzo https: scegli dall\'elenco e indica il punto toccando la mappa.'));
+}
+
+function viewElectTasks() {
+  return h('div', { class: 'stack campo' }, h('h2', null, 'Incarichi della squadra'), electFieldHead(), field.viewTasks());
+}
+
+function viewElectField() {
+  const d = FE.data;
+  const which = route().query?.get?.('v') === 'doni' || S.fieldTab === 'doni' ? 'doni' : 'altari';
+  const placedA = d ? d.points.filter((p) => p.lat != null).length : 0;
+  const placedG = d ? d.gifts.filter((g) => g.status !== 'draft').length : 0;
+  const seg = (id, label) => h('button', { type: 'button', class: which === id ? 'on' : '', onclick: () => { S.fieldTab = id; render(); } }, label);
+  return h('div', { class: 'stack campo' },
+    h('h2', null, 'Piazza Altari e Doni'),
+    electFieldHead(),
+    h('nav', { class: 'seg-tabs' }, seg('altari', `Altari ${placedA}/${d?.points.length ?? '…'}`), seg('doni', `Doni ${placedG}/${d?.gifts.length ?? '…'}`)),
+    which === 'doni' ? field.viewGifts() : field.viewAltars());
+}
+
+function viewElectMap() {
+  return h('div', { class: 'stack campo' },
+    h('h2', null, 'Mappa del campo'),
+    h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()),
+    field.viewMap(),
+    trackingNote(S.state));
 }
 
 // ---------------------------------------------------------------- Doni del Consiglio (QR)
@@ -1176,7 +1244,7 @@ function viewTimers() {
 
 // ---------------------------------------------------------------- Annunci e messaggi
 
-const ANN_LABEL = { gift: 'Dono', gift_taken: 'Dono preso', gift_expired: 'Dono svanito', start: 'Via', hunt_open: 'Caccia', revelation: 'Tradimento', supply: 'Doni', last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', free: 'Consiglio' };
+const ANN_LABEL = { gift: 'Dono', gift_taken: 'Dono preso', gift_expired: 'Dono svanito', start: 'Via', hunt_open: 'Caccia', revelation: 'Tradimento', supply: 'Armamenti', supply_end: 'Armamenti chiusi', last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', free: 'Consiglio' };
 
 function viewNotices() {
   const list = S.state?.notices || [];
@@ -1211,16 +1279,30 @@ function viewMessages() {
   for (const m of msgs) {
     const day = new Date(m.createdAt).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
     if (day !== lastDay) { items.push(h('li', { class: 'chat-day' }, h('span', null, day))); lastDay = day; }
-    const mine = m.fromRole === 'team';
+    // Eletti: la chat è condivisa, "miei" sono solo i messaggi scritti da me; gli altri mostrano chi scrive.
+    const me = S.state.player ? S.state.player.nickname || S.state.player.name : null;
+    const mine = m.fromRole === 'team' && (!isElect() || !m.author || m.author === me);
+    const who = m.fromRole === 'master' ? 'Consiglio' : mine ? null : m.author;
     items.push(h('li', { class: `bubble ${mine ? 'mine' : 'theirs'} ${m.audioMime ? 'voice' : ''}` },
-      mine ? null : h('div', { class: 'bubble-who' }, 'Consiglio'),
+      who || m.squadName ? h('div', { class: 'bubble-who' }, who || '', m.squadName ? h('span', { class: 'bubble-tag' }, `${who ? ' · ' : ''}squadra ${m.squadName}`) : null) : null,
       m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'bubble-text' }, m.text),
       h('div', { class: 'bubble-time mono' }, fmtTime(m.createdAt))));
   }
   return h('div', { class: 'chat-wrap' },
-    h('div', { class: 'chat-head' }, h('strong', null, 'Consiglio Zero'), h('span', { class: 'muted small' }, 'Messaggi con la regia · emergenze sempre via radio')),
+    h('div', { class: 'chat-head' }, h('strong', null, 'Consiglio Zero'), h('span', { class: 'muted small' }, isElect() ? 'Con la regia e gli altri Eletti · emergenze sempre via radio' : 'Messaggi con la regia · emergenze sempre via radio')),
+    chatTargetBar(),
     msgs.length ? h('ul', { class: 'chat' }, items) : h('p', { class: 'empty chat-empty' }, 'Nessun messaggio. Scrivete o registrate un vocale alla regia.'),
     composer());
+}
+
+// Eletti con una squadra: scrivono a tutti gli Eletti oppure solo alla propria squadra (sempre con la regia).
+const mySquad = () => (isElect() ? S.state?.field?.squad || null : null);
+const msgSquadId = () => (mySquad() && S.msgTarget !== 'all' ? mySquad().id : null);
+function chatTargetBar() {
+  const sq = mySquad();
+  if (!sq) return null;
+  const btn = (key, label) => h('button', { type: 'button', class: (S.msgTarget === 'all') === (key === 'all') ? 'on' : '', onclick: () => { S.msgTarget = key; render(); } }, label);
+  return h('div', { class: 'chat-target', role: 'group', 'aria-label': 'A chi scrivi' }, h('span', { class: 'small muted' }, 'Scrivi a:'), btn('squad', `Squadra ${sq.name}`), btn('all', 'Tutti gli Eletti'));
 }
 
 function composer() {
@@ -1251,7 +1333,7 @@ function composer() {
     if (!text) return;
     btn.disabled = true;
     try {
-      await api('POST', '/api/team/message', { text });
+      await api('POST', '/api/team/message', { text, squadId: msgSquadId() });
       ta.value = '';
       S.chatScroll = true;
       await refresh();
@@ -1287,7 +1369,7 @@ async function sendVoice() {
   const voice = await rec.stop();
   if (voice.ms < 700) return toast('Vocale troppo breve', 'info');
   try {
-    await uploadAudio('/api/team/message/audio', voice);
+    await uploadAudio(msgSquadId() ? `/api/team/message/audio?squadId=${msgSquadId()}` : '/api/team/message/audio', voice);
     vibrate(40);
     S.chatScroll = true;
     await refresh();

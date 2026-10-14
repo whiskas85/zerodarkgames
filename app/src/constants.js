@@ -30,10 +30,11 @@ const DEFAULT_TEMPLATES = {
   gift: 'Un dono del Consiglio è comparso nel bosco. Guardate la mappa: chi arriva primo lo prende.',
   gift_taken: 'Un dono del Consiglio è stato preso: è sparito dalla mappa.',
   gift_expired: 'Un dono del Consiglio è svanito: nessuno è arrivato in tempo.',
+  supply_end: 'La finestra degli armamenti al Cuore si è chiusa.',
 };
 
 const TEMPLATE_LABELS = {
-  start: 'Via', hunt_open: 'Apertura caccia', revelation: 'Rivelazione', supply: 'Doni del Consiglio',
+  start: 'Via', hunt_open: 'Apertura caccia', revelation: 'Rivelazione', supply: 'Armamenti: apertura', supply_end: 'Armamenti: chiusura',
   last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', gift: 'Dono comparso', gift_taken: 'Dono preso', gift_expired: 'Dono svanito',
 };
 

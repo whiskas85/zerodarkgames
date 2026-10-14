@@ -147,3 +147,6 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 .pin-elect { width: 26px; height: 26px; background: var(--c); border: 3px solid #111; transform: rotate(45deg); }
 .pin-elect b { transform: rotate(-45deg); font-size: 10px; color: #111; }
 .pin-stale { opacity: .4; filter: grayscale(.7); }
+.pin-target { width: 30px; height: 30px; border-radius: 50%; background: rgba(209, 173, 98, .25); color: #d1ad62; border: 3px dashed #d1ad62; font-size: 18px; font-weight: 700; }
+.pin-place { width: 32px; height: 32px; border-radius: 50%; background: #111; color: #d1ad62; border: 3px solid #d1ad62; font-size: 17px; }
+.pin-place.pin-soglia { background: #8e2a1f; color: #fff; border-color: #fff; }

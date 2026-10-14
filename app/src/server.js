@@ -100,7 +100,8 @@ function loadAuth(req, _res, next) {
   }
   if (c[COOKIE_TEAM]) {
     const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind IN ('team','player')", c[COOKIE_TEAM]);
-    if (s?.kind === 'team') req.team = q.get('SELECT * FROM teams WHERE id = ?', s.refId);
+    // Gli Eletti entrano solo con l'accesso personale: le vecchie sessioni col codice comune non valgono più.
+    if (s?.kind === 'team') req.team = q.get("SELECT * FROM teams WHERE id = ? AND kind != 'elect'", s.refId);
     if (s?.kind === 'player') {
       // Accesso personale: segue il giocatore; quando entra in una coppia o tra gli Eletti ne diventa un dispositivo.
       req.player = q.get('SELECT * FROM players WHERE id = ?', s.refId);
@@ -188,7 +189,7 @@ function deviceLogin(req, res, kind, refId, gameId) {
   rt.toStaff(gameId, 'login');
 }
 function loginBy(field, value) {
-  const t = q.get(`SELECT * FROM teams WHERE ${field} = ?`, value);
+  const t = q.get(`SELECT * FROM teams WHERE ${field} = ? AND kind != 'elect'`, value);
   if (t) return { kind: 'team', id: t.id, gameId: t.gameId };
   const p = q.get(`SELECT * FROM players WHERE ${field} = ?`, value);
   if (p) return { kind: 'player', id: p.id, gameId: p.gameId };
@@ -247,10 +248,17 @@ app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.tea
 app.post('/api/team/unlock', needTeam, teamRateLimit, wrap((req) => G.unlock(req.team, req.body.qrToken, req.body.code)));
 app.post('/api/team/fragment', needTeam, teamRateLimit, wrap((req) => G.addManualFragment(req.team, req.body.text)));
 app.post('/api/team/note', needTeam, teamRateLimit, wrap((req) => G.addCodeNote(req.team, req.body.sectorId, req.body.code)));
-app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text)));
+// Gli Eletti scrivono a tutti gli Eletti (con la regia) oppure solo nella conversazione della propria squadra.
+const msgSquad = (req, value) => {
+  if (req.team.kind !== 'elect' || !value) return null;
+  if (Number(value) !== req.player?.squadId) throw new HttpError(403, 'Puoi scrivere solo nella conversazione della tua squadra');
+  return Number(value);
+};
+const msgAuthor = (req) => (req.team.kind === 'elect' && req.player ? req.player.nickname || req.player.name : null);
+app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text, msgAuthor(req), null, msgSquad(req, req.body.squadId))));
 // Vocali: corpo binario (audio/*), durata in ?ms=. Massimo ~2 minuti.
 const rawAudio = express.raw({ type: 'audio/*', limit: '4mb' });
-app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', null, { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms })));
+app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', msgAuthor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, msgSquad(req, req.query.squadId))));
 app.get('/api/media/message/:id', (req, res, next) => {
   try {
     const a = G.messageAudio(req.params.id, { team: req.team, user: req.user });
@@ -306,8 +314,11 @@ app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
 const placement = (req) => ({ buffer: req.body, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source });
-app.post('/api/field/points/:id/place', needField, rawImage, wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req))));
-app.post('/api/field/gifts/:id/place', needField, rawImage, wrap((req) => F.placeGift(req.params.id, fieldGame(req), placement(req), fieldWho(req))));
+const placerSquad = (req) => req.player?.squadId || req.query.squadId || null;
+app.post('/api/field/points/:id/place', needField, rawImage, wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
+// Soglia e Cerchio: foto facoltativa (corpo vuoto = senza foto).
+app.post('/api/field/landmarks/:id/place', needField, express.raw({ type: () => true, limit: '10mb' }), wrap((req) => F.placeLandmark(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
+app.post('/api/field/gifts/:id/place', needField, rawImage, wrap((req) => F.placeGift(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
 // Foto dei piazzamenti: solo organizzazione ed Eletti della partita.
 const sendPhoto = (kind) => (req, res, next) => {
   try {
@@ -318,6 +329,7 @@ const sendPhoto = (kind) => (req, res, next) => {
 };
 app.get('/api/media/point/:id', sendPhoto('point'));
 app.get('/api/media/gift/:id', sendPhoto('gift'));
+app.get('/api/media/landmark/:id', sendPhoto('landmark'));
 
 // ---- API regia (MASTER)
 const m = express.Router();
@@ -340,7 +352,7 @@ m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.para
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
 m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.body || {}, { actor: actor(req) }) })));
-m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req))));
+m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
@@ -359,18 +371,18 @@ m.post('/teams/:tid/fragments', wrap((req) => { G.correctFragments(Number(req.pa
 m.post('/teams/:tid/message', wrap((req) => {
   const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
   if (!t) throw new HttpError(404, 'Coppia non trovata');
-  G.markRead(t.id);
+  G.markRead(t.id, t.kind === 'elect' ? null : undefined);
   return G.postMessage(t, 'master', req.body.text, actor(req));
 }));
 m.post('/teams/:tid/message/audio', rawAudio, wrap((req) => {
   const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
   if (!t) throw new HttpError(404, 'Coppia non trovata');
-  G.markRead(t.id);
+  G.markRead(t.id, t.kind === 'elect' ? null : undefined);
   return G.postMessage(t, 'master', '', actor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms });
 }));
 m.post('/teams/:tid/read', wrap((req) => {
   const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
-  G.markRead(Number(req.params.tid));
+  if (t) G.markRead(t.id, t.kind === 'elect' ? null : undefined);
   if (t) rt.toStaff(t.gameId, 'read');
   return { ok: true };
 }));
@@ -391,7 +403,7 @@ m.post('/revelations/:rid/skip', wrap((req) => { G.skipRevelation(Number(req.par
 m.post('/games/:id/reveal-next', wrap((req) => { G.revealNext(gameId(req), actor(req)); return { ok: true }; }));
 m.post('/games/:id/reveal-sector', wrap((req) => { G.revealSector(gameId(req), Number(req.body.sectorId), actor(req)); return { ok: true }; }));
 
-m.post('/games/:id/supply', wrap((req) => { G.saveSupply(gameId(req), req.body || {}, actor(req)); return { ok: true }; }));
+m.post('/games/:id/supply', wrap((req) => ({ ok: true, id: G.saveSupply(gameId(req), req.body || {}, actor(req)) })));
 m.patch('/supply/:sid', wrap((req) => {
   const s = q.get('SELECT * FROM supply_drops WHERE id = ?', Number(req.params.sid));
   if (!s) throw new HttpError(404, 'Finestra non trovata');
@@ -400,13 +412,45 @@ m.patch('/supply/:sid', wrap((req) => {
 }));
 m.delete('/supply/:sid', wrap((req) => { G.deleteSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
 m.post('/supply/:sid/fire', wrap((req) => { G.fireSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
+m.post('/supply/:sid/close', wrap((req) => { G.closeSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
+m.post('/supply/:sid/shift', wrap((req) => { G.shiftSupply(Number(req.params.sid), req.body.minutes, actor(req)); return { ok: true }; }));
 
 // Squadre degli Eletti e incarichi
 m.post('/games/:id/squads', wrap((req) => F.createSquad(gameId(req), req.body || {}, actor(req))));
 m.patch('/squads/:sid', wrap((req) => { F.updateSquad(req.params.sid, req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/squads/:sid', wrap((req) => { F.deleteSquad(req.params.sid, actor(req)); return { ok: true }; }));
 m.post('/players/:pid/squad', wrap((req) => { F.setMemberSquad(req.params.pid, req.body.squadId || null, actor(req)); return { ok: true }; }));
-m.post('/assign', wrap((req) => { F.assignToSquad(req.body.kind, req.body.id, req.body.squadId || null, actor(req)); return { ok: true }; }));
+m.post('/assign', wrap((req) => {
+  const b = req.body || {};
+  const opts = {};
+  if ('targetLat' in b) { opts.targetLat = b.targetLat; opts.targetLng = b.targetLng; }
+  if ('note' in b) opts.note = b.note;
+  opts.move = !!b.move;
+  F.assignToSquad(b.kind, b.id, b.squadId || null, actor(req), opts);
+  return { ok: true };
+}));
+// Conversazione con una singola squadra di Eletti.
+const squadThread = (req) => {
+  const sq = q.get('SELECT * FROM elect_squads WHERE id = ?', Number(req.params.sid));
+  if (!sq) throw new HttpError(404, 'Squadra non trovata');
+  return { sq, elect: G.ensureElect(sq.gameId) };
+};
+m.post('/squads/:sid/message', wrap((req) => {
+  const { sq, elect } = squadThread(req);
+  G.markRead(elect.id, sq.id);
+  return G.postMessage(elect, 'master', req.body.text, actor(req), null, sq.id);
+}));
+m.post('/squads/:sid/message/audio', rawAudio, wrap((req) => {
+  const { sq, elect } = squadThread(req);
+  G.markRead(elect.id, sq.id);
+  return G.postMessage(elect, 'master', '', actor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, sq.id);
+}));
+m.post('/squads/:sid/read', wrap((req) => {
+  const { sq, elect } = squadThread(req);
+  G.markRead(elect.id, sq.id);
+  rt.toStaff(sq.gameId, 'read');
+  return { ok: true };
+}));
 m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {}, actor(req))));
 m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));
 m.delete('/tasks/:tid', wrap((req) => { F.deleteTask(req.params.tid, actor(req)); return { ok: true }; }));
@@ -416,6 +460,7 @@ m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || 
 m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/gifts/:gid', wrap((req) => { F.deleteGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/gifts/:gid/reveal', wrap((req) => { F.revealGift(req.params.gid, actor(req)); return { ok: true }; }));
+m.post('/gifts/:gid/schedule', wrap((req) => F.scheduleGiftReveal(req.params.gid, req.body || {}, actor(req))));
 m.post('/gifts/:gid/reset', wrap((req) => { F.resetGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.body.text, actor(req))));
 
