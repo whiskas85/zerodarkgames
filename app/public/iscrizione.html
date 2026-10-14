@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iscrizione ai Giochi</title>
+  <meta name="theme-color" content="#0f1310">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap">
+  <link rel="stylesheet" href="/css/base.css">
+  <style>
+    main { max-width: 620px; margin: 0 auto; padding: 32px 16px 64px; display: grid; gap: 20px; }
+    h1 { font-size: clamp(52px, 15vw, 84px); font-weight: 900; line-height: .86; }
+    h1 em { font-style: normal; color: var(--blood); }
+    h2 { font-size: 26px; }
+    .lede { font-family: "Source Serif 4", Georgia, serif; font-size: 19px; margin: 0; }
+    form, fieldset { display: grid; gap: 12px; }
+    fieldset { border: 2px solid var(--line); padding: 16px; margin: 0; }
+    legend { font-family: var(--f-display); font-size: 22px; text-transform: uppercase; padding: 0 6px; }
+    .step { font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
+    .steps { display: flex; gap: 6px; }
+    .steps i { flex: 1; height: 4px; background: var(--line); }
+    .steps i.on { background: var(--blood); }
+
+    /* Pagina 1: le tre sfide */
+    .paths { display: grid; gap: 12px; }
+    .path { display: grid; gap: 8px; padding: 18px 18px 16px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); text-decoration: none; }
+    .path:hover, .path:focus-visible { border-color: var(--blood); box-shadow: inset 6px 0 0 var(--blood); background: var(--paper-2); }
+    .path-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .path-title { font-family: var(--f-display); font-weight: 900; font-size: 32px; text-transform: uppercase; line-height: 1; }
+    .path-tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .path p { margin: 0; font-family: "Source Serif 4", Georgia, serif; font-size: 17px; line-height: 1.5; }
+    .dare { font-family: var(--f-display); font-weight: 800; font-size: 20px; text-transform: uppercase; color: var(--blood); letter-spacing: .02em; }
+    .path-go { justify-self: start; margin-top: 4px; }
+
+    /* Pagina 2: il modulo */
+    .chosen { border-left: 6px solid var(--blood); padding: 4px 0 4px 14px; display: grid; gap: 6px; }
+    .chosen .path-title { font-size: clamp(40px, 11vw, 60px); }
+    .back { justify-self: start; }
+    .done { border: 3px solid var(--ok); padding: 20px; background: var(--paper); display: grid; gap: 10px; }
+    .done h2 { color: var(--ok); }
+    .done p { margin: 0; }
+    .access { display: grid; gap: 6px; }
+    .access p { margin: 0; }
+    .code { font-size: 32px; font-weight: 600; letter-spacing: .18em; }
+  </style>
+</head>
+<body>
+  <main id="root"><p class="muted">Caricamento…</p></main>
+  <script type="module">
+    import { h, mount, api, toast } from '/js/lib.js';
+
+    // Le tre strade, presentate come sfide. La chiave è anche l'indirizzo della pagina 2 (#legati, #temerario, #eletti).
+    const PATHS = {
+      legati: {
+        mode: 'pair',
+        title: 'I Legati',
+        tag: 'in coppia',
+        text: [
+          'Entrate nel bosco in due e ne uscirete in due, o non ne uscirete affatto. Il Consiglio vi affiderà un Settore e il suo Sigillo: un segreto da custodire con la vita.',
+          'Darete la caccia agli Altari degli altri Settori, strapperete i loro Sigilli e raccoglierete i frammenti della Parola. Chi porta per primo la Parola intera alla Soglia libera il proprio Settore.',
+          'Se uno cade, l\'altro lo vendica. Se uno fugge, l\'altro lo segue.',
+        ],
+        dare: 'Vi fidate abbastanza l\'uno dell\'altro per quattro ore di buio?',
+        cta: 'Accettiamo la sfida',
+        done: 'La vostra candidatura come Legati è arrivata al Consiglio. Se verrà accettata, il Consiglio vi assegnerà il Settore e il suo Altare.',
+      },
+      temerario: {
+        mode: 'single',
+        title: 'Il Temerario Solitario',
+        tag: 'da solo',
+        text: [
+          'Entri da solo, ma non resterai solo a lungo. Il Consiglio ti legherà a un altro temerario estratto a sorte: un volto forse mai visto, che diventerà la tua ombra fino alla fine dei Giochi.',
+          'Il vostro destino sarà uno solo: lo stesso Sigillo, la stessa caccia, la stessa Parola da riunire.',
+        ],
+        dare: 'Hai il fegato di affidare la tua sorte a uno sconosciuto?',
+        cta: 'Accetto la sfida',
+        done: 'La tua candidatura da Temerario Solitario è arrivata al Consiglio. Se verrà accettata, il Consiglio estrarrà il tuo compagno e ti assegnerà un Settore.',
+      },
+      eletti: {
+        mode: 'elect',
+        title: 'Gli Eletti del Consiglio',
+        tag: 'al servizio del Consiglio',
+        text: [
+          'Non cercherete la Parola: la proteggerete. Gli Eletti sono la mano del Consiglio nel bosco. Tengono in piedi i Giochi (logistica, Altari, il Cuore, i doni) e ne difendono i luoghi dalle coppie troppo audaci.',
+          'Nessun Sigillo da custodire, nessuna gloria in classifica: solo il potere silenzioso di chi decide come scorre il buio.',
+        ],
+        dare: 'Siete degni di servire il Consiglio?',
+        cta: 'Mi offro al Consiglio',
+        done: 'La tua candidatura agli Eletti del Consiglio è arrivata. Se verrà accettata, entrerai nel gruppo degli Eletti e riceverai le istruzioni del Consiglio.',
+      },
+    };
+
+    const root = document.getElementById('root');
+    let games = [];
+    let gameId = null;
+    let sent = null; // chiave della sfida appena inviata
+    let access = []; // codici personali restituiti dall'iscrizione
+
+    try { games = await api('GET', '/api/public/games'); } catch (e) { toast(e.message, 'error'); }
+    gameId = games[0]?.id ?? null;
+
+    const steps = (n) => h('div', { class: 'steps', 'aria-hidden': 'true' }, h('i', { class: 'on' }), h('i', { class: n === 2 ? 'on' : '' }));
+
+    // ---- pagina 1: scelta della sfida
+    function pageChoose() {
+      return [
+        h('div', { class: 'emblem' }, h('span', null, '0')),
+        h('p', { class: 'eyebrow' }, 'Consiglio Zero · Chiamata ai Giochi del Buio'),
+        h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
+        h('p', { class: 'lede' }, 'Il Consiglio chiama. Tre strade portano nel bosco: sceglietene una. Il Consiglio valuterà ogni candidatura e deciderà chi entra, con chi e sotto quale Sigillo.'),
+        steps(1),
+        h('div', { class: 'step' }, 'Passo 1 di 2 · Scegli la tua sfida'),
+        games.length > 1 ? h('label', { class: 'field' }, h('span', null, 'Partita'),
+          h('select', { class: 'input', onchange: (e) => { gameId = Number(e.target.value); } }, games.map((g) => h('option', { value: g.id, selected: g.id === gameId }, g.name)))) : h('h2', null, games[0].name),
+        h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => h('a', { class: 'path', href: `#${key}` },
+          h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
+          c.text.map((t) => h('p', null, t)),
+          h('div', { class: 'dare' }, c.dare),
+          h('span', { class: 'btn btn-primary path-go' }, 'Scelgo questa sfida →')))),
+      ];
+    }
+
+    // ---- pagina 2: dati per la sfida scelta
+    function pageForm(key) {
+      const c = PATHS[key];
+      const person = (n, legend) => h('fieldset', null, h('legend', null, legend),
+        h('label', { class: 'field' }, h('span', null, 'Nome e cognome'), h('input', { class: 'input', name: `name${n}`, required: true, autocomplete: n === 1 ? 'name' : 'off' })),
+        h('label', { class: 'field' }, h('span', null, 'Nome di battaglia (facoltativo)'), h('input', { class: 'input', name: `nick${n}` })),
+        h('label', { class: 'field' }, h('span', null, 'Telefono (facoltativo, solo per l\'organizzazione)'), h('input', { class: 'input', name: `phone${n}`, type: 'tel', autocomplete: n === 1 ? 'tel' : 'off' })));
+      const fields = {
+        pair: [person(1, 'Il primo Legato'), person(2, 'Il secondo Legato'),
+          h('label', { class: 'field' }, h('span', null, 'Nome della coppia (facoltativo)'), h('input', { class: 'input', name: 'teamName' }))],
+        single: [person(1, 'Chi sei')],
+        elect: [person(1, 'Chi sei'),
+          h('label', { class: 'field' }, h('span', null, 'Come puoi servire il Consiglio? (facoltativo)'),
+            h('textarea', { class: 'input', name: 'note', rows: 3, maxlength: 300, placeholder: 'es. logistica al Cuore, presidio degli Altari, radio, primo soccorso…' }))],
+      }[c.mode];
+
+      const form = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(form).entries());
+        const players = [{ name: fd.name1, nickname: fd.nick1, phone: fd.phone1, note: c.mode === 'elect' ? fd.note : undefined }];
+        if (c.mode === 'pair') players.push({ name: fd.name2, nickname: fd.nick2, phone: fd.phone2 });
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true;
+        try {
+          const r = await api('POST', '/api/public/register', { gameId, mode: c.mode, players, teamName: c.mode === 'pair' ? fd.teamName : null });
+          access = r.access || [];
+          sent = key;
+          render();
+          window.scrollTo({ top: 0 });
+        } catch (err) {
+          toast(err.message, 'error', 6000);
+          btn.disabled = false;
+        }
+      } },
+        fields,
+        h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, c.cta),
+        h('p', { class: 'muted small' }, 'I dati servono solo all\'organizzazione per gestire la partita.'));
+
+      return [
+        h('a', { class: 'btn btn-sm btn-ghost back', href: '#' }, '‹ Cambia sfida'),
+        steps(2),
+        h('div', { class: 'step' }, `Passo 2 di 2 · Iscrizione${games.length > 1 ? ` · ${games.find((g) => g.id === gameId)?.name || ''}` : ''}`),
+        h('div', { class: 'chosen' }, h('span', { class: 'path-tag' }, c.tag), h('span', { class: 'path-title' }, c.title), h('div', { class: 'dare' }, c.dare)),
+        form,
+      ];
+    }
+
+    // Condivisione dell'accesso del secondo Legato (WhatsApp, SMS… tramite il menu di condivisione del telefono).
+    async function shareAccess(a) {
+      const text = `I Giochi del Buio: entra nell'app con il tuo accesso personale ${a.loginUrl} (codice ${a.accessCode})`;
+      try {
+        if (navigator.share) await navigator.share({ title: 'I Giochi del Buio', text, url: a.loginUrl });
+        else { await navigator.clipboard.writeText(text); toast('Accesso copiato: incollalo al tuo Legato', 'ok'); }
+      } catch { /* condivisione annullata */ }
+    }
+
+    function pageDone(key) {
+      const [me, partner] = access;
+      return [
+        h('div', { class: 'emblem' }, h('span', null, '0')),
+        h('div', { class: 'done' },
+          h('h2', null, 'Il Consiglio ha ricevuto'),
+          h('p', null, PATHS[key].done),
+          h('p', null, "Non serve aspettare il giorno dei Giochi: entrate subito nell'app per conoscerla. Vi faremo fare un giro guidato."),
+          h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, "Entra nell'app")),
+        me ? h('div', { class: 'card access' },
+          h('div', { class: 'eyebrow' }, `Codice personale di ${me.name}`),
+          h('div', { class: 'mono code' }, me.accessCode),
+          h('p', { class: 'muted small' }, 'Questo telefono è già collegato. Il codice serve per entrare da un altro dispositivo: conservatelo.')) : null,
+        partner ? h('div', { class: 'card access' },
+          h('div', { class: 'eyebrow' }, `Accesso per ${partner.name}`),
+          h('div', { class: 'mono code' }, partner.accessCode),
+          h('p', { class: 'muted small' }, "Mandatelo al vostro Legato: entrerà nell'app dal suo telefono, con il suo accesso personale."),
+          h('button', { class: 'btn btn-block', type: 'button', onclick: () => shareAccess(partner) }, 'Condividi con il tuo Legato')) : null,
+        h('p', { class: 'muted small' }, "Quando il Consiglio vi avrà assegnato il Settore, l'app si aggiornerà da sola. Il giorno dei Giochi riceverete comunque nel cerchio il QR della coppia."),
+        h('a', { class: 'btn btn-ghost', href: '/regolamento.html' }, 'Leggete il regolamento'),
+      ];
+    }
+
+    function render() {
+      if (!games.length) {
+        return mount(root, h('div', { class: 'emblem' }, h('span', null, '0')), h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
+          h('div', { class: 'card' }, h('strong', null, 'Le iscrizioni sono chiuse.'), h('p', { class: 'muted' }, 'Non ci sono partite aperte alle iscrizioni in questo momento.')));
+      }
+      const key = location.hash.slice(1);
+      if (sent && sent === key) return mount(root, pageDone(key));
+      sent = null;
+      mount(root, PATHS[key] ? pageForm(key) : pageChoose());
+      window.scrollTo({ top: 0 });
+    }
+
+    window.addEventListener('hashchange', render);
+    render();
+  </script>
+</body>
+</html>

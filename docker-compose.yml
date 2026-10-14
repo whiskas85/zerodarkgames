@@ -1,0 +1,32 @@
+services:
+  zdg:
+    build: ./app
+    image: zero-dark-games:latest
+    container_name: zero-dark-games
+    restart: unless-stopped
+    ports:
+      - "${ZDG_PORT:-8090}:8080"
+    environment:
+      MASTER_USER: ${MASTER_USER:-master}
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-cambiami}
+      MASTER_PASSWORD_RESET: ${MASTER_PASSWORD_RESET:-0}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:consiglio@zerodarkteam.it}
+      TZ: Europe/Rome
+    volumes:
+      - zdg-data:/data
+
+  # Tunnel HTTPS temporaneo per provare la PWA sui telefoni (installazione, push, fotocamera).
+  # Avvio:  docker compose --profile tunnel up -d   poi leggi l'indirizzo https://...trycloudflare.com con
+  #         docker compose logs tunnel
+  # ATTENZIONE: l'app diventa raggiungibile da Internet finché il tunnel è acceso.
+  tunnel:
+    image: cloudflare/cloudflared:2025.9.1
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://zdg:8080
+    depends_on:
+      - zdg
+    restart: "no"
+
+volumes:
+  zdg-data:

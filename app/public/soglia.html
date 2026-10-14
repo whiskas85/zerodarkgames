@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>La Soglia</title>
+  <meta name="theme-color" content="#0f1310">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/regia.css">
+  <style>
+    .soglia { max-width: 760px; margin: 0 auto; }
+    .reminder { border: 2px solid var(--brass); background: var(--paper); padding: 12px 14px; margin-bottom: 16px; }
+    .soglia-teams { display: grid; gap: 8px; }
+    .soglia-team { all: unset; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 56px; border: 2px solid var(--line); background: var(--paper); }
+    .soglia-team.won { border-color: var(--ok); }
+    .soglia-team:disabled { opacity: .45; cursor: default; }
+    .mode-switch { display: flex; gap: 6px; }
+    .check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .check-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid var(--line); background: var(--bg); }
+    .check-list li.ok { border-color: var(--ok); }
+    .check-list li.ko { border-color: var(--danger); }
+    .check-list .mark { font-size: 22px; width: 24px; text-align: center; }
+    .check-list li.ok .mark { color: var(--ok); }
+    .check-list li.ko .mark { color: var(--danger); }
+    .check-list .pos { color: var(--muted); width: 22px; }
+    .verdict { font-family: var(--f-display); font-size: 28px; text-transform: uppercase; padding: 10px 14px; }
+    .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+    .verdict.ko { background: rgba(255, 90, 74, .1); color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/js/soglia.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "zero-dark-games",
+  "version": "1.0.0",
+  "description": "App di gioco Zero Dark Games (I Giochi del Buio): PWA per le coppie, regia MASTER, Soglia e tabellone",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "5.1.0",
+    "jsqr": "1.4.0",
+    "leaflet": "1.9.4",
+    "qrcode": "1.5.4",
+    "web-push": "3.6.7"
+  }
+}

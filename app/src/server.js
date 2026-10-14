@@ -1,0 +1,503 @@
+'use strict';
+const path = require('path');
+const express = require('express');
+const QRCode = require('qrcode');
+const { q, getSetting, setSetting } = require('./db');
+const C = require('./constants');
+const G = require('./game');
+const rt = require('./realtime');
+const { randomToken, hashPassword, verifyPassword, HttpError } = require('./util');
+const print = require('./print');
+const F = require('./field');
+const K = require('./combat');
+
+const PORT = Number(process.env.PORT || 8080);
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const COOKIE_USER = 'zdg_u';
+const COOKIE_TEAM = 'zdg_t';
+const ONE_YEAR = 365 * 24 * 3600;
+
+// ---------------------------------------------------------------- seed
+
+function seed() {
+  if (!q.get('SELECT 1 FROM sectors LIMIT 1')) {
+    for (const s of C.SECTORS) q.run('INSERT INTO sectors (ord, roman, name, article, element, motto) VALUES (?, ?, ?, ?, ?, ?)', s.ord, s.roman, s.name, s.article, s.element, s.motto);
+  }
+  const user = process.env.MASTER_USER || 'master';
+  const pass = process.env.MASTER_PASSWORD || 'cambiami';
+  const existing = q.get('SELECT * FROM users WHERE username = ?', user);
+  if (!existing) {
+    q.run("INSERT INTO users (username, passHash, role, displayName, createdAt) VALUES (?, ?, 'master', 'Consiglio Zero', ?)", user, hashPassword(pass), Date.now());
+    console.log(`Utente MASTER creato: ${user}`);
+  } else if (process.env.MASTER_PASSWORD_RESET === '1') {
+    q.run('UPDATE users SET passHash = ? WHERE id = ?', hashPassword(pass), existing.id);
+    console.log(`Password MASTER reimpostata per ${user}`);
+  }
+  if (pass === 'cambiami') console.warn('ATTENZIONE: password MASTER di default. Imposta MASTER_PASSWORD nel file .env');
+}
+
+// ---------------------------------------------------------------- helper http
+
+function cookies(req) {
+  const out = {};
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function isHttps(req) {
+  return req.secure || req.headers['x-forwarded-proto'] === 'https';
+}
+
+function setCookie(req, res, name, value, maxAge = ONE_YEAR) {
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${maxAge}`];
+  if (isHttps(req)) parts.push('Secure');
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+// Indirizzo usato in link e QR (cartelli, credenziali, iscrizione). Ordine: impostazione della regia,
+// variabile PUBLIC_URL, indirizzo da cui è aperta la pagina.
+function requestOrigin(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  return `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+}
+function baseUrl(req) {
+  const fromSettings = getSetting('publicUrl');
+  if (fromSettings) return fromSettings;
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, '');
+  return requestOrigin(req);
+}
+function normalizeBaseUrl(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(v) ? v : `http://${v}`); } catch { throw new HttpError(400, 'Indirizzo non valido: es. http://192.168.1.50:8090'); }
+  if (!['http:', 'https:'].includes(u.protocol)) throw new HttpError(400, "L'indirizzo deve iniziare con http:// o https://");
+  if (u.pathname !== '/' || u.search || u.hash) throw new HttpError(400, 'Solo indirizzo e porta, senza percorso: es. http://192.168.1.50:8090');
+  return u.origin;
+}
+
+const wrap = (fn) => async (req, res, next) => {
+  try {
+    const out = await fn(req, res);
+    if (out !== undefined && !res.headersSent) res.json(out);
+  } catch (e) { next(e); }
+};
+
+function newSession(kind, refId) {
+  const token = randomToken(32);
+  q.run('INSERT INTO sessions (token, kind, refId, createdAt) VALUES (?, ?, ?, ?)', token, kind, refId, Date.now());
+  return token;
+}
+
+function loadAuth(req, _res, next) {
+  const c = cookies(req);
+  if (c[COOKIE_USER]) {
+    const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind = 'user'", c[COOKIE_USER]);
+    if (s) req.user = q.get('SELECT id, username, role, displayName FROM users WHERE id = ?', s.refId);
+  }
+  if (c[COOKIE_TEAM]) {
+    const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind IN ('team','player')", c[COOKIE_TEAM]);
+    if (s?.kind === 'team') req.team = q.get('SELECT * FROM teams WHERE id = ?', s.refId);
+    if (s?.kind === 'player') {
+      // Accesso personale: segue il giocatore; quando entra in una coppia o tra gli Eletti ne diventa un dispositivo.
+      req.player = q.get('SELECT * FROM players WHERE id = ?', s.refId);
+      if (req.player?.teamId) req.team = q.get('SELECT * FROM teams WHERE id = ?', req.player.teamId);
+    }
+  }
+  next();
+}
+
+const needMaster = (req, _res, next) => (req.user?.role === 'master' ? next() : next(new HttpError(401, 'Accesso riservato alla regia')));
+const needStaff = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Accesso riservato all\'organizzazione')));
+const needTeam = (req, _res, next) => (req.team ? next() : next(new HttpError(req.player ? 403 : 401, req.player ? 'Disponibile quando il Consiglio vi avrà assegnato il Settore' : 'Accesso coppia richiesto')));
+const needMember = (req, _res, next) => (req.team || req.player ? next() : next(new HttpError(401, 'Accesso richiesto')));
+const actor = (req) => req.user?.username || 'regia';
+
+// Limite tecnico anti-abuso: 30 richieste al minuto per coppia sulle azioni.
+const hits = new Map();
+function teamRateLimit(req, _res, next) {
+  const now = Date.now();
+  const arr = (hits.get(req.team.id) || []).filter((t) => now - t < 60000);
+  if (arr.length >= 30) return next(new HttpError(429, 'Troppe richieste: aspettate qualche secondo'));
+  arr.push(now);
+  hits.set(req.team.id, arr);
+  next();
+}
+
+// Limite sui tentativi di login per IP.
+const loginHits = new Map();
+function loginLimit(req, _res, next) {
+  const key = req.ip;
+  const now = Date.now();
+  const arr = (loginHits.get(key) || []).filter((t) => now - t < 10 * 60000);
+  if (arr.length >= 20) return next(new HttpError(429, 'Troppi tentativi: riprova tra qualche minuto'));
+  arr.push(now);
+  loginHits.set(key, arr);
+  next();
+}
+
+// ---------------------------------------------------------------- app
+
+const app = express();
+app.set('trust proxy', true);
+app.disable('x-powered-by');
+app.use(express.json({ limit: '200kb' }));
+app.use(loadAuth);
+
+// Aperto anche da altri indirizzi: la regia lo usa per provare se l'indirizzo dei QR risponde.
+app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '*'); res.json({ ok: true }); });
+app.get('/api/time', (_req, res) => res.json({ now: Date.now() }));
+
+// ---- autenticazione staff
+app.post('/api/auth/login', loginLimit, wrap((req, res) => {
+  const u = q.get('SELECT * FROM users WHERE username = ?', String(req.body.username || '').trim());
+  if (!u || !verifyPassword(req.body.password || '', u.passHash)) throw new HttpError(401, 'Credenziali non valide');
+  setCookie(req, res, COOKIE_USER, newSession('user', u.id), 30 * 24 * 3600);
+  G.log(null, u.username, 'login');
+  return { id: u.id, username: u.username, role: u.role, displayName: u.displayName };
+}));
+app.post('/api/auth/logout', wrap((req, res) => {
+  const c = cookies(req);
+  if (c[COOKIE_USER]) q.run('DELETE FROM sessions WHERE token = ?', c[COOKIE_USER]);
+  setCookie(req, res, COOKIE_USER, '', 0);
+  return { ok: true };
+}));
+app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: req.team ? { id: req.team.id } : null }));
+
+// ---- iscrizione pubblica
+app.get('/api/public/games', (_req, res) => {
+  res.json(q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"));
+});
+app.post('/api/public/register', loginLimit, wrap((req, res) => {
+  const r = G.publicRegister(req.body || {});
+  // Il dispositivo con cui ci si iscrive entra subito nell'app (anteprima) con l'accesso personale del primo iscritto.
+  const players = r.playerIds.map((id) => q.get('SELECT id, name, nickname, gameId, accessCode, loginToken FROM players WHERE id = ?', id));
+  deviceLogin(req, res, 'player', players[0].id, players[0].gameId);
+  const base = baseUrl(req);
+  return { ok: true, mode: r.mode, access: players.map((p) => ({ name: p.name, accessCode: p.accessCode, loginUrl: `${base}/login/${p.loginToken}` })) };
+}));
+
+// ---- accesso coppie
+// Un dispositivo entra come coppia/Eletti (codice della squadra) o come giocatore (codice personale).
+function deviceLogin(req, res, kind, refId, gameId) {
+  setCookie(req, res, COOKIE_TEAM, newSession(kind, refId));
+  G.log(gameId, kind === 'team' ? `coppia:${refId}` : `giocatore:${refId}`, kind === 'team' ? 'team_login' : 'player_login', kind === 'team' ? { teamId: refId } : { playerId: refId });
+  rt.toStaff(gameId, 'login');
+}
+function loginBy(field, value) {
+  const t = q.get(`SELECT * FROM teams WHERE ${field} = ?`, value);
+  if (t) return { kind: 'team', id: t.id, gameId: t.gameId };
+  const p = q.get(`SELECT * FROM players WHERE ${field} = ?`, value);
+  if (p) return { kind: 'player', id: p.id, gameId: p.gameId };
+  return null;
+}
+app.get('/login/:token', (req, res) => {
+  const who = loginBy('loginToken', req.params.token);
+  if (!who) return res.redirect('/?login=invalid');
+  deviceLogin(req, res, who.kind, who.id, who.gameId);
+  res.redirect('/#/home');
+});
+app.post('/api/team/login', loginLimit, wrap((req, res) => {
+  const code = String(req.body.accessCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const who = code && loginBy('accessCode', code);
+  if (!who) throw new HttpError(401, 'Codice d\'accesso non valido');
+  deviceLogin(req, res, who.kind, who.id, who.gameId);
+  return { ok: true };
+}));
+app.post('/api/team/logout', wrap((req, res) => {
+  const c = cookies(req);
+  if (c[COOKIE_TEAM]) q.run('DELETE FROM sessions WHERE token = ?', c[COOKIE_TEAM]);
+  setCookie(req, res, COOKIE_TEAM, '', 0);
+  return { ok: true };
+}));
+
+// ---- API coppia
+app.get('/api/team/state', needMember, wrap((req) => {
+  if (!req.team) return G.lobbyState(req.player);
+  const st = G.teamState(req.team, req.player);
+  st.map = F.teamMap(req.team);
+  st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
+  st.combat = K.combatState(req.team);
+  st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
+  return st;
+}));
+// Alleanze: proposta, accettazione/rifiuto, rottura (stesso schema). Scontri: vinto / perso / pareggio.
+app.post('/api/team/alliance/request', needTeam, teamRateLimit, wrap((req) => K.requestAlliance(req.team, req.body.teamId)));
+app.post('/api/team/alliance/break', needTeam, teamRateLimit, wrap((req) => K.requestBreak(req.team, req.body.teamId)));
+app.post('/api/team/alliance/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondRequest(req.team, req.params.id, !!req.body.accept)));
+app.post('/api/team/alliance/:id/cancel', needTeam, wrap((req) => K.cancelRequest(req.team, req.params.id)));
+app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result)));
+app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm)));
+app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
+app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));
+app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));
+app.post('/api/team/unlock', needTeam, teamRateLimit, wrap((req) => G.unlock(req.team, req.body.qrToken, req.body.code)));
+app.post('/api/team/fragment', needTeam, teamRateLimit, wrap((req) => G.addManualFragment(req.team, req.body.text)));
+app.post('/api/team/note', needTeam, teamRateLimit, wrap((req) => G.addCodeNote(req.team, req.body.sectorId, req.body.code)));
+app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text)));
+// Vocali: corpo binario (audio/*), durata in ?ms=. Massimo ~2 minuti.
+const rawAudio = express.raw({ type: 'audio/*', limit: '4mb' });
+app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', null, { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms })));
+app.get('/api/media/message/:id', (req, res, next) => {
+  try {
+    const a = G.messageAudio(req.params.id, { team: req.team, user: req.user });
+    res.sendFile(a.file, { headers: { 'Content-Type': a.mime, 'Cache-Control': 'private, max-age=31536000' } });
+  } catch (e) { next(e); }
+});
+
+// ---- push e stream
+app.get('/api/push/key', (_req, res) => res.json({ publicKey: rt.publicKey() }));
+app.post('/api/push/subscribe', wrap((req) => {
+  const staff = req.query.as === 'staff';
+  if (staff ? !req.user : !req.team && !req.player) throw new HttpError(401, 'Non autenticato');
+  rt.saveSubscription(req.body.subscription, staff ? { userId: req.user.id }
+    : req.player ? { playerId: req.player.id } : { teamId: req.team.id });
+  return { ok: true };
+}));
+
+app.get('/api/stream', (req, res, next) => {
+  const asStaff = req.query.as === 'staff';
+  if (asStaff ? !req.user : !req.team && !req.player) return next(new HttpError(401, 'Non autenticato'));
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.write('retry: 4000\n\n');
+  res.write(`event: hello\ndata: ${JSON.stringify({ now: Date.now() })}\n\n`);
+  if (asStaff) rt.addClient({ res, kind: 'user', userId: req.user.id });
+  else {
+    const gameId = req.team?.gameId ?? req.player.gameId;
+    rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null });
+    rt.toStaff(gameId, 'online');
+    res.on('close', () => rt.toStaff(gameId, 'online'));
+  }
+});
+
+// ---- strumento di campo (/campo): Master o Eletti, dal telefono
+const needField = (req, _res, next) => (req.user?.role === 'master' || req.team?.kind === 'elect' ? next() : next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio')));
+const fieldGame = (req) => {
+  if (req.team?.kind === 'elect' && !req.user) return req.team.gameId;
+  const id = Number(req.query.gameId || req.body?.gameId);
+  if (!id) throw new HttpError(400, 'Partita non indicata');
+  return id;
+};
+const fieldWho = (req) => (req.user ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
+const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
+app.get('/api/field/whoami', (req, res) => {
+  if (req.user?.role === 'master') return res.json({ role: 'master', name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
+  if (req.team?.kind === 'elect') return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
+  res.status(401).json({ error: 'Accesso riservato alla regia e agli Eletti' });
+});
+app.get('/api/field/state', needField, wrap((req) => F.fieldState(fieldGame(req))));
+app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
+const placement = (req) => ({ buffer: req.body, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source });
+app.post('/api/field/points/:id/place', needField, rawImage, wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req))));
+app.post('/api/field/gifts/:id/place', needField, rawImage, wrap((req) => F.placeGift(req.params.id, fieldGame(req), placement(req), fieldWho(req))));
+// Foto dei piazzamenti: solo organizzazione ed Eletti della partita.
+const sendPhoto = (kind) => (req, res, next) => {
+  try {
+    const p = F.photoFile(kind, req.params.id);
+    if (!req.user && !(req.team?.kind === 'elect' && req.team.gameId === p.gameId)) throw new HttpError(403, 'Non autorizzato');
+    res.sendFile(p.file, { headers: { 'Cache-Control': 'private, max-age=31536000' } });
+  } catch (e) { next(e); }
+};
+app.get('/api/media/point/:id', sendPhoto('point'));
+app.get('/api/media/gift/:id', sendPhoto('gift'));
+
+// ---- API regia (MASTER)
+const m = express.Router();
+m.use(needMaster);
+const gameId = (req) => Number(req.params.id);
+
+m.get('/sectors', (_req, res) => res.json(G.sectorsAdmin()));
+m.post('/sectors', wrap((req) => ({ id: G.saveSector(null, req.body || {}, actor(req)) })));
+m.patch('/sectors/:sid', wrap((req) => ({ id: G.saveSector(Number(req.params.sid), req.body || {}, actor(req)) })));
+m.delete('/sectors/:sid', wrap((req) => G.deleteSector(Number(req.params.sid), actor(req))));
+m.post('/sectors/:sid/restore', wrap((req) => { G.restoreSector(Number(req.params.sid), actor(req)); return { ok: true }; }));
+m.get('/games', (_req, res) => res.json(q.all('SELECT id, name, status, scheduledStart, createdAt FROM games ORDER BY id DESC')));
+m.post('/games', wrap((req) => G.createGame(req.body || {}, actor(req))));
+m.patch('/games/:id', wrap((req) => G.updateGame(gameId(req), req.body || {}, actor(req))));
+m.delete('/games/:id', wrap((req) => { G.deleteGame(gameId(req), actor(req)); return { ok: true }; }));
+m.post('/demo', wrap((req) => ({ id: G.createDemo(req.body.teams, actor(req)) })));
+m.post('/games/:id/advance', wrap((req) => { G.advanceDemo(gameId(req), req.body.minutes, actor(req)); return { ok: true }; }));
+m.get('/games/:id/state', wrap((req) => ({ ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)) })));
+m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
+m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
+
+m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.body || {}, { actor: actor(req) }) })));
+m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req))));
+m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
+m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
+m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body || {}, actor(req))));
+m.delete('/notices/:nid', wrap((req) => { G.deleteNotice(Number(req.params.nid), actor(req)); return { ok: true }; }));
+m.patch('/players/:pid', wrap((req) => { G.updatePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
+m.delete('/players/:pid', wrap((req) => { G.deletePlayer(Number(req.params.pid), actor(req)); return { ok: true }; }));
+
+m.post('/games/:id/teams', wrap((req) => ({ id: G.createTeam(gameId(req), req.body || {}, actor(req)) })));
+m.post('/games/:id/auto-pair', wrap((req) => G.autoPair(gameId(req), actor(req))));
+m.patch('/teams/:tid', wrap((req) => { G.updateTeam(Number(req.params.tid), req.body || {}, actor(req)); return { ok: true }; }));
+m.delete('/teams/:tid', wrap((req) => { G.dissolveTeam(Number(req.params.tid), actor(req)); return { ok: true }; }));
+m.post('/teams/:tid/withdraw', wrap((req) => { G.withdrawTeam(Number(req.params.tid), actor(req), !!req.body.restore); return { ok: true }; }));
+m.post('/teams/:tid/regen-token', wrap((req) => { G.regenTeamToken(Number(req.params.tid), actor(req)); return { ok: true }; }));
+m.post('/teams/:tid/fragments', wrap((req) => { G.correctFragments(Number(req.params.tid), req.body || {}, actor(req)); return { ok: true }; }));
+m.post('/teams/:tid/message', wrap((req) => {
+  const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
+  if (!t) throw new HttpError(404, 'Coppia non trovata');
+  G.markRead(t.id);
+  return G.postMessage(t, 'master', req.body.text, actor(req));
+}));
+m.post('/teams/:tid/message/audio', rawAudio, wrap((req) => {
+  const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
+  if (!t) throw new HttpError(404, 'Coppia non trovata');
+  G.markRead(t.id);
+  return G.postMessage(t, 'master', '', actor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms });
+}));
+m.post('/teams/:tid/read', wrap((req) => {
+  const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
+  G.markRead(Number(req.params.tid));
+  if (t) rt.toStaff(t.gameId, 'read');
+  return { ok: true };
+}));
+
+m.post('/games/:id/codes', wrap((req) => { G.generateCodes(gameId(req), actor(req)); return { ok: true }; }));
+m.post('/games/:id/never', wrap((req) => { G.extractNeverRevealed(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
+m.post('/games/:id/calendar', wrap((req) => { G.buildCalendar(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
+m.post('/games/:id/points', wrap((req) => { G.ensurePoints(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
+m.post('/games/:id/phrase', wrap((req) => { G.setPhrase(gameId(req), req.body.phrase, actor(req)); return { ok: true }; }));
+m.patch('/points/:pid', wrap((req) => { G.editPoint(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
+m.post('/points/:pid/regen', wrap((req) => { G.regenPointToken(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.patch('/fragments/:fid', wrap((req) => { G.editFragment(Number(req.params.fid), req.body || {}, actor(req)); return { ok: true }; }));
+
+m.patch('/revelations/:rid', wrap((req) => { G.editRevelation(Number(req.params.rid), req.body || {}, actor(req)); return { ok: true }; }));
+m.post('/revelations/:rid/reveal', wrap((req) => { G.revealNow(Number(req.params.rid), actor(req)); return { ok: true }; }));
+m.post('/revelations/:rid/postpone', wrap((req) => { G.postponeRevelation(Number(req.params.rid), req.body.minutes, actor(req)); return { ok: true }; }));
+m.post('/revelations/:rid/skip', wrap((req) => { G.skipRevelation(Number(req.params.rid), actor(req), !!req.body.restore); return { ok: true }; }));
+m.post('/games/:id/reveal-next', wrap((req) => { G.revealNext(gameId(req), actor(req)); return { ok: true }; }));
+m.post('/games/:id/reveal-sector', wrap((req) => { G.revealSector(gameId(req), Number(req.body.sectorId), actor(req)); return { ok: true }; }));
+
+m.post('/games/:id/supply', wrap((req) => { G.saveSupply(gameId(req), req.body || {}, actor(req)); return { ok: true }; }));
+m.patch('/supply/:sid', wrap((req) => {
+  const s = q.get('SELECT * FROM supply_drops WHERE id = ?', Number(req.params.sid));
+  if (!s) throw new HttpError(404, 'Finestra non trovata');
+  G.saveSupply(s.gameId, req.body || {}, actor(req), s.id);
+  return { ok: true };
+}));
+m.delete('/supply/:sid', wrap((req) => { G.deleteSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
+m.post('/supply/:sid/fire', wrap((req) => { G.fireSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
+
+m.get('/gift-types', (_req, res) => res.json(F.giftTypes()));
+m.put('/gift-types', wrap((req) => F.saveGiftTypes(req.body.types, actor(req))));
+m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || {}, actor(req))));
+m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || {}, actor(req)); return { ok: true }; }));
+m.delete('/gifts/:gid', wrap((req) => { F.deleteGift(req.params.gid, actor(req)); return { ok: true }; }));
+m.post('/gifts/:gid/reveal', wrap((req) => { F.revealGift(req.params.gid, actor(req)); return { ok: true }; }));
+m.post('/gifts/:gid/reset', wrap((req) => { F.resetGift(req.params.gid, actor(req)); return { ok: true }; }));
+m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.body.text, actor(req))));
+
+m.get('/users', (_req, res) => res.json(q.all('SELECT id, username, role, displayName, createdAt FROM users ORDER BY role, username')));
+m.post('/users', wrap((req) => {
+  const { username, password, role, displayName } = req.body || {};
+  if (!username?.trim() || !password || password.length < 6) throw new HttpError(400, 'Username e password (almeno 6 caratteri) obbligatori');
+  if (!['master', 'validator'].includes(role)) throw new HttpError(400, 'Ruolo non valido');
+  if (q.get('SELECT 1 FROM users WHERE username = ?', username.trim())) throw new HttpError(409, 'Username già in uso');
+  q.run('INSERT INTO users (username, passHash, role, displayName, createdAt) VALUES (?, ?, ?, ?, ?)', username.trim(), hashPassword(password), role, displayName || null, Date.now());
+  G.log(null, actor(req), 'user_created', { username, role });
+  return { ok: true };
+}));
+m.patch('/users/:uid', wrap((req) => {
+  const { password } = req.body || {};
+  if (!password || password.length < 6) throw new HttpError(400, 'Password di almeno 6 caratteri');
+  q.run('UPDATE users SET passHash = ? WHERE id = ?', hashPassword(password), Number(req.params.uid));
+  return { ok: true };
+}));
+m.delete('/users/:uid', wrap((req) => {
+  const uid = Number(req.params.uid);
+  if (uid === req.user.id) throw new HttpError(409, 'Non puoi eliminare te stesso');
+  q.run('DELETE FROM sessions WHERE kind = ? AND refId = ?', 'user', uid);
+  q.run('DELETE FROM users WHERE id = ?', uid);
+  return { ok: true };
+}));
+
+m.get('/qr.svg', async (req, res, next) => {
+  try {
+    const svg = await QRCode.toString(String(req.query.text || ''), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    res.type('image/svg+xml').send(svg);
+  } catch (e) { next(e); }
+});
+m.get('/base-url', (req, res) => res.json({ baseUrl: baseUrl(req) }));
+m.get('/settings/public-url', (req, res) => res.json({
+  publicUrl: getSetting('publicUrl') || '', envPublicUrl: process.env.PUBLIC_URL || '', current: baseUrl(req), requestOrigin: requestOrigin(req),
+}));
+m.put('/settings/public-url', wrap((req) => {
+  const v = normalizeBaseUrl(req.body.publicUrl);
+  if (v) setSetting('publicUrl', v);
+  else q.run("DELETE FROM settings WHERE key = 'publicUrl'");
+  G.log(null, actor(req), 'public_url_changed', { publicUrl: v || null });
+  return { publicUrl: v, current: baseUrl(req) };
+}));
+
+app.use('/api/m', m);
+
+// ---- API validatore (regia o validatore)
+const v = express.Router();
+v.use(needStaff);
+v.get('/games', (_req, res) => res.json(q.all("SELECT id, name, status FROM games WHERE status NOT IN ('draft') ORDER BY id DESC")));
+v.get('/games/:id/teams', wrap((req) => {
+  const g = G.getGame(Number(req.params.id));
+  return { clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
+}));
+v.get('/teams/:tid', wrap((req) => G.validatorView(Number(req.params.tid))));
+v.post('/teams/:tid/check', wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
+v.post('/teams/:tid/validate', wrap((req) => G.validate(Number(req.params.tid), req.body || {}, req.user)));
+v.get('/board/:id', wrap((req) => G.boardState(Number(req.params.id))));
+app.use('/api/v', v);
+
+// ---- pagine stampabili
+app.get('/regia/stampa/altari/:id', needMaster, wrap(async (req, res) => {
+  res.type('html').send(await print.altarsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
+}));
+app.get('/regia/stampa/doni/:id', needMaster, wrap(async (req, res) => {
+  res.type('html').send(await print.giftsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
+}));
+app.get('/regia/stampa/credenziali/:id', needMaster, wrap(async (req, res) => {
+  res.type('html').send(await print.credentialsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
+}));
+
+// ---- file statici e pagine
+const sendPage = (file) => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file), { headers: { 'Cache-Control': 'no-cache' } });
+app.get('/sw.js', sendPage('sw.js'));
+// Decoder QR per lo scanner interno dell'app (quando il browser non ha BarcodeDetector).
+app.get('/vendor/jsQR.js', (_req, res) => res.sendFile(require.resolve('jsqr/dist/jsQR.js'), { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } }));
+app.get('/', sendPage('index.html'));
+app.get('/a/:token', sendPage('index.html'));
+app.get('/d/:token', sendPage('index.html'));
+app.get('/campo', sendPage('campo.html'));
+// Leaflet per le mappe OpenTopoMap (servito localmente: funziona anche con poca rete).
+app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve('leaflet/package.json')), 'dist'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
+app.get('/regia', sendPage('regia.html'));
+app.get('/soglia', sendPage('soglia.html'));
+app.get('/iscrizione', sendPage('iscrizione.html'));
+app.get('/tabellone', sendPage('tabellone.html'));
+app.use(express.static(PUBLIC_DIR, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
+
+// ---- errori
+app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Risorsa non trovata')));
+app.use((e, req, res, _next) => {
+  const status = e.status || (e.type === 'entity.parse.failed' ? 400 : 500);
+  if (status >= 500) console.error(e);
+  if (req.path.startsWith('/api/') || req.headers.accept?.includes('application/json')) {
+    return res.status(status).json({ error: status >= 500 ? 'Errore interno' : e.message });
+  }
+  if (status === 401) return res.redirect('/regia');
+  res.status(status).type('text').send(e.message);
+});
+
+seed();
+G.ensurePlayerCredentials();
+rt.initPush();
+setInterval(G.tickAll, 1000).unref();
+setInterval(F.tickAll, 2000).unref();
+G.tickAll();
+
+app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

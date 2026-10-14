@@ -1,0 +1,413 @@
+<title>I Giochi del Buio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@500;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: un decreto del Consiglio Zero consegnato ai Legati — colonna di lettura stretta, regolamento numerato come articoli di legge */
+:root{
+  --bg:#E3E1D8; --paper:#ECEAE2; --ink:#1C211E; --muted:#5B615A; --line:#B9B7AC;
+  --blood:#8E2A1F; --brass:#7D6226; --stamp-bg:#D8D5C9;
+  --f-display:"Big Shoulders Stencil Display","Impact","Arial Narrow",sans-serif;
+  --f-body:"Source Serif 4","Georgia",serif;
+  --f-mono:"IBM Plex Mono","Consolas",monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121613; --paper:#1A1F1B; --ink:#DAD7CC; --muted:#959A90; --line:#333A34;
+  --blood:#D65A43; --brass:#C9A55E; --stamp-bg:#202621; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121613; --paper:#1A1F1B; --ink:#DAD7CC; --muted:#959A90; --line:#333A34;
+  --blood:#D65A43; --brass:#C9A55E; --stamp-bg:#202621; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:18px;line-height:1.65;padding-inline:20px;padding-block:0 64px}
+.wrap{max-width:760px;margin:0 auto}
+a{color:var(--blood)}
+:focus-visible{outline:2px solid var(--blood);outline-offset:3px}
+
+/* Hero */
+.hero{padding-block:56px 40px;border-bottom:3px solid var(--ink);display:grid;gap:28px}
+.emblem{width:96px;height:96px;border-radius:50%;border:6px solid var(--ink);display:grid;place-items:center;position:relative}
+.emblem::before{content:"";position:absolute;inset:10px;border-radius:50%;border:2px solid var(--blood)}
+.emblem span{font-family:var(--f-display);font-weight:900;font-size:52px;line-height:1;color:var(--ink)}
+.eyebrow{font-family:var(--f-mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(64px,15vw,132px);line-height:.86;margin:0;text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
+h1 em{font-style:normal;color:var(--blood)}
+.hero p.lede{font-size:21px;max-width:56ch;margin:0}
+.decree{display:flex;flex-wrap:wrap;gap:8px 24px;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.decree b{color:var(--ink);font-weight:600}
+
+/* Sections */
+section{padding-block:48px 8px}
+.sec-head{display:grid;gap:4px;margin-bottom:20px}
+h2{font-family:var(--f-display);font-weight:800;font-size:clamp(36px,7vw,52px);line-height:1;margin:0;text-transform:uppercase;text-wrap:balance}
+.sec-head .eyebrow{color:var(--blood)}
+p{margin:0 0 1em;max-width:65ch}
+.prologue p:first-of-type::first-letter{font-family:var(--f-display);font-weight:900;float:left;font-size:4.4em;line-height:.8;padding:6px 10px 0 0;color:var(--blood)}
+.motto{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:uppercase;color:var(--blood);margin-top:12px;letter-spacing:.02em}
+
+/* Places */
+.places{display:grid;gap:0}
+.place{display:grid;grid-template-columns:150px 1fr;gap:16px;padding-block:14px;border-top:1px solid var(--line)}
+.place h3{font-family:var(--f-display);font-weight:800;font-size:24px;text-transform:uppercase;margin:0;line-height:1.1}
+.place h3 small{display:block;font-family:var(--f-mono);font-weight:400;font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:none;margin-top:4px}
+.place p{margin:0}
+@media (max-width:520px){.place{grid-template-columns:1fr;gap:4px}}
+
+/* Settori stamps */
+.sectors{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:24px}
+.stamp{background:var(--stamp-bg);border:2px solid var(--ink);padding:14px 14px 12px;display:grid;gap:4px;min-width:0}
+.stamp .n{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.1em}
+.stamp .name{font-family:var(--f-display);font-weight:900;font-size:30px;text-transform:uppercase;line-height:1}
+.stamp .el{font-size:14px;color:var(--muted)}
+.stamp .m{font-style:italic;font-size:15px;border-top:1px dashed var(--line);padding-top:6px;margin-top:4px}
+
+/* Quick rules */
+.quick{border:3px solid var(--ink);background:var(--paper);padding:24px 22px}
+.quick ol{margin:0;padding-left:1.4em;display:grid;gap:8px}
+.quick li{padding-left:4px}
+.quick li::marker{font-family:var(--f-mono);font-weight:600;color:var(--blood)}
+.quick b{font-weight:600}
+
+/* TOC */
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:0;list-style:none}
+.toc a{display:inline-block;font-family:var(--f-mono);font-size:13px;text-decoration:none;color:var(--ink);border:1px solid var(--line);padding:5px 10px;background:var(--paper)}
+.toc a:hover{border-color:var(--ink)}
+
+/* Rules */
+.rule{padding-block:28px 4px;border-top:2px solid var(--ink);scroll-margin-top:16px}
+.rule + .rule{margin-top:24px}
+.rule-head{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:baseline;margin-bottom:12px}
+.rule-head .num{font-family:var(--f-display);font-weight:900;font-size:40px;line-height:1;color:var(--blood)}
+.rule-head h3{font-family:var(--f-display);font-weight:800;font-size:30px;line-height:1.05;text-transform:uppercase;margin:0;text-wrap:balance}
+.rule-head h3 small{display:block;font-family:var(--f-mono);font-weight:400;font-size:12px;letter-spacing:.1em;color:var(--muted);margin-top:6px}
+.rule-body{padding-left:68px}
+@media (max-width:520px){.rule-head{grid-template-columns:44px 1fr}.rule-head .num{font-size:32px}.rule-body{padding-left:0}}
+.rule h4{font-family:var(--f-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--blood);margin:18px 0 6px;font-weight:600}
+.rule ul,.rule ol{margin:0 0 1em;padding-left:1.2em;display:grid;gap:6px;max-width:65ch}
+.rule li::marker{color:var(--muted)}
+.callout{border-left:4px solid var(--blood);background:var(--paper);padding:12px 16px;margin:8px 0 16px;max-width:65ch}
+.callout p{margin:0}
+.callout b{color:var(--blood)}
+.ex{font-size:16px;color:var(--muted);font-style:italic}
+
+footer{margin-top:56px;padding-top:20px;border-top:3px solid var(--ink);display:grid;gap:8px}
+footer .motto{margin:0}
+footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.emblem::before{animation:pulse 4s ease-in-out infinite}}
+@keyframes pulse{50%{inset:16px;opacity:.5}}
+</style>
+
+<div class="wrap">
+<header class="hero">
+  <div class="emblem" aria-hidden="true"><span>0</span></div>
+  <div class="eyebrow">Consiglio Zero · Decreto ai Legati · Zero Dark Games</div>
+  <h1>I Giochi<br>del <em>Buio</em></h1>
+  <p class="lede">Ogni Settore manda una coppia nel bosco. Una sola tornerà con la Parola intera. Leggete tutto prima di entrare: nel bosco nessuno vi spiegherà niente.</p>
+  <div class="decree"><span><b>Durata</b> 4 ore, di giorno</span><span><b>Squadre</b> coppie, tutti contro tutti</span><span><b>Vince</b> una sola coppia</span></div>
+</header>
+
+<section class="prologue" id="prologo">
+  <div class="sec-head"><span class="eyebrow">Prologo</span><h2>L'Inverno Lungo</h2></div>
+  <p>Nessuno ricorda più quando la Valle ha smesso di avere un nome. Si ricorda solo l'Inverno Lungo: le città spente, le strade chiuse, i boschi che si sono ripresi tutto. Da quell'inverno è nato il Consiglio Zero, e con lui l'ordine. Un ordine che non si discute.</p>
+  <p>Il Consiglio governa da una torre senza finestre, al centro della Valle. Attorno, i Settori sopravvivono come possono, ognuno custode di un elemento: chi scava, chi pesca, chi forgia, chi brucia. Tutti pagano. Tutti obbediscono.</p>
+  <p>Una volta l'anno, quando le foglie cadono, il Consiglio apre il bosco e chiama i Giochi del Buio. Ogni Settore manda una coppia di Legati. Due persone unite per la vita e per la morte: se uno cade, l'altro lo vendica; se uno fugge, l'altro lo segue.</p>
+  <p>Il premio è uno solo. La coppia che riunisce la Parola intera e la porta alla Soglia ottiene per il proprio Settore un anno senza tributo, senza sorveglianza, senza paura. Le altre tornano a casa con niente, se tornano.</p>
+  <p>Il Consiglio guarda tutto. E ogni tanto, per divertirsi, tradisce qualcuno: rivela al bosco intero il segreto di un Settore, solo per vedere chi corre più veloce.</p>
+  <p>Quest'anno i Legati siete voi.</p>
+  <div class="motto">Che il buio vi sia amico.</div>
+</section>
+
+<section id="mondo">
+  <div class="sec-head"><span class="eyebrow">Il mondo</span><h2>Nomi che sentirete nel bosco</h2></div>
+  <div class="places">
+    <div class="place"><h3>I Legati<small>la vostra coppia</small></h3><p>Due operatori dello stesso Settore. Si gioca, si vince e si perde in due.</p></div>
+    <div class="place"><h3>Il Sigillo<small>il codice della coppia</small></h3><p>Il segreto del vostro Settore. Lo trovate nell'app e apre il vostro Altare.</p></div>
+    <div class="place"><h3>Gli Altari<small>i punti QR</small></h3><p>Cartelli nel bosco, uno per Settore. Ognuno si apre solo con il Sigillo del suo Settore e dona un frammento della Parola.</p></div>
+    <div class="place"><h3>La Parola<small>tutti i frammenti</small></h3><p>Chi la riunisce intera e la porta alla Soglia vince i Giochi.</p></div>
+    <div class="place"><h3>La Soglia<small>il punto dell'organizzazione</small></h3><p>L'unico luogo dove le armi tacciono. Un Ufficiale del Consiglio verifica la Parola.</p></div>
+    <div class="place"><h3>Il Cuore<small>il punto centrale</small></h3><p>La radura dove all'inizio trovate le armi e dove si torna per pallini e caricatori.</p></div>
+    <div class="place"><h3>Il Patto<small>l'alleanza</small></h3><p>Fino a tre coppie che combattono insieme. Vince comunque una sola.</p></div>
+    <div class="place"><h3>Il Caduto<small>chi è stato eliminato</small></h3><p>Porta il cappellino rosso. Finché lo indossa è fuori gioco e nessuno può colpirlo.</p></div>
+    <div class="place"><h3>Il Tradimento<small>la rivelazione di un codice</small></h3><p>Il Consiglio rende pubblico il Sigillo di un Settore, tramite l'app.</p></div>
+  </div>
+  <div class="sectors" aria-label="I Settori">
+    <div class="stamp"><span class="n">SETTORE I</span><span class="name">Fuoco</span><span class="el">le fornaci</span><span class="m">Bruciamo per primi</span></div>
+    <div class="stamp"><span class="n">SETTORE II</span><span class="name">Acqua</span><span class="el">le dighe</span><span class="m">Passiamo ovunque</span></div>
+    <div class="stamp"><span class="n">SETTORE III</span><span class="name">Terra</span><span class="el">le miniere</span><span class="m">Restiamo</span></div>
+    <div class="stamp"><span class="n">SETTORE IV</span><span class="name">Aria</span><span class="el">le torri radio</span><span class="m">Sentiamo tutto</span></div>
+    <div class="stamp"><span class="n">SETTORE V</span><span class="name">Ferro</span><span class="el">le officine</span><span class="m">Non ci pieghiamo</span></div>
+    <div class="stamp"><span class="n">SETTORE VI</span><span class="name">Legno</span><span class="el">le segherie</span><span class="m">Cresciamo dove cadiamo</span></div>
+    <div class="stamp"><span class="n">SETTORE VII</span><span class="name">Sale</span><span class="el">le saline</span><span class="m">Conserviamo</span></div>
+    <div class="stamp"><span class="n">SETTORE VIII</span><span class="name">Cenere</span><span class="el">le terre bruciate</span><span class="m">Niente da perdere</span></div>
+    <div class="stamp"><span class="n">SETTORE IX</span><span class="name">Pietra</span><span class="el">le cave</span><span class="m">Aspettiamo</span></div>
+    <div class="stamp"><span class="n">SETTORE X</span><span class="name">Ombra</span><span class="el">i confini</span><span class="m">Non ci vedete</span></div>
+    <div class="stamp"><span class="n">SETTORE XI</span><span class="name">Ghiaccio</span><span class="el">i passi d'alta quota</span><span class="m">Resistiamo al freddo</span></div>
+    <div class="stamp"><span class="n">SETTORE XII</span><span class="name">Fulmine</span><span class="el">le centrali</span><span class="m">Colpiamo una volta sola</span></div>
+  </div>
+</section>
+
+<section id="in-breve">
+  <div class="sec-head"><span class="eyebrow">In breve</span><h2>Il gioco in un minuto</h2></div>
+  <div class="quick">
+    <ol>
+      <li><b>Obiettivo:</b> raccogliete tutti i frammenti della Parola e fateli validare per primi alla Soglia.</li>
+      <li><b>La coppia non si separa mai:</b> sempre a vista o a portata di voce. Se il compagno ingaggia, entrate anche voi.</li>
+      <li><b>Il vostro codice</b> è nell'app ed è segreto. Lo mostrate solo se perdete un ingaggio o stringete un'alleanza.</li>
+      <li><b>Altari:</b> inquadrate il QR, scappate, poi inserite il codice di quel Settore. Ottenete un frammento.</li>
+      <li><b>Ingaggio:</b> senza colpiti potete scappare. Dal primo colpito si va fino all'eliminazione di una coppia. Dopo 10 minuti è pareggio.</li>
+      <li><b>Mai entrare in uno scontro altrui.</b></li>
+      <li><b>Colpito:</b> dichiaratelo, mettete il cappellino, fermi e zitti.</li>
+      <li><b>Avete perso:</b> mostrate il codice, cappellino almeno 2 minuti. Tornate in gioco quando lo togliete.</li>
+      <li><b>Alleanza:</b> braccio alzato che saluta per proporla, braccia incrociate per rifiutarla.</li>
+      <li><b>Alla Soglia si arriva come coppia singola:</b> un'alleanza va sciolta prima.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="regolamento">
+  <div class="sec-head"><span class="eyebrow">Regolamento</span><h2>Le leggi del bosco</h2></div>
+  <p>Questo è il regolamento completo. Non ci sono arbitri: il gioco funziona solo se ognuno rispetta le regole da solo.</p>
+  <ul class="toc">
+    <li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li>
+  </ul>
+
+  <article class="rule" id="r1">
+    <div class="rule-head"><span class="num">1</span><h3>Obiettivo<small>riunire la Parola</small></h3></div>
+    <div class="rule-body">
+      <p>Vince la prima coppia che raccoglie tutti i frammenti della Parola e li fa validare alla Soglia.</p>
+      <ul>
+        <li>Ogni Altare dona un frammento a chi inserisce il codice giusto.</li>
+        <li>Serve un frammento per ogni Altare, compreso il vostro.</li>
+        <li>Gli Altari si aprono in qualsiasi ordine.</li>
+        <li>La partita dura 4 ore.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r2">
+    <div class="rule-head"><span class="num">2</span><h3>La coppia<small>il Legame</small></h3></div>
+    <div class="rule-body">
+      <div class="callout"><p><b>Regola d'oro: la coppia non si separa mai.</b> I due operatori restano sempre a vista o a portata di voce.</p></div>
+      <ul>
+        <li>Se un operatore ingaggia da solo, il compagno è obbligato a entrare nell'ingaggio.</li>
+        <li>Un operatore da solo non può trattare un'alleanza.</li>
+        <li>Ogni coppia porta almeno uno smartphone carico, con powerbank. Senza telefono la coppia non può giocare.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r3">
+    <div class="rule-head"><span class="num">3</span><h3>Il codice<small>il Sigillo</small></h3></div>
+    <div class="rule-body">
+      <p>Ogni coppia riceve nell'app il codice segreto del proprio Settore. Il codice apre l'Altare del vostro Settore.</p>
+      <ul>
+        <li>Il codice si mostra sullo schermo dell'app, mai dettato a voce.</li>
+        <li>Chi lo vede può fotografarlo o trascriverlo. Il telefono resta sempre in mano al proprietario.</li>
+        <li>I codici che raccogliete potete cederli a chiunque, anche come merce di scambio.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r4">
+    <div class="rule-head"><span class="num">4</span><h3>Partenza<small>la corsa al Cuore</small></h3></div>
+    <div class="rule-body">
+      <ol>
+        <li>Tutte le coppie si dispongono in cerchio attorno al Cuore, dove sono deposte le armi.</li>
+        <li>Nel cerchio è vietato stringere alleanze.</li>
+        <li>Al via si corre al centro, si prende la propria replica e ci si allontana subito.</li>
+        <li>Per i primi 5 minuti nessuno può ingaggiare. Le alleanze invece si possono stringere da subito.</li>
+        <li>L'app segnala l'apertura degli ingaggi.</li>
+      </ol>
+      <h4>Sicurezza alla partenza</h4>
+      <ul>
+        <li>Protezioni oculari indossate già nel cerchio.</li>
+        <li>Le repliche al centro sono scariche, senza caricatore e in sicura.</li>
+        <li>Ogni replica è etichettata: si prende solo la propria.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r5">
+    <div class="rule-head"><span class="num">5</span><h3>Ingaggio<small>lo scontro</small></h3></div>
+    <div class="rule-body">
+      <p>L'ingaggio inizia quando una coppia apre il fuoco su un'altra.</p>
+      <ul>
+        <li><b>Fuga:</b> finché nessuno è stato colpito, entrambe le coppie possono sganciarsi.</li>
+        <li><b>Fino in fondo:</b> dal primo colpito l'ingaggio va portato a termine. Chi scappa ha perso.</li>
+        <li><b>Fine:</b> l'ingaggio finisce quando tutti gli operatori di una parte sono colpiti. Quella parte ha perso.</li>
+        <li><b>Colpo valido:</b> vale ogni colpo diretto su corpo o equipaggiamento. I rimbalzi non valgono.</li>
+      </ul>
+      <h4>Chi viene colpito</h4>
+      <p>Lo dichiara subito ad alta voce, mette il cappellino rosso e resta fermo sul posto. Non spara, non parla, non usa la radio.</p>
+      <h4>Casi particolari</h4>
+      <ul>
+        <li><b>Stallo:</b> se dopo 10 minuti dall'inizio nessuna parte è eliminata, è pareggio. Nessuno mostra il codice.</li>
+        <li><b>Dopo un pareggio:</b> i colpiti tornano in gioco, le coppie si separano e non possono ingaggiarsi tra loro per 5 minuti.</li>
+        <li><b>Ultimi due colpiti insieme:</b> pareggio.</li>
+        <li><b>Terza coppia:</b> non può entrare in un ingaggio in corso, anche se lo sente o lo vede. Deve restarne fuori finché non è finito.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r6">
+    <div class="rule-head"><span class="num">6</span><h3>Dopo l'ingaggio<small>la Veglia</small></h3></div>
+    <div class="rule-body">
+      <h4>Chi perde</h4>
+      <ul>
+        <li>Mostra il proprio codice ai vincitori (vedi regola 7).</li>
+        <li>Indossa il cappellino e resta fermo sul posto per almeno 2 minuti.</li>
+        <li>Può restare fermo più a lungo, se gli conviene. Torna in gioco solo quando si toglie il cappellino.</li>
+        <li>Appena tornato in gioco è subito ingaggiabile.</li>
+      </ul>
+      <h4>Chi vince</h4>
+      <ul>
+        <li>I suoi colpiti tornano in gioco appena finito l'ingaggio.</li>
+        <li>Può allontanarsi mentre gli sconfitti sono fermi.</li>
+        <li>Non può ingaggiare di nuovo la stessa coppia per 5 minuti da quando questa torna in gioco.</li>
+      </ul>
+      <div class="callout"><p><b>Il cappellino rende intoccabili.</b> Chi lo indossa non può essere colpito né costretto a mostrare altro. Una coppia che vuole aspettarlo deve restare ad almeno 20 metri.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="r7">
+    <div class="rule-head"><span class="num">7</span><h3>Codici<small>come si ottengono i Sigilli</small></h3></div>
+    <div class="rule-body">
+      <p>Un codice si ottiene in tre modi: vincendo un ingaggio, stringendo un'alleanza, o dal Tradimento del Consiglio.</p>
+      <h4>Vincendo un ingaggio</h4>
+      <ul>
+        <li>Chi perde mostra il proprio codice ai vincitori.</li>
+        <li>Se i vincitori lo hanno già, scelgono uno dei codici raccolti dagli sconfitti che ancora non possiedono.</li>
+        <li>Se gli sconfitti non hanno nessun codice nuovo per i vincitori, non si cede nulla.</li>
+      </ul>
+      <p class="ex">Esempio: avete già il codice Fuoco e battete la coppia Fuoco, che ha raccolto anche Acqua. Prendete Acqua.</p>
+      <h4>Il Tradimento del Consiglio</h4>
+      <ul>
+        <li>A intervalli regolari l'app rivela a tutti il codice di un Settore, scelto a caso.</li>
+        <li>La prima rivelazione arriva 30 minuti dopo l'apertura degli ingaggi.</li>
+        <li>Due codici non verranno mai rivelati: quelli si ottengono solo combattendo o trattando.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r8">
+    <div class="rule-head"><span class="num">8</span><h3>Gli Altari<small>i punti QR</small></h3></div>
+    <div class="rule-body">
+      <p>Ogni Altare chiede il codice del suo Settore: l'Altare del Fuoco vuole il codice della coppia Fuoco.</p>
+      <ol>
+        <li>Raggiungete il cartello nel bosco e inquadrate il QR.</li>
+        <li>Allontanatevi subito: agli Altari si combatte.</li>
+        <li>Al sicuro, inserite il codice nella pagina che si è aperta.</li>
+        <li>La pagina vi mostra il frammento della Parola. Conservatelo.</li>
+      </ol>
+      <ul>
+        <li>Potete avvicinarvi a un Altare in qualsiasi momento, da soli o con gli alleati.</li>
+        <li>Agli Altari non c'è zona franca: si ingaggia e si viene ingaggiati.</li>
+        <li>Vietato sostare sotto il cartello. Chi aspetta resta ad almeno 20 metri. Appostarsi più lontano è permesso.</li>
+        <li>Il codice si inserisce dove c'è rete, non per forza all'Altare.</li>
+      </ul>
+      <div class="callout"><p><b>Pensateci prima di passare un link o un frammento.</b> Potete farlo, ma state regalando un vantaggio a un avversario. Vince una sola coppia.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="r9">
+    <div class="rule-head"><span class="num">9</span><h3>Alleanze<small>il Patto</small></h3></div>
+    <div class="rule-body">
+      <p>Un'alleanza unisce al massimo 3 coppie, che condividono i codici e combattono insieme. Vince comunque una sola coppia.</p>
+      <h4>Proporre un'alleanza</h4>
+      <ol>
+        <li>Al contatto visivo, fate subito il segno di proposta: <b>braccio alzato che saluta</b>.</li>
+        <li>L'altra coppia risponde:
+          <ul>
+            <li><b>stesso gesto:</b> da quel momento non ci si può ingaggiare. Ci si avvicina e si tratta a voce;</li>
+            <li><b>braccia incrociate:</b> nessuna trattativa, l'ingaggio è libero da subito;</li>
+            <li><b>nessuna risposta:</b> vale come rifiuto.</li>
+          </ul>
+        </li>
+        <li>La trattativa dura al massimo 2 minuti. Se riesce, si procede insieme da alleati.</li>
+        <li>Se fallisce, ci si allontana subito e le due coppie non possono ingaggiarsi per 5 minuti.</li>
+      </ol>
+      <ul>
+        <li>Non si può proporre un'alleanza durante un ingaggio. Dopo un ingaggio sì, anche tra vincitori e sconfitti.</li>
+        <li>Non si può riproporre l'alleanza alla stessa coppia prima di 15 minuti.</li>
+        <li>Una terza coppia entra nell'alleanza solo se tutti gli alleati accettano.</li>
+      </ul>
+      <h4>Da alleati</h4>
+      <ul>
+        <li>L'alleanza diventa una coppia allargata e la regola d'oro vale per tutti: nessuno si separa, tutti a vista o a portata di voce.</li>
+        <li>Alla nascita dell'alleanza ogni coppia mostra il proprio codice e tutti quelli raccolti.</li>
+        <li>Ogni codice ottenuto durante l'alleanza va condiviso con tutti gli alleati.</li>
+        <li>Gli alleati non si colpiscono tra loro. Il fuoco amico vale come colpito, ma non fa cedere codici.</li>
+        <li>Se l'alleanza ingaggia, tutte le coppie portano a termine l'ingaggio.</li>
+        <li>Se l'alleanza perde, tutte le coppie mostrano il proprio codice ai vincitori. Se vince, il codice degli sconfitti va a tutti gli alleati.</li>
+      </ul>
+      <h4>Rompere un'alleanza</h4>
+      <ol>
+        <li>Dichiarate a voce l'intenzione di rompere.</li>
+        <li>Accertatevi che gli alleati abbiano sentito e risposto.</li>
+        <li>Allontanatevi.</li>
+        <li>Per 5 minuti gli ex alleati non possono ingaggiarsi.</li>
+      </ol>
+      <ul>
+        <li>Non si rompe durante un ingaggio.</li>
+        <li>Si rompe solo di persona, mai via radio.</li>
+        <li>In un'alleanza a tre, chi esce rompe con entrambe le coppie. Le altre due restano alleate, se vogliono.</li>
+      </ul>
+      <div class="callout"><p><b>Tradire all'ultimo è permesso.</b> Rompere l'alleanza a un passo dalla vittoria fa parte del gioco.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="r10">
+    <div class="rule-head"><span class="num">10</span><h3>Rifornimento<small>il Cuore</small></h3></div>
+    <div class="rule-body">
+      <ul>
+        <li>Al Cuore si può sempre tornare per recuperare pallini e caricatori.</li>
+        <li>Il Cuore non è zona franca: ci si può ingaggiare, e chi si apposta lo fa a proprio rischio.</li>
+        <li>In alcuni momenti l'app annuncia doni al Cuore: dotazioni extra per chi arriva a prenderle.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r11">
+    <div class="rule-head"><span class="num">11</span><h3>Vittoria<small>la Soglia</small></h3></div>
+    <div class="rule-body">
+      <ul>
+        <li>Quando avete tutti i frammenti, raggiungete la Soglia e mostrateli all'Ufficiale del Consiglio.</li>
+        <li>Vincete quando l'Ufficiale li valida tutti, non quando ottenete l'ultimo.</li>
+        <li>Siete ingaggiabili ovunque, anche mentre andate alla Soglia. La Soglia è l'unico luogo dove non si combatte.</li>
+        <li>Alla Soglia ci si ferma solo per la validazione: non ci si rifugia e da lì non si spara.</li>
+        <li>Se qualcosa manca o è sbagliato, tornate in gioco e siete ingaggiabili appena lasciate la Soglia.</li>
+      </ul>
+      <div class="callout"><p><b>Alla Soglia non si presenta un'alleanza.</b> Per far validare la Parola dovete prima sciogliere l'alleanza.</p></div>
+      <ul>
+        <li>Dopo la prima vittoria il gioco continua per il secondo e il terzo posto.</li>
+        <li>Una coppia che ha vinto esce dal gioco: non combatte e non cede più codici.</li>
+        <li>Se allo scadere delle 4 ore nessuno ha completato la Parola, la classifica segue il numero di frammenti raccolti.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r12">
+    <div class="rule-head"><span class="num">12</span><h3>Sicurezza e fair play</h3></div>
+    <div class="rule-body">
+      <ul>
+        <li><b>Protezioni:</b> occhiali o maschera sempre indossati in campo, anche col cappellino.</li>
+        <li><b>Potenza:</b> sotto 1 joule. Distanze minime di ingaggio secondo il regolamento del campo.</li>
+        <li><b>Onestà:</b> il colpito si dichiara da solo, subito. Chi non si dichiara viene escluso.</li>
+        <li><b>Confini:</b> chi esce dai limiti del campo è considerato colpito.</li>
+        <li><b>Fermarsi:</b> chi ha un problema (infortunio, replica guasta, bisogno di fermarsi) mette il cappellino. Chi lo indossa è fuori gioco e nessuno gli spara.</li>
+        <li><b>Emergenza:</b> per fermare tutta la partita c'è un canale radio di emergenza, che vi verrà comunicato prima del via.</li>
+        <li><b>Ritiro:</b> se un operatore si ritira, la coppia esce dalla classifica. I codici già ceduti restano validi.</li>
+        <li><b>Contestazioni:</b> non ci sono arbitri. Un ingaggio contestato vale come pareggio e si segnala a fine gioco.</li>
+        <li><b>Tempi:</b> fermi, stalli e blocchi si cronometrano da soli, con l'app o con l'orologio.</li>
+      </ul>
+    </div>
+  </article>
+</section>
+
+<footer>
+  <div class="motto">Che il buio vi sia amico.</div>
+  <span>Zero Dark Games · I Giochi del Buio · Consiglio Zero</span>
+</footer>
+</div>

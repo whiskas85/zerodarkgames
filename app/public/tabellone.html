@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tabellone del Consiglio</title>
+  <meta name="theme-color" content="#0f1310">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/css/base.css">
+  <style>
+    body { min-height: 100vh; overflow-x: hidden; }
+    .board { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; gap: 20px; padding: 24px 28px; min-height: 100vh; }
+    @media (max-width: 1000px) { .board { grid-template-columns: 1fr; } }
+    .head { grid-column: 1 / -1; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; border-bottom: 3px solid var(--ink); padding-bottom: 16px; }
+    .head h1 { font-size: clamp(40px, 5vw, 72px); font-weight: 900; }
+    .head h1 em { font-style: normal; color: var(--blood); }
+    .clock { margin-left: auto; text-align: right; }
+    .clock .mono { font-size: clamp(48px, 7vw, 110px); font-weight: 600; line-height: .9; }
+    .status { font-family: var(--f-display); font-size: 32px; text-transform: uppercase; color: var(--brass); }
+    .status.paused { color: #fff; background: var(--danger); padding: 0 12px; }
+    .sectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-content: start; }
+    .sec { border: 3px solid var(--line); padding: 16px 18px; background: var(--paper); display: grid; gap: 6px; }
+    .sec.revealed { border-color: var(--blood); }
+    .sec.won { border-color: var(--ok); }
+    .sec-name { font-family: var(--f-display); font-weight: 900; font-size: 36px; text-transform: uppercase; line-height: 1; display: flex; gap: 10px; align-items: baseline; }
+    .sec-name small { font-family: var(--f-mono); font-size: 16px; color: var(--muted); font-weight: 400; }
+    .sec-code { font-family: var(--f-mono); font-size: clamp(36px, 4vw, 54px); font-weight: 600; letter-spacing: .14em; line-height: 1.1; }
+    .sec.revealed .sec-code { color: var(--blood); }
+    .imminent .sec:not(.revealed) .ghost { animation: shiver 1s ease-in-out infinite; }
+    @keyframes shiver { 50% { filter: blur(6px); opacity: .95; } }
+    @media (prefers-reduced-motion: reduce) { .imminent .sec:not(.revealed) .ghost { animation: none; } }
+    aside { display: grid; gap: 18px; align-content: start; }
+    .box { border: 2px solid var(--line); padding: 14px 16px; background: var(--paper); display: grid; gap: 8px; }
+    .box h2 { font-size: 26px; }
+    .next .mono { font-size: 56px; font-weight: 600; line-height: 1; }
+    .rank { display: grid; grid-template-columns: 32px 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: baseline; font-size: 18px; }
+    .rank .mono { color: var(--muted); }
+    .rank.won { color: var(--ok); }
+    .ticker { grid-column: 1 / -1; border-top: 3px solid var(--blood); padding-top: 12px; font-family: var(--f-body, Georgia, serif); font-size: 22px; }
+    .ticker .eyebrow { margin-right: 12px; }
+    .gate { min-height: 100vh; display: grid; place-content: center; gap: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    import { h, mount, api, makeClock, fmtDuration, fmtTime, ghost, stream, STATUS_LABELS } from '/js/lib.js';
+    const root = document.getElementById('root');
+    const clock = makeClock();
+    const gameId = Number(new URLSearchParams(location.search).get('g'));
+    let data = null;
+    const seen = new Set();
+    let first = true;
+
+    async function load() {
+      try {
+        data = await api('GET', `/api/v/board/${gameId}`);
+        clock.set(data.clock);
+        render();
+      } catch (e) {
+        mount(root, h('div', { class: 'gate' }, h('div', { class: 'emblem' }, h('span', null, '0')), h('h1', null, 'Tabellone'),
+          h('p', { class: 'muted' }, e.status === 401 ? 'Accedi prima alla regia o alla Soglia su questo dispositivo.' : e.message),
+          h('a', { class: 'btn btn-primary', href: '/regia' }, 'Vai alla regia')));
+      }
+    }
+
+    function render() {
+      const d = data;
+      mount(root, h('div', { class: 'board' },
+        h('header', { class: 'head' },
+          h('div', { class: 'emblem' }, h('span', null, '0')),
+          h('div', null, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${d.game.name}`), h('h1', null, 'I Giochi del ', h('em', null, 'Buio'))),
+          h('div', { class: 'clock' }, h('div', { class: `status ${d.clock.status}` }, STATUS_LABELS[d.clock.status]), h('div', { class: 'mono', id: 'remaining' }, '—'))),
+        h('section', { class: 'sectors', id: 'sectors' }, d.sectors.map((s) => {
+          const isNew = s.code && !seen.has(s.sectorId) && !first;
+          if (s.code) seen.add(s.sectorId);
+          return h('div', { class: `sec ${s.code ? 'revealed' : ''} ${s.status === 'won' ? 'won' : ''}` },
+            h('div', { class: 'sec-name' }, h('small', null, s.roman), s.name),
+            h('div', { class: 'sec-code' }, s.code ? h('span', { class: isNew ? 'unveil' : '' }, s.code) : ghost(`board:${s.sectorId}`, d.game.codeLength, 'ghost-strong')),
+            h('div', { class: 'eyebrow' }, s.status === 'won' ? `Alla Soglia · ${s.finishPosition}°` : s.code ? `Tradito alle ${fmtTime(s.revealedAt)}` : 'Sigillo custodito'));
+        })),
+        h('aside', null,
+          d.nextRevelationAtMs != null ? h('div', { class: 'box next' }, h('div', { class: 'eyebrow' }, 'Il prossimo tradimento tra'), h('div', { class: 'mono', id: 'next' }, '—')) : null,
+          h('div', { class: 'box' }, h('h2', null, 'La Parola'), d.standings.map((r) => h('div', { class: `rank ${r.status === 'won' ? 'won' : ''}` },
+            h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`), h('span', { class: 'mono' }, r.status === 'won' ? `${r.finishPosition}°` : `${r.fragments}/${d.fragmentsTotal}`))))),
+        d.announcements[0] ? h('footer', { class: 'ticker' }, h('span', { class: 'eyebrow' }, fmtTime(d.announcements[0].createdAt)), d.announcements[0].text) : null));
+      first = false;
+      tick();
+    }
+
+    function tick() {
+      if (!data) return;
+      const r = document.getElementById('remaining');
+      if (r) r.textContent = data.clock.startedAt ? fmtDuration(clock.remaining()) : fmtDuration(data.clock.durationMs);
+      const n = document.getElementById('next');
+      if (n && data.nextRevelationAtMs != null) {
+        const left = data.nextRevelationAtMs - clock.elapsed();
+        n.textContent = fmtDuration(Math.max(0, left), false);
+        document.getElementById('sectors')?.classList.toggle('imminent', data.clock.running && left < 10000 && left > -5000);
+        if (data.clock.running && left < -4000 && !tick.pending) { tick.pending = true; setTimeout(() => { tick.pending = false; load(); }, 1000); }
+      }
+    }
+
+    if (!gameId) mount(root, h('div', { class: 'gate' }, h('h1', null, 'Tabellone'), h('p', { class: 'muted' }, 'Apri il tabellone dalla regia.')));
+    else {
+      await load();
+      setInterval(tick, 1000);
+      stream('/api/stream?as=staff', { refresh: (e) => { if (e.gameId === gameId) load(); } });
+    }
+  </script>
+</body>
+</html>
