@@ -1160,13 +1160,14 @@ function viewFieldMap() {
     fieldMap.el,
     h('div', { class: 'map-tools' },
       h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, '◎ Centra'),
-      h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`),
+      // Quando è tutto piazzato il pannello e il suo pulsante spariscono.
+      toPlace.length ? h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`) : null,
       h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
     R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa dove si trova: ${R.mapPick.label}`),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
-    R.mapSide === false ? null : h('aside', { class: 'map-side' },
+    R.mapSide === false || !toPlace.length ? null : h('aside', { class: 'map-side' },
       h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),
       toPlace.length ? h('ul', { class: 'map-side-list' }, toPlace.map(({ kind, x, icon }) => h('li', null,
         h('span', { class: `side-ico ${kind}` }, icon),
@@ -1174,10 +1175,11 @@ function viewFieldMap() {
           h('div', { class: 'tiny muted' }, x.squadId ? `Squadra ${sqName(x.squadId) || '?'}${x.targetLat != null ? ' · punto indicato' : ''}` : 'Nessuna squadra')),
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-primary', title: 'Piazzalo tu con un clic sulla mappa (foto facoltativa)', onclick: () => startPick(x, kind) }, 'Segna'),
-          h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : h('p', { class: 'tiny ok-text' }, 'Tutto piazzato.'),
+          h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : null,
+      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per vederne foto e dettagli e per farlo spostare.')),
+    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend,
       h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
-      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per vederne foto e dettagli e per farlo spostare. Coppie in mappa dal VIA, Eletti da partita pronta.')),
-    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend) : null,
+      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per foto e dettagli e per spostarlo. Coppie in mappa dal VIA, Eletti da partita pronta.')) : null,
     R.mapAllies ? h('div', { class: 'map-allies-box' }, alliancesList(true)) : null);
 }
 
