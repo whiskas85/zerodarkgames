@@ -22,7 +22,7 @@ const ONE_YEAR = 365 * 24 * 3600;
 
 function seed() {
   if (!q.get('SELECT 1 FROM sectors LIMIT 1')) {
-    for (const s of C.SECTORS) q.run('INSERT INTO sectors (ord, roman, name, article, element, motto) VALUES (?, ?, ?, ?, ?, ?)', s.ord, s.roman, s.name, s.article, s.element, s.motto);
+    for (const s of C.SECTORS) q.run('INSERT INTO sectors (ord, roman, name, article, element, motto, color) VALUES (?, ?, ?, ?, ?, ?, ?)', s.ord, s.roman, s.name, s.article, s.element, s.motto, C.SECTOR_COLORS[(s.ord - 1) % C.SECTOR_COLORS.length]);
   }
   const user = process.env.MASTER_USER || 'master';
   const pass = process.env.MASTER_PASSWORD || 'cambiami';
@@ -342,12 +342,13 @@ app.get('/api/field/state', needField, wrap((req) => F.fieldState(fieldGame(req)
 app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame(req), req.user?.role === 'master' ? 'master' : 'elect')));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
-const placement = (req) => ({ buffer: req.body, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source });
+// La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.
+const placement = (req) => ({ buffer: Buffer.isBuffer(req.body) ? req.body : null, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source, photoOptional: req.user?.role === 'master' });
 const placerSquad = (req) => req.player?.squadId || req.query.squadId || null;
-app.post('/api/field/points/:id/place', needField, rawImage, wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
+app.post('/api/field/points/:id/place', needField, express.raw({ type: () => true, limit: '10mb' }), wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
 // Soglia e Cerchio: foto facoltativa (corpo vuoto = senza foto).
 app.post('/api/field/landmarks/:id/place', needField, express.raw({ type: () => true, limit: '10mb' }), wrap((req) => F.placeLandmark(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
-app.post('/api/field/gifts/:id/place', needField, rawImage, wrap((req) => F.placeGift(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
+app.post('/api/field/gifts/:id/place', needField, express.raw({ type: () => true, limit: '10mb' }), wrap((req) => F.placeGift(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
 // Foto dei piazzamenti: solo organizzazione ed Eletti della partita.
 const sendPhoto = (kind) => (req, res, next) => {
   try {

@@ -1,5 +1,8 @@
 'use strict';
 
+// Colori dei Settori in mappa: ben distinti tra loro e dal blu di "voi" e dall'oro degli Eletti.
+const SECTOR_COLORS = ['#e5484d', '#22c3e6', '#a0703c', '#e8e8e8', '#46c46a', '#9b6cf0', '#f97316', '#ff4fa3', '#14b8a6', '#a3e635', '#facc15', '#6366f1'];
+
 const SECTORS = [
   ['I', 'Fuoco', 'del', 'le fornaci', 'Bruciamo per primi'],
   ['II', 'Acqua', "dell'", 'le dighe', 'Passiamo ovunque'],
@@ -55,4 +58,5 @@ const STATUS_LABELS = {
   last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',
 };
 
-module.exports = { SECTORS, DEFAULT_TEMPLATES, TEMPLATE_LABELS, DEFAULT_TIMERS, LAST_PHASE_MIN, ACTIVE, PRE_START, STATUS_LABELS };
+module.exports = {
+  SECTOR_COLORS, SECTORS, DEFAULT_TEMPLATES, TEMPLATE_LABELS, DEFAULT_TIMERS, LAST_PHASE_MIN, ACTIVE, PRE_START, STATUS_LABELS };

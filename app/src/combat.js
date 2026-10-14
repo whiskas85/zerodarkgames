@@ -15,7 +15,7 @@ const RETRY_BLOCK_MS = 15 * 60000; // blocco riproposta alla stessa coppia
 // ---------------------------------------------------------------- utilità
 
 function team(id) {
-  return q.get(`SELECT t.*, s.name AS sectorName, s.roman FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?`, Number(id));
+  return q.get(`SELECT t.*, s.name AS sectorName, s.roman, s.color AS sectorColor FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?`, Number(id));
 }
 
 function requireCouple(t) {
@@ -263,7 +263,7 @@ function resolveEngagement(engagementId, decision, actor) {
 
 // ---------------------------------------------------------------- viste
 
-const teamLite = (id) => { const t = team(id); return t ? { teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName } : null; };
+const teamLite = (id) => { const t = team(id); return t ? { teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor } : null; };
 
 function engagementOut(e, meId) {
   const winners = JSON.parse(e.winners);

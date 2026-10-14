@@ -404,3 +404,12 @@ tr.gift-row-claimed td { opacity: .6; }
 .leaflet-popup-content .popup-actions .btn { width: 100%; }
 @media (max-width: 860px) { .map-side { width: auto; left: 10px; top: auto; max-height: 45%; } }
 .map-side { bottom: auto; max-height: calc(100% - 90px); }
+
+/* Alleanze */
+.map-allies-box { position: absolute; left: 10px; top: 80px; z-index: 1000; width: min(320px, 44%); padding: 10px 12px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 2px solid var(--line); box-shadow: 0 4px 16px rgba(0, 0, 0, .5); }
+.ally-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ally-list li { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-left: 5px solid var(--c); background: var(--bg); }
+.ally-members { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ally-chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.ally-link { color: var(--c); }
+.ally-line { display: inline-block; width: 22px; border-top: 3px dashed #d1ad62; vertical-align: middle; }

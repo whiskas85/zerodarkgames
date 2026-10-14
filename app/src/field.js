@@ -258,8 +258,8 @@ function placePoint(pointId, gameId, body, who, squadId = null) {
   const pt = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(pointId), Number(gameId));
   if (!pt) throw err(404, 'Altare non trovato in questa partita');
   if (G.getGame(pt.gameId).status === 'ended') throw err(409, 'La partita è terminata');
-  const p = readPlacement(body);
-  const file = savePhoto('altare', pt.id, p);
+  const p = readPlacement(body, !!body.photoOptional);
+  const file = p.buffer ? savePhoto('altare', pt.id, p) : null;
   q.run('UPDATE points SET lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL WHERE id = ?',
     p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(pt.gameId, squadId, pt.squadId), pt.id);
   removePhoto(pt.photoFile);
@@ -275,8 +275,8 @@ function placeGift(giftId, gameId, body, who, squadId = null) {
   if (g.status === 'claimed') throw err(409, 'Questo dono è già stato preso');
   if (g.status === 'expired') throw err(409, 'Questo dono è svanito: la regia può riportarlo da piazzare');
   if (G.getGame(g.gameId).status === 'ended') throw err(409, 'La partita è terminata');
-  const p = readPlacement(body);
-  const file = savePhoto('dono', g.id, p);
+  const p = readPlacement(body, !!body.photoOptional);
+  const file = p.buffer ? savePhoto('dono', g.id, p) : null;
   const status = g.status === 'revealed' ? 'revealed' : 'placed';
   q.run('UPDATE gifts SET status = ?, lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL WHERE id = ?',
     status, p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(g.gameId, squadId, g.squadId), g.id);
@@ -337,9 +337,9 @@ function photoFile(kind, id) {
 // Per regia ed Eletti: tutto, compresi i doni non ancora comparsi.
 function fieldState(gameId) {
   const game = G.getGame(gameId);
-  const points = q.all(`SELECT p.*, s.name AS sectorName, s.roman, s.ord FROM points p JOIN sectors s ON s.id = p.sectorId WHERE p.gameId = ? ORDER BY s.ord`, game.id)
+  const points = q.all(`SELECT p.*, s.name AS sectorName, s.roman, s.ord, s.color AS sectorColor FROM points p JOIN sectors s ON s.id = p.sectorId WHERE p.gameId = ? ORDER BY s.ord`, game.id)
     .map((p) => ({
-      id: p.id, label: p.label, sectorId: p.sectorId, sectorName: p.sectorName, roman: p.roman, locationNote: p.locationNote,
+      id: p.id, label: p.label, sectorId: p.sectorId, sectorName: p.sectorName, roman: p.roman, color: p.sectorColor, locationNote: p.locationNote,
       lat: p.lat, lng: p.lng, accuracy: p.accuracy, placedAt: p.placedAt, placedBy: p.placedBy, placeSource: p.placeSource, hasPhoto: !!p.photoFile,
       squadId: p.squadId, ...taskFields(p),
     }));
@@ -520,7 +520,7 @@ function recordPosition(team, player, body) {
 // viewer: 'master' (tutti) oppure 'elect' (solo gli Eletti).
 function positionsOf(gameId, viewer = 'master') {
   const now = Date.now();
-  const rows = q.all(`SELECT pos.*, t.kind, t.displayName, s.name AS sectorName, s.roman, pl.name AS playerName, pl.nickname, pl.squadId,
+  const rows = q.all(`SELECT pos.*, t.kind, t.displayName, s.name AS sectorName, s.roman, s.color AS sectorColor, pl.name AS playerName, pl.nickname, pl.squadId,
                         sq.name AS squadName, sq.color AS squadColor
                       FROM positions pos JOIN teams t ON t.id = pos.teamId
                       LEFT JOIN sectors s ON s.id = t.sectorId
@@ -528,10 +528,10 @@ function positionsOf(gameId, viewer = 'master') {
                       LEFT JOIN elect_squads sq ON sq.id = pl.squadId
                       WHERE pos.gameId = ? AND pos.at > ?`, Number(gameId), now - POSITION_MAX_AGE);
   return rows.filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
-    deviceId: r.deviceId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
+    deviceId: r.deviceId, teamId: r.teamId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
     label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
     who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),
-    roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : '#ff4fa3',
+    roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : (r.sectorColor || '#ff4fa3'),
   }));
 }
 

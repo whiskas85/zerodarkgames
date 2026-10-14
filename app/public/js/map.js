@@ -29,7 +29,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 // Segnaposto: Altare (quadrato con numero romano), Dono (cerchio con icona), io (punto blu).
 export function pinHtml(item) {
-  if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}">${esc(item.text)}</span>`;
+  if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
@@ -46,6 +46,7 @@ export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
   const markers = new Map();
+  const lines = new Map();
   let map = null;
   let L = null;
   let fitted = false;
@@ -111,6 +112,18 @@ export function createMapView({ className = '' } = {}) {
       }
       for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
       if (!fitted && keep.size) { view.fit(); fitted = true; } else if (changed) autoFit();
+    },
+    // Linee tratteggiate (es. tra coppie alleate): [{ key, points: [[lat, lng], …], color, title }]
+    setLines(list) {
+      if (!map) return;
+      const keep = new Set();
+      for (const l of list) {
+        keep.add(l.key);
+        let pl = lines.get(l.key);
+        if (!pl) { pl = L.polyline(l.points, { color: l.color || '#d1ad62', weight: 3, opacity: 0.85, dashArray: '8 7', interactive: !!l.title }).addTo(map); if (l.title) pl.bindTooltip(l.title, { sticky: true }); lines.set(l.key, pl); }
+        else { pl.setLatLngs(l.points); pl.setStyle({ color: l.color || '#d1ad62' }); }
+      }
+      for (const [k, pl] of lines) if (!keep.has(k)) { pl.remove(); lines.delete(k); }
     },
     // Centra su tutti i segnaposto (e sulla mia posizione).
     fit() {
@@ -179,12 +192,40 @@ export function landmarkItem(l, popupExtra = '') {
   return { key: `l${l.id}`, kind: 'place', place: l.kind, lat: l.lat, lng: l.lng, title: l.label, popup: `<strong>${esc(l.label)}</strong>${popupExtra}` };
 }
 
+// I telefoni della stessa coppia vicini tra loro (entro 30 m) diventano un solo pallino; se si allontanano, due.
+export const PAIR_MERGE_M = 30;
+const distM = (a, b) => Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
+export function groupPositions(list) {
+  const out = [];
+  const byTeam = new Map();
+  for (const p of list) {
+    if (p.kind !== 'team') { out.push(p); continue; }
+    (byTeam.get(p.teamId) || byTeam.set(p.teamId, []).get(p.teamId)).push(p);
+  }
+  for (const devs of byTeam.values()) {
+    // Raggruppa i telefoni entro 30 m l'uno dall'altro.
+    const groups = [];
+    for (const p of devs) {
+      const g = groups.find((gr) => gr.every((x) => distM(x, p) <= PAIR_MERGE_M));
+      if (g) g.push(p); else groups.push([p]);
+    }
+    for (const g of groups) {
+      if (g.length === 1) { out.push(g[0]); continue; }
+      const lat = g.reduce((s, x) => s + x.lat, 0) / g.length;
+      const lng = g.reduce((s, x) => s + x.lng, 0) / g.length;
+      out.push({ ...g[0], deviceId: g.map((x) => x.deviceId).sort().join('+'), lat, lng, acc: Math.max(...g.map((x) => x.acc || 0)) || null,
+        at: Math.max(...g.map((x) => x.at)), stale: g.every((x) => x.stale), who: g.map((x) => x.who).join(' e '), together: g.length });
+    }
+  }
+  return out;
+}
+
 // Telefono → segnaposto per la mappa (popup con chi è e da quanto non si aggiorna).
 export function positionItem(p) {
   const ago = Math.max(0, Math.round((Date.now() - p.at) / 60000));
   return {
     key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color,
     text: p.kind === 'team' ? p.roman || '?' : (p.label || '?').slice(0, 2).toUpperCase(), title: p.label,
-    popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}<br><small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,
+    popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}${p.together ? '<br><small>insieme (entro 30 m)</small>' : ''}<br><small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,
   };
 }

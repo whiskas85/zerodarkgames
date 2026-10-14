@@ -229,6 +229,14 @@ CREATE TABLE IF NOT EXISTS landmarks (
   UNIQUE (gameId, kind)
 );
 `);
+// Colore di ogni Settore (pallini della coppia e bordo dell'Altare in mappa).
+addColumn('sectors', 'color', 'TEXT');
+{
+  const palette = ['#e5484d', '#22c3e6', '#a0703c', '#e8e8e8', '#46c46a', '#9b6cf0', '#f97316', '#ff4fa3', '#14b8a6', '#a3e635', '#facc15', '#6366f1'];
+  for (const s of db.prepare('SELECT id, ord FROM sectors WHERE color IS NULL').all()) {
+    db.prepare('UPDATE sectors SET color = ? WHERE id = ?').run(palette[(Math.max(1, s.ord) - 1) % palette.length], s.id);
+  }
+}
 // Account dei giocatori (username e password); per ogni partita l'iscrizione è una riga di players.
 db.exec(`
 CREATE TABLE IF NOT EXISTS accounts (

@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import { h, mount, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
-import { createMapView, positionItem, landmarkItem } from './map.js';
+import { createMapView, positionItem, landmarkItem, groupPositions } from './map.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -361,8 +361,8 @@ function combatPanel() {
   const tn = (t) => (t ? `${t.roman} ${t.sectorName}` : '?');
   const outcome = (e) => (e.result === 'draw' ? `Pareggio: ${[...e.winners, ...e.losers].map(tn).join(' · ')}` : `${e.winners.map(tn).join(' + ')} vince su ${e.losers.map(tn).join(' + ')}`);
   return h('div', { class: 'cols-2' },
-    section(`Alleanze (${c.alliances.length})`,
-      c.alliances.length ? h('ul', { class: 'field-list' }, c.alliances.map((a) => h('li', { class: 'ok' }, h('strong', { class: 'grow' }, a.members.map(tn).join(' + ')), h('span', { class: 'tiny muted' }, `dalle ${fmtTime(a.createdAt)}`)))) : h('p', { class: 'empty' }, 'Nessuna alleanza in corso.'),
+    sectionActions(`Alleanze (${c.alliances.length})`, [h('a', { class: 'btn btn-sm', href: '#mappa', onclick: () => { R.mapAllies = true; } }, 'In mappa')],
+      alliancesList(),
       c.requests.length ? [h('h3', { class: 'sub' }, 'Proposte in attesa'), h('ul', { class: 'field-list' }, c.requests.map((r) => h('li', null, h('span', { class: 'grow' }, `${tn(r.from)} → ${tn(r.to)}`), h('span', { class: 'chip' }, r.kind === 'break' ? 'rottura' : 'alleanza'))))] : null),
     section('Scontri',
       c.open.length ? h('ul', { class: 'field-list' }, c.open.map((e) => h('li', { class: e.status === 'contested' ? 'contested' : '' },
@@ -756,6 +756,7 @@ function sectorFields(s, prefix) {
     element: h('input', { class: 'input input-sm', value: s?.element || '', 'data-keep': k('element'), placeholder: 'es. i mulini', maxlength: 60 }),
     motto: h('input', { class: 'input input-sm', value: s?.motto || '', 'data-keep': k('motto'), placeholder: 'Motto', maxlength: 80 }),
     altarLabel: h('input', { class: 'input input-sm', value: s?.altarLabel || '', 'data-keep': k('altar'), placeholder: s ? s.defaultAltar : 'Altare … (automatico)', maxlength: 60 }),
+    color: h('input', { class: 'gt-color', type: 'color', value: s?.color || '#e5484d', 'data-keep': k('color'), title: 'Colore del Settore in mappa', 'aria-label': 'Colore' }),
   };
 }
 const fieldValues = (f) => Object.fromEntries(Object.entries(f).map(([key, el]) => [key, el.value]));
@@ -769,12 +770,13 @@ function viewSectors() {
     section('Settori e Altari',
       h('p', { class: 'muted tiny' }, 'Ogni coppia rappresenta un Settore e il suo Altare nel bosco. L\'elenco vale per tutte le partite: le coppie lo vedono all\'iscrizione per scegliere il proprio Altare, la regia lo usa per formare le coppie. Il nome dell\'Altare è automatico ("Altare del Fuoco"), ma puoi sceglierne uno diverso.'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'sectors-table' },
-        h('thead', null, h('tr', null, ['#', 'Settore', 'Articolo', 'Elemento', 'Motto', 'Nome dell\'Altare', 'Uso', ''].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['#', 'Colore', 'Settore', 'Articolo', 'Elemento', 'Motto', 'Nome dell\'Altare', 'Uso', ''].map((x) => h('th', null, x)))),
         h('tbody', null, active.map((s) => {
           const f = sectorFields(s, `s${s.id}`);
           const u = s.usage || {};
           return h('tr', null,
             h('td', { class: 'w-70' }, h('div', { class: 'mono roman' }, s.roman), f.ord),
+            h('td', null, f.color),
             h('td', null, f.name), h('td', { class: 'w-90' }, f.article), h('td', null, f.element), h('td', null, f.motto), h('td', null, f.altarLabel),
             h('td', { class: 'tiny muted' }, [u.liveTeams ? `${u.liveTeams} in gioco` : null, u.requests ? `${u.requests} richieste` : null, u.teams && !u.liveTeams ? 'storico' : null].filter(Boolean).join(' · ') || 'libero'),
             h('td', { class: 'row-actions' },
@@ -795,6 +797,7 @@ function viewSectors() {
       h('label', { class: 'field' }, h('span', null, 'Motto'), add.motto),
       h('label', { class: 'field' }, h('span', null, 'Nome dell\'Altare'), add.altarLabel),
       h('label', { class: 'field' }, h('span', null, 'Ordine'), add.ord),
+      h('label', { class: 'field' }, h('span', null, 'Colore'), add.color),
       h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
     archived.length ? section('Archiviati',
       h('p', { class: 'muted tiny' }, 'Settori usati in partite passate e poi eliminati: non compaiono nelle scelte.'),
@@ -1040,22 +1043,38 @@ const actBtn = (act, kind, id, label) => `<button type="button" class="btn btn-s
 const placedInfo = (x) => `<small>Piazzato ${fmtTime(x.placedAt)} da ${String(x.placedBy || '?').replace('eletti:', '')}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · punto manuale' : ''}</small>`;
 function fieldMapItems(d) {
   return [
-    ...fieldPositions.map(positionItem),
+    ...groupPositions(fieldPositions).map(positionItem),
     ...(d.landmarks || []).map((l) => landmarkItem(l, `<br>${placedInfo(l)}${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}
       <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
     ...targetItems(d),
-    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
+    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
-        <div class="popup-actions">${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare')}</div>` })),
+        <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label,
-      popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('move', 'gift', g.id, 'Fai spostare')}</div>` : '') })),
+      popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}</div>` : '') })),
   ];
+}
+
+// Alleanze in mappa: linee tratteggiate tra le coppie alleate (dalla posizione del loro pallino).
+const ALLY_COLORS = ['#d1ad62', '#ff4fa3', '#22c3e6', '#a3e635', '#f97316', '#9b6cf0'];
+function allianceLines() {
+  const alliances = R.ms?.combat?.alliances || [];
+  const where = {};
+  for (const p of groupPositions(fieldPositions)) if (p.kind === 'team' && !where[p.teamId]) where[p.teamId] = [p.lat, p.lng];
+  const out = [];
+  alliances.forEach((a, i) => {
+    const pts = a.members.map((m) => where[m.teamId]).filter(Boolean);
+    for (let x = 0; x < pts.length; x++) for (let y = x + 1; y < pts.length; y++) {
+      out.push({ key: `ally-${a.id}-${x}-${y}`, points: [pts[x], pts[y]], color: ALLY_COLORS[i % ALLY_COLORS.length], title: `Alleanza: ${a.members.map((m) => m.sectorName).join(' + ')}` });
+    }
+  });
+  return out;
 }
 
 // Aggiorna solo i segnaposto, senza ridisegnare la pagina.
 function viewFieldMapItems() {
-  if (fieldData) fieldMap.setItems(fieldMapItems(fieldData));
+  if (fieldData) { fieldMap.setItems(fieldMapItems(fieldData)); fieldMap.setLines(allianceLines()); }
 }
 
 const findFieldItem = (kind, id) => {
@@ -1073,12 +1092,12 @@ fieldMap.el.addEventListener('click', (e) => {
   if (!x) return;
   fieldMap.map?.closePopup();
   if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
-  if (b.dataset.act === 'pick') startPick(x);
+  if (b.dataset.act === 'pick') startPick(x, b.dataset.kind);
 }, true);
 
 // Soglia e Cerchio si possono segnare direttamente dalla regia: un clic sulla mappa (foto facoltativa, si aggiunge dal telefono).
-function startPick(l) {
-  R.mapPick = { id: l.id, label: l.label };
+function startPick(x, kind = 'landmark') {
+  R.mapPick = { id: x.id, kind, label: kind === 'gift' ? `${x.label} · ${x.name}` : x.label };
   render();
 }
 fieldMap.onTap(async (ll) => {
@@ -1087,7 +1106,8 @@ fieldMap.onTap(async (ll) => {
   R.mapPick = null;
   const qs = new URLSearchParams({ gameId: R.gameId, lat: ll.lat, lng: ll.lng, source: 'manual' });
   try {
-    const res = await fetch(`/api/field/landmarks/${pick.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, credentials: 'same-origin' });
+    const path = { landmark: 'landmarks', point: 'points', gift: 'gifts' }[pick.kind || 'landmark'];
+    const res = await fetch(`/api/field/${path}/${pick.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, credentials: 'same-origin' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
     toast(`${pick.label} segnato sulla mappa`, 'ok');
@@ -1115,6 +1135,7 @@ function viewFieldMap() {
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento del campo…'); }
   startPositions();
   fieldMap.setItems(fieldMapItems(d));
+  queueMicrotask(() => fieldMap.setLines(allianceLines()));
   fieldMap.refresh();
   const sqName = (id) => squadById(id)?.name;
   const toPlace = [
@@ -1131,7 +1152,8 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
-    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#ff4fa3' } }), ' Coppia'),
+    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#e5484d' } }), ' Coppia (colore del Settore; un pallino se i due sono entro 30 m)'),
+    h('span', null, h('span', { class: 'ally-line' }), ' Alleanza'),
     h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto'));
 
   return h('div', { class: 'map-full' },
@@ -1139,6 +1161,7 @@ function viewFieldMap() {
     h('div', { class: 'map-tools' },
       h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, '◎ Centra'),
       h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`),
+      h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
     R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa dove si trova: ${R.mapPick.label}`),
@@ -1150,11 +1173,24 @@ function viewFieldMap() {
         h('div', { class: 'grow' }, h('strong', null, kind === 'gift' ? `${x.label} · ${x.name}` : x.label),
           h('div', { class: 'tiny muted' }, x.squadId ? `Squadra ${sqName(x.squadId) || '?'}${x.targetLat != null ? ' · punto indicato' : ''}` : 'Nessuna squadra')),
         h('div', { class: 'row-actions' },
-          kind === 'landmark' ? h('button', { class: 'btn btn-sm btn-primary', title: 'Segna il punto con un clic sulla mappa', onclick: () => startPick(x) }, 'Segna') : null,
+          h('button', { class: 'btn btn-sm btn-primary', title: 'Piazzalo tu con un clic sulla mappa (foto facoltativa)', onclick: () => startPick(x, kind) }, 'Segna'),
           h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : h('p', { class: 'tiny ok-text' }, 'Tutto piazzato.'),
       h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
       h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per vederne foto e dettagli e per farlo spostare. Coppie in mappa dal VIA, Eletti da partita pronta.')),
-    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend) : null);
+    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend) : null,
+    R.mapAllies ? h('div', { class: 'map-allies-box' }, alliancesList(true)) : null);
+}
+
+// Elenco delle alleanze in corso, con i colori dei Settori (mappa e pagina Regia).
+function alliancesList(withLines = false) {
+  const al = R.ms?.combat?.alliances || [];
+  const chip = (m) => h('span', { class: 'ally-chip' }, h('span', { class: 'pin-dot', style: { '--c': m.color || '#ff4fa3' } }), `${m.roman} ${m.sectorName}`);
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: 'eyebrow' }, `Alleanze in corso (${al.length})`),
+    al.length ? h('ul', { class: 'ally-list' }, al.map((a, i) => h('li', { style: { '--c': ALLY_COLORS[i % ALLY_COLORS.length] } },
+      h('div', { class: 'ally-members' }, a.members.map((m, k) => [k ? h('span', { class: 'ally-link', 'aria-hidden': 'true' }, '⛓') : null, chip(m)])),
+      h('span', { class: 'tiny muted' }, `dalle ${fmtTime(a.createdAt)}`)))) : h('p', { class: 'tiny muted' }, 'Nessuna alleanza in corso.'),
+    withLines && al.length ? h('p', { class: 'tiny muted' }, 'In mappa le coppie alleate sono unite da una linea tratteggiata dello stesso colore (se i loro telefoni sono in mappa).') : null);
 }
 
 // ---------------------------------------------------------------- SQUADRE ELETTI

@@ -32,7 +32,7 @@ const defaultAltarLabel = (s) => `Altare ${s.article}${s.article.endsWith("'") ?
 const altarLabel = (s) => s.altarLabel?.trim() || defaultAltarLabel(s);
 
 function teamsOf(gameId) {
-  return q.all(`SELECT t.*, s.name AS sectorName, s.roman, s.ord AS sectorOrd, s.article, s.motto, s.element
+  return q.all(`SELECT t.*, s.name AS sectorName, s.roman, s.ord AS sectorOrd, s.article, s.motto, s.element, s.color AS sectorColor
                 FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId
                 WHERE t.gameId = ? AND t.kind = 'couple' ORDER BY COALESCE(s.ord, 99), t.id`, gameId);
 }
@@ -542,16 +542,17 @@ function saveSector(id, data, actor) {
   if (!old && !Number.isFinite(ord)) ord = (q.get('SELECT MAX(ord) AS m FROM sectors').m || 0) + 1;
   if (!Number.isFinite(ord) || ord < 1 || ord > 999) throw err(400, 'Ordine non valido');
   const roman = toRoman(ord);
+  const color = /^#[0-9a-f]{6}$/i.test(data.color || '') ? data.color.toLowerCase() : old?.color || C.SECTOR_COLORS[(ord - 1) % C.SECTOR_COLORS.length];
   let sid = old?.id;
   tx(() => {
     if (old) {
-      q.run('UPDATE sectors SET ord = ?, roman = ?, name = ?, article = ?, element = ?, motto = ?, altarLabel = ? WHERE id = ?', ord, roman, name, article, element, motto, custom, old.id);
+      q.run('UPDATE sectors SET ord = ?, roman = ?, name = ?, article = ?, element = ?, motto = ?, altarLabel = ?, color = ? WHERE id = ?', ord, roman, name, article, element, motto, custom, color, old.id);
       // Gli Altari delle partite non ancora iniziate seguono il nuovo nome, se non erano stati rinominati a mano.
       const newLabel = altarLabel({ name, article, altarLabel: custom });
       q.run(`UPDATE points SET label = ? WHERE sectorId = ? AND label = ? AND gameId IN (SELECT id FROM games WHERE status IN ('draft','ready','circle'))`,
         newLabel, old.id, altarLabel(old));
     } else {
-      sid = Number(q.run('INSERT INTO sectors (ord, roman, name, article, element, motto, altarLabel) VALUES (?, ?, ?, ?, ?, ?, ?)', ord, roman, name, article, element, motto, custom).lastInsertRowid);
+      sid = Number(q.run('INSERT INTO sectors (ord, roman, name, article, element, motto, altarLabel, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ord, roman, name, article, element, motto, custom, color).lastInsertRowid);
     }
   });
   sectorCache = null;
@@ -1611,7 +1612,7 @@ function masterState(gameId) {
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
                      FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id),
     teams: teams.map((t) => ({
-      id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName,
+      id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor,
       status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken,
       members: membersOf(t.id), fragments: tfStats[t.id]?.n || 0, fragmentsTotal: fragCount,
       lastUnlock: lastUnlock[t.id] || null, online: online[t.id] || 0, unread: unread[t.id] || 0, owned: owned[t.id] || [], pushDevices: pushDevices[t.id] || 0,
