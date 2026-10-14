@@ -376,3 +376,23 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 /* Barra dell'account in fondo alla home: con chi sei entrato, profilo, Esci */
 .account-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0 4px; border-top: 1px solid var(--line); }
 .account-bar > span { flex: 1; min-width: 160px; }
+
+/* Esito degli scontri: vittoria (Sigilli che si svelano) e sconfitta (tempo per tornare in battaglia) */
+.battle-overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(8, 10, 9, .97); backdrop-filter: blur(6px); animation: battle-in .35s ease-out both; }
+.battle-box { position: relative; width: min(100%, 420px); display: grid; gap: 12px; text-align: center; justify-items: center; }
+.battle-box .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.battle-title { font-family: var(--f-display); font-weight: 900; font-size: clamp(64px, 22vw, 110px); line-height: .9; text-transform: uppercase; margin: 0; }
+.victory .battle-title { color: var(--brass); text-shadow: 0 0 24px rgba(209, 173, 98, .6); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
+.defeat .battle-title { color: var(--blood); animation: battle-shake .6s ease-in-out both; }
+.battle-burst { position: absolute; top: 40px; left: 50%; width: 360px; height: 360px; margin-left: -180px; border-radius: 50%; background: radial-gradient(circle, rgba(209, 173, 98, .45), rgba(209, 173, 98, 0) 65%); animation: battle-burst 1.4s ease-out both; pointer-events: none; z-index: -1; }
+.battle-seals { display: grid; gap: 10px; width: 100%; }
+.battle-seal { display: grid; gap: 4px; padding: 12px; border: 2px solid var(--brass); background: rgba(209, 173, 98, .08); }
+.battle-code { font-size: 38px; font-weight: 600; letter-spacing: .2em; min-height: 48px; color: var(--ink); }
+.battle-count { font-size: 64px; font-weight: 600; color: var(--blood); }
+.battle-count.battle-free { font-size: 26px; color: var(--ok); }
+.battle-note { margin: 4px 0 0; font-weight: 700; }
+@keyframes battle-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes battle-pop { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes battle-burst { 0% { transform: scale(.2); opacity: 0; } 40% { opacity: 1; } 100% { transform: scale(1.4); opacity: .5; } }
+@keyframes battle-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+@media (prefers-reduced-motion: reduce) { .battle-overlay, .battle-title, .battle-burst { animation: none; } }

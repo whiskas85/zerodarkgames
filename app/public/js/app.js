@@ -123,6 +123,12 @@ function setState(st) {
       ...st.combat.toConfirm.map((e) => [`e${e.id}`, `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`])].filter(([k]) => !seen.has(k));
     if (fresh.length) { vibrate([200, 100, 200, 100, 400]); beep(); for (const [, t] of fresh) toast(t, 'blood', 9000); }
   }
+  // Scontro vinto: i Sigilli conquistati compaiono con l'animazione della vittoria.
+  if (prev && prev.team.id === st.team.id && st.team.kind === 'couple') {
+    const before = Object.fromEntries((prev.notebook || []).map((n) => [n.sectorId, n]));
+    const won = (st.notebook || []).filter((n) => n.source === 'won' && n.code && !(before[n.sectorId]?.code && before[n.sectorId]?.source === 'won'));
+    if (won.length) setTimeout(() => showVictory(won), 300);
+  }
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Allinea gli Altari visitati del server con quelli locali.
   for (const v of st.visited) rememberVisit(v.qrToken, { label: v.label, sectorName: v.sectorName });
@@ -1256,6 +1262,55 @@ function saveTimers() { store.set('zdg_timers', S.timers); }
 
 // Timer avviati dal server (Veglia dopo una sconfitta, blocchi dopo pareggi o alleanze rotte): partono da soli.
 const syncedTimers = new Set(store.get('zdg_synced_timers', []));
+// ---------------------------------------------------------------- esito degli scontri: vittoria e sconfitta
+
+function battleOverlay(cls, ...children) {
+  document.querySelector('.battle-overlay')?.remove();
+  const el = h('div', { class: `battle-overlay ${cls}`, role: 'dialog', 'aria-modal': 'true' }, h('div', { class: 'battle-box' }, ...children));
+  document.body.append(el);
+  return el;
+}
+
+function showVictory(won) {
+  vibrate([120, 60, 120, 60, 400]);
+  beep();
+  const el = battleOverlay('victory',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'eyebrow' }, 'Scontro vinto'),
+    h('h2', { class: 'battle-title' }, 'Vittoria'),
+    h('p', { class: 'muted' }, won.length > 1 ? 'Il Consiglio vi consegna i Sigilli della parte sconfitta:' : 'Il Consiglio vi consegna il Sigillo dello sconfitto:'),
+    h('div', { class: 'battle-seals' }, won.map((n, i) => {
+      const code = h('div', { class: 'battle-code mono' }, ghost(`won-${n.sectorId}`, n.code.length, 'ghost-strong'));
+      // Il simulacro sfocato si svela nel Sigillo vero, uno dopo l'altro.
+      setTimeout(() => { code.replaceChildren(h('span', { class: 'unveil' }, n.code)); vibrate(60); }, 1100 + i * 900);
+      return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`), code);
+    })),
+    h('p', { class: 'small muted' }, 'Lo trovate anche nel taccuino dei Codici.'),
+    h('div', { class: 'row' },
+      h('a', { class: 'btn btn-primary btn-block', href: '#/codici', onclick: () => el.remove() }, 'Vai al taccuino'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi')));
+}
+
+function showDefeat(timerUid, reason) {
+  vibrate([600, 200, 600]);
+  beep();
+  const left = h('div', { class: 'battle-count mono', 'data-timer': timerUid }, '—');
+  const note = h('p', { class: 'battle-note' }, 'Tornate in battaglia tra');
+  const el = battleOverlay('defeat',
+    h('div', { class: 'eyebrow' }, 'Scontro perso'),
+    h('h2', { class: 'battle-title' }, 'Sconfitta'),
+    h('p', { class: 'muted' }, `${reason}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
+    note, left,
+    h('button', { class: 'btn btn-block', type: 'button', onclick: () => { clearInterval(watch); el.remove(); } }, 'Ho capito'),
+    h('a', { class: 'small', href: '#/timer', onclick: () => { clearInterval(watch); el.remove(); } }, 'Il timer resta nella pagina Timer'));
+  updateClocks();
+  const watch = setInterval(() => {
+    if (!document.body.contains(el)) return clearInterval(watch);
+    const t = S.timers.find((x) => x.uid === timerUid);
+    if (t?.done || (t && Date.now() >= t.endsAt)) { note.textContent = 'La Veglia è finita'; left.textContent = 'Potete tornare in battaglia'; left.classList.add('battle-free'); left.removeAttribute('data-timer'); clearInterval(watch); }
+  }, 500);
+}
+
 function syncServerTimers(st) {
   for (const t of st.serverTimers || []) {
     const key = `srv-${t.id}`;
@@ -1266,7 +1321,8 @@ function syncServerTimers(st) {
     const endsAt = t.startedAt + preset.minutes * 60000 - clock.offset;
     if (endsAt <= Date.now()) continue;
     S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason });
-    toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
+    if (t.timerId === 'veglia' && /^Sconfitta/.test(t.reason || '')) setTimeout(() => showDefeat(key, t.reason), 300);
+    else toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
   }
   store.set('zdg_synced_timers', [...syncedTimers].slice(-200));
   saveTimers();
