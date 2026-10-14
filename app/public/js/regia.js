@@ -19,11 +19,11 @@ const R = {
 const TABS = [
   ['live', 'Regia'],
   ['coppie', 'Iscrizioni e coppie'],
+  ['squadre', 'Squadre Eletti'],
   ['settori', 'Settori e Altari'],
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
-  ['squadre', 'Squadre Eletti'],
   ['doniqr', 'Doni QR'],
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
@@ -609,7 +609,6 @@ function viewTeams() {
   const st = ms.clock.status;
   const editable = ['draft', 'ready'].includes(st);
   const pending = ms.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect');
-  const pendingElect = ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length;
   const free = ms.players.filter((p) => !p.teamId && p.status === 'accepted');
   const usedSectors = new Set(ms.teams.map((t) => t.sectorId));
   const freeSectors = ms.sectors.filter((s) => !usedSectors.has(s.id) && !s.archived);
@@ -633,10 +632,9 @@ function viewTeams() {
   const teamName = h('input', { class: 'input', 'data-keep': 'pair-name', placeholder: 'Nome della coppia (facoltativo)' });
 
   return h('div', { class: 'stack' },
-    pendingElect ? h('a', { class: 'notice-link', href: '#squadre' }, `${pendingElect} candidature agli Eletti da approvare: si gestiscono in Squadre Eletti →`) : null,
     pendingGroups.length ? h('div', { class: 'panel pending-panel' },
       h('div', { class: 'panel-head' }, h('h2', null, `Iscrizioni da approvare (${pending.length})`)),
-      h('p', { class: 'muted tiny' }, 'Arrivate dal modulo online. Accetta chi vuoi far giocare: solo dopo potrai accoppiarli o metterli tra gli Eletti. Rifiutando, l\'iscrizione viene cancellata.'),
+      h('p', { class: 'muted tiny' }, 'Arrivate dal modulo online. Accetta chi vuoi far giocare: solo dopo potrai accoppiarli. Le candidature agli Eletti si gestiscono in Squadre Eletti. Rifiutando, l\'iscrizione viene cancellata.'),
       h('div', { class: 'players' }, pendingGroups.map((grp) => h('div', { class: `player ${grp.length === 2 ? 'grouped' : ''}` },
         h('div', { class: 'player-main' },
           grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? h('span', { class: 'tiny muted' }, ` · ${p.phone}`) : null)),
@@ -691,24 +689,13 @@ function viewTeams() {
             grp?.length === 2 ? h('div', { class: 'tiny brass' }, `Iscritto con ${grp.find((x) => x.id !== p.id).name}`) : null),
           h('div', { class: 'row-actions' },
             grp?.length === 2 && editable && grp[0].id === p.id ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/teams'), { playerIds: grp.map((x) => x.id) }, 'Coppia formata') }, 'Accoppia come richiesto') : null,
-            h('button', { class: 'btn btn-sm', onclick: () => call('POST', G('/elect'), { playerIds: [p.id] }, `${p.name} è tra gli Eletti`) }, 'Agli Eletti'),
             resetBtn(p),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il giocatore?', p.name, 'DELETE', `/api/m/players/${p.id}`, undefined, 'Eliminato', true) }, 'Elimina')));
       })) : h('p', { class: 'empty' }, pending.length ? 'Nessun giocatore accettato libero: approva le iscrizioni qui sopra.' : 'Tutti i giocatori accettati sono in coppia o tra gli Eletti.')),
 
-    electSection(),
 
     sectionActions(`Coppie (${ms.teams.length}/${ms.sectors.filter((x) => !x.archived).length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa credenziali')],
       ms.teams.length ? h('div', { class: 'teams' }, ms.teams.map((t) => teamCard(t, editable))) : h('p', { class: 'empty' }, 'Nessuna coppia.')));
-}
-
-function electSection() {
-  const e = R.ms.elect;
-  return h('div', { class: 'panel elect-panel' },
-    h('div', { class: 'panel-head' }, h('h2', null, `Eletti del Consiglio (${e.members.length})`),
-      h('div', { class: 'row-actions' }, h('a', { class: 'btn btn-sm btn-primary', href: '#squadre' }, 'Gestisci in Squadre Eletti'))),
-    h('p', { class: 'muted tiny' }, 'Candidature, squadre e accessi personali degli Eletti si gestiscono nella sezione Squadre Eletti. Da qui puoi mandare tra gli Eletti un giocatore accettato (pulsante "Agli Eletti").'),
-    e.members.length ? h('div', { class: 'squad-members' }, e.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name))) : null);
 }
 
 function teamCard(t, editable) {
@@ -1211,7 +1198,7 @@ function viewSquads() {
                 h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                 ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)),
             h('td', { class: 'row-actions' }, resetBtn(m), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
-        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto o con "Agli Eletti" in Iscrizioni e coppie.'),
+        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto.'),
       h('h3', { class: 'sub' }, 'Aggiungi un Eletto a mano (già accettato)'),
       h('form', { class: 'form-grid', onsubmit: async (ev) => {
         ev.preventDefault();
