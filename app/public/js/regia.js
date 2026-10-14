@@ -180,6 +180,7 @@ function sidebar() {
 }
 
 function tick() {
+  tickTimeline();
   const recEl = document.getElementById('rec-time-regia');
   if (recEl && R.rec) recEl.textContent = fmtSec(Date.now() - R.rec.startedAt);
   const c = clock.snap;
@@ -282,6 +283,8 @@ function viewLive() {
 
     PRE.includes(st) ? readinessPanel() : null,
 
+    liveTimeline(),
+
     h('div', { class: 'cols-3' },
       nextCard('Prossimo tradimento', n.revelation
         ? [h('div', { class: 'next-sector' }, `Settore ${n.revelation.sectorName}`),
@@ -293,10 +296,10 @@ function viewLive() {
             h('button', { class: 'btn btn-sm', onclick: () => call('POST', `/api/m/revelations/${n.revelation.id}/postpone`, { minutes: 5 }, 'Posticipata di 5 minuti') }, '+5 min'),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Saltare questa rivelazione?', 'Il Settore uscirà dal calendario.', 'POST', `/api/m/revelations/${n.revelation.id}/skip`, {}, 'Rivelazione saltata') }, 'Salta')) : null]
         : h('p', { class: 'empty' }, 'Nessuna rivelazione in calendario.')),
-      nextCard('Prossimi doni', n.supply
+      nextCard('Prossimi armamenti', n.supply
         ? [h('div', { class: 'mono big', 'data-clock': `until:${n.supply.atMs}` }, '—'), h('div', { class: 'muted tiny' }, `a ${fmtMin(n.supply.atMs / 60000)} · ${n.supply.description || ''}`),
           ACTIVE.includes(st) ? h('button', { class: 'btn btn-sm', onclick: () => confirmCall('Lanciare i doni adesso?', 'Parte l\'annuncio a tutte le coppie.', 'POST', `/api/m/supply/${n.supply.id}/fire`, {}, 'Doni lanciati') }, 'Lancia ora') : null]
-        : [h('p', { class: 'empty' }, 'Nessuna finestra a orario.'), h('a', { class: 'btn btn-sm', href: '#doni' }, 'Gestisci doni')]),
+        : [h('p', { class: 'empty' }, 'Nessuna finestra a orario.'), h('a', { class: 'btn btn-sm', href: '#doni' }, 'Gestisci armamenti')]),
       nextCard('Tappe', [
         h('div', { class: 'milestone' }, h('span', null, 'Apertura caccia'), h('span', { class: 'mono', 'data-clock': `until:${n.huntAtMs}` }, '—')),
         h('div', { class: 'milestone' }, h('span', null, 'Ultima mezz\'ora'), h('span', { class: 'mono', 'data-clock': `until:${n.lastPhaseAtMs}` }, '—')),
@@ -981,7 +984,7 @@ function viewCodes() {
 
 // ---------------------------------------------------------------- MAPPA E CAMPO
 
-const FIELD_TABS = ['mappa', 'doniqr', 'squadre', 'altari'];
+const FIELD_TABS = ['mappa', 'doniqr', 'squadre', 'altari', 'live'];
 const fieldMap = createMapView({ className: 'regia-map' });
 let fieldData = null;
 let giftTypesDraft = null;
@@ -1252,21 +1255,21 @@ function timelineEvents(exclude = null) {
   for (const r of ms.revelations) {
     if (r.status === 'skipped') continue;
     const at = r.firedAt ? tb.toMin(r.firedAt) : r.scheduledMin;
-    if (at != null) ev.push({ at, label: `Tradimento: ${r.sectorName}${r.firedAt ? ' (fatto)' : ''}`, kind: 'revelation', done: !!r.firedAt });
+    if (at != null) ev.push({ at, label: `Tradimento: ${r.sectorName}${r.firedAt ? ' (fatto)' : ''}`, kind: 'revelation', done: !!r.firedAt, ref: { type: 'revelation', id: r.id } });
   }
   for (const s of ms.supply) {
     if (exclude?.kind === 'supply' && exclude.id === s.id) continue;
     const at = s.firedAt ? tb.toMin(s.firedAt) : s.scheduledMin ?? (s.scheduledAt ? tb.toMin(s.scheduledAt) : null);
     if (at == null) continue;
     const end = s.closedAt ? tb.toMin(s.closedAt) : s.closesAt ? tb.toMin(s.closesAt) : s.durationMin ? at + s.durationMin : null;
-    ev.push({ at, to: end, label: `Armamenti${s.description ? `: ${s.description}` : ''}${s.status === 'closed' ? ' (chiusa)' : s.status === 'fired' ? ' (aperta)' : ''}`, kind: 'supply', done: s.status === 'closed' });
+    ev.push({ at, to: end, label: `Armamenti${s.description ? `: ${s.description}` : ''}${s.status === 'closed' ? ' (chiusa)' : s.status === 'fired' ? ' (aperta)' : ''}`, kind: 'supply', done: s.status === 'closed', ref: { type: 'supply', id: s.id } });
   }
   for (const gf of fieldData?.gifts || []) {
     if (exclude?.kind === 'gift' && exclude.id === gf.id) continue;
     const at = gf.revealedAt ? tb.toMin(gf.revealedAt) : gf.revealMode === 'at' && gf.revealAt ? tb.toMin(gf.revealAt) : gf.revealMode === 'time' ? gf.revealAtMin : null;
     if (at == null) continue;
     const end = gf.expiresAfterMin ? at + gf.expiresAfterMin : null;
-    ev.push({ at, to: end, label: `Dono ${gf.label} (${gf.name})${gf.status === 'claimed' ? ' · preso' : gf.status === 'expired' ? ' · svanito' : gf.revealedAt ? ' · in mappa' : ''}`, kind: 'gift', done: ['claimed', 'expired'].includes(gf.status) });
+    ev.push({ at, to: end, label: `Dono ${gf.label} (${gf.name})${gf.status === 'claimed' ? ' · preso' : gf.status === 'expired' ? ' · svanito' : gf.revealedAt ? ' · in mappa' : ''}`, kind: 'gift', done: ['claimed', 'expired'].includes(gf.status), ref: { type: 'gift', id: gf.id } });
   }
   return ev.filter((e) => Number.isFinite(e.at)).sort((a, b) => a.at - b.at);
 }
@@ -1401,14 +1404,169 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
   return result || null;
 }
 
+// ---------------------------------------------------------------- TIMELINE IN REGIA (avanza in tempo reale)
+
+// Scala della timeline: dal via (qualche minuto prima) alla fine dei Giochi.
+function timelineScale(events) {
+  const g = R.ms.game;
+  const tb = timeBase();
+  const span = Math.max(g.durationMin, ...events.map((e) => e.to ?? e.at)) + 5;
+  const lo = Math.min(-5, tb.nowMin != null && tb.nowMin < 0 ? Math.max(tb.nowMin, -120) : -5);
+  return { lo, span, pct: (m) => `${((Math.min(Math.max(m, lo), span) - lo) / (span - lo)) * 100}%` };
+}
+
+function liveTimeline() {
+  const g = R.ms.game;
+  const events = timelineEvents();
+  const { lo, span, pct } = timelineScale(events);
+  const tb = timeBase();
+  const track = h('div', { class: 'tl-track tl-live', title: 'Clicca un punto vuoto per programmare qualcosa in quel momento', 'data-lo': lo, 'data-span': span },
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: 'tl-tick', style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
+    h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
+    h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
+    h('div', { class: 'tl-past', id: 'tl-live-past', style: { left: pct(lo), width: tb.nowMin != null ? `calc(${pct(tb.nowMin)} - ${pct(lo)})` : '0' } }),
+    events.map((e, i) => h('button', {
+      type: 'button',
+      class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.done ? 'tl-done' : ''}`,
+      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${20 + (i % 4) * 12}px` },
+      title: `${fmtClockMin(e.at)} · ${e.label}`,
+      'aria-label': `${fmtClockMin(e.at)} ${e.label}`,
+      onclick: (ev) => { ev.stopPropagation(); eventDialog(e); },
+    })),
+    h('span', { class: 'tl-now', id: 'tl-live-now', style: { left: pct(tb.nowMin ?? 0), display: tb.nowMin == null ? 'none' : null } }, h('i', { id: 'tl-live-now-label' }, 'adesso')));
+  track.addEventListener('click', (e) => {
+    const r = track.getBoundingClientRect();
+    const m = Math.max(0, Math.round(lo + ((e.clientX - r.left) / r.width) * (span - lo)));
+    planDialog(m);
+  });
+  const nextEv = tb.nowMin != null ? events.find((e) => e.at > tb.nowMin && !e.done) : null;
+  return sectionActions('Timeline del torneo', [
+    h('button', { class: 'btn btn-sm', onclick: () => planDialog(Math.max(0, Math.round((tb.nowMin ?? 0) + 15))) }, '+ Programma'),
+    h('button', { class: 'btn btn-sm btn-ghost', onclick: () => timelineModal({ title: 'Timeline del torneo', intro: 'Tutti gli avvenimenti programmati e passati.', okLabel: 'Chiudi' }) }, 'Elenco')],
+    h('div', { class: 'tl-legend tiny' },
+      h('span', null, h('i', { class: 'tl-key tl-truce-k' }), 'tregua'), h('span', null, h('i', { class: 'tl-key tl-last-k' }), 'ultima mezz\'ora'),
+      h('span', null, h('i', { class: 'tl-key tl-revelation' }), 'tradimenti'), h('span', null, h('i', { class: 'tl-key tl-supply' }), 'armamenti'),
+      h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-now-k' }), 'adesso')),
+    track,
+    h('p', { class: 'tiny muted' }, tb.known ? '' : 'La partita non ha un orario di inizio: la timeline è in minuti dal via. ',
+      nextEv ? ['Prossimo: ', h('strong', null, nextEv.label), ` a ${fmtClockMin(nextEv.at)}`, tb.toWall(nextEv.at) ? ` (alle ${fmtTime(tb.toWall(nextEv.at))})` : ''] : 'Clicca un punto vuoto per programmare armamenti o l\'annuncio di un dono; clicca un avvenimento per spostarlo o farlo partire.'));
+}
+
+// Ogni secondo: l'indicatore "adesso" e la parte già trascorsa avanzano.
+function tickTimeline() {
+  const track = document.querySelector('.tl-live');
+  const now = document.getElementById('tl-live-now');
+  if (!track || !now || !R.ms) return;
+  const tb = timeBase();
+  if (tb.nowMin == null) return;
+  const lo = Number(track.dataset.lo);
+  const span = Number(track.dataset.span);
+  const p = ((Math.min(Math.max(tb.nowMin, lo), span) - lo) / (span - lo)) * 100;
+  now.style.left = `${p}%`;
+  const past = document.getElementById('tl-live-past');
+  if (past) past.style.width = `${p}%`;
+  const label = document.getElementById('tl-live-now-label');
+  if (label) label.textContent = `adesso · ${fmtClockMin(tb.nowMin)}`;
+}
+
+// Punto vuoto della timeline: cosa programmare in quel momento.
+async function planDialog(min) {
+  const tb = timeBase();
+  const gifts = (fieldData?.gifts || []).filter((g) => ['draft', 'placed'].includes(g.status));
+  const opts = [
+    ['supply', 'Una finestra armamenti', 'apertura in quel momento, poi scegli la durata'],
+    ...(gifts.length ? [['gift', 'L\'annuncio di un dono', 'il dono compare sulle mappe delle coppie']] : []),
+  ];
+  const radios = opts.map(([v], i) => h('input', { type: 'radio', name: 'plan', value: v, checked: i === 0 }));
+  const giftSel = gifts.length ? h('select', { class: 'input', 'aria-label': 'Dono' }, gifts.map((g) => h('option', { value: g.id }, `${g.label} · ${g.icon} ${g.name}${g.status === 'draft' ? ' (non ancora piazzato)' : ''}`))) : null;
+  const wall = tb.toWall(min);
+  const choice = await modal({
+    title: `Al minuto ${fmtMin(min)} dal via${wall ? ` · alle ${fmtTime(wall)}` : ''}`,
+    okLabel: 'Avanti',
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'muted tiny' }, 'Cosa vuoi programmare in questo momento? Nel passo successivo puoi ancora ritoccare l\'orario sulla timeline.'),
+      opts.map(([v, label, sub], i) => h('label', { class: 'radio-line plan-opt' }, radios[i], h('span', null, h('strong', null, label), h('span', { class: 'tiny muted' }, ` · ${sub}`)))),
+      giftSel ? h('label', { class: 'field' }, h('span', null, 'Quale dono'), giftSel) : h('p', { class: 'tiny muted' }, 'Per annunciare un dono, crealo prima in Doni QR.')),
+    onOk: () => ({ kind: radios.find((r) => r.checked).value, giftId: giftSel ? Number(giftSel.value) : null }),
+  });
+  if (!choice) return;
+  const preset = { mode: 'min', min };
+  if (choice.kind === 'supply') return supplyDialog(null, preset);
+  const g = gifts.find((x) => x.id === choice.giftId);
+  if (g) return scheduleGiftDialog(g, preset);
+}
+
+// Avvenimento sulla timeline: cosa è e cosa se ne può fare.
+async function eventDialog(e) {
+  const ms = R.ms;
+  const active = ACTIVE.includes(ms.clock.status);
+  const pre = PRE.includes(ms.clock.status);
+  if (e.ref?.type === 'gift') {
+    const g = fieldData?.gifts.find((x) => x.id === e.ref.id);
+    if (g && ['draft', 'placed'].includes(g.status)) return scheduleGiftDialog(g);
+    return modal({ title: e.label, okLabel: 'Chiudi', cancelLabel: 'Doni QR', body: h('p', null, `${fmtClockMin(e.at)} dal via.`) }).then((r) => { if (r === null) location.hash = 'doniqr'; });
+  }
+  if (e.ref?.type === 'supply') {
+    const s = ms.supply.find((x) => x.id === e.ref.id);
+    if (!s) return;
+    if (s.status === 'scheduled') {
+      const act = await actionDialog(e.label, `${supplyWhen(s)}${s.durationMin ? ` · per ${s.durationMin}′` : ''}`, [
+        ['move', '◷ Sposta o cambia durata'], active ? ['fire', 'Apri adesso'] : null, ['early', '−5′ (anticipa)'], ['late', '+5′ (posticipa)'], ['delete', 'Elimina'],
+      ]);
+      if (act === 'move') return supplyDialog(s);
+      if (act === 'fire') return call('POST', `/api/m/supply/${s.id}/fire`, {}, 'Armamenti aperti');
+      if (act === 'early') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: -5 }, 'Anticipata di 5 minuti');
+      if (act === 'late') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: 5 }, 'Posticipata di 5 minuti');
+      if (act === 'delete') return confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true);
+      return;
+    }
+    if (s.status === 'fired' && s.closesAt) {
+      const act = await actionDialog(e.label, 'La finestra è aperta.', [['shorter', '−5′ (accorcia)'], ['longer', '+5′ (prolunga)'], ['close', 'Chiudi adesso']]);
+      if (act === 'shorter') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: -5 }, 'Accorciata di 5 minuti');
+      if (act === 'longer') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: 5 }, 'Prolungata di 5 minuti');
+      if (act === 'close') return confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true);
+      return;
+    }
+    return actionDialog(e.label, 'Finestra già conclusa.', []);
+  }
+  if (e.ref?.type === 'revelation') {
+    const r = ms.revelations.find((x) => x.id === e.ref.id);
+    if (!r || r.status !== 'scheduled') return actionDialog(e.label, 'Tradimento già avvenuto o saltato.', []);
+    const act = await actionDialog(`Tradimento: Settore ${r.sectorName}`, `In calendario a ${fmtMin(r.scheduledMin)} dal via.`, [
+      active ? ['reveal', 'Rivela adesso'] : null, !pre ? ['early', '−5′ (anticipa)'] : null, !pre ? ['late', '+5′ (posticipa)'] : null, pre ? ['edit', 'Modifica in Sigilli e tradimenti'] : null, ['skip', 'Salta'],
+    ]);
+    if (act === 'reveal') return confirmCall('Rivelare adesso?', `Il Sigillo del Settore ${r.sectorName} sarà annunciato a tutte le coppie.`, 'POST', `/api/m/revelations/${r.id}/reveal`, {}, 'Sigillo rivelato');
+    if (act === 'early') return call('POST', `/api/m/revelations/${r.id}/postpone`, { minutes: -5 }, 'Anticipata di 5 minuti');
+    if (act === 'late') return call('POST', `/api/m/revelations/${r.id}/postpone`, { minutes: 5 }, 'Posticipata di 5 minuti');
+    if (act === 'edit') { location.hash = 'sigilli'; return; }
+    if (act === 'skip') return confirmCall('Saltare questa rivelazione?', 'Il Settore uscirà dal calendario.', 'POST', `/api/m/revelations/${r.id}/skip`, {}, 'Rivelazione saltata');
+    return;
+  }
+  return actionDialog(e.label, `${fmtClockMin(e.at)} dal via.`, []);
+}
+
+// Piccola finestra con un elenco di azioni: restituisce la chiave scelta (o null).
+function actionDialog(title, text, actions) {
+  return new Promise((resolve) => {
+    let picked = null;
+    const list = actions.filter(Boolean);
+    modal({
+      title, okLabel: 'Chiudi', cancelLabel: list.length ? 'Annulla' : 'Chiudi',
+      body: h('div', { class: 'stack-sm' }, text ? h('p', null, text) : null,
+        list.length ? h('div', { class: 'action-list' }, list.map(([k, label]) => h('button', { type: 'button', class: `btn ${k === 'delete' || k === 'skip' || k === 'close' ? 'btn-ghost' : ''}`, onclick: (ev) => { picked = k; ev.target.closest('dialog').querySelector('.btn-primary').click(); } }, label))) : null),
+    }).then(() => resolve(picked));
+  });
+}
+
 // ---------------------------------------------------------------- DONI QR
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
 // Quando annunciare il dono alle coppie (e dopo quanto svanisce), scelto sulla timeline del torneo.
-async function scheduleGiftDialog(g) {
+async function scheduleGiftDialog(g, preset = null) {
   const placed = g.status === 'placed';
-  const initial = g.revealMode === 'at' && g.revealAt ? { mode: 'at', at: g.revealAt } : g.revealMode === 'time' ? { mode: 'min', min: g.revealAtMin } : null;
+  const initial = preset || (g.revealMode === 'at' && g.revealAt ? { mode: 'at', at: g.revealAt } : g.revealMode === 'time' ? { mode: 'min', min: g.revealAtMin } : null);
   const r = await timelineModal({
     title: `Annuncia ${g.label} · ${g.icon} ${g.name}`,
     intro: placed
@@ -1529,9 +1687,9 @@ function supplyState(s) {
 }
 
 // Quando aprire la finestra e per quanto: scelto sulla timeline del torneo.
-async function supplyDialog(s = null) {
+async function supplyDialog(s = null, preset = null) {
   const ms = R.ms;
-  const initial = s ? (s.scheduledMin != null ? { mode: 'min', min: s.scheduledMin } : s.scheduledAt ? { mode: 'at', at: s.scheduledAt } : null) : null;
+  const initial = preset || (s ? (s.scheduledMin != null ? { mode: 'min', min: s.scheduledMin } : s.scheduledAt ? { mode: 'at', at: s.scheduledAt } : null) : null);
   const r = await timelineModal({
     title: s ? 'Sposta la finestra armamenti' : 'Nuova finestra armamenti',
     intro: 'All\'apertura parte l\'annuncio a tutte le coppie e nelle app compare il conto alla rovescia della chiusura; allo scadere della durata la finestra si chiude con un secondo annuncio. Si apre solo a partita in corso.',
