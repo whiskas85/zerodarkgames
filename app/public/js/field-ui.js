@@ -200,7 +200,7 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
         h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
         h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato dalla regia'),
-        h('span', null, h('span', { class: 'pin pin-elect', style: { '--c': '#d1ad62' } }, h('b', null, 'EL')), ' Altri Eletti'),
+        h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Altri Eletti (colore della squadra)'),
         h('span', null, h('span', { class: 'pin pin-me' }), ' Tu')),
       d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null);
   }

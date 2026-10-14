@@ -22,6 +22,9 @@ const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = 'Mappa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, SRTM · Stile © <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA)';
 const ITALY = [42.5, 12.5];
 
+export const PERSON_TEAM = '#ff4fa3';
+export const PERSON_ELECT = '#d1ad62';
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Segnaposto: Altare (quadrato con numero romano), Dono (cerchio con icona), io (punto blu).
@@ -30,9 +33,9 @@ export function pinHtml(item) {
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
-  // Posizioni dei telefoni: coppie (numero romano) ed Eletti (colore della squadra).
-  if (item.kind === 'team') return `<span class="pin pin-team ${item.stale ? 'pin-stale' : ''}">${esc(item.text)}</span>`;
-  if (item.kind === 'elect') return `<span class="pin pin-elect ${item.stale ? 'pin-stale' : ''}" style="--c:${esc(item.color || '#d1ad62')}"><b>${esc(item.text)}</b></span>`;
+  // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
+  // Coppie magenta, Eletti del colore della squadra; chi è, lo dice il popup.
+  if (item.kind === 'team' || item.kind === 'elect') return `<span class="dot-wrap"><span class="pin-dot ${item.stale ? 'pin-stale' : ''}" style="--c:${esc(item.color || (item.kind === 'team' ? PERSON_TEAM : PERSON_ELECT))}"></span></span>`;
   return '<span class="pin pin-me"></span>';
 }
 

@@ -150,3 +150,7 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 .pin-target { width: 30px; height: 30px; border-radius: 50%; background: rgba(209, 173, 98, .25); color: #d1ad62; border: 3px dashed #d1ad62; font-size: 18px; font-weight: 700; }
 .pin-place { width: 32px; height: 32px; border-radius: 50%; background: #111; color: #d1ad62; border: 3px solid #d1ad62; font-size: 17px; }
 .pin-place.pin-soglia { background: #8e2a1f; color: #fff; border-color: #fff; }
+/* Persone in mappa: pallini colorati senza testo */
+.dot-wrap { display: grid; place-items: center; width: 34px; height: 34px; }
+.pin-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 4px rgba(0, 0, 0, .5); vertical-align: middle; }
+.map-legend .pin-dot { width: 12px; height: 12px; }

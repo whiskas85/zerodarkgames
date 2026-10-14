@@ -529,7 +529,7 @@ function positionsOf(gameId, viewer = 'master') {
     deviceId: r.deviceId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
     label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
     who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),
-    roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : '#3b82f6',
+    roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : '#ff4fa3',
   }));
 }
 
