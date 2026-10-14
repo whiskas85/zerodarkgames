@@ -185,6 +185,22 @@ addColumn('gifts', 'expiredAt', 'INTEGER');
 addColumn('team_code_notes', 'source', 'TEXT');
 // Validità della scansione di un Altare (minuti; 0 = senza limite).
 addColumn('games', 'altarScanMin', 'INTEGER NOT NULL DEFAULT 15');
+
+// Squadre degli Eletti e loro incarichi (Altari e Doni da piazzare, incarichi liberi).
+db.exec(`
+CREATE TABLE IF NOT EXISTS elect_squads (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#d1ad62', createdAt INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS squad_tasks (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  squadId INTEGER NOT NULL REFERENCES elect_squads(id) ON DELETE CASCADE,
+  text TEXT NOT NULL, createdAt INTEGER NOT NULL, doneAt INTEGER, doneBy TEXT
+);
+`);
+addColumn('players', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
+addColumn('points', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
+addColumn('gifts', 'squadId', 'INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL');
 db.exec(`
 CREATE TABLE IF NOT EXISTS alliances (
   id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL, endedAt INTEGER

@@ -7,14 +7,15 @@ const F = {
   who: null,
   gameId: store.get('zdg_campo_game'),
   data: null,
-  tab: location.hash.slice(1) || 'altari',
+  tab: location.hash.slice(1) || 'incarichi',
+  squadId: null,
   me: null, // ultima posizione nota { lat, lng, acc, at }
   geoError: null,
 };
 const mapView = createMapView({ className: 'campo-map' });
 let stopWatch = null;
 
-window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 'altari'; render(); });
+window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 'incarichi'; render(); });
 
 (async function boot() {
   try {
@@ -23,6 +24,8 @@ window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 
     return mount($root, viewLogin());
   }
   if (F.who.role === 'elect') F.gameId = F.who.gameId;
+  // Squadra: quella dell'Eletto entrato col codice personale, altrimenti la scelta fatta su questo telefono.
+  F.squadId = F.who.squad?.id || store.get('zdg_campo_squad') || null;
   if (!F.who.games.some((g) => g.id === F.gameId)) F.gameId = F.who.games[0]?.id || null;
   store.set('zdg_campo_game', F.gameId);
   stream(F.who.role === 'master' ? '/api/stream?as=staff' : '/api/stream', {
@@ -80,12 +83,47 @@ function render() {
           h('button', { class: 'btn btn-primary btn-block btn-xl', onclick: scanSign }, '⌖ Scansiona un cartello'),
           cameraSupported() ? null : h('p', { class: 'muted small' }, 'Scanner e GPS richiedono l\'indirizzo https: scegli dall\'elenco e indica il punto toccando la mappa.')),
         h('nav', { class: 'seg-tabs' },
+          tabLink('incarichi', 'Incarichi'),
           tabLink('altari', `Altari ${placedA}/${d.points.length}`),
           tabLink('doni', `Doni ${placedG}/${d.gifts.length}`),
           tabLink('mappa', 'Mappa')),
-        F.tab === 'doni' ? viewGifts(d) : F.tab === 'mappa' ? viewMap(d) : viewAltars(d),
+        F.tab === 'doni' ? viewGifts(d) : F.tab === 'mappa' ? viewMap(d) : F.tab === 'altari' ? viewAltars(d) : viewTasks(d),
       ]));
   if (F.tab === 'mappa') { updateMap(d); mapView.refresh(); }
+}
+
+// Incarichi della squadra: Altari e Doni da piazzare assegnati dalla regia, incarichi liberi da spuntare.
+function viewTasks(d) {
+  const squads = d.squads || [];
+  if (!squads.length) return h('p', { class: 'empty' }, 'La regia non ha ancora creato squadre di Eletti: usate le schede Altari e Doni.');
+  const sq = squads.find((x) => x.id === F.squadId);
+  const chooser = !F.who.squad ? h('label', { class: 'field' }, h('span', null, 'La tua squadra'),
+    h('select', { class: 'input', onchange: (e) => { F.squadId = Number(e.target.value) || null; store.set('zdg_campo_squad', F.squadId); render(); } },
+      h('option', { value: '' }, '— scegli —'), squads.map((x) => h('option', { value: x.id, selected: x.id === F.squadId }, x.name)))) : null;
+  if (!sq) return h('div', { class: 'stack-sm' }, chooser, h('p', { class: 'empty' }, 'Scegli la tua squadra per vedere gli incarichi.'));
+  const pts = d.points.filter((p) => p.squadId === sq.id);
+  const gifts = d.gifts.filter((g) => g.squadId === sq.id && !['claimed', 'expired'].includes(g.status));
+  const todo = [...pts.filter((p) => p.lat == null).map((p) => ({ kind: 'point', id: p.id, label: p.label })),
+    ...gifts.filter((g) => g.status === 'draft').map((g) => ({ kind: 'gift', id: g.id, label: `${g.label} · ${g.name}` }))];
+  const done = [...pts.filter((p) => p.lat != null).map((p) => p.label), ...gifts.filter((g) => g.status !== 'draft').map((g) => g.label)];
+  const toggle = async (t) => {
+    try {
+      await api('POST', `/api/field/tasks/${t.id}/done?gameId=${F.gameId}`, { done: !t.doneAt, gameId: F.gameId });
+      load();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  return h('div', { class: 'stack-sm' },
+    chooser,
+    h('div', { class: 'squad-banner', style: { '--c': sq.color } }, h('strong', null, `Squadra ${sq.name}`), h('span', { class: 'small muted' }, sq.members.map((m) => m.nickname || m.name).join(' · '))),
+    h('div', { class: 'eyebrow' }, `Da piazzare (${todo.length})`),
+    todo.length ? h('ul', { class: 'campo-list' }, todo.map((t) => h('li', { class: 'campo-item task-item' },
+      h('div', { class: 'campo-info' }, h('strong', null, t.label)),
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPlacement(t) }, 'Piazza')))) : h('p', { class: 'muted small' }, 'Niente da piazzare.'),
+    h('div', { class: 'eyebrow' }, `Incarichi (${sq.tasks.filter((t) => !t.doneAt).length} da fare)`),
+    sq.tasks.length ? h('ul', { class: 'campo-list' }, sq.tasks.map((t) => h('li', { class: `campo-item task-item ${t.doneAt ? 'done' : ''}` },
+      h('div', { class: 'campo-info' }, h('strong', null, t.text), t.doneAt ? h('span', { class: 'tiny muted' }, `Fatto ${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null),
+      h('button', { class: `btn btn-sm ${t.doneAt ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto')))) : h('p', { class: 'muted small' }, 'Nessun incarico libero.'),
+    done.length ? h('p', { class: 'small ok-text' }, `Già piazzati: ${done.join(', ')}`) : null);
 }
 
 const tabLink = (id, label) => h('a', { href: `#${id}`, class: F.tab === id ? 'on' : '' }, label);

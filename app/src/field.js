@@ -50,7 +50,7 @@ function giftOut(g) {
   return {
     id: g.id, label: g.label, typeId: g.typeId, name: g.name, icon: g.icon, color: g.color, description: g.description,
     status: g.status, revealMode: g.revealMode, revealAtMin: g.revealAtMin,
-    lat: g.lat, lng: g.lng, accuracy: g.accuracy, placedAt: g.placedAt, placedBy: g.placedBy, hasPhoto: !!g.photoFile,
+    lat: g.lat, lng: g.lng, accuracy: g.accuracy, placedAt: g.placedAt, placedBy: g.placedBy, hasPhoto: !!g.photoFile, squadId: g.squadId,
     revealedAt: g.revealedAt, claimedAt: g.claimedAt, usedAt: g.usedAt, expiredAt: g.expiredAt,
     expiresAfterMin: g.expiresAfterMin, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null,
     claimedBy: t ? `${t.roman || ''} ${t.sectorName || ''}`.trim() : null,
@@ -265,6 +265,7 @@ function fieldState(gameId) {
     .map((p) => ({
       id: p.id, label: p.label, sectorId: p.sectorId, sectorName: p.sectorName, roman: p.roman, locationNote: p.locationNote,
       lat: p.lat, lng: p.lng, accuracy: p.accuracy, placedAt: p.placedAt, placedBy: p.placedBy, placeSource: p.placeSource, hasPhoto: !!p.photoFile,
+      squadId: p.squadId,
     }));
   return {
     game: { id: game.id, name: game.name, status: game.status },
@@ -272,7 +273,135 @@ function fieldState(gameId) {
     points,
     gifts: q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', game.id).map(giftOut),
     giftTypes: giftTypes(),
+    squads: squadsOf(game.id),
   };
+}
+
+// ---------------------------------------------------------------- squadre degli Eletti
+
+const SQUAD_COLORS = ['#e0603f', '#5aa0e0', '#6fbf73', '#d1ad62', '#b07ad9', '#e07ab0', '#4fc1c1', '#c9c9c9'];
+
+function squadsOf(gameId) {
+  const elect = G.electOf(gameId);
+  const members = elect ? G.membersOf(elect.id) : [];
+  const squadOfMember = Object.fromEntries(q.all('SELECT id, squadId FROM players WHERE gameId = ?', gameId).map((p) => [p.id, p.squadId]));
+  return q.all('SELECT * FROM elect_squads WHERE gameId = ? ORDER BY id', gameId).map((s) => ({
+    ...s,
+    members: members.filter((m) => squadOfMember[m.id] === s.id).map((m) => ({ id: m.id, name: m.name, nickname: m.nickname })),
+    tasks: q.all('SELECT * FROM squad_tasks WHERE squadId = ? ORDER BY doneAt IS NOT NULL, id', s.id),
+  }));
+}
+
+function getSquad(id) {
+  const s = q.get('SELECT * FROM elect_squads WHERE id = ?', Number(id));
+  if (!s) throw err(404, 'Squadra non trovata');
+  return s;
+}
+
+// Avvisa i telefoni dei membri della squadra (accesso personale) e aggiorna gli Eletti collegati.
+function notifySquad(squadId, push) {
+  const s = getSquad(squadId);
+  const subs = q.all('SELECT ps.* FROM push_subs ps JOIN players p ON p.id = ps.playerId WHERE p.squadId = ?', s.id);
+  if (push) rt.pushSubs(subs, { url: '/campo#incarichi', ...push });
+  const elect = G.electOf(s.gameId);
+  if (elect) rt.toTeams(s.gameId, 'state', {}, elect.id);
+  rt.toStaff(s.gameId, 'squads');
+}
+
+function createSquad(gameId, data, actor) {
+  const game = G.getGame(gameId);
+  const name = String(data.name || '').trim().slice(0, 40);
+  if (!name) throw err(400, 'Il nome della squadra è obbligatorio');
+  const n = q.get('SELECT COUNT(*) AS n FROM elect_squads WHERE gameId = ?', game.id).n;
+  const color = /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : SQUAD_COLORS[n % SQUAD_COLORS.length];
+  const id = Number(q.run('INSERT INTO elect_squads (gameId, name, color, createdAt) VALUES (?, ?, ?, ?)', game.id, name, color, Date.now()).lastInsertRowid);
+  G.log(game.id, actor, 'squad_created', { name });
+  rt.toStaff(game.id, 'squads');
+  return { id };
+}
+
+function updateSquad(id, data, actor) {
+  const s = getSquad(id);
+  const name = data.name !== undefined ? String(data.name).trim().slice(0, 40) : s.name;
+  if (!name) throw err(400, 'Il nome della squadra è obbligatorio');
+  const color = /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : s.color;
+  q.run('UPDATE elect_squads SET name = ?, color = ? WHERE id = ?', name, color, s.id);
+  G.log(s.gameId, actor, 'squad_updated', { name });
+  notifySquad(s.id, null);
+}
+
+function deleteSquad(id, actor) {
+  const s = getSquad(id);
+  q.run('DELETE FROM elect_squads WHERE id = ?', s.id);
+  G.log(s.gameId, actor, 'squad_deleted', { name: s.name });
+  rt.toStaff(s.gameId, 'squads');
+  const elect = G.electOf(s.gameId);
+  if (elect) rt.toTeams(s.gameId, 'state', {}, elect.id);
+}
+
+function setMemberSquad(playerId, squadId, actor) {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(playerId));
+  if (!p) throw err(404, 'Eletto non trovato');
+  const elect = G.electOf(p.gameId);
+  if (!elect || p.teamId !== elect.id) throw err(409, 'Solo gli Eletti del Consiglio entrano nelle squadre');
+  const s = squadId ? getSquad(squadId) : null;
+  if (s && s.gameId !== p.gameId) throw err(400, 'Squadra di un\'altra partita');
+  q.run('UPDATE players SET squadId = ? WHERE id = ?', s?.id ?? null, p.id);
+  G.log(p.gameId, actor, 'squad_member', { name: p.name, squad: s?.name || null });
+  if (s) notifySquad(s.id, { title: `Squadra ${s.name}`, body: `${p.name}, sei nella squadra ${s.name}.`, tag: `squad-${s.id}` });
+  else rt.toStaff(p.gameId, 'squads');
+}
+
+// Assegna un Altare o un Dono da piazzare a una squadra (null = nessuna).
+function assignToSquad(kind, id, squadId, actor) {
+  const table = kind === 'gift' ? 'gifts' : kind === 'point' ? 'points' : null;
+  if (!table) throw err(400, 'Tipo non valido');
+  const row = q.get(`SELECT * FROM ${table} WHERE id = ?`, Number(id));
+  if (!row) throw err(404, kind === 'gift' ? 'Dono non trovato' : 'Altare non trovato');
+  const s = squadId ? getSquad(squadId) : null;
+  if (s && s.gameId !== row.gameId) throw err(400, 'Squadra di un\'altra partita');
+  q.run(`UPDATE ${table} SET squadId = ? WHERE id = ?`, s?.id ?? null, row.id);
+  G.log(row.gameId, actor, 'squad_assigned', { item: row.label, squad: s?.name || null });
+  if (s) notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: `Piazzate: ${row.label}`, tag: `task-${kind}-${row.id}` });
+  else rt.toStaff(row.gameId, 'squads');
+}
+
+function createTask(gameId, data, actor) {
+  const s = getSquad(data.squadId);
+  if (s.gameId !== Number(gameId)) throw err(400, 'Squadra di un\'altra partita');
+  const text = String(data.text || '').trim().slice(0, 300);
+  if (!text) throw err(400, 'Scrivi l\'incarico');
+  const id = Number(q.run('INSERT INTO squad_tasks (gameId, squadId, text, createdAt) VALUES (?, ?, ?, ?)', s.gameId, s.id, text, Date.now()).lastInsertRowid);
+  G.log(s.gameId, actor, 'squad_task', { squad: s.name, text });
+  notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });
+  return { id };
+}
+
+function setTaskDone(taskId, done, who, gameId = null) {
+  const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
+  if (!t || (gameId && t.gameId !== Number(gameId))) throw err(404, 'Incarico non trovato');
+  q.run('UPDATE squad_tasks SET doneAt = ?, doneBy = ? WHERE id = ?', done ? Date.now() : null, done ? who : null, t.id);
+  G.log(t.gameId, who, done ? 'squad_task_done' : 'squad_task_reopened', { text: t.text });
+  notifySquad(t.squadId, null);
+}
+
+function deleteTask(taskId, actor) {
+  const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
+  if (!t) throw err(404, 'Incarico non trovato');
+  q.run('DELETE FROM squad_tasks WHERE id = ?', t.id);
+  G.log(t.gameId, actor, 'squad_task_deleted', { text: t.text });
+  notifySquad(t.squadId, null);
+}
+
+// Riepilogo per la home degli Eletti: la propria squadra e cosa resta da fare.
+function electSummary(team, player) {
+  const squadId = player?.squadId || null;
+  const squad = squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', squadId) : null;
+  if (!squad) return { squad: null, todo: null };
+  const todo = q.get('SELECT COUNT(*) AS n FROM points WHERE squadId = ? AND lat IS NULL', squad.id).n
+    + q.get("SELECT COUNT(*) AS n FROM gifts WHERE squadId = ? AND status = 'draft'", squad.id).n
+    + q.get('SELECT COUNT(*) AS n FROM squad_tasks WHERE squadId = ? AND doneAt IS NULL', squad.id).n;
+  return { squad, todo };
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.
@@ -329,6 +458,7 @@ function useGift(team, giftId) {
 }
 
 module.exports = {
+  squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, updateGift, deleteGift, resetGift, revealGift, tickAll,
   placePoint, placeGift, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

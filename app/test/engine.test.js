@@ -436,3 +436,36 @@ test('alleanze e scontri: Sigilli condivisi, vinti dalla parte vincente, timer d
   K.respondRequest(Cc, r2.id, false);
   assert.throws(() => K.requestAlliance(A, Cc.id), /Blocco riproposta/);
 });
+
+test('squadre di Eletti: membri, incarichi di piazzamento e incarichi liberi', () => {
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const e1 = G.addElectPerson(g.id, { name: 'Eletto Uno' }, 'test');
+  const e2 = G.addElectPerson(g.id, { name: 'Eletto Due' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  const beta = F.createSquad(g.id, { name: 'Beta', color: '#5aa0e0' }, 'test').id;
+  F.setMemberSquad(e1, alfa, 'test');
+  F.setMemberSquad(e2, beta, 'test');
+  // Solo gli Eletti entrano nelle squadre.
+  const coupleMember = q.get('SELECT id FROM players WHERE gameId = ? AND teamId IN (SELECT id FROM teams WHERE kind = ?)', g.id, 'couple').id;
+  assert.throws(() => F.setMemberSquad(coupleMember, alfa, 'test'), /Eletti/);
+  const [p1, p2] = q.all('SELECT * FROM points WHERE gameId = ?', g.id);
+  F.assignToSquad('point', p1.id, alfa, 'test');
+  F.assignToSquad('point', p2.id, alfa, 'test');
+  F.createTask(g.id, { squadId: alfa, text: 'Presidiate il Cuore' }, 'test');
+  const elect = G.electOf(g.id);
+  const player1 = q.get('SELECT * FROM players WHERE id = ?', e1);
+  assert.equal(F.electSummary(elect, player1).squad.name, 'Alfa');
+  assert.equal(F.electSummary(elect, player1).todo, 3);
+  // Piazzare un Altare assegnato chiude l'incarico; l'incarico libero si segna come fatto.
+  F.placePoint(p1.id, g.id, { buffer: Buffer.from([0xff, 0xd8]), mime: 'image/jpeg', lat: 45, lng: 9, acc: 5 }, 'eletti:Eletto Uno');
+  const task = q.get('SELECT * FROM squad_tasks WHERE squadId = ?', alfa);
+  F.setTaskDone(task.id, true, 'eletti:Eletto Uno', g.id);
+  assert.equal(F.electSummary(elect, player1).todo, 1);
+  const squads = F.fieldState(g.id).squads;
+  assert.deepEqual(squads.map((s) => [s.name, s.members.length]), [['Alfa', 1], ['Beta', 1]]);
+  // Eliminando la squadra i membri e gli incarichi tornano liberi.
+  F.deleteSquad(alfa, 'test');
+  assert.equal(q.get('SELECT squadId FROM players WHERE id = ?', e1).squadId, null);
+  assert.equal(q.get('SELECT squadId FROM points WHERE id = ?', p2.id).squadId, null);
+});

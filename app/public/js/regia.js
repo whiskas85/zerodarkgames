@@ -23,6 +23,7 @@ const TABS = [
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
+  ['squadre', 'Squadre Eletti'],
   ['doniqr', 'Doni QR'],
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
@@ -136,7 +137,7 @@ function render() {
   preserve(() => {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
-      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR,
+      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
@@ -466,7 +467,8 @@ const EVENT_LABELS = {
   revelation_edited: 'Calendario modificato', revelations_skipped_last_phase: 'Rivelazioni annullate', point_edited: 'Altare modificato',
   point_token_regenerated: 'QR rigenerato', fragment_edited: 'Frammento modificato', team_token_regenerated: 'Accesso rigenerato',
   team_sector_changed: 'Settore cambiato', team_members_changed: 'Membri cambiati', player_updated: 'Giocatore modificato', player_deleted: 'Giocatore eliminato',
-  free_announcement: 'Annuncio libero', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
+  free_announcement: 'Annuncio libero', squad_created: 'Squadra creata', squad_updated: 'Squadra modificata', squad_deleted: 'Squadra eliminata',
+  squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
   alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
@@ -515,6 +517,11 @@ function eventText(e) {
     case 'gift_placed': case 'gift_revealed': case 'gift_expired': case 'gift_deleted': case 'gift_reset': return `${d.label}${d.type ? ` · ${d.type}` : ''}`;
     case 'gift_claimed': case 'gift_used': return `${who}: ${d.label} · ${d.type}`;
     case 'gifts_created': return `${d.count} × ${d.type}`;
+    case 'squad_created': case 'squad_updated': case 'squad_deleted': return d.name;
+    case 'squad_member': return `${d.name} → ${d.squad || 'nessuna squadra'}`;
+    case 'squad_assigned': return `${d.item} → ${d.squad || 'nessuna squadra'}`;
+    case 'squad_task': return `${d.squad}: ${d.text}`;
+    case 'squad_task_done': case 'squad_task_reopened': case 'squad_task_deleted': return d.text;
     default: return who;
   }
 }
@@ -883,7 +890,7 @@ function viewCodes() {
 
 // ---------------------------------------------------------------- MAPPA E CAMPO
 
-const FIELD_TABS = ['mappa', 'doniqr'];
+const FIELD_TABS = ['mappa', 'doniqr', 'squadre'];
 const fieldMap = createMapView({ className: 'regia-map' });
 let fieldData = null;
 let giftTypesDraft = null;
@@ -942,6 +949,84 @@ function viewFieldMap() {
           h('li', null, 'L\'app prende la posizione GPS del telefono (o tocchi il punto sulla mappa).'),
           h('li', null, 'Scatta la foto del piazzamento e conferma.')),
         h('p', { class: 'tiny muted' }, 'GPS, fotocamera interna e scanner richiedono https; la foto funziona sempre.'))));
+}
+
+// ---------------------------------------------------------------- SQUADRE ELETTI
+
+async function squadCall(method, url, body, okMsg) {
+  try {
+    const r = await api(method, url, body);
+    if (okMsg) toast(okMsg, 'ok');
+    await loadField();
+    return r || true;
+  } catch (e) { toast(e.message, 'error', 6000); return null; }
+}
+
+function viewSquads() {
+  const d = fieldData;
+  if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento delle squadre…'); }
+  const ms = R.ms;
+  const members = ms.elect.members;
+  const squadOf = {};
+  for (const sq of d.squads) for (const m of sq.members) squadOf[m.id] = sq.id;
+  const squadSelect = (value, onchange, label) => h('select', { class: 'input input-sm', 'aria-label': label, onchange: (e) => onchange(Number(e.target.value) || null) },
+    h('option', { value: '' }, '— nessuna —'), d.squads.map((sq) => h('option', { value: sq.id, selected: sq.id === value }, sq.name)));
+  const progress = (sq) => {
+    const pts = d.points.filter((p) => p.squadId === sq.id);
+    const gifts = d.gifts.filter((g) => g.squadId === sq.id);
+    return { pts, gifts, ptsDone: pts.filter((p) => p.lat != null).length, giftsDone: gifts.filter((g) => g.status !== 'draft').length, tasksDone: sq.tasks.filter((t) => t.doneAt).length };
+  };
+  const newName = h('input', { class: 'input', 'data-keep': 'sq-name', placeholder: 'es. Squadra Nord', maxlength: 40 });
+  const newColor = h('input', { class: 'gt-color', type: 'color', value: '#e0603f', 'aria-label': 'Colore' });
+
+  return h('div', { class: 'stack' },
+    section('Squadre degli Eletti',
+      h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare Altari e Doni o a svolgere incarichi. I membri ricevono una notifica a ogni incarico e lo trovano nello strumento di campo (/campo); i piazzamenti si chiudono da soli quando il punto viene piazzato.'),
+      h('form', { class: 'form-grid', onsubmit: async (e) => {
+        e.preventDefault();
+        if (await squadCall('POST', G('/squads'), { name: newName.value, color: newColor.value }, 'Squadra creata')) newName.value = '';
+      } }, h('label', { class: 'field' }, h('span', null, 'Nome'), newName), h('label', { class: 'field' }, h('span', null, 'Colore'), newColor), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea squadra'))),
+
+    d.squads.length ? h('div', { class: 'squads' }, d.squads.map((sq) => {
+      const pr = progress(sq);
+      const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
+      return h('div', { class: 'squad-card', style: { '--c': sq.color } },
+        h('div', { class: 'squad-head' },
+          h('input', { class: 'gt-color', type: 'color', value: sq.color, 'aria-label': 'Colore', onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { color: e.target.value }) }),
+          h('input', { class: 'input input-sm squad-name', value: sq.name, 'data-keep': `sq-n-${sq.id}`, onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { name: e.target.value }, 'Nome aggiornato') }),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina')),
+        h('div', { class: 'tiny muted' }, `Altari piazzati ${pr.ptsDone}/${pr.pts.length} · Doni piazzati ${pr.giftsDone}/${pr.gifts.length} · Incarichi fatti ${pr.tasksDone}/${sq.tasks.length}`),
+        h('div', { class: 'squad-members' }, sq.members.length ? sq.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name)) : h('span', { class: 'tiny muted' }, 'Nessun membro: assegnali qui sotto')),
+        pr.pts.length || pr.gifts.length ? h('ul', { class: 'squad-items' },
+          pr.pts.map((p) => h('li', { class: p.lat != null ? 'done' : '' }, p.lat != null ? '✓ ' : '○ ', p.label)),
+          pr.gifts.map((g) => h('li', { class: g.status !== 'draft' ? 'done' : '' }, g.status !== 'draft' ? '✓ ' : '○ ', `${g.label} · ${g.icon} ${g.name}`))) : null,
+        sq.tasks.length ? h('ul', { class: 'squad-tasks' }, sq.tasks.map((t) => h('li', { class: t.doneAt ? 'done' : '' },
+          h('label', null, h('input', { type: 'checkbox', checked: !!t.doneAt, onchange: (e) => squadCall('POST', `/api/m/tasks/${t.id}/done`, { done: e.target.checked }) }), h('span', null, t.text)),
+          t.doneAt ? h('span', { class: 'tiny muted' }, `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null,
+          h('button', { class: 'btn btn-sm btn-ghost', 'aria-label': 'Elimina incarico', onclick: () => squadCall('DELETE', `/api/m/tasks/${t.id}`, undefined, 'Incarico eliminato') }, '✕')))) : null,
+        h('form', { class: 'row-actions', onsubmit: async (e) => {
+          e.preventDefault();
+          if (!taskIn.value.trim()) return;
+          if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value }, `Incarico inviato a ${sq.name}`)) taskIn.value = '';
+        } }, taskIn, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')));
+    })) : h('p', { class: 'empty' }, 'Nessuna squadra: creane una qui sopra.'),
+
+    h('div', { class: 'cols-2' },
+      section(`Eletti (${members.length})`,
+        members.length ? h('ul', { class: 'field-list' }, members.map((m) => h('li', null,
+          h('span', { class: 'grow' }, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null),
+          d.squads.length ? squadSelect(squadOf[m.id] || null, (sid) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: sid }, sid ? 'Eletto assegnato' : 'Tolto dalla squadra'), `Squadra di ${m.name}`) : null)))
+          : h('p', { class: 'empty' }, 'Nessun Eletto: aggiungili in Iscrizioni e coppie.'),
+        h('p', { class: 'tiny muted' }, 'Ogni Eletto vede gli incarichi della sua squadra entrando con il proprio codice personale; chi usa il codice comune degli Eletti sceglie la squadra nello strumento di campo.')),
+      section('Chi piazza cosa',
+        d.squads.length ? h('div', { class: 'table-wrap' }, h('table', null,
+          h('thead', null, h('tr', null, ['Punto', 'Stato', 'Squadra'].map((x) => h('th', null, x)))),
+          h('tbody', null,
+            d.points.map((p) => h('tr', null, h('td', null, h('strong', null, p.label)), h('td', null, p.lat != null ? h('span', { class: 'chip chip-ok' }, 'piazzato') : h('span', { class: 'chip chip-warn' }, 'da piazzare')),
+              h('td', null, squadSelect(p.squadId || null, (sid) => squadCall('POST', '/api/m/assign', { kind: 'point', id: p.id, squadId: sid }, sid ? 'Altare assegnato' : 'Assegnazione tolta'), `Squadra per ${p.label}`)))),
+            d.gifts.filter((g) => g.status !== 'claimed' && g.status !== 'expired').map((g) => h('tr', null, h('td', null, h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` ${g.icon} ${g.name}`)),
+              h('td', null, g.status === 'draft' ? h('span', { class: 'chip chip-warn' }, 'da piazzare') : h('span', { class: 'chip chip-ok' }, 'piazzato')),
+              h('td', null, squadSelect(g.squadId || null, (sid) => squadCall('POST', '/api/m/assign', { kind: 'gift', id: g.id, squadId: sid }, sid ? 'Dono assegnato' : 'Assegnazione tolta'), `Squadra per ${g.label}`))))))) : h('p', { class: 'empty' }, 'Crea prima una squadra.'))));
 }
 
 // ---------------------------------------------------------------- DONI QR

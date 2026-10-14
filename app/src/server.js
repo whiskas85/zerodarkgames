@@ -222,6 +222,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
+  if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   return st;
 }));
 // Alleanze: proposta, accettazione/rifiuto, rottura (stesso schema). Scontri: vinto / perso / pareggio.
@@ -285,10 +286,14 @@ const fieldWho = (req) => (req.user ? req.user.username : `eletti:${req.player?.
 const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
 app.get('/api/field/whoami', (req, res) => {
   if (req.user?.role === 'master') return res.json({ role: 'master', name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
-  if (req.team?.kind === 'elect') return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
+  if (req.team?.kind === 'elect') {
+    const squad = req.player?.squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', req.player.squadId) : null;
+    return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', personal: !!req.player, squad, gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
+  }
   res.status(401).json({ error: 'Accesso riservato alla regia e agli Eletti' });
 });
 app.get('/api/field/state', needField, wrap((req) => F.fieldState(fieldGame(req))));
+app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
 const placement = (req) => ({ buffer: req.body, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source });
 app.post('/api/field/points/:id/place', needField, rawImage, wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req))));
@@ -386,6 +391,15 @@ m.patch('/supply/:sid', wrap((req) => {
 m.delete('/supply/:sid', wrap((req) => { G.deleteSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
 m.post('/supply/:sid/fire', wrap((req) => { G.fireSupply(Number(req.params.sid), actor(req)); return { ok: true }; }));
 
+// Squadre degli Eletti e incarichi
+m.post('/games/:id/squads', wrap((req) => F.createSquad(gameId(req), req.body || {}, actor(req))));
+m.patch('/squads/:sid', wrap((req) => { F.updateSquad(req.params.sid, req.body || {}, actor(req)); return { ok: true }; }));
+m.delete('/squads/:sid', wrap((req) => { F.deleteSquad(req.params.sid, actor(req)); return { ok: true }; }));
+m.post('/players/:pid/squad', wrap((req) => { F.setMemberSquad(req.params.pid, req.body.squadId || null, actor(req)); return { ok: true }; }));
+m.post('/assign', wrap((req) => { F.assignToSquad(req.body.kind, req.body.id, req.body.squadId || null, actor(req)); return { ok: true }; }));
+m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {}, actor(req))));
+m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));
+m.delete('/tasks/:tid', wrap((req) => { F.deleteTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.get('/gift-types', (_req, res) => res.json(F.giftTypes()));
 m.put('/gift-types', wrap((req) => F.saveGiftTypes(req.body.types, actor(req))));
 m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || {}, actor(req))));

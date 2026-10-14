@@ -261,3 +261,15 @@ tr.gift-row-claimed td { opacity: .6; }
 .sidebar span.off { display: flex; padding: 10px 12px; color: var(--muted); opacity: .45; cursor: not-allowed; font-weight: 600; border-left: 4px solid transparent; }
 .first-steps { border-left: 4px solid var(--brass); padding: 4px 0 4px 12px; display: grid; gap: 4px; }
 .first-steps p { margin: 0; }
+
+/* Squadre degli Eletti */
+.squads { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.squad-card { display: grid; gap: 8px; padding: 12px; background: var(--paper); border: 2px solid var(--line); border-top: 6px solid var(--c); }
+.squad-head { display: flex; gap: 8px; align-items: center; }
+.squad-name { flex: 1; font-weight: 700; }
+.squad-members { display: flex; flex-wrap: wrap; gap: 4px; }
+.squad-items, .squad-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.squad-items li.done, .squad-tasks li.done span { color: var(--muted); text-decoration: line-through; }
+.squad-tasks li { display: flex; align-items: center; gap: 8px; }
+.squad-tasks label { flex: 1; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.squad-card form .input { flex: 1; }

@@ -30,3 +30,7 @@ body { padding-bottom: 24px; }
 .sheet-map { height: 240px; }
 .photo-preview { min-height: 60px; display: grid; place-items: center; border: 2px dashed var(--line); padding: 6px; }
 .photo-preview img { max-width: 100%; max-height: 260px; display: block; }
+.seg-tabs { grid-template-columns: repeat(4, 1fr); }
+.squad-banner { display: grid; gap: 2px; padding: 10px 12px; border-left: 6px solid var(--c); background: var(--paper); }
+.task-item { grid-template-columns: 1fr auto; }
+.task-item.done { opacity: .6; }
