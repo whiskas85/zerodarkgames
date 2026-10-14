@@ -1065,7 +1065,7 @@ function viewFieldMap() {
   const placed = d.points.filter((p) => p.lat != null).length;
   return h('div', { class: 'stack' },
     sectionActions('Mappa del campo', [
-      h('button', { class: 'btn btn-sm', onclick: () => fieldMap.fit() }, 'Centra'),
+      h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, 'Centra'),
       h('a', { class: 'btn btn-sm btn-primary', href: '/campo', target: '_blank' }, 'Apri strumento di campo')],
     fieldMap.el,
     h('div', { class: 'map-legend' },

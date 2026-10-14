@@ -192,7 +192,7 @@ export function createField(F, { rerender }) {
       mapView.el,
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-sm', onclick: () => mapView.centerMe() }, '◎ La mia posizione'),
-        h('button', { class: 'btn btn-sm', onclick: () => mapView.fit() }, 'Tutto il campo')),
+        h('button', { class: 'btn btn-sm', onclick: () => mapView.autoCenter() }, 'Tutto il campo')),
       h('div', { class: 'map-legend' },
         h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
         h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),

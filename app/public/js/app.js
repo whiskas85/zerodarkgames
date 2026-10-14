@@ -904,7 +904,7 @@ function viewMap() {
     teamMapView.el,
     h('div', { class: 'row-actions' },
       h('button', { class: 'btn btn-sm', onclick: () => teamMapView.centerMe() }, '◎ Dove siamo'),
-      h('button', { class: 'btn btn-sm', onclick: () => teamMapView.fit() }, 'Tutto il campo')),
+      h('button', { class: 'btn btn-sm', onclick: () => teamMapView.autoCenter() }, 'Tutto il campo')),
     h('div', { class: 'map-legend' },
       h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
       h('span', null, h('span', { class: 'pin pin-altar pin-mine' }, 'I'), ' Il vostro'),

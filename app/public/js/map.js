@@ -53,6 +53,23 @@ export function createMapView({ className = '' } = {}) {
   let meCircle = null;
   let onTap = null;
   let pending = null;
+  let meAcc = null;
+  // Centratura automatica: attiva finché chi guarda non sposta o ingrandisce la mappa;
+  // si riattiva ogni volta che la mappa torna visibile (si riapre la pagina).
+  let auto = true;
+  let fitTimer = null;
+  const autoFit = () => {
+    if (!auto || !map) return;
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(() => { if (auto) view.fit(); }, 250);
+  };
+  const outOfView = (ll) => map && !map.getBounds().pad(-0.05).contains(ll);
+  for (const ev of ['pointerdown', 'wheel', 'touchstart']) el.addEventListener(ev, () => { auto = false; }, { passive: true });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting && map) { auto = true; map.invalidateSize(); autoFit(); }
+    }).observe(el);
+  }
 
   const ready = loadLeaflet().then((lib) => {
     L = lib;
@@ -74,6 +91,7 @@ export function createMapView({ className = '' } = {}) {
     setItems(items) {
       if (!map) { pending = items; return; }
       const keep = new Set();
+      let changed = false;
       for (const it of items) {
         if (it.lat == null || it.lng == null) continue;
         keep.add(it.key);
@@ -83,20 +101,23 @@ export function createMapView({ className = '' } = {}) {
           m = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }), title: it.title || '', zIndexOffset: zOf(it) }).addTo(map);
           m._zdgHtml = html;
           markers.set(it.key, m);
+          changed = true;
         } else {
           m.setLatLng([it.lat, it.lng]);
+          if (outOfView(m.getLatLng())) changed = true;
           if (m._zdgHtml !== html) { m.setIcon(L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })); m._zdgHtml = html; }
         }
         if (it.popup) { if (m.getPopup()) m.setPopupContent(it.popup); else m.bindPopup(it.popup, { maxWidth: 260 }); }
       }
-      for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); }
-      if (!fitted && keep.size) { view.fit(); fitted = true; }
+      for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
+      if (!fitted && keep.size) { view.fit(); fitted = true; } else if (changed) autoFit();
     },
     // Centra su tutti i segnaposto (e sulla mia posizione).
     fit() {
       if (!map) return;
       const pts = [...markers.values()].map((m) => m.getLatLng());
-      if (me) pts.push(me.getLatLng());
+      // La mia posizione conta solo se è un GPS vero (non una stima di rete a chilometri di distanza).
+      if (me && (meAcc == null || meAcc <= 300)) pts.push(me.getLatLng());
       if (pts.length === 1) map.setView(pts[0], 16);
       else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 17 });
     },
@@ -104,6 +125,8 @@ export function createMapView({ className = '' } = {}) {
       if (!map) return;
       if (!pos) { me?.remove(); meCircle?.remove(); me = null; meCircle = null; return; }
       const ll = [pos.lat, pos.lng];
+      const first = !me || (meAcc > 300 && pos.acc <= 300);
+      meAcc = pos.acc ?? null;
       if (!me) {
         me = L.marker(ll, { icon: L.divIcon({ className: 'zdg-pin', html: pinHtml({ kind: 'me' }), iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 10000, title: 'Voi' }).addTo(map);
         meCircle = L.circle(ll, { radius: pos.acc || 10, color: '#3b82f6', weight: 1, fillOpacity: 0.12 }).addTo(map);
@@ -111,11 +134,15 @@ export function createMapView({ className = '' } = {}) {
         me.setLatLng(ll);
         meCircle.setLatLng(ll).setRadius(pos.acc || 10);
       }
+      if ((first || outOfView(me.getLatLng())) && (meAcc == null || meAcc <= 300)) autoFit();
     },
-    centerMe(zoom = 17) { if (map && me) map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); },
+    // "Dove siamo": scelta esplicita, la centratura automatica si ferma fino alla prossima apertura.
+    centerMe(zoom = 17) { if (map && me) { auto = false; map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
     onTap(fn) { onTap = fn; },
     // Da chiamare dopo che l'elemento è stato riagganciato alla pagina.
-    refresh() { if (map) setTimeout(() => map.invalidateSize(), 30); },
+    refresh() { if (map) setTimeout(() => { map.invalidateSize(); autoFit(); }, 30); },
+    // Riattiva la centratura automatica (es. dopo "Tutto il campo").
+    autoCenter() { auto = true; view.fit(); },
   };
   return view;
 }
