@@ -47,6 +47,18 @@ Apri <https://github.com/whiskas85/zerodarkgames/settings/secrets/actions> → *
 | `DEPLOY_USER` | `UTENTE` (lo stesso dei passi 2 e 3) |
 | `MASTER_PASSWORD` | la password della regia in produzione (utente `master`) |
 
+## In alternativa: tutto da una sessione sul server Linux
+
+Se sei già collegato al server, i passi 1–4 diventano:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-zerodarkgames" -f ~/.ssh/zdg-deploy -N ""
+cat ~/.ssh/zdg-deploy.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+docker ps --format '{{.Names}}'   # se "permission denied": sudo usermod -aG docker $USER, poi rientra
+whoami                            # questo è il valore di DEPLOY_USER
+cat ~/.ssh/zdg-deploy             # copia tutto nel secret DEPLOY_SSH_KEY
+```
+
 ## 6. DNS
 
 Nel pannello del dominio `zerodarkteam.it` aggiungi il record **A** `games` → `209.227.239.117`.
