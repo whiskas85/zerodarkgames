@@ -39,6 +39,9 @@ export function pinHtml(item) {
   return '<span class="pin pin-me"></span>';
 }
 
+// Le persone (coppie ed Eletti) stanno sopra a tutti gli altri segnaposto; "io" sta sopra a tutto.
+const zOf = (it) => (it.kind === 'team' || it.kind === 'elect' ? 5000 : it.kind === 'target' ? 200 : 0);
+
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
@@ -77,7 +80,7 @@ export function createMapView({ className = '' } = {}) {
         const html = pinHtml(it);
         let m = markers.get(it.key);
         if (!m) {
-          m = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }), title: it.title || '' }).addTo(map);
+          m = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }), title: it.title || '', zIndexOffset: zOf(it) }).addTo(map);
           m._zdgHtml = html;
           markers.set(it.key, m);
         } else {
@@ -102,7 +105,7 @@ export function createMapView({ className = '' } = {}) {
       if (!pos) { me?.remove(); meCircle?.remove(); me = null; meCircle = null; return; }
       const ll = [pos.lat, pos.lng];
       if (!me) {
-        me = L.marker(ll, { icon: L.divIcon({ className: 'zdg-pin', html: pinHtml({ kind: 'me' }), iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 1000, title: 'Voi' }).addTo(map);
+        me = L.marker(ll, { icon: L.divIcon({ className: 'zdg-pin', html: pinHtml({ kind: 'me' }), iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 10000, title: 'Voi' }).addTo(map);
         meCircle = L.circle(ll, { radius: pos.acc || 10, color: '#3b82f6', weight: 1, fillOpacity: 0.12 }).addTo(map);
       } else {
         me.setLatLng(ll);
