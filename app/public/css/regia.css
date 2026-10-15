@@ -356,6 +356,8 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-live .tl-game { height: 90px; }
 .tl-live .tl-ev { border: 0; padding: 0; cursor: pointer; width: 12px; height: 12px; margin-left: -6px; box-shadow: 0 0 0 2px var(--paper); }
 .tl-live .tl-ev.tl-range { height: 10px; margin-left: 0; }
+/* Finestra aperta fino a chiusura: la fine sfuma, la barra cresce fino ad adesso. */
+.tl-live .tl-ev.tl-open { -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); min-width: 14px; }
 .tl-live .tl-ev:hover, .tl-live .tl-ev:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .tl-past { position: absolute; top: 0; height: 90px; background: rgba(0, 0, 0, .25); pointer-events: none; }
 .tl-live .tl-now { border-left-width: 3px; pointer-events: none; transition: left 1s linear; }

@@ -1342,8 +1342,11 @@ function timelineEvents(exclude = null) {
     if (exclude?.kind === 'supply' && exclude.id === s.id) continue;
     const at = s.firedAt ? tb.toMin(s.firedAt) : s.scheduledMin ?? (s.scheduledAt ? tb.toMin(s.scheduledAt) : null);
     if (at == null) continue;
-    const end = s.closedAt ? tb.toMin(s.closedAt) : s.closesAt ? tb.toMin(s.closesAt) : s.durationMin ? at + s.durationMin : null;
-    ev.push({ at, to: end, label: `Armamenti${s.description ? `: ${s.description}` : ''}${s.status === 'closed' ? ' (chiusa)' : s.status === 'fired' ? ' (aperta)' : ''}`, kind: 'supply', done: s.status === 'closed', ref: { type: 'supply', id: s.id } });
+    let end = s.closedAt ? tb.toMin(s.closedAt) : s.closesAt ? tb.toMin(s.closesAt) : s.durationMin ? at + s.durationMin : null;
+    // Aperta senza durata (fino a chiusura): la barra va dall'apertura ad adesso e cresce col tempo.
+    const open = end == null && s.status === 'fired' && tb.nowMin != null;
+    if (open) end = Math.max(tb.nowMin, at);
+    ev.push({ at, to: end, open, label: `Armamenti${s.description ? `: ${s.description}` : ''}${s.status === 'closed' ? ' (chiusa)' : open ? ' (aperta fino a chiusura)' : s.status === 'fired' ? ' (aperta)' : !end ? ' (fino a chiusura)' : ''}`, kind: 'supply', done: s.status === 'closed', ref: { type: 'supply', id: s.id } });
   }
   for (const gf of fieldData?.gifts || []) {
     if (exclude?.kind === 'gift' && exclude.id === gf.id) continue;
@@ -1526,7 +1529,8 @@ function liveTimeline() {
     h('div', { class: 'tl-past', id: 'tl-live-past', style: { left: pct(lo), width: tb.nowMin != null ? `calc(${pct(tb.nowMin)} - ${pct(lo)})` : '0' } }),
     events.map((e, i) => h('button', {
       type: 'button',
-      class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.done ? 'tl-done' : ''}`,
+      class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.open ? 'tl-open' : ''} ${e.done ? 'tl-done' : ''}`,
+      'data-at': e.at,
       style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${16 + laneOf(e) * 14}px` },
       title: `${fmtClockMin(e.at)} · ${e.label}`,
       'aria-label': `${fmtClockMin(e.at)} ${e.label}`,
@@ -1566,6 +1570,12 @@ function tickTimeline() {
   if (past) past.style.width = `${p}%`;
   const label = document.getElementById('tl-live-now-label');
   if (label) label.textContent = `adesso · ${fmtClockMin(tb.nowMin)}`;
+  // Finestre aperte fino a chiusura: la barra arriva sempre ad adesso.
+  for (const el of track.querySelectorAll('.tl-open')) {
+    const at = Number(el.dataset.at);
+    const pa = ((Math.min(Math.max(at, lo), span) - lo) / (span - lo)) * 100;
+    el.style.width = `${Math.max(p - pa, 0)}%`;
+  }
 }
 
 // Punto vuoto della timeline: cosa programmare in quel momento.
