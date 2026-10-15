@@ -457,7 +457,15 @@ m.post('/games', wrap((req) => G.createGame(req.body || {}, actor(req))));
 m.patch('/games/:id', wrap((req) => G.updateGame(gameId(req), req.body || {}, actor(req))));
 m.delete('/games/:id', wrap((req) => { G.deleteGame(gameId(req), actor(req)); return { ok: true }; }));
 m.post('/demo', wrap((req) => ({ id: G.createDemo(req.body.teams, actor(req)) })));
-m.post('/games/:id/advance', wrap((req) => { G.advanceDemo(gameId(req), req.body.minutes, actor(req)); return { ok: true }; }));
+m.post('/games/:id/advance', wrap((req) => {
+  const since = Date.now();
+  G.advanceDemo(gameId(req), req.body.minutes, actor(req));
+  // Ciò che il salto ha scavalcato parte al suo minuto previsto (poi i doni scaduti svaniscono).
+  F.tickAll();
+  G.settleDemoJump(gameId(req), since);
+  F.tickAll();
+  return { ok: true };
+}));
 m.get('/games/:id/state', wrap((req) => ({ ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)) })));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));

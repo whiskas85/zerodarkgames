@@ -1385,7 +1385,7 @@ const fmtClockMin = (m) => `${m < 0 ? '−' : ''}${fmtMin(Math.abs(m))}`;
  * toccando la timeline, oppure Ora / Tra X minuti / Alle HH:MM / Al minuto M dal via.
  * Restituisce { mode: 'now' } | { mode: 'min', min } | { mode: 'at', at } più durationMin (se richiesto), o null.
  */
-async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration = false, durationLabel = 'Per quanti minuti', defaultDuration = 15, allowDurationEmpty = true, nowLabel = 'Ora', exclude = null, initial = null }) {
+async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration = false, durationLabel = 'Per quanti minuti', defaultDuration = 15, allowDurationEmpty = true, nowLabel = 'Ora', exclude = null, initial = null, extra = null }) {
   const g = R.ms.game;
   const tb = timeBase();
   const events = timelineEvents(exclude);
@@ -1467,6 +1467,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
     onOpen: () => update(),
     body: h('div', { class: 'stack-sm timeline-modal' },
       intro ? h('p', { class: 'muted tiny' }, intro) : null,
+      extra,
       h('div', { class: 'tl-legend tiny' },
         h('span', null, h('i', { class: 'tl-key tl-truce-k' }), 'tregua'), h('span', null, h('i', { class: 'tl-key tl-last-k' }), 'ultima mezz\'ora'),
         h('span', null, h('i', { class: 'tl-key tl-revelation' }), 'tradimenti'), h('span', null, h('i', { class: 'tl-key tl-supply' }), 'armamenti'),
@@ -1825,14 +1826,23 @@ function supplyState(s) {
 async function supplyDialog(s = null, preset = null) {
   const ms = R.ms;
   const initial = preset || (s ? (s.scheduledMin != null ? { mode: 'min', min: s.scheduledMin } : s.scheduledAt ? { mode: 'at', at: s.scheduledAt } : null) : null);
+  // Cosa contiene la finestra e l'annuncio: si scrivono qui, anche quando la si programma dalla timeline.
+  const desc = h('input', { class: 'input', maxlength: 200, placeholder: 'es. 2 casse di BB, 1 caricatore extra (solo regia)', value: s ? s.description || '' : supplyDraft.desc });
+  const msg = h('textarea', { class: 'input', rows: 2, maxlength: 500, placeholder: 'Annuncio alle coppie (vuoto = testo predefinito)' });
+  msg.value = s ? s.message || '' : supplyDraft.msg;
+  const extra = h('div', { class: 'stack-sm' },
+    h('label', { class: 'field' }, h('span', null, 'Cosa contiene'), desc),
+    h('label', { class: 'field' }, h('span', null, 'Messaggio alle coppie'), msg));
+  setTimeout(() => desc.focus(), 50);
   const r = await timelineModal({
+    extra,
     title: s ? 'Sposta la finestra armamenti' : 'Nuova finestra armamenti',
     intro: 'All\'apertura parte l\'annuncio a tutte le coppie e nelle app compare il conto alla rovescia della chiusura; allo scadere della durata la finestra si chiude con un secondo annuncio. Si apre solo a partita in corso.',
     nowLabel: 'Apri adesso', withDuration: true, durationLabel: 'Resta aperta per (minuti)', defaultDuration: s?.durationMin ?? 15, allowDurationEmpty: true,
     exclude: s ? { kind: 'supply', id: s.id } : null, initial, okLabel: s ? 'Sposta' : 'Programma',
   });
   if (!r) return;
-  const body = { description: s ? s.description : supplyDraft.desc, message: s ? s.message : supplyDraft.msg, durationMin: r.durationMin ?? '' };
+  const body = { description: desc.value.trim(), message: msg.value.trim(), durationMin: r.durationMin ?? '' };
   if (r.mode === 'min') body.scheduledMin = r.min;
   if (r.mode === 'at') body.scheduledAt = r.at;
   try {

@@ -202,8 +202,22 @@ test('partita di prova: pronta subito e tempo che avanza fino alla fine', () => 
   assert.equal(G.getGame(id).status, 'hunt');
   assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'fired'", id).n, 1);
   assert.ok(q.get("SELECT 1 FROM supply_drops WHERE gameId = ? AND status = 'scheduled'", id));
+  const since = Date.now();
   G.advanceDemo(id, 30, 'test');
+  G.settleDemoJump(id, since);
   assert.ok(q.get("SELECT 1 FROM supply_drops WHERE gameId = ? AND status = 'fired'", id));
+  // L'armamento scavalcato dal salto risulta aperto al suo minuto previsto, non al momento del salto.
+  const fired = q.get("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'fired'", id);
+  assert.ok(Math.abs((fired.firedAt - G.getGame(id).startedAt) / 60000 - fired.scheduledMin) < 0.01);
+  // Gli avvenimenti restano al loro minuto di gioco: si sposta solo «adesso».
+  const minOf = (at) => (at - G.getGame(id).startedAt) / 60000;
+  const rev = () => q.get("SELECT firedAt FROM revelations WHERE gameId = ? AND status = 'fired'", id).firedAt;
+  const drop = () => q.get("SELECT firedAt FROM supply_drops WHERE gameId = ? AND status = 'fired'", id).firedAt;
+  const [r0, d0] = [minOf(rev()), minOf(drop())];
+  G.advanceDemo(id, 10, 'test');
+  assert.ok(Math.abs(minOf(rev()) - r0) < 0.01 && Math.abs(minOf(drop()) - d0) < 0.01);
+  G.advanceDemo(id, -10, 'test');
+  assert.ok(Math.abs(minOf(rev()) - r0) < 0.01 && Math.abs(minOf(drop()) - d0) < 0.01);
   // Indietro nel tempo: prima della fine della tregua si torna in tregua; mai prima del VIA.
   G.advanceDemo(id, -68, 'test');
   assert.equal(G.getGame(id).status, 'truce');

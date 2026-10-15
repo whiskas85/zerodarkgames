@@ -1424,6 +1424,45 @@ function createDemo(teamsCount, actor) {
 }
 
 // Solo partite di prova: fa passare il tempo di gioco per vedere subito rivelazioni, fasi e fine.
+// Orari di gioco della partita (salvati in ora reale): spostandoli insieme al via ogni avvenimento resta al suo
+// minuto di gioco e si muove solo «adesso». Il registro resta in ora reale, le posizioni GPS restano attuali.
+const GAME_TIMES = {
+  revelations: ['firedAt'], supply_drops: ['firedAt', 'scheduledAt', 'closesAt', 'closedAt'], announcements: ['createdAt'],
+  messages: ['createdAt'], validations: ['at'], gifts: ['revealedAt', 'claimedAt', 'usedAt', 'expiredAt', 'revealAt'],
+  squad_tasks: ['doneAt'], alliances: ['createdAt', 'endedAt'], alliance_requests: ['createdAt', 'respondedAt'],
+  engagements: ['createdAt', 'resolvedAt'], notices: ['createdAt'], teams: ['wonAt'],
+};
+const TEAM_TIMES = {
+  team_fragments: ['acquiredAt'], team_code_notes: ['addedAt'], team_visits: ['visitedAt'], alliance_members: ['joinedAt', 'leftAt'],
+  engagement_steals: ['createdAt', 'chosenAt'], team_timers: ['startedAt'],
+};
+function shiftGameTimes(gameId, ms) {
+  for (const [t, cols] of Object.entries(GAME_TIMES)) q.run(`UPDATE ${t} SET ${cols.map((c) => `${c} = ${c} - ?`).join(', ')} WHERE gameId = ?`, ...cols.map(() => ms), gameId);
+  for (const [t, cols] of Object.entries(TEAM_TIMES)) q.run(`UPDATE ${t} SET ${cols.map((c) => `${c} = ${c} - ?`).join(', ')} WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)`, ...cols.map(() => ms), gameId);
+}
+
+// Dopo un salto in avanti: ciò che il salto ha scavalcato risulta partito al suo minuto previsto, non al momento
+// del salto (tradimenti, armamenti, doni a minuto o a orario); un armamento già finito risulta chiuso alla sua ora.
+function settleDemoJump(gameId, since) {
+  const g = getGame(gameId);
+  if (!g.isDemo || !g.startedAt) return;
+  const at = (min) => g.startedAt + Math.round(min * 60000);
+  q.run("UPDATE revelations SET firedAt = ? + scheduledMin * 60000 WHERE gameId = ? AND status = 'fired' AND firedAt >= ? AND scheduledMin IS NOT NULL", g.startedAt, g.id, since);
+  for (const s of q.all("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'fired' AND firedAt >= ? AND (scheduledMin IS NOT NULL OR scheduledAt IS NOT NULL)", g.id, since)) {
+    const firedAt = s.scheduledMin != null ? at(s.scheduledMin) : s.scheduledAt;
+    const closesAt = s.durationMin ? firedAt + s.durationMin * 60000 : s.closesAt;
+    q.run('UPDATE supply_drops SET firedAt = ?, closesAt = ? WHERE id = ?', firedAt, closesAt, s.id);
+    if (closesAt && closesAt <= Date.now()) {
+      closeSupply(s.id, 'sistema');
+      q.run('UPDATE supply_drops SET closedAt = ?, closesAt = ? WHERE id = ?', closesAt, closesAt, s.id);
+    }
+  }
+  for (const x of q.all("SELECT * FROM gifts WHERE gameId = ? AND revealedAt >= ? AND revealMode IN ('time','at')", g.id, since)) {
+    const revealedAt = x.revealMode === 'time' && x.revealAtMin != null ? at(x.revealAtMin) : x.revealAt;
+    if (revealedAt) q.run('UPDATE gifts SET revealedAt = ?, revealElapsedMs = ? WHERE id = ?', revealedAt, revealedAt - g.startedAt, x.id);
+  }
+}
+
 function advanceDemo(gameId, minutes, actor) {
   const g = getGame(gameId);
   if (!g.isDemo) throw err(403, 'Il tempo si può far avanzare solo nelle partite di prova');
@@ -1436,7 +1475,10 @@ function advanceDemo(gameId, minutes, actor) {
     if (back < 0.01) throw err(409, 'Siete già al VIA: non si torna più indietro');
     m = Math.max(m, -back);
   }
-  q.run('UPDATE games SET startedAt = startedAt - ? WHERE id = ?', Math.round(m * 60000), g.id);
+  tx(() => {
+    q.run('UPDATE games SET startedAt = startedAt - ? WHERE id = ?', Math.round(m * 60000), g.id);
+    shiftGameTimes(g.id, Math.round(m * 60000));
+  });
   log(g.id, actor, m > 0 ? 'demo_advance' : 'demo_rewind', { minutes: m });
   if (m < 0) {
     // Tornando prima dell'inizio di una fase si torna anche alla fase precedente.
@@ -1685,6 +1727,6 @@ module.exports = {
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
-  revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
+  settleDemoJump, revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };
