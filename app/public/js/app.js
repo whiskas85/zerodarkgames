@@ -559,8 +559,14 @@ function viewLogin() {
       h('form', { class: 'login-form', onsubmit: byCode },
         h('label', { class: 'field', for: 'access' }, h('span', null, 'Codice d\'accesso')), code,
         h('button', { class: 'btn btn-block', type: 'submit' }, 'Entra con il codice')),
-      h('button', { class: 'btn btn-block', type: 'button', onclick: scanLogin }, '⌖ Scansiona il QR di accesso')));
+      h('button', { class: 'btn btn-block', type: 'button', onclick: scanLogin }, '⌖ Scansiona il QR di accesso')),
+    poweredBy());
 }
+
+// Firma in fondo al login: chi c'è dietro i Giochi.
+const poweredBy = () => h('div', { class: 'powered-by' },
+  h('img', { src: '/img/zdt-logo.jpg', alt: 'Logo Zero Dark Team', width: 56, height: 56 }),
+  h('span', null, h('small', null, 'Powered by'), h('strong', null, 'Zero Dark Team')));
 
 // Account senza iscrizione alla partita aperta: si sceglie la sfida dalla pagina di iscrizione.
 function viewNoEnrollment() {
