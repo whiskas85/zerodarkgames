@@ -154,6 +154,18 @@ export function createMapView({ className = '' } = {}) {
     onTap(fn) { onTap = fn; },
     // Da chiamare dopo che l'elemento è stato riagganciato alla pagina.
     refresh() { if (map) setTimeout(() => { map.invalidateSize(); autoFit(); }, 30); },
+    // Inquadra alcuni segnaposto (per chiave) insieme alla mia posizione; la centratura automatica si ferma.
+    focus(keys) {
+      if (!map) return false;
+      const pts = keys.map((k) => markers.get(k)?.getLatLng()).filter(Boolean);
+      if (!pts.length) return false;
+      auto = false;
+      clearTimeout(fitTimer);
+      if (me && (meAcc == null || meAcc <= 300)) pts.push(me.getLatLng());
+      if (pts.length === 1) map.setView(pts[0], 17);
+      else map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 18 });
+      return true;
+    },
     // Riattiva la centratura automatica (es. dopo "Tutto il campo").
     autoCenter() { auto = true; view.fit(); },
   };

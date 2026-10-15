@@ -395,7 +395,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings,
-      avvisi: viewNotices, mappa: isElect() ? viewElectMap : viewMap, campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -706,7 +706,7 @@ function viewHome() {
     h('a', { class: 'progress', href: '#/frammenti' },
       h('div', { class: 'progress-head' }, h('span', { class: 'eyebrow' }, 'La Parola'), h('strong', { class: 'mono' }, `Frammenti: ${owned} / ${total || '?'}`)),
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
-    owned && owned === total ? h('div', { class: 'won' }, h('strong', null, 'Avete la Parola intera.'), h('span', null, 'Portatela alla Soglia.')) : null,
+    owned && owned === total ? wonBanner() : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     h('nav', { class: 'grid' },
@@ -947,7 +947,12 @@ function startMapGps() {
 const gpsLine = (p) => `La vostra posizione: ± ${p.acc} m${accuracyHint(p.acc) ? ` · ${accuracyHint(p.acc)}` : ''}`;
 function stopMapGps() { stopGps?.(); stopGps = null; }
 
-function viewMap() {
+// Parola intera: il riquadro porta alla mappa inquadrata sulla Soglia.
+function wonBanner() {
+  return h('a', { class: 'won', href: '#/mappa/soglia' }, h('strong', null, 'Avete la Parola intera.'), h('span', null, 'Portatela alla Soglia →'));
+}
+
+function viewMap(focus = null) {
   const m = S.state?.map || { points: [], gifts: [] };
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
@@ -956,8 +961,13 @@ function viewMap() {
   ]);
   if (myPos) teamMapView.setMe(myPos);
   teamMapView.refresh();
+  // Dalla Parola intera: la mappa si apre sulla Soglia (e su di voi, se il GPS c'è).
+  const soglia = focus === 'soglia' ? (m.landmarks || []).find((l) => l.kind === 'soglia' && l.lat != null) : null;
+  if (soglia && S.focusedSoglia !== location.hash) { S.focusedSoglia = location.hash; setTimeout(() => teamMapView.focus([`l${soglia.id}`]), 120); }
+  if (focus !== 'soglia') S.focusedSoglia = null;
   return h('div', { class: 'stack map-page' },
     h('h2', null, 'Mappa'),
+    focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera: un Ufficiale del Consiglio la verifica.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
     h('p', { class: 'mono small', id: 'map-gps' }, myPos ? gpsLine(myPos) : gpsMsg || 'Ricerca della posizione…'),
     teamMapView.el,
     h('div', { class: 'row-actions' },
@@ -1248,7 +1258,7 @@ function viewFragments() {
   return h('div', { class: 'stack' },
     h('h2', null, 'La Parola'),
     h('p', { class: 'mono' }, `Frammenti: ${owned} / ${frs.length || '?'}`),
-    owned && owned === frs.length ? h('div', { class: 'won' }, h('strong', null, 'Avete la Parola intera.'), h('span', null, 'Portatela alla Soglia.')) : null,
+    owned && owned === frs.length ? wonBanner() : null,
     frs.length ? h('ol', { class: 'fragments' }, frs.map((f) => h('li', { class: f.text ? 'have' : '' },
       h('span', { class: 'pos mono' }, f.position),
       h('div', null,

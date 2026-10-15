@@ -64,6 +64,8 @@ h2 { font-size: 40px; font-weight: 900; }
 .last-ann.new { border-left-color: var(--blood); }
 .last-ann p { margin: 4px 0 0; font-size: 17px; font-family: var(--f-body); }
 .won { display: grid; gap: 2px; background: var(--ok-soft); border: 2px solid var(--ok); padding: 14px; }
+a.won { color: inherit; text-decoration: none; }
+a.won span { font-weight: 700; }
 .won strong { font-family: var(--f-display); text-transform: uppercase; font-size: 24px; }
 .btn-seal { min-height: 84px; font-size: 24px; font-family: var(--f-display); text-transform: uppercase; letter-spacing: .03em; gap: 14px; }
 .seal-ico { width: 46px; height: 46px; border: 3px solid currentColor; display: grid; place-items: center; font-size: 20px; }
