@@ -400,6 +400,12 @@ function masterCombat(gameId) {
     alliances,
     open: q.all("SELECT * FROM engagements WHERE gameId = ? AND status IN ('pending','contested') ORDER BY id DESC", gameId).map((e) => engagementOut(e)),
     recent: q.all("SELECT * FROM engagements WHERE gameId = ? AND status IN ('confirmed','cancelled') ORDER BY id DESC LIMIT 20", gameId).map((e) => engagementOut(e)),
+    // Tutti gli scontri della partita per la timeline della regia (con i Sigilli rubati).
+    timeline: q.all('SELECT * FROM engagements WHERE gameId = ? ORDER BY id DESC LIMIT 300', gameId).map((e) => ({
+      ...engagementOut(e),
+      steals: q.all('SELECT s.teamId, s.chosenAt, x.name AS sectorName FROM engagement_steals s LEFT JOIN sectors x ON x.id = s.sectorId WHERE s.engagementId = ?', e.id)
+        .map((x) => ({ team: teamLite(x.teamId), sectorName: x.sectorName, chosen: !!x.chosenAt })),
+    })),
     requests: q.all("SELECT * FROM alliance_requests WHERE gameId = ? AND status = 'pending' ORDER BY id", gameId)
       .map((r) => ({ id: r.id, kind: r.kind, from: teamLite(r.fromTeamId), to: teamLite(r.toTeamId), createdAt: r.createdAt })),
   };

@@ -325,6 +325,10 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-revelation, .tl-key.tl-revelation { background: #e0603f; }
 .tl-supply, .tl-key.tl-supply { background: #d1ad62; }
 .tl-gift, .tl-key.tl-gift { background: #6fbf73; }
+.tl-engagement, .tl-key.tl-engagement { background: #c9573f; border-radius: 0; transform: rotate(45deg); }
+.tl-ev.tl-eng-pending, .tl-ev.tl-eng-contested { box-shadow: 0 0 0 2px #f2d27a; }
+.tl-ev.tl-eng-cancelled { opacity: .35; }
+.tl-row.tl-engagement { border-left-color: #c9573f; background: none; }
 .tl-phase { background: #c9c9c9; }
 .tl-done { opacity: .35; }
 .tl-now { position: absolute; top: -8px; bottom: 0; border-left: 2px dashed #3b82f6; }

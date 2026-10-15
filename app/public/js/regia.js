@@ -1352,7 +1352,20 @@ function timelineEvents(exclude = null) {
     const end = gf.expiresAfterMin ? at + gf.expiresAfterMin : null;
     ev.push({ at, to: end, label: `Dono ${gf.label} (${gf.name})${gf.status === 'claimed' ? ' · preso' : gf.status === 'expired' ? ' · svanito' : gf.revealedAt ? ' · in mappa' : ''}`, kind: 'gift', done: ['claimed', 'expired'].includes(gf.status), ref: { type: 'gift', id: gf.id } });
   }
+  // Scontri (ingaggi) registrati dalle coppie, con l'esito.
+  for (const e of ms.combat?.timeline || []) {
+    if (!e.createdAt) continue;
+    ev.push({ at: tb.toMin(e.createdAt), label: `Scontro: ${engagementText(e)}`, kind: `engagement tl-eng-${e.status}`, done: e.status !== 'pending' && e.status !== 'contested', ref: { type: 'engagement', id: e.id } });
+  }
   return ev.filter((e) => Number.isFinite(e.at)).sort((a, b) => a.at - b.at);
+}
+
+const sideNames = (side) => side.map((t) => t.sectorName).join(' + ');
+function engagementText(e) {
+  const what = e.result === 'draw' ? `pareggio ${sideNames(e.winners)} – ${sideNames(e.losers)}` : `${sideNames(e.winners)} batte ${sideNames(e.losers)}`;
+  const state = { pending: ' (da confermare)', contested: ' (contestato)', cancelled: ' (annullato)' }[e.status] || '';
+  const stolen = (e.steals || []).map((x) => (x.chosen ? `${x.team.sectorName} ruba ${x.sectorName}` : `${x.team.sectorName} deve scegliere il furto`));
+  return `${what}${state}${stolen.length ? ` · ${stolen.join(' · ')}` : ''}`;
 }
 
 const fmtClockMin = (m) => `${m < 0 ? '−' : ''}${fmtMin(Math.abs(m))}`;
@@ -1528,7 +1541,7 @@ function liveTimeline() {
     h('div', { class: 'tl-legend tiny' },
       h('span', null, h('i', { class: 'tl-key tl-truce-k' }), 'tregua'), h('span', null, h('i', { class: 'tl-key tl-last-k' }), 'ultima mezz\'ora'),
       h('span', null, h('i', { class: 'tl-key tl-revelation' }), 'tradimenti'), h('span', null, h('i', { class: 'tl-key tl-supply' }), 'armamenti'),
-      h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-now-k' }), 'adesso')),
+      h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-engagement' }), 'scontri'), h('span', null, h('i', { class: 'tl-key tl-now-k' }), 'adesso')),
     track,
     h('p', { class: 'tiny muted' }, tb.known ? '' : 'La partita non ha un orario di inizio: la timeline è in minuti dal via. ',
       nextEv ? ['Prossimo: ', h('strong', null, nextEv.label), ` a ${fmtClockMin(nextEv.at)}`, tb.toWall(nextEv.at) ? ` (alle ${fmtTime(tb.toWall(nextEv.at))})` : ''] : 'Clicca un punto vuoto per programmare armamenti o l\'annuncio di un dono; clicca un avvenimento per spostarlo o farlo partire.'));
@@ -1581,6 +1594,17 @@ async function planDialog(min) {
 // Avvenimento sulla timeline: cosa è e cosa se ne può fare.
 async function eventDialog(e) {
   const ms = R.ms;
+  if (e.ref?.type === 'engagement') {
+    const x = (ms.combat?.timeline || []).find((y) => y.id === e.ref.id);
+    if (!x) return;
+    const by = `Registrato da ${x.reporter?.sectorName || '—'} alle ${fmtTime(x.createdAt)} (${fmtClockMin(e.at)} dal via)${x.resolvedAt ? `, chiuso alle ${fmtTime(x.resolvedAt)}` : ''}.`;
+    if (['pending', 'contested'].includes(x.status)) {
+      const act = await actionDialog(e.label, by, [['confirm', 'Conferma l\'esito'], ['cancel', 'Annulla lo scontro']]);
+      if (act) call('POST', `/api/m/engagements/${x.id}/resolve`, { decision: act }, act === 'confirm' ? 'Esito confermato' : 'Scontro annullato');
+      return;
+    }
+    return modal({ title: e.label, okLabel: 'Chiudi', body: h('p', null, by) });
+  }
   const active = ACTIVE.includes(ms.clock.status);
   const pre = PRE.includes(ms.clock.status);
   if (e.ref?.type === 'gift') {
