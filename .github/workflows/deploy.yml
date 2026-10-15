@@ -115,6 +115,9 @@ jobs:
         env:
           MASTER_USER: ${{ secrets.MASTER_USER || 'master' }}
           MASTER_PASSWORD: ${{ secrets.MASTER_PASSWORD }}
+          OPS_ISSUER: ${{ vars.OPS_ISSUER || 'https://ops.zerodarkteam.it' }}
+          OPS_CLIENT_ID: ${{ secrets.OPS_CLIENT_ID }}
+          OPS_CLIENT_SECRET: ${{ secrets.OPS_CLIENT_SECRET }}
         run: |
           # Rete Docker di Caddy rilevata nei rilasci precedenti (vedi deploy/caddy-site.sh)
           PROXY_NETWORK=$($SSH "cat '$DIR/.proxy-network' 2>/dev/null" || true)
@@ -129,6 +132,12 @@ jobs:
             echo "MASTER_PASSWORD_RESET=1"
             echo "PUBLIC_URL=https://$DOMAIN"
             echo "VAPID_SUBJECT=mailto:consiglio@zerodarkteam.it"
+            # «Accedi con Zero Dark Ops»: solo se l'app è registrata nel gestionale (secret OPS_CLIENT_ID).
+            if [ -n "$OPS_CLIENT_ID" ]; then
+              echo "OPS_ISSUER=$OPS_ISSUER"
+              echo "OPS_CLIENT_ID=$OPS_CLIENT_ID"
+              echo "OPS_CLIENT_SECRET=$OPS_CLIENT_SECRET"
+            fi
           } > deploy.env
 
       - name: Copia sul server

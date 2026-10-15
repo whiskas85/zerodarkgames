@@ -12,6 +12,10 @@ services:
       MASTER_PASSWORD_RESET: ${MASTER_PASSWORD_RESET:-0}
       PUBLIC_URL: ${PUBLIC_URL:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:consiglio@zerodarkteam.it}
+      OPS_ISSUER: ${OPS_ISSUER:-}
+      OPS_CLIENT_ID: ${OPS_CLIENT_ID:-}
+      OPS_CLIENT_SECRET: ${OPS_CLIENT_SECRET:-}
+      OPS_NAME: ${OPS_NAME:-}
       TZ: Europe/Rome
     volumes:
       - zdg-data:/data

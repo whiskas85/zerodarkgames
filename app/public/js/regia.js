@@ -2150,6 +2150,50 @@ function publicUrlSection() {
       h('li', null, 'In Wi-Fi (http) il gioco funziona, ma notifiche push, installazione dell\'app e fotocamera interna richiedono https: per provarle usa il tunnel.')));
 }
 
+// ---- «Accedi con Zero Dark Ops»: gestionali delle squadre da cui i giocatori entrano (OpenID Connect).
+let opsInfo = null;
+let opsEdit = null; // null | 'new' | id del gestionale in modifica
+
+function opsSection() {
+  if (!opsInfo) {
+    api('GET', '/api/m/settings/ops').then((r) => { opsInfo = r; render(); }).catch((e) => toast(e.message, 'error'));
+    return section('Accesso con il gestionale', h('p', { class: 'empty' }, 'Caricamento…'));
+  }
+  const reload = () => { opsInfo = null; opsEdit = null; render(); };
+  const editing = opsEdit === 'new' ? {} : opsInfo.providers.find((p) => p.id === opsEdit);
+  const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
+  const form = editing ? h('form', { class: 'form-grid', onsubmit: async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await api(editing.id ? 'PUT' : 'POST', `/api/m/settings/ops${editing.id ? `/${editing.id}` : ''}`, body);
+      toast('Gestionale salvato', 'ok');
+      reload();
+    } catch (err) { toast(err.message, 'error', 7000); }
+  } },
+  field('Nome sul pulsante', { name: 'name', value: editing.name || 'Zero Dark Ops', required: true, maxlength: 40, 'data-keep': 'ops-name' }),
+  field('Indirizzo (issuer)', { name: 'issuer', value: editing.issuer || '', placeholder: 'https://ops.zerodarkteam.it', required: true, class: 'input mono', 'data-keep': 'ops-iss', inputmode: 'url', spellcheck: 'false' }),
+  field('client_id', { name: 'clientId', value: editing.clientId || '', required: true, class: 'input mono', 'data-keep': 'ops-cid', spellcheck: 'false', autocomplete: 'off' }),
+  field(editing.hasSecret ? 'client_secret (vuoto = invariato, "-" per toglierlo)' : 'client_secret (vuoto per le app senza segreto)', { name: 'clientSecret', type: 'password', class: 'input mono', 'data-keep': 'ops-sec', autocomplete: 'new-password' }),
+  h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva'), h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { opsEdit = null; render(); } }, 'Annulla'))) : null;
+  const del = async (p) => {
+    if (!(await dialog({ title: `Togliere ${p.name}?`, text: 'Il pulsante sparisce e da lì non si entra più. I collegamenti degli account restano: se lo riaggiungi con lo stesso indirizzo tornano a funzionare.', okLabel: 'Togli', danger: true }))) return;
+    try { await api('DELETE', `/api/m/settings/ops/${p.id}`); toast('Gestionale tolto', 'ok'); reload(); } catch (e) { toast(e.message, 'error', 7000); }
+  };
+  return section('Accesso con il gestionale',
+    h('p', { class: 'muted tiny' }, 'I giocatori entrano con l\'account del gestionale della loro squadra (Zero Dark Ops): niente password nuove, nome, callsign e squadra arrivano da lì. Nel gestionale, da admin: Sistema → App collegate → Nuova app, con questo indirizzo di ritorno:'),
+    h('div', { class: 'url-now' }, h('span', { class: 'eyebrow' }, 'Indirizzo di ritorno'), h('strong', { class: 'mono' }, opsInfo.redirectUri),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => navigator.clipboard?.writeText(opsInfo.redirectUri).then(() => toast('Copiato', 'ok')) }, 'Copia')),
+    /^http:\/\/(?!localhost[:/]|127\.0\.0\.1[:/])/.test(opsInfo.redirectUri) ? h('p', { class: 'tiny bad' }, 'Il gestionale accetta solo indirizzi https (o localhost per le prove): imposta prima l\'indirizzo pubblico https.') : null,
+    opsInfo.providers.length ? h('ul', { class: 'users' }, opsInfo.providers.map((p) => h('li', null,
+      h('strong', null, p.name), h('span', { class: 'mono tiny' }, p.issuer),
+      h('span', { class: 'chip' }, p.hasSecret ? 'con segreto' : 'solo PKCE'),
+      p.fromEnv ? h('span', { class: 'chip', title: 'OPS_ISSUER, OPS_CLIENT_ID, OPS_CLIENT_SECRET' }, 'dal file .env')
+        : [h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { opsEdit = p.id; render(); } }, 'Modifica'), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(p) }, 'Togli')]))) : h('p', { class: 'empty' }, 'Nessun gestionale collegato: si entra solo con username e password.'),
+    form || h('button', { class: 'btn', onclick: () => { opsEdit = 'new'; render(); } }, '+ Aggiungi gestionale'),
+    h('p', { class: 'muted tiny' }, 'Più squadre con il loro gestionale? Aggiungine uno per ciascuna: ognuno ha il suo pulsante.'));
+}
+
 // Account dei giocatori: restano tra una partita e l'altra; qui si cercano, si eliminano, si reimposta la password.
 let accountsCache = null;
 let accountsFilter = '';
@@ -2180,7 +2224,8 @@ function accountsSection() {
     list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
       h('thead', null, h('tr', null, ['Account', 'Team softair', 'Iscrizioni', ''].map((x) => h('th', null, x)))),
       h('tbody', null, list.map((a) => h('tr', null,
-        h('td', null, h('strong', null, a.name), a.nickname ? h('span', { class: 'muted' }, ` «${a.nickname}»`) : null, h('div', { class: 'tiny brass' }, `@${a.username}`)),
+        h('td', null, h('strong', null, a.name), a.nickname ? h('span', { class: 'muted' }, ` «${a.nickname}»`) : null, h('div', { class: 'tiny brass' }, `@${a.username}`),
+          a.ops ? h('span', { class: 'chip', title: a.hasPassword ? 'Entra anche con username e password' : 'Entra solo dal gestionale' }, a.hasPassword ? a.ops : `solo ${a.ops}`) : null),
         h('td', null, a.softairTeam || '—'),
         h('td', { class: 'tiny' }, a.enrollments ? a.games : h('span', { class: 'chip' }, 'nessuna')),
         h('td', { class: 'row-actions' },
@@ -2195,6 +2240,7 @@ function viewNewGame(first) {
         h('strong', null, 'Non c\'è ancora nessuna partita.'),
         h('p', { class: 'muted' }, 'Il primo passo è crearne una (qui sotto) oppure una partita di prova: le altre voci del menu si attivano appena esiste una partita. Poi: iscrizioni e coppie → Sigilli → Altari e Parola → cerchio → VIA.')) : null,
       gameForm({ name: '', bookUrl: '/regolamento.html' }, true)),
+    first ? opsSection() : null,
     first ? accountsSection() : null,
     section('Vuoi solo provare?',
       h('p', { class: 'muted' }, 'Crea una partita di prova già preparata, con giocatori finti, e fai avanzare il tempo per vedere tutto il gioco in pochi minuti.'),
@@ -2213,6 +2259,7 @@ function viewSettings() {
   const uRole = h('select', { class: 'input', 'data-keep': 'u-role' }, h('option', { value: 'validator' }, 'Validatore (Soglia)'), h('option', { value: 'master' }, 'Master (regia)'));
   return h('div', { class: 'stack' },
     publicUrlSection(),
+    opsSection(),
     section('Parametri della partita', gameForm(g, false)),
     accountsSection(),
     h('div', { class: 'cols-2' },

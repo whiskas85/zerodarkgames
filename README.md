@@ -42,7 +42,7 @@ Il browser tiene una sola coppia alla volta: per più coppie sullo stesso PC usa
 
 0. **Settori e Altari** (una volta sola): l'elenco parte dai 12 Settori della specifica; puoi aggiungerne, modificarli (nome, articolo, elemento, motto, nome dell'Altare personalizzato, ordine) ed eliminarli. Un Settore assegnato a una coppia di una partita non terminata non si elimina; uno usato solo in partite finite viene archiviato e si può ripristinare.
 1. **Impostazioni**: crea la partita (nome, data, canale radio, parametri).
-2. **Account e iscrizioni**: ognuno crea il proprio **account** (username e password) dal modulo `/iscrizione`; l'account resta valido anche per le partite successive. Dall'app (`/`) si entra con username e password: i **master** finiscono in automatico in regia, i validatori alla Soglia, i giocatori nella loro app (coppia, anteprima o Eletti). Nessuno può registrarsi come master: i master li crea un master in **Impostazioni**. QR e codici d'accesso stampati restano come scorciatoia per il giorno dell'evento. Se un giocatore dimentica la password, la regia ne imposta una nuova (pulsante **Password** accanto al nome).
+2. **Account e iscrizioni**: ognuno crea il proprio **account** (username e password) dal modulo `/iscrizione`, oppure entra con l'account del gestionale della squadra (vedi [Accedi con Zero Dark Ops](#accedi-con-zero-dark-ops)); l'account resta valido anche per le partite successive. Dall'app (`/`) si entra con username e password: i **master** finiscono in automatico in regia, i validatori alla Soglia, i giocatori nella loro app (coppia, anteprima o Eletti). Nessuno può registrarsi come master: i master li crea un master in **Impostazioni**. QR e codici d'accesso stampati restano come scorciatoia per il giorno dell'evento. Se un giocatore dimentica la password, la regia ne imposta una nuova (pulsante **Password** accanto al nome).
    Con l'account ci si candida per una delle tre strade, presentate come sfide:
    - **I Legati** (coppia): due persone che rappresenteranno un Settore. Ognuno ha il suo account: il primo crea la coppia e riceve un **codice coppia**, il compagno lo inserisce scegliendo "I Legati";
    - **Il Temerario Solitario**: da solo, verrà accoppiato a caso con un altro temerario;
@@ -92,6 +92,21 @@ Le notifiche richiedono HTTPS (vedi sotto).
 - **Alleanze**: proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri.
 - **Scontri**: VINTO / PERSO / PAREGGIO contro una coppia. "Perso" vale subito, "vinto" va confermato dallo sconfitto (se contesta decide la regia). I vincitori e i loro alleati ricevono i Sigilli di tutta la parte sconfitta; chi perde riceve in automatico il timer Veglia.
 
+## Accedi con Zero Dark Ops
+
+Oltre a username e password, i giocatori possono entrare con l'account del **gestionale della loro squadra** (Zero Dark Ops), che fa da fornitore di identità OpenID Connect ([documentazione del gestionale](https://github.com/whiskas85/team-management/blob/main/docs/IDENTITA.md)).
+
+1. Nel gestionale, da admin: **Sistema → App collegate → Nuova app**. Nome «I Giochi del Buio», indirizzo di ritorno `<indirizzo pubblico>/auth/ops/callback` (es. `https://games.zerodarkteam.it/auth/ops/callback`; la regia lo mostra già pronto da copiare). Tipo *con un suo server*: si ottengono `client_id` e `client_secret`.
+2. Nei Giochi: **Impostazioni → Accesso con il gestionale → Aggiungi gestionale** (indirizzo, `client_id`, `client_secret`), oppure `OPS_ISSUER`, `OPS_CLIENT_ID`, `OPS_CLIENT_SECRET` nel file `.env`. In produzione il workflow li scrive dai secrets `OPS_CLIENT_ID` e `OPS_CLIENT_SECRET` (indirizzo `https://ops.zerodarkteam.it`, o la variabile `OPS_ISSUER`).
+
+Da quel momento compare **Accedi con Zero Dark Ops** nell'app e nella pagina di iscrizione:
+
+- **prima volta**: nasce un account dei Giochi con nome, callsign (come nome di battaglia) e squadra del gestionale, senza password; si passa subito alla scelta della sfida. La password si può aggiungere dal profilo;
+- **chi ha già un account** lo collega dal profilo (**Collega Zero Dark Ops**) e poi entra con un tocco; dal profilo si scollega (se l'account non ha una password, prima va impostata);
+- l'identità è la coppia (gestionale, `sub`): un account del gestionale vale per un solo account dei Giochi. Più squadre con il loro gestionale: un gestionale per ciascuna, ognuno con il suo pulsante.
+
+Il giro è *authorization code* con PKCE S256; l'id_token è verificato (firma RS256 con le chiavi del gestionale, emittente, destinatario, scadenza, nonce). I Giochi non tengono token del gestionale: la sessione è quella solita dell'app. Il gestionale accetta solo indirizzi di ritorno `https://` (o `http://localhost` per le prove).
+
 ## Provare dai telefoni in Wi-Fi
 
 In regia, **Impostazioni → Indirizzo per link e QR**: inserisci l'indirizzo del PC sulla rete Wi-Fi (es. `http://192.168.86.105:8090`), premi **Prova** e poi **Salva**.
@@ -121,8 +136,9 @@ docker-compose.yml   .env.example
 app/
   Dockerfile
   src/      server.js (API, pagine)  game.js (motore)  db.js (SQLite)  realtime.js (SSE + Web Push)  print.js (stampe A4)
+            accounts.js (account dei giocatori)  ops.js (accesso con Zero Dark Ops, OpenID Connect)
   public/   index.html + js/app.js (PWA coppie)  regia.html + js/regia.js  soglia.html  tabellone.html  iscrizione.html  sw.js
-  test/     engine.test.js (criteri di accettazione)
+  test/     engine.test.js (criteri di accettazione)  ops.test.js (accesso con Zero Dark Ops)
 ```
 
 Stack: Node.js 24 senza framework frontend (nessuna build), Express 5, SQLite integrato (`node:sqlite`), Server-Sent Events, Web Push (chiavi VAPID generate al primo avvio e salvate nel database).

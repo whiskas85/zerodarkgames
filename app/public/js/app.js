@@ -7,6 +7,7 @@ const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
 const S = {
   state: null,
+  ops: [], // gestionali per «Accedi con Zero Dark Ops»
   auth: 'unknown', // unknown | team | none
   online: navigator.onLine,
   connected: false,
@@ -54,6 +55,12 @@ function boot() {
     toast('Link di accesso non valido o rigenerato dalla regia', 'error', 7000);
     history.replaceState(null, '', '/' + location.hash);
   }
+  const opsError = new URLSearchParams(location.search).get('ops_errore');
+  if (opsError) {
+    toast(opsError, 'error', 8000);
+    history.replaceState(null, '', '/' + location.hash);
+  }
+  api('GET', '/api/public/ops').then((list) => { S.ops = list || []; if (S.auth === 'none') render(); }).catch(() => {});
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   window.addEventListener('hashchange', render);
   window.addEventListener('online', () => { S.online = true; refresh(); flushQueue(); render(); });
@@ -520,6 +527,9 @@ function viewLogin() {
       h('label', { class: 'field', for: 'login-user' }, h('span', null, 'Username')), user,
       h('label', { class: 'field', for: 'login-pass' }, h('span', null, 'Password')), pass,
       h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Entra')),
+    S.ops.length ? h('div', { class: 'login-ops' },
+      h('span', { class: 'login-or' }, 'oppure'),
+      S.ops.map((o) => h('a', { class: 'btn btn-block btn-ops', href: `/auth/ops/${encodeURIComponent(o.id)}?ritorno=app` }, `Accedi con ${o.name}`))) : null,
     h('a', { class: 'btn btn-block', href: '/iscrizione' }, 'Non hai un account? Registrati'),
     h('details', { class: 'login-alt' },
       h('summary', null, 'Hai un QR o un codice d\'accesso del Consiglio?'),
@@ -1541,7 +1551,10 @@ function applyTheme() {
 
 async function logout() {
   const acc = S.state?.account;
-  if (!(await dialog({ title: 'Uscire?', text: acc ? `Per rientrare ti serviranno username (${acc.username}) e password.` : 'Per rientrare servirà di nuovo il QR o il codice d\'accesso.', okLabel: 'Esci', danger: true }))) return;
+  const again = !acc ? 'Per rientrare servirà di nuovo il QR o il codice d\'accesso.'
+    : !acc.hasPassword && acc.ops?.length ? `Per rientrare usa «Accedi con ${acc.ops[0].providerName}».`
+      : `Per rientrare ti serviranno username (${acc.username}) e password${acc.ops?.length ? `, oppure «Accedi con ${acc.ops[0].providerName}»` : ''}.`;
+  if (!(await dialog({ title: 'Uscire?', text: again, okLabel: 'Esci', danger: true }))) return;
   try { await api('POST', '/api/team/logout'); } catch { /* offline */ }
   ['zdg_state', 'zdg_queue', 'zdg_visits', 'zdg_altar_results', 'zdg_unveiled'].forEach(store.del);
   location.href = '/';
@@ -1551,7 +1564,7 @@ async function logout() {
 function accountBar(st) {
   const acc = st?.account;
   return h('div', { class: 'account-bar' },
-    h('span', { class: 'small muted' }, acc ? ['Entrato come ', h('strong', null, `@${acc.username}`)] : 'Entrato con QR o codice d\'accesso'),
+    h('span', { class: 'small muted' }, acc ? ['Entrato come ', h('strong', null, `@${acc.username}`), acc.ops?.length ? ` · ${acc.ops[0].providerName}` : null] : 'Entrato con QR o codice d\'accesso'),
     acc ? h('a', { class: 'btn btn-sm btn-ghost', href: '/iscrizione#profilo' }, 'Profilo') : null,
     h('button', { class: 'btn btn-sm', type: 'button', onclick: logout }, 'Esci'));
 }

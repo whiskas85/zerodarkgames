@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v28';
+const VERSION = 'zdg-v29';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge.png', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/field-ui.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
@@ -62,7 +62,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/login/') || url.pathname.startsWith('/regia/stampa')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/login/') || url.pathname.startsWith('/auth/') || url.pathname.startsWith('/regia/stampa')) return;
 
   // Navigazione: rete prima, poi la shell in cache (anche per /a/<token> inquadrato senza rete).
   if (req.mode === 'navigate') {

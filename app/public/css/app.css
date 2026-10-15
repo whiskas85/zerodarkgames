@@ -41,6 +41,9 @@ h2 { font-size: 40px; font-weight: 900; }
 .login h1 { font-size: clamp(56px, 18vw, 92px); line-height: .86; font-weight: 900; }
 .login h1 em { font-style: normal; color: var(--blood); }
 .login-form { display: grid; gap: 12px; width: 100%; text-align: left; }
+.login-ops { display: grid; gap: 10px; width: 100%; }
+.login-or { font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.btn-ops { border-color: var(--brass); }
 .note { background: var(--paper); border-left: 4px solid var(--brass); padding: 10px 14px; text-align: left; }
 
 /* Home */

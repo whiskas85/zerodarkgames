@@ -11,11 +11,13 @@ const print = require('./print');
 const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
+const O = require('./ops');
 
 const PORT = Number(process.env.PORT || 8080);
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const COOKIE_USER = 'zdg_u';
 const COOKIE_TEAM = 'zdg_t';
+const COOKIE_OPS = 'zdg_ops';
 const ONE_YEAR = 365 * 24 * 3600;
 
 // ---------------------------------------------------------------- seed
@@ -190,6 +192,50 @@ app.get('/api/account', needAccount, (req, res) => res.json({
 }));
 app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.account, req.body || {}); return { ok: true }; }));
 app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
+// Gestionali collegati: il giocatore toglie un collegamento dal profilo.
+app.delete('/api/account/ops/:iid', needAccount, wrap((req) => { O.unlink(req.account, req.params.iid); return { ok: true }; }));
+
+// ---- «Accedi con Zero Dark Ops» (OpenID Connect): /auth/ops/<gestionale> → gestionale → /auth/ops/callback
+// ritorno: 'app' (/) o 'iscrizione'; collega=1 aggiunge il gestionale all'account già aperto.
+const OPS_BACK = { app: '/', iscrizione: '/iscrizione' };
+const opsRedirectUri = (req) => `${baseUrl(req)}/auth/ops/callback`;
+const opsFail = (res, back, msg) => res.redirect(`${OPS_BACK[back] || '/'}?ops_errore=${encodeURIComponent(msg)}${back === 'iscrizione' ? '#profilo' : ''}`);
+app.get('/api/public/ops', (_req, res) => res.json(O.publicList()));
+app.get('/auth/ops/callback', loginLimit, async (req, res) => {
+  const state = String(req.query.state || '');
+  setCookie(req, res, COOKIE_OPS, '', 0);
+  try {
+    const done = await O.finish(state, cookies(req)[COOKIE_OPS], req.query);
+    const r = O.resolveAccount(done, req.account?.id ?? null);
+    const back = done.flow.back;
+    if (!r.linked) setCookie(req, res, COOKIE_TEAM, newSession('account', r.account.id));
+    if (r.linked) return res.redirect('/iscrizione?ops=collegato#profilo');
+    const p = A.currentPlayer(r.account);
+    if (p) G.log(p.gameId, `giocatore:${p.id}`, 'player_login', { playerId: p.id, gestionale: done.provider.name });
+    // Account nuovo o senza iscrizione: si sceglie la sfida.
+    if (r.created || back === 'iscrizione' || !p) return res.redirect(`/iscrizione${r.created ? '?ops=nuovo' : ''}#scelta`);
+    res.redirect('/#/home');
+  } catch (e) {
+    if ((e.status || 500) >= 500 && !(e instanceof HttpError)) console.error(e);
+    opsFail(res, e.flow?.back, e instanceof HttpError ? e.message : 'Accesso con il gestionale non riuscito');
+  }
+});
+app.get('/auth/ops/:id', async (req, res) => {
+  const back = OPS_BACK[req.query.ritorno] ? req.query.ritorno : 'app';
+  // L'indirizzo di ritorno registrato nel gestionale è quello pubblico: il giro parte da lì (stesso host, stessi cookie).
+  if (new URL(requestOrigin(req)).host !== new URL(baseUrl(req)).host && !req.query.collega) return res.redirect(`${baseUrl(req)}${req.originalUrl}`);
+  try {
+    const link = req.query.collega === '1';
+    if (link && !req.account) throw new HttpError(401, 'Accedi al tuo account prima di collegare il gestionale');
+    const { url, state } = await O.start(req.params.id, { mode: link ? 'link' : 'login', accountId: req.account?.id, redirectUri: opsRedirectUri(req), back });
+    setCookie(req, res, COOKIE_OPS, state, 600);
+    res.redirect(url);
+  } catch (e) {
+    if (!(e instanceof HttpError)) console.error(e);
+    opsFail(res, back, e instanceof HttpError ? e.message : 'Accesso con il gestionale non riuscito');
+  }
+});
+
 app.post('/api/auth/logout', wrap((req, res) => {
   const c = cookies(req);
   if (c[COOKIE_USER]) q.run('DELETE FROM sessions WHERE token = ?', c[COOKIE_USER]);
@@ -529,6 +575,11 @@ m.get('/qr.svg', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 m.get('/base-url', (req, res) => res.json({ baseUrl: baseUrl(req) }));
+// Gestionali per «Accedi con Zero Dark Ops»: l'indirizzo di ritorno va registrato nel gestionale.
+m.get('/settings/ops', (req, res) => res.json({ providers: O.adminList(), redirectUri: opsRedirectUri(req) }));
+m.post('/settings/ops', wrap((req) => O.saveProvider({ ...req.body, id: undefined }, actor(req))));
+m.put('/settings/ops/:id', wrap((req) => O.saveProvider({ ...req.body, id: req.params.id }, actor(req))));
+m.delete('/settings/ops/:id', wrap((req) => { O.deleteProvider(req.params.id, actor(req)); return { ok: true }; }));
 m.get('/settings/public-url', (req, res) => res.json({
   publicUrl: getSetting('publicUrl') || '', envPublicUrl: process.env.PUBLIC_URL || '', current: baseUrl(req), requestOrigin: requestOrigin(req),
 }));

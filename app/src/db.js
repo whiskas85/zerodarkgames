@@ -245,6 +245,15 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 `);
 addColumn('players', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
+// Gestionali (Zero Dark Ops) collegati a un account: l'identità è la coppia (iss, sub), il sub vale solo nel suo gestionale.
+db.exec(`
+CREATE TABLE IF NOT EXISTS account_identities (
+  id INTEGER PRIMARY KEY, accountId INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  iss TEXT NOT NULL, sub TEXT NOT NULL, providerName TEXT, opsName TEXT, squadra TEXT,
+  createdAt INTEGER NOT NULL, lastLoginAt INTEGER, UNIQUE (iss, sub)
+);
+CREATE INDEX IF NOT EXISTS ix_identities_account ON account_identities(accountId);
+`);
 // Messaggi con una singola squadra di Eletti (null = tutti gli Eletti).
 addColumn('messages', 'squadId', 'INTEGER');
 

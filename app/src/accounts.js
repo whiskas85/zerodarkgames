@@ -11,7 +11,10 @@ const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
 const normUser = (u) => String(u || '').trim().toLowerCase();
 
 function publicAccount(a) {
-  return a ? { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone } : null;
+  if (!a) return null;
+  // ops: gestionali collegati (Zero Dark Ops); senza password si entra solo da lì.
+  const ops = q.all('SELECT id, iss, providerName, opsName, squadra FROM account_identities WHERE accountId = ? ORDER BY id', a.id);
+  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops };
 }
 
 function register(data) {
@@ -49,7 +52,8 @@ function updateProfile(account, data) {
   q.run(`UPDATE players SET name = ?, nickname = ?, softairTeam = ?, phone = ? WHERE accountId = ? AND gameId IN (SELECT id FROM games WHERE status != 'ended')`, name, nickname, softairTeam, phone, account.id);
   if (data.password) {
     if (String(data.password).length < 8) throw err(400, 'La password deve avere almeno 8 caratteri');
-    if (!verifyPassword(String(data.currentPassword || ''), account.passHash)) throw err(403, 'La password attuale non è corretta');
+    // Chi è entrato solo con il gestionale non ha ancora una password: la imposta senza quella attuale.
+    if (account.passHash && !verifyPassword(String(data.currentPassword || ''), account.passHash)) throw err(403, 'La password attuale non è corretta');
     q.run('UPDATE accounts SET passHash = ? WHERE id = ?', hashPassword(String(data.password)), account.id);
   }
 }
@@ -121,7 +125,8 @@ function enroll(account, data) {
 // ---- gestione dalla regia
 
 function listAccounts() {
-  return q.all(`SELECT a.id, a.username, a.name, a.nickname, a.softairTeam, a.phone, a.createdAt,
+  return q.all(`SELECT a.id, a.username, a.name, a.nickname, a.softairTeam, a.phone, a.createdAt, a.passHash != '' AS hasPassword,
+                  (SELECT group_concat(i.providerName, ' · ') FROM account_identities i WHERE i.accountId = a.id) AS ops,
                   (SELECT COUNT(*) FROM players p WHERE p.accountId = a.id) AS enrollments,
                   (SELECT COUNT(*) FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = a.id AND g.status != 'ended') AS active,
                   (SELECT group_concat(g.name, ' · ') FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = a.id) AS games
