@@ -422,9 +422,22 @@ test('alleanze e scontri: Sigilli condivisi, vinti dalla parte vincente, timer d
   assert.equal(e.status, 'pending');
   assert.equal(known(D, A).code, null);
   assert.equal(K.combatState(B).toConfirm.length, 1);
+  // Le alleanze degli altri sono segrete: D non vede quanti sono né chi c'è dietro ad A.
+  const seen = K.combatState(D);
+  assert.ok(seen.teams.every((t) => !('allianceSize' in t)));
+  assert.deepEqual(seen.history[0].losers.map((x) => x.teamId), [A.id]);
+  assert.ok(!JSON.stringify(K.combatState(Cc).history).includes(`"teamId":${B.id}`));
   K.respondEngagement(B, e.id, true);
   assert.equal(known(D, A).code, codeOf(g.id, A.sectorId));
   assert.equal(known(D, B).code, codeOf(g.id, B.sectorId));
+  // Vittoria sul telefono di D: i Sigilli di tutta l'alleanza sconfitta, anche se già noti.
+  const v = K.combatState(D).victories.find((x) => x.id === e.id);
+  assert.equal(v.against.teamId, A.id);
+  assert.deepEqual(v.seals.map((x) => x.sectorId).sort(), [A.sectorId, B.sectorId].sort());
+  assert.equal(v.seals.find((x) => x.sectorId === B.sectorId).code, codeOf(g.id, B.sectorId));
+  // Anche l'alleato di chi vince vede la sua Vittoria (C ha perso contro A: vince anche B).
+  assert.ok(K.combatState(B).victories.some((x) => x.seals.some((y) => y.sectorId === Cc.sectorId)));
+  assert.equal(K.combatState(A).victories.some((x) => x.id === e.id), false);
   // Non si combatte contro un alleato; rottura con accettazione.
   assert.throws(() => K.reportEngagement(A, B.id, 'won'), /alleato/);
   const br = K.requestBreak(A, B.id);

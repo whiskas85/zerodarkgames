@@ -80,9 +80,9 @@ function requestAlliance(me, toTeamId) {
   requireCouple(other);
   if (other.gameId !== me.gameId || other.id === me.id) throw err(400, 'Coppia non valida');
   const mine = sideOf(me.id);
-  const theirs = sideOf(other.id);
   if (mine.includes(other.id)) throw err(409, `Siete già alleati con ${other.sectorName}`);
-  if (mine.length + theirs.length > MAX_ALLIANCE) throw err(409, `Un'alleanza ha al massimo ${MAX_ALLIANCE} coppie`);
+  // Le alleanze degli altri sono segrete: qui si controlla solo la propria; il totale si verifica all'accettazione.
+  if (mine.length >= MAX_ALLIANCE) throw err(409, `La vostra alleanza è al completo (${MAX_ALLIANCE} coppie)`);
   if (q.get("SELECT 1 FROM alliance_requests WHERE gameId = ? AND status = 'pending' AND ((fromTeamId = ? AND toTeamId = ?) OR (fromTeamId = ? AND toTeamId = ?))", me.gameId, me.id, other.id, other.id, me.id)) {
     throw err(409, 'C\'è già una proposta in attesa tra voi');
   }
@@ -93,7 +93,7 @@ function requestAlliance(me, toTeamId) {
   const id = Number(q.run("INSERT INTO alliance_requests (gameId, kind, fromTeamId, toTeamId, status, createdAt) VALUES (?, 'join', ?, ?, 'pending', ?)", me.gameId, me.id, other.id, Date.now()).lastInsertRowid);
   G.log(me.gameId, `coppia:${me.id}`, 'alliance_proposed', { from: me.sectorName, to: other.sectorName });
   notify([other.id, me.id], me.gameId, null);
-  rt.pushTeams(me.gameId, { title: 'Proposta di alleanza', body: `Il Settore ${me.sectorName} vi propone un'alleanza. Rispondete nell'app.`, tag: `ally-${id}`, url: '/#/scontri' }, other.id);
+  rt.pushTeams(me.gameId, { title: 'Proposta di alleanza', body: `Il Settore ${me.sectorName} vi propone un'alleanza. Rispondete nell'app.`, tag: `ally-${id}`, url: '/#/alleanze' }, other.id);
   return { ok: true, id };
 }
 
@@ -108,7 +108,7 @@ function requestBreak(me, allyTeamId) {
   const id = Number(q.run("INSERT INTO alliance_requests (gameId, kind, fromTeamId, toTeamId, status, createdAt) VALUES (?, 'break', ?, ?, 'pending', ?)", me.gameId, me.id, ally.id, Date.now()).lastInsertRowid);
   G.log(me.gameId, `coppia:${me.id}`, 'alliance_break_proposed', { from: me.sectorName, to: ally.sectorName });
   notify([ally.id, me.id], me.gameId, null);
-  rt.pushTeams(me.gameId, { title: 'Rottura dell\'alleanza', body: `Il Settore ${me.sectorName} vuole rompere l'alleanza. Rispondete nell'app.`, tag: `ally-${id}`, url: '/#/scontri' }, ally.id);
+  rt.pushTeams(me.gameId, { title: 'Rottura dell\'alleanza', body: `Il Settore ${me.sectorName} vuole rompere l'alleanza. Rispondete nell'app.`, tag: `ally-${id}`, url: '/#/alleanze' }, ally.id);
   return { ok: true, id };
 }
 
@@ -129,7 +129,7 @@ function respondRequest(me, requestId, accept) {
     }
     G.log(me.gameId, `coppia:${me.id}`, r.kind === 'join' ? 'alliance_rejected' : 'alliance_break_rejected', { from: from.sectorName, to: me.sectorName });
     notify([from.id, me.id], me.gameId, null);
-    rt.pushTeams(me.gameId, { title: r.kind === 'join' ? 'Alleanza rifiutata' : 'Rottura rifiutata', body: `Il Settore ${me.sectorName} ha rifiutato.`, tag: `ally-${r.id}`, url: '/#/scontri' }, from.id);
+    rt.pushTeams(me.gameId, { title: r.kind === 'join' ? 'Alleanza rifiutata' : 'Rottura rifiutata', body: `Il Settore ${me.sectorName} ha rifiutato.`, tag: `ally-${r.id}`, url: '/#/alleanze' }, from.id);
     return { ok: true, accepted: false };
   }
   let members;
@@ -138,7 +138,7 @@ function respondRequest(me, requestId, accept) {
     if (r.kind === 'join') {
       const mine = sideOf(from.id);
       const theirs = sideOf(me.id);
-      if (mine.length + theirs.length > MAX_ALLIANCE) throw err(409, `Un'alleanza ha al massimo ${MAX_ALLIANCE} coppie`);
+      if (mine.length + theirs.length > MAX_ALLIANCE) throw err(409, `Alleanza impossibile: insieme superereste le ${MAX_ALLIANCE} coppie`);
       // Si uniscono le due parti (coppie singole o alleanze) in una sola alleanza.
       const keep = allianceOf(from.id)?.id || allianceOf(me.id)?.id
         || Number(q.run('INSERT INTO alliances (gameId, createdAt) VALUES (?, ?)', me.gameId, Date.now()).lastInsertRowid);
@@ -193,7 +193,8 @@ function applyEngagement(e, by) {
     }
     // Ogni vincitore (e ogni suo alleato) riceve i Sigilli di tutta la parte sconfitta.
     for (const w of winners) for (const l of losers) if (giveCode(w, l, 'won')) won.push(l);
-    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${names(winners).join(', ')}`);
+    const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
+    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}`);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
   if (e.result === 'draw') {
@@ -266,14 +267,33 @@ function resolveEngagement(engagementId, decision, actor) {
 const teamLite = (id) => { const t = team(id); return t ? { teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor } : null; };
 
 function engagementOut(e, meId) {
-  const winners = JSON.parse(e.winners);
-  const losers = JSON.parse(e.losers);
+  let winners = JSON.parse(e.winners);
+  let losers = JSON.parse(e.losers);
+  // Per le coppie l'alleanza dell'altra parte resta segreta: di là si vede solo chi ha combattuto direttamente.
+  if (meId) {
+    const face = (side) => [[e.reporterTeamId, e.opponentTeamId].find((id) => side.includes(id))];
+    if (winners.includes(meId)) losers = face(losers);
+    else if (losers.includes(meId)) winners = face(winners);
+  }
   return {
     id: e.id, result: e.result, status: e.status, createdAt: e.createdAt, resolvedAt: e.resolvedAt,
     reporter: teamLite(e.reporterTeamId), opponent: teamLite(e.opponentTeamId),
     winners: winners.map(teamLite), losers: losers.map(teamLite),
     mine: meId ? (e.result === 'draw' ? 'draw' : winners.includes(meId) ? 'won' : losers.includes(meId) ? 'lost' : null) : null,
   };
+}
+
+const VICTORY_SHOW_MS = 10 * 60000;
+
+function victoryOut(e) {
+  const winners = JSON.parse(e.winners);
+  const face = [e.reporterTeamId, e.opponentTeamId].find((id) => !winners.includes(id));
+  const seals = JSON.parse(e.losers).map((id) => {
+    const t = team(id);
+    const sc = t?.sectorId ? q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', t.gameId, t.sectorId) : null;
+    return sc ? { sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, code: sc.code } : null;
+  }).filter(Boolean);
+  return { id: e.id, resolvedAt: e.resolvedAt, against: teamLite(face), seals };
 }
 
 function combatState(me) {
@@ -293,11 +313,15 @@ function combatState(me) {
     maxAlliance: MAX_ALLIANCE,
     alliance: a ? { id: a.id, members: a.members.map(teamLite) } : null,
     teams: G.teamsOf(me.gameId).filter((t) => t.id !== me.id && t.sectorId && t.status !== 'withdrawn')
-      .map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, allied: allied.has(t.id), allianceSize: sideOf(t.id).length, retryAt: blocks[t.id] || null })),
+      .map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, allied: allied.has(t.id), retryAt: blocks[t.id] || null })),
     incoming: q.all("SELECT * FROM alliance_requests WHERE toTeamId = ? AND status = 'pending' ORDER BY id", me.id)
       .map((r) => ({ ...reqOut(r), team: teamLite(r.fromTeamId) })),
     outgoing: q.all("SELECT * FROM alliance_requests WHERE fromTeamId = ? AND status = 'pending' ORDER BY id", me.id).map((r) => ({ ...reqOut(r), team: teamLite(r.toTeamId) })),
     toConfirm: recent.filter((e) => e.status === 'pending' && JSON.parse(e.losers).includes(me.id)).map((e) => engagementOut(e, me.id)),
+    // Vittorie appena confermate (anche degli alleati): il telefono mostra la Vittoria con i Sigilli di tutta
+    // la parte sconfitta, anche quelli che si conoscevano già (rivelati, annotati, da un'alleanza).
+    victories: recent.filter((e) => e.status === 'confirmed' && e.result !== 'draw' && JSON.parse(e.winners).includes(me.id) && e.resolvedAt > now - VICTORY_SHOW_MS)
+      .map((e) => victoryOut(e)),
     history: recent.slice(0, 15).map((e) => engagementOut(e, me.id)),
   };
 }

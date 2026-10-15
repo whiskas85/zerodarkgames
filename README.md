@@ -89,8 +89,8 @@ Le notifiche richiedono HTTPS (vedi sotto).
 - **Armamenti**: finestre con apertura e durata; all'apertura annuncio e conto alla rovescia nelle app, alla chiusura un secondo annuncio. Si possono aprire subito, anticipare, posticipare, prolungare o chiudere prima.
 - **Annunci e messaggi**: vista ad albero — tutte le coppie (annunci) e sotto ogni coppia; tutti gli Eletti e sotto ogni squadra — con la conversazione a destra (testo e vocali).
 - **Scansione degli Altari a tempo**: vale i minuti impostati nella partita (default 15, 0 = sempre); poi va ripetuta. Se il Sigillo è già nel taccuino l'app lo propone, senza scriverlo.
-- **Alleanze**: proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri.
-- **Scontri**: VINTO / PERSO / PAREGGIO contro una coppia. "Perso" vale subito, "vinto" va confermato dallo sconfitto (se contesta decide la regia). I vincitori e i loro alleati ricevono i Sigilli di tutta la parte sconfitta; chi perde riceve in automatico il timer Veglia.
+- **Alleanze** (pagina sua nell'app): proposta e accettazione (massimo 3 coppie), rottura allo stesso modo; gli alleati ricevono i Sigilli gli uni degli altri. Le alleanze sono **segrete**: le altre coppie non vedono chi è alleato con chi né quante coppie ha un'alleanza (il server non lo manda); se insieme si superano le 3 coppie, l'alleanza si rifiuta all'accettazione.
+- **Scontri**: VINTO / PERSO / PAREGGIO contro una coppia. "Perso" vale subito, "vinto" va confermato dallo sconfitto (se contesta decide la regia). I vincitori e i loro alleati ricevono i Sigilli di tutta la parte sconfitta; chi perde riceve in automatico il timer Veglia (popup Sconfitta). Chi vince, e ogni suo alleato, vede il popup **Vittoria** con i Sigilli di tutta la parte sconfitta, anche quelli che conosceva già. Negli scontri della parte avversaria si vede solo la coppia con cui si è combattuto.
 
 ## Accedi con Zero Dark Ops
 
