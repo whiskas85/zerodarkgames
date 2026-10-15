@@ -12,9 +12,11 @@ DOCKER="${DOCKER:-docker}"
 warn() { echo "::warning::$*"; }
 
 FILE=""
+SITES=""
 UP=""
 VALIDATE=""
 RELOAD=""
+FIND=""
 
 CT=$($DOCKER ps --format '{{.Names}} {{.Image}}' | awk 'tolower($2) ~ /caddy/ { print $1; exit }')
 if [ -n "$CT" ]; then
@@ -30,6 +32,11 @@ if [ -n "$CT" ]; then
     D=$($DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$CT")
     [ -n "$D" ] && FILE="$D/Caddyfile"
   fi
+  # Un file per sito (import /etc/caddy/siti/*.caddy), come fa il gestionale: si scrive lì, non nel Caddyfile.
+  SITES=$($DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/siti"}}{{.Source}}{{end}}{{end}}' "$CT")
+  # Il sito si cerca in tutto ciò che Caddy legge (Caddyfile e file importati).
+  FIND="$DOCKER exec $CT grep -rqsE"
+  FIND_IN=/etc/caddy
   NETMODE=$($DOCKER inspect -f '{{.HostConfig.NetworkMode}}' "$CT")
   if [ "$NETMODE" = "host" ]; then
     UP="127.0.0.1:$PORT"
@@ -44,6 +51,8 @@ if [ -n "$CT" ]; then
   RELOAD="$DOCKER exec $CT caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
 elif command -v caddy >/dev/null 2>&1 && [ -f /etc/caddy/Caddyfile ]; then
   FILE=/etc/caddy/Caddyfile
+  FIND="grep -rqsE"
+  FIND_IN=/etc/caddy
   UP="127.0.0.1:$PORT"
   VALIDATE="caddy validate --config $FILE --adapter caddyfile"
   RELOAD="sudo -n systemctl reload caddy 2>/dev/null || caddy reload --config $FILE --adapter caddyfile"
@@ -56,8 +65,30 @@ if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
   warn "Caddyfile non trovato (container $CT): aggiungi a mano il sito $DOMAIN → $UP"
   exit 0
 fi
-if grep -qE "^[[:space:]]*(https?://)?$DOMAIN([[:space:],{]|$)" "$FILE"; then
-  echo "Il sito $DOMAIN è già nel Caddyfile ($FILE)"
+PATTERN="^[[:space:]]*(https?://)?$DOMAIN([[:space:],{]|$)"
+if grep -qE "$PATTERN" "$FILE" || { [ -n "$SITES" ] && grep -rqsE "$PATTERN" "$SITES"; } || sh -c "$FIND '$PATTERN' $FIND_IN" 2>/dev/null; then
+  echo "Il sito $DOMAIN è già configurato in Caddy"
+  exit 0
+fi
+
+BLOCK=$(printf '# Zero Dark Games (aggiunto dal workflow di pubblicazione)\n%s {\n\tencode gzip\n\treverse_proxy %s\n}\n' "$DOMAIN" "$UP")
+if [ -n "$SITES" ] && grep -qE '^[[:space:]]*import[[:space:]]+/etc/caddy/siti/' "$FILE"; then
+  # Un file tutto nostro nella cartella dei siti: niente da ripristinare nel Caddyfile se qualcosa va storto.
+  TARGET="$SITES/zerodarkgames.caddy"
+  if ! { [ -w "$SITES" ] || [ -w "$TARGET" ]; }; then
+    warn "La cartella $SITES non è scrivibile da $(whoami): crea $TARGET con il sito $DOMAIN → $UP"
+    exit 0
+  fi
+  printf '%s\n' "$BLOCK" > "$TARGET"
+  if sh -c "$VALIDATE" >/dev/null 2>&1 && sh -c "$RELOAD"; then
+    echo "Aggiunto a Caddy: $DOMAIN → $UP ($TARGET)"
+  else
+    sh -c "$VALIDATE" 2>&1 | tail -5 || true
+    rm -f "$TARGET"
+    sh -c "$RELOAD" >/dev/null 2>&1 || true
+    echo "::error::Configurazione di Caddy non valida: tolto $TARGET"
+    exit 1
+  fi
   exit 0
 fi
 if [ ! -w "$FILE" ]; then
@@ -66,10 +97,11 @@ if [ ! -w "$FILE" ]; then
 fi
 
 cp "$FILE" "$FILE.bak-zdg"
-printf '\n# Zero Dark Games (aggiunto dal workflow di pubblicazione)\n%s {\n\tencode gzip\n\treverse_proxy %s\n}\n' "$DOMAIN" "$UP" >> "$FILE"
+printf '\n%s\n' "$BLOCK" >> "$FILE"
 if sh -c "$VALIDATE" >/dev/null 2>&1 && sh -c "$RELOAD"; then
   echo "Aggiunto a Caddy: $DOMAIN → $UP ($FILE)"
 else
+  sh -c "$VALIDATE" 2>&1 | tail -5 || true
   cp "$FILE.bak-zdg" "$FILE"
   sh -c "$RELOAD" >/dev/null 2>&1 || true
   echo "::error::Configurazione di Caddy non valida: ripristinato il Caddyfile originale"
