@@ -10,6 +10,11 @@ body { font-size: 15px; }
 .stack { display: grid; gap: 16px; }
 .stack-sm { display: grid; gap: 8px; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* In una tabella la cella resta una cella (con flex la riga si spezzava): i pulsanti stanno in fila e vanno a capo. */
+td.row-actions { display: table-cell; vertical-align: middle; }
+td.row-actions > * { margin: 3px 6px 3px 0; vertical-align: middle; }
+.elect-access { display: flex; gap: 12px; align-items: flex-start; }
+.elect-access img { background: #fff; padding: 4px; flex: none; }
 .input-sm { min-height: 36px; padding: 6px 10px; font-size: 14px; }
 .btn-go { font-family: var(--f-display); font-size: 28px; letter-spacing: .04em; padding: 12px 34px; min-height: 64px; }
 
@@ -176,7 +181,7 @@ tr.rev-skipped td { opacity: .45; text-decoration: line-through; }
 .frag-check .pos { color: var(--brass); }
 
 /* Settori e Altari */
-.sectors-table td { vertical-align: top; }
+.sectors-table td { vertical-align: middle; }
 .sectors-table .roman { font-weight: 600; color: var(--blood); margin-bottom: 4px; }
 .w-70 { width: 70px; }
 .sector-add { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
@@ -296,7 +301,7 @@ tr.gift-row-claimed td { opacity: .6; }
 
 /* Tabella degli Eletti: nome sempre leggibile, la tendina della squadra ha la sua colonna */
 .elect-table { width: 100%; }
-.elect-table td { vertical-align: top; }
+.elect-table td { vertical-align: middle; }
 .elect-table td:first-child { min-width: 180px; }
 .elect-table select.input { min-width: 150px; width: 100%; }
 

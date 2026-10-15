@@ -1278,10 +1278,12 @@ function viewSquads() {
             h('td', null, d.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
               : h('span', { class: 'tiny muted' }, 'crea una squadra')),
             h('td', null, m.pushDevices ? h('span', { class: 'chip chip-ok' }, `attive (${m.pushDevices})`) : h('span', { class: 'chip chip-warn', title: 'Deve aprire l\'app e premere "Attiva le notifiche"' }, 'non attive')),
-            h('td', null, h('span', { class: 'mono' }, p.accessCode || '—'),
-              h('div', { class: 'row-actions' },
-                h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
-                ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)),
+            h('td', null, h('div', { class: 'elect-access' },
+              p.loginToken ? h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: `QR di accesso di ${m.name}`, width: 84, height: 84, loading: 'lazy' }) : null,
+              h('div', null, h('div', { class: 'mono access' }, p.accessCode || '—'),
+                h('div', { class: 'row-actions' },
+                  h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
+                  ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)))),
             h('td', { class: 'row-actions' }, resetBtn(m), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
         })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto.'),
       h('h3', { class: 'sub' }, 'Aggiungi un Eletto a mano (già accettato)'),
