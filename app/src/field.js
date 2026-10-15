@@ -56,6 +56,7 @@ function giftOut(g) {
     id: g.id, label: g.label, typeId: g.typeId, name: g.name, icon: g.icon, color: g.color, description: g.description,
     status: g.status, revealMode: g.revealMode, revealAtMin: g.revealAtMin, revealAt: g.revealAt,
     lat: g.lat, lng: g.lng, accuracy: g.accuracy, placedAt: g.placedAt, placedBy: g.placedBy, hasPhoto: !!g.photoFile, squadId: g.squadId,
+    provisional: !!g.provisional,
     ...taskFields(g),
     revealedAt: g.revealedAt, claimedAt: g.claimedAt, usedAt: g.usedAt, expiredAt: g.expiredAt,
     expiresAfterMin: g.expiresAfterMin, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null,
@@ -258,15 +259,16 @@ function placePoint(pointId, gameId, body, who, squadId = null) {
   const pt = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(pointId), Number(gameId));
   if (!pt) throw err(404, 'Altare non trovato in questa partita');
   if (G.getGame(pt.gameId).status === 'ended') throw err(409, 'La partita è terminata');
-  const p = readPlacement(body, !!body.photoOptional);
+  const prov = !!body.provisional;
+  const p = readPlacement(body, !!body.photoOptional || prov);
   const file = p.buffer ? savePhoto('altare', pt.id, p) : null;
-  q.run('UPDATE points SET lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL WHERE id = ?',
-    p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(pt.gameId, squadId, pt.squadId), pt.id);
+  q.run('UPDATE points SET lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL, provisional = ? WHERE id = ?',
+    p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(pt.gameId, squadId, pt.squadId), prov ? 1 : 0, pt.id);
   removePhoto(pt.photoFile);
-  G.log(pt.gameId, who, pt.moveRequestedAt ? 'point_moved' : 'point_placed', { label: pt.label, accuracy: p.acc, source: p.source });
+  G.log(pt.gameId, who, prov ? 'point_placed_provisional' : pt.moveRequestedAt ? 'point_moved' : 'point_placed', { label: pt.label, accuracy: p.acc, source: p.source });
   rt.toStaff(pt.gameId, 'placed');
   rt.toTeams(pt.gameId, 'state', {});
-  return { ok: true, label: pt.label };
+  return { ok: true, label: pt.label, provisional: prov };
 }
 
 function placeGift(giftId, gameId, body, who, squadId = null) {
@@ -275,17 +277,19 @@ function placeGift(giftId, gameId, body, who, squadId = null) {
   if (g.status === 'claimed') throw err(409, 'Questo dono è già stato preso');
   if (g.status === 'expired') throw err(409, 'Questo dono è svanito: la regia può riportarlo da piazzare');
   if (G.getGame(g.gameId).status === 'ended') throw err(409, 'La partita è terminata');
-  const p = readPlacement(body, !!body.photoOptional);
+  const prov = !!body.provisional;
+  const p = readPlacement(body, !!body.photoOptional || prov);
   const file = p.buffer ? savePhoto('dono', g.id, p) : null;
   const status = g.status === 'revealed' ? 'revealed' : 'placed';
-  q.run('UPDATE gifts SET status = ?, lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL WHERE id = ?',
-    status, p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(g.gameId, squadId, g.squadId), g.id);
+  q.run('UPDATE gifts SET status = ?, lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL, provisional = ? WHERE id = ?',
+    status, p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(g.gameId, squadId, g.squadId), prov ? 1 : 0, g.id);
   removePhoto(g.photoFile);
-  G.log(g.gameId, who, 'gift_placed', { label: g.label, type: g.name, accuracy: p.acc });
-  if (status === 'placed' && g.revealMode === 'onplace') revealGift(g.id, who);
+  G.log(g.gameId, who, prov ? 'gift_placed_provisional' : 'gift_placed', { label: g.label, type: g.name, accuracy: p.acc });
+  // Provvisorio: niente annuncio «appena piazzato», arriva con il piazzamento definitivo.
+  if (status === 'placed' && g.revealMode === 'onplace' && !prov) revealGift(g.id, who);
   rt.toStaff(g.gameId, 'placed');
   rt.toTeams(g.gameId, 'state', {});
-  return { ok: true, label: g.label, revealed: g.revealMode === 'onplace' || status === 'revealed' };
+  return { ok: true, label: g.label, provisional: prov, revealed: (g.revealMode === 'onplace' && !prov) || status === 'revealed' };
 }
 
 // Luoghi del gioco (Soglia, Cerchio di inizio): come gli Altari, ma la foto è facoltativa.
@@ -293,20 +297,21 @@ function placeLandmark(id, gameId, body, who, squadId = null) {
   const l = q.get('SELECT * FROM landmarks WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
   if (!l) throw err(404, 'Luogo non trovato in questa partita');
   if (G.getGame(l.gameId).status === 'ended') throw err(409, 'La partita è terminata');
+  const prov = !!body.provisional;
   const p = readPlacement(body, true);
   const file = p.buffer ? savePhoto(l.kind, l.id, p) : null;
-  q.run('UPDATE landmarks SET lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL WHERE id = ?',
-    p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(l.gameId, squadId, l.squadId), l.id);
+  q.run('UPDATE landmarks SET lat = ?, lng = ?, accuracy = ?, photoFile = ?, placedAt = ?, placedBy = ?, placeSource = ?, placedSquadId = ?, moveRequestedAt = NULL, provisional = ? WHERE id = ?',
+    p.lat, p.lng, p.acc, file, Date.now(), who, p.source, placerSquad(l.gameId, squadId, l.squadId), prov ? 1 : 0, l.id);
   removePhoto(l.photoFile);
   G.log(l.gameId, who, 'landmark_placed', { label: l.label, accuracy: p.acc, source: p.source });
   rt.toStaff(l.gameId, 'placed');
   rt.toTeams(l.gameId, 'state', {});
-  return { ok: true, label: l.label };
+  return { ok: true, label: l.label, provisional: prov };
 }
 
 const landmarkOut = (l) => ({
   id: l.id, kind: l.kind, label: l.label, lat: l.lat, lng: l.lng, accuracy: l.accuracy, placedAt: l.placedAt, placedBy: l.placedBy,
-  placeSource: l.placeSource, hasPhoto: !!l.photoFile, squadId: l.squadId, ...taskFields(l),
+  placeSource: l.placeSource, hasPhoto: !!l.photoFile, squadId: l.squadId, provisional: !!l.provisional, ...taskFields(l),
 });
 
 // Cartello scansionato sul campo: Altare (/a/…) o Dono (/d/…).
@@ -341,7 +346,7 @@ function fieldState(gameId) {
     .map((p) => ({
       id: p.id, label: p.label, sectorId: p.sectorId, sectorName: p.sectorName, roman: p.roman, color: p.sectorColor, locationNote: p.locationNote,
       lat: p.lat, lng: p.lng, accuracy: p.accuracy, placedAt: p.placedAt, placedBy: p.placedBy, placeSource: p.placeSource, hasPhoto: !!p.photoFile,
-      squadId: p.squadId, ...taskFields(p),
+      squadId: p.squadId, provisional: !!p.provisional, ...taskFields(p),
     }));
   return {
     game: { id: game.id, name: game.name, status: game.status },

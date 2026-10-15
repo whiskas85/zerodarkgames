@@ -451,7 +451,7 @@ app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
 // La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.
-const placement = (req) => ({ buffer: Buffer.isBuffer(req.body) ? req.body : null, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source, photoOptional: req.user?.role === 'master' });
+const placement = (req) => ({ buffer: Buffer.isBuffer(req.body) ? req.body : null, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source, photoOptional: req.user?.role === 'master', provisional: req.query.provisional === '1' });
 const placerSquad = (req) => req.player?.squadId || req.query.squadId || null;
 app.post('/api/field/points/:id/place', needField, express.raw({ type: () => true, limit: '10mb' }), wrap((req) => F.placePoint(req.params.id, fieldGame(req), placement(req), fieldWho(req), placerSquad(req))));
 // Soglia e Cerchio: foto facoltativa (corpo vuoto = senza foto).

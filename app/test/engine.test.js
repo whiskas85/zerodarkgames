@@ -703,6 +703,29 @@ test('incarichi: punto indicato sulla mappa, spostamento alla squadra che ha pia
   assert.throws(() => F.placePoint(p.id, g.id, { lat: 45, lng: 9 }, 'x'), /Foto/);
 });
 
+test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const p = q.get('SELECT * FROM points WHERE gameId = ? LIMIT 1', g.id);
+  const r = F.placePoint(p.id, g.id, { lat: 45.4, lng: 9.4, acc: 6, provisional: true }, 'eletti:Uno');
+  assert.equal(r.provisional, true);
+  let st = F.fieldState(g.id).points.find((x) => x.id === p.id);
+  assert.deepEqual([st.provisional, st.lat, st.hasPhoto], [true, 45.4, false]);
+  // Conferma con cartello e foto: non è più provvisorio.
+  F.placePoint(p.id, g.id, { buffer: Buffer.from([0xff, 0xd8]), mime: 'image/jpeg', lat: 45.41, lng: 9.4, acc: 4 }, 'eletti:Uno');
+  st = F.fieldState(g.id).points.find((x) => x.id === p.id);
+  assert.deepEqual([st.provisional, st.hasPhoto], [false, true]);
+  // Dono «appena piazzato»: provvisorio non viene annunciato.
+  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'riscatto', count: 1, revealMode: 'onplace' }, 'test');
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  assert.equal(F.placeGift(gid, g.id, { lat: 45, lng: 9, provisional: true }, 'eletti:Uno').revealed, false);
+  assert.equal(F.fieldState(g.id).gifts.find((x) => x.id === gid).provisional, true);
+  assert.equal(q.get('SELECT status FROM gifts WHERE id = ?', gid).status, 'placed');
+  const soglia = F.fieldState(g.id).landmarks.find((l) => l.kind === 'soglia');
+  F.placeLandmark(soglia.id, g.id, { lat: 45.3, lng: 9.3, acc: 4, provisional: true }, 'eletti:Uno');
+  assert.equal(F.fieldState(g.id).landmarks.find((l) => l.kind === 'soglia').provisional, true);
+});
+
 test('doni: incarico alla squadra e annuncio programmato a un orario', () => {
   const F = require('../src/field');
   const g = setupGame(2);

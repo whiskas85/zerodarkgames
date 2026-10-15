@@ -1063,18 +1063,18 @@ function targetItems(d) {
 
 // Segnaposto della mappa della regia, con le azioni nei popup (pulsanti data-act gestiti qui sotto).
 const actBtn = (act, kind, id, label) => `<button type="button" class="btn btn-sm" data-act="${act}" data-kind="${kind}" data-id="${id}">${label}</button>`;
-const placedInfo = (x) => `<small>Piazzato ${fmtTime(x.placedAt)} da ${String(x.placedBy || '?').replace('eletti:', '')}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · punto manuale' : ''}</small>`;
+const placedInfo = (x) => `<small>${x.provisional ? '⚠ Provvisorio · ' : ''}Piazzato ${fmtTime(x.placedAt)} da ${String(x.placedBy || '?').replace('eletti:', '')}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · punto manuale' : ''}</small>`;
 function fieldMapItems(d) {
   return [
     ...groupPositions(fieldPositions).map(positionItem),
     ...(d.landmarks || []).map((l) => landmarkItem(l, `<br>${placedInfo(l)}${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}
       <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
     ...targetItems(d),
-    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label,
+    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
-    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label,
+    ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
       popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}</div>` : '') })),
   ];
 }

@@ -18,9 +18,10 @@ export function revealText(g) {
 }
 
 // Un Altare o un Dono da piazzare (o da spostare) per una squadra.
+// Un piazzamento provvisorio resta da fare: va confermato con cartello e foto.
 export const isPending = (x, kind) => (kind !== 'gift'
-  ? x.lat == null || !!x.moveRequestedAt
-  : !['claimed', 'expired'].includes(x.status) && (x.status === 'draft' || !!x.moveRequestedAt));
+  ? x.lat == null || !!x.moveRequestedAt || !!x.provisional
+  : !['claimed', 'expired'].includes(x.status) && (x.status === 'draft' || !!x.moveRequestedAt || !!x.provisional));
 
 /**
  * F: { who: { role, squad }, gameId, squadId, data, me, geoError }
@@ -114,30 +115,32 @@ export function createField(F, { rerender }) {
 
   function placedLine(x) {
     if (x.lat == null) return h('span', { class: 'chip chip-warn' }, 'Da piazzare');
+    if (x.provisional) return h('span', { class: 'chip chip-warn' }, `⚠ Provvisorio ${fmtTime(x.placedAt)} · da confermare`);
     return h('span', { class: 'chip chip-ok' }, `Piazzato ${fmtTime(x.placedAt)}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · manuale' : ''}`);
   }
+  const actionLabel = (x) => (x.lat == null ? 'Piazza' : x.moveRequestedAt ? 'Sposta' : x.provisional ? 'Conferma' : 'Ripiazza');
   const squadName = (id) => (F.data?.squads || []).find((s) => s.id === id)?.name;
 
   // ------------------------------------------------------------ elenco Altari
   function viewAltars() {
     const d = F.data;
     if (!d) return h('p', { class: 'empty' }, 'Caricamento…');
-    const places = (d.landmarks || []).map((l) => h('li', { class: `campo-item ${l.lat != null && !l.moveRequestedAt ? 'done' : ''}` },
+    const places = (d.landmarks || []).map((l) => h('li', { class: `campo-item ${!isPending(l, 'landmark') ? 'done' : ''}` },
       l.hasPhoto ? h('img', { class: 'campo-thumb', src: `/api/media/landmark/${l.id}?v=${l.placedAt}`, alt: `Foto di ${l.label}`, loading: 'lazy' }) : h('div', { class: 'campo-thumb empty-thumb' }, l.kind === 'soglia' ? '⛩' : '◯'),
       h('div', { class: 'campo-info' },
         h('strong', null, l.label), h('div', { class: 'small muted' }, 'Luogo del gioco · foto facoltativa'),
         placedLine(l), l.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
         l.squadId ? h('div', { class: 'tiny muted' }, `Incarico: squadra ${squadName(l.squadId) || '?'}`) : null),
-      h('button', { class: `btn btn-sm ${l.lat != null && !l.moveRequestedAt ? '' : 'btn-primary'}`, onclick: () => openPlacement({ kind: 'landmark', id: l.id, label: l.label, item: l }) }, l.lat != null ? (l.moveRequestedAt ? 'Sposta' : 'Ripiazza') : 'Piazza')));
+      h('button', { class: `btn btn-sm ${!isPending(l, 'landmark') ? '' : 'btn-primary'}`, onclick: () => openPlacement({ kind: 'landmark', id: l.id, label: l.label, item: l }) }, actionLabel(l))));
     if (!d.points.length) return h('div', { class: 'stack-sm' }, h('ul', { class: 'campo-list' }, places), h('p', { class: 'empty' }, 'Nessun Altare: la regia deve prima formare le coppie e sincronizzare gli Altari.'));
-    return h('ul', { class: 'campo-list' }, places, d.points.map((p) => h('li', { class: `campo-item ${p.lat != null && !p.moveRequestedAt ? 'done' : ''}` },
+    return h('ul', { class: 'campo-list' }, places, d.points.map((p) => h('li', { class: `campo-item ${!isPending(p, 'point') ? 'done' : ''}` },
       p.hasPhoto ? h('img', { class: 'campo-thumb', src: `/api/media/point/${p.id}?v=${p.placedAt}`, alt: `Foto di ${p.label}`, loading: 'lazy' }) : h('div', { class: 'campo-thumb empty-thumb' }, p.roman),
       h('div', { class: 'campo-info' },
         h('strong', null, p.label), h('div', { class: 'small muted' }, `Settore ${p.sectorName}${p.locationNote ? ` · ${p.locationNote}` : ''}`),
         placedLine(p), p.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
         p.squadId ? h('div', { class: 'tiny muted' }, `Incarico: squadra ${squadName(p.squadId) || '?'}`) : null,
         p.placedBy ? h('div', { class: 'tiny muted' }, `da ${p.placedBy}`) : null),
-      h('button', { class: `btn btn-sm ${p.lat != null && !p.moveRequestedAt ? '' : 'btn-primary'}`, onclick: () => openPlacement({ kind: 'point', id: p.id, label: p.label, item: p }) }, p.lat != null ? (p.moveRequestedAt ? 'Sposta' : 'Ripiazza') : 'Piazza'))));
+      h('button', { class: `btn btn-sm ${!isPending(p, 'point') ? '' : 'btn-primary'}`, onclick: () => openPlacement({ kind: 'point', id: p.id, label: p.label, item: p }) }, actionLabel(p)))));
   }
 
   // ------------------------------------------------------------ elenco Doni
@@ -152,12 +155,13 @@ export function createField(F, { rerender }) {
         h('span', { class: `chip ${g.status === 'draft' ? 'chip-warn' : g.status === 'revealed' ? 'chip-blood' : g.status === 'claimed' ? '' : 'chip-ok'}` },
           g.status === 'claimed' ? `Preso da ${g.claimedBy}` : GIFT_STATE[g.status]),
         g.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
+        g.provisional ? h('span', { class: 'chip chip-warn' }, '⚠ Provvisorio · da confermare') : null,
         g.squadId ? h('div', { class: 'tiny muted' }, `Incarico: squadra ${squadName(g.squadId) || '?'}${g.targetLat != null ? ' · punto indicato' : ''}`) : null,
         g.lat != null ? h('div', { class: 'tiny muted' }, `Piazzato ${fmtTime(g.placedAt)}${g.accuracy ? ` · ±${g.accuracy} m` : ''} da ${g.placedBy}`) : null,
         g.expiresAfterMin && !['claimed', 'expired'].includes(g.status) ? h('div', { class: 'tiny muted' }, `Svanisce ${g.expiresAfterMin}′ dopo l'annuncio`) : null,
         ['draft', 'placed'].includes(g.status) ? h('div', { class: 'tiny muted' }, revealText(g)) : null),
       !['claimed', 'expired'].includes(g.status) ? h('button', { class: `btn btn-sm ${isPending(g, 'gift') ? 'btn-primary' : ''}`, onclick: () => openPlacement({ kind: 'gift', id: g.id, label: `${g.label} · ${g.name}`, item: g }) },
-        g.status === 'draft' ? 'Piazza e attiva' : g.moveRequestedAt ? 'Sposta' : 'Ripiazza') : null)));
+        g.status === 'draft' ? 'Piazza e attiva' : g.moveRequestedAt ? 'Sposta' : g.provisional ? 'Conferma' : 'Ripiazza') : null)));
   }
 
   // ------------------------------------------------------------ mappa del campo
@@ -169,12 +173,12 @@ export function createField(F, { rerender }) {
     mapView.setItems([
       ...positions.filter((p) => p.deviceId !== deviceId).map(positionItem),
       ...(d.landmarks || []).map((l) => landmarkItem(l)),
-      ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label,
-        popup: `<strong>${p.label}</strong><br>Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
+      ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label, provisional: p.provisional,
+        popup: `<strong>${p.label}</strong><br>${p.provisional ? '⚠ Provvisorio · ' : ''}Piazzato ${fmtTime(p.placedAt)} da ${p.placedBy || '?'}${p.accuracy ? ` · ±${p.accuracy} m` : ''}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}` })),
       // Agli Eletti i doni presi o svaniti spariscono dalla mappa; la regia li vede ancora (barrati).
       ...d.gifts.filter((g) => F.who.role === 'master' || !['claimed', 'expired'].includes(g.status)).map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color,
-        state: g.status === 'placed' ? 'hidden' : g.status, title: g.label,
-        popup: `<strong>${g.label} · ${g.name}</strong><br>${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}` })),
+        state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
+        popup: `<strong>${g.label} · ${g.name}</strong><br>${g.provisional ? '⚠ Provvisorio · ' : ''}${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}` })),
       // Punti indicati dalla regia per gli incarichi ancora da fare (della propria squadra; la regia li vede tutti).
       ...[...d.points.map((p) => ['point', p]), ...d.gifts.map((g) => ['gift', g]), ...(d.landmarks || []).map((l) => ['landmark', l])]
         .filter(([k, x]) => x.targetLat != null && isPending(x, k) && (F.who.role === 'master' || (sq && x.squadId === sq.id)))
@@ -259,6 +263,8 @@ export function createField(F, { rerender }) {
     const goalLine = goal ? h('div', { class: 'small ok-text' }) : null;
     const photoPreview = h('div', { class: 'photo-preview' }, h('span', { class: 'muted' }, 'Nessuna foto'));
     const confirmBtn = h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', disabled: true }, 'Conferma piazzamento');
+    // Provvisorio: solo la posizione, senza cartello né foto. In mappa con il triangolo «!»; si conferma poi col piazzamento normale.
+    const provBtn = h('button', { class: 'btn btn-warn btn-block', type: 'button', disabled: true }, '⚠ Piazza provvisorio (senza foto)');
     const position = () => manual || F.me;
     const sync = () => {
       const p = position();
@@ -270,6 +276,7 @@ export function createField(F, { rerender }) {
       posLine.className = `mono small ${p && (manual || p.acc <= 30) ? 'ok-text' : 'bad-text'}`;
       if (goalLine) goalLine.textContent = p ? `⌖ Punto indicato dalla regia a ${fmtDist(meters(p, goal))}` : '⌖ La regia ha indicato un punto sulla mappa';
       confirmBtn.disabled = !(p && !tooVague && (photo || photoOptional));
+      provBtn.disabled = !(p && !tooVague);
       if (p) sheetMap.setMe(p);
     };
     const tick = setInterval(sync, 1000);
@@ -291,27 +298,35 @@ export function createField(F, { rerender }) {
       } catch { toast('Foto non leggibile, riprova', 'error'); }
     } });
     const close = () => { clearInterval(tick); sheet.remove(); document.body.classList.remove('no-scroll'); };
-    confirmBtn.addEventListener('click', async () => {
+    const send = async (prov) => {
       const p = position();
-      if (!p || (!manual && p.acc > PLACE_MAX_ACC) || (!photo && !photoOptional)) return;
+      if (!p || (!manual && p.acc > PLACE_MAX_ACC) || (!prov && !photo && !photoOptional)) return;
+      const btn = prov ? provBtn : confirmBtn;
+      const label = btn.textContent;
       confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Invio in corso…';
+      provBtn.disabled = true;
+      btn.textContent = 'Invio in corso…';
       const qs = new URLSearchParams({ gameId: F.gameId, lat: p.lat, lng: p.lng, acc: p.acc ?? '', source: manual ? 'manual' : 'gps', squadId: F.squadId || '' });
+      if (prov) qs.set('provisional', '1');
+      const body = prov ? null : photo;
       try {
         const path = { gift: 'gifts', point: 'points', landmark: 'landmarks' }[target.kind];
-        const res = await fetch(`/api/field/${path}/${target.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': photo ? 'image/jpeg' : 'application/octet-stream' }, body: photo || undefined, credentials: 'same-origin' });
+        const res = await fetch(`/api/field/${path}/${target.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': body ? 'image/jpeg' : 'application/octet-stream' }, body: body || undefined, credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
         vibrate([80, 60, 200]);
-        toast(target.kind === 'gift' ? `${data.label} piazzato${data.revealed ? ' e annunciato alle coppie' : ''}` : `${data.label} piazzato`, 'ok', 6000);
+        toast(prov ? `${data.label} piazzato provvisorio: confermalo poi con cartello e foto`
+          : target.kind === 'gift' ? `${data.label} piazzato${data.revealed ? ' e annunciato alle coppie' : ''}` : `${data.label} piazzato`, 'ok', 6000);
         close();
         load();
       } catch (e) {
         toast(e.message.includes('Failed to fetch') ? 'Nessuna rete: riprova appena c\'è segnale' : e.message, 'error', 7000);
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Conferma piazzamento';
+        btn.textContent = label;
+        sync();
       }
-    });
+    };
+    confirmBtn.addEventListener('click', () => send(false));
+    provBtn.addEventListener('click', () => send(true));
     const sheet = h('div', { class: 'place-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Piazza ${target.label}` },
       h('div', { class: 'place-head' }, h('div', null, h('div', { class: 'eyebrow' }, item?.moveRequestedAt ? 'Sposta' : target.kind === 'gift' ? 'Piazza e attiva il dono' : target.kind === 'landmark' ? 'Piazza il luogo' : 'Piazza l\'Altare'), h('h2', null, target.label)),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: close }, 'Annulla')),
@@ -323,7 +338,8 @@ export function createField(F, { rerender }) {
       h('section', { class: 'place-step' },
         h('div', { class: 'step-title' }, h('span', { class: 'step-n' }, '2'), photoOptional ? 'Foto (facoltativa)' : 'Foto del piazzamento'),
         h('label', { class: 'btn btn-block', for: 'place-photo' }, '📷 Scatta la foto'), fileInput, photoPreview),
-      h('section', { class: 'place-step' }, confirmBtn));
+      h('section', { class: 'place-step stack-sm' }, confirmBtn, provBtn,
+        h('p', { class: 'tiny muted' }, 'Senza cartello o foto? «Piazza provvisorio» segna solo il punto: in mappa compare con il triangolo ⚠ finché non lo confermi.')));
     document.body.append(sheet);
     document.body.classList.add('no-scroll');
     sync();

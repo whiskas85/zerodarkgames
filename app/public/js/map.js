@@ -29,6 +29,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 // Segnaposto: Altare (quadrato con numero romano), Dono (cerchio con icona), io (punto blu).
 export function pinHtml(item) {
+  // Piazzato provvisorio (senza cartello né foto): stesso segnaposto con il triangolo di attenzione «!».
+  if (item.provisional) return `<span class="pin-prov-wrap">${pinHtml({ ...item, provisional: false })}<span class="pin-prov" title="Provvisorio">!</span></span>`;
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
@@ -201,7 +203,7 @@ export function watchPosition(onPos, onError) {
 
 // Soglia e Cerchio di inizio.
 export function landmarkItem(l, popupExtra = '') {
-  return { key: `l${l.id}`, kind: 'place', place: l.kind, lat: l.lat, lng: l.lng, title: l.label, popup: `<strong>${esc(l.label)}</strong>${popupExtra}` };
+  return { key: `l${l.id}`, kind: 'place', place: l.kind, lat: l.lat, lng: l.lng, title: l.label, provisional: l.provisional, popup: `<strong>${esc(l.label)}</strong>${l.provisional ? '<br>⚠ Provvisorio' : ''}${popupExtra}` };
 }
 
 // I telefoni della stessa coppia vicini tra loro (entro 30 m) diventano un solo pallino; se si allontanano, due.
