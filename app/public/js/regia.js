@@ -30,6 +30,7 @@ const TABS = [
   ['avvisi', 'Avvisi'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
+  ['regolamento', 'Regolamento'],
   ['impostazioni', 'Impostazioni'],
 ];
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
@@ -134,9 +135,12 @@ function preserve(fn) {
 
 function render() {
   if (!R.me || R.me.role !== 'master') return mount($root, viewLogin());
+  // Regolamento già aperto: non si ridisegna (l'iframe ripartirebbe dall'inizio).
+  const frame = document.querySelector('.rules-frame');
+  if (tab() === 'regolamento' && frame && frame.getAttribute('src') === (R.ms?.game?.bookUrl || '/regolamento.html')) return tick();
   preserve(() => {
     const ms = R.ms;
-    const body = tab() === 'settori' ? viewSectors() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
+    const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
@@ -169,7 +173,7 @@ function sidebar() {
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
-  const always = ['settori', 'impostazioni'];
+  const always = ['settori', 'regolamento', 'impostazioni'];
   return h('nav', { class: 'sidebar' }, TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
@@ -2332,6 +2336,16 @@ function orgSection() {
             e.preventDefault();
             if (await call('POST', '/api/m/users', { username: uName.value, password: uPass.value, role: uRole.value }, 'Utente creato')) { R.users = []; uName.value = ''; uPass.value = ''; uName.dataset.fresh = uPass.dataset.fresh = '1'; render(); }
           } }, uName, uPass, uRole, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi')));
+}
+
+// Il regolamento della partita (il link impostato nella partita, altrimenti il book dei Giochi) dentro la regia.
+function viewRules() {
+  const url = R.ms?.game?.bookUrl || '/regolamento.html';
+  const local = url.startsWith('/');
+  return h('div', { class: 'stack rules-view' },
+    sectionActions('Regolamento', [h('a', { class: 'btn btn-sm', href: url, target: '_blank', rel: 'noopener' }, 'Apri in una nuova scheda')],
+      local ? null : h('p', { class: 'muted tiny' }, `Regolamento esterno (${url}): se qui sotto non si vede, aprilo in una nuova scheda.`),
+      h('iframe', { class: 'rules-frame', src: url, title: 'Regolamento' })));
 }
 
 function viewNewGame(first) {
