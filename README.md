@@ -119,6 +119,8 @@ Per entrare in regia con il tuo account di Zero Dark Ops: entra come `MASTER_USE
 
 Regia e Soglia non hanno un login proprio: tutto passa dal login principale (`/`), che manda ognuno al suo posto; **Esci** riporta lì.
 
+Se il gestionale gira sulla stessa macchina dei Giochi, dal container il suo indirizzo pubblico spesso non risponde: i Giochi allora lo raggiungono dal Caddy interno (`PROXY_INTERNO`, scritto in automatico dal workflow), con lo stesso certificato. Il workflow controlla anche che i Giochi raggiungano il gestionale (passo «Il gioco raggiunge il gestionale?»).
+
 Il giro è *authorization code* con PKCE S256; l'id_token è verificato (firma RS256 con le chiavi del gestionale, emittente, destinatario, scadenza, nonce). I Giochi non tengono token del gestionale: la sessione è quella solita dell'app. Il gestionale accetta solo indirizzi di ritorno `https://` (o `http://localhost` per le prove).
 
 ## Provare dai telefoni in Wi-Fi

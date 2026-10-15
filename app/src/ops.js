@@ -3,6 +3,9 @@
 // code con PKCE S256; vedi docs/IDENTITA.md di team-management). L'identità è la coppia (iss, sub): un account
 // del gioco può avere più gestionali collegati, ogni (iss, sub) appartiene a un solo account.
 const crypto = require('crypto');
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
 const { q, tx, getSetting, setSetting } = require('./db');
 const G = require('./game');
 const { randomToken, randomCode, HttpError } = require('./util');
@@ -82,11 +85,52 @@ function deleteProvider(id, actor) {
 const discovery = new Map();
 const jwksCache = new Map();
 
+// Gestionale sulla stessa macchina dei Giochi: dal container il suo indirizzo pubblico spesso non torna
+// indietro (hairpin NAT). Con PROXY_INTERNO (il container di Caddy nella stessa rete Docker) ci si collega
+// lì, con lo stesso nome e lo stesso certificato HTTPS. Si prova prima la strada diretta e si ricorda quella buona.
+const PROXY_INTERNO = process.env.PROXY_INTERNO || '';
+const routes = new Map();
+
+function send(url, init = {}, viaProxy = false, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const body = init.body === undefined ? null : String(init.body);
+    const headers = { Accept: 'application/json', ...(init.headers || {}) };
+    if (body !== null) headers['Content-Length'] = Buffer.byteLength(body);
+    const opts = { method: init.method || 'GET', headers, timeout };
+    if (viaProxy) opts.lookup = (_host, o, cb) => dns.lookup(PROXY_INTERNO, o, cb);
+    const req = (u.protocol === 'https:' ? https : http).request(u, opts, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { text += c; if (text.length > 1e6) req.destroy(new Error('risposta troppo grande')); });
+      res.on('end', () => resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, text }));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
+    req.on('error', reject);
+    if (body !== null) req.write(body);
+    req.end();
+  });
+}
+
 async function getJson(url, init) {
-  let res;
-  try { res = await fetch(url, { ...init, signal: AbortSignal.timeout(10000) }); } catch { throw err(502, 'Il gestionale non risponde: riprova tra poco'); }
+  const host = new URL(url).host;
+  const ways = !PROXY_INTERNO ? [false] : routes.get(host) === 'proxy' ? [true, false] : [false, true];
+  let res = null;
+  let last = null;
+  for (const viaProxy of ways) {
+    try {
+      res = await send(url, init, viaProxy, PROXY_INTERNO && !viaProxy ? 5000 : 10000);
+      routes.set(host, viaProxy ? 'proxy' : 'diretto');
+      break;
+    } catch (e) {
+      last = e;
+      console.warn(`Gestionale ${host} non raggiungibile${viaProxy ? ` tramite ${PROXY_INTERNO}` : ''}: ${e.code || e.message}`);
+    }
+  }
+  if (!res) throw err(502, `Il gestionale non risponde (${last?.code || 'errore di rete'}): riprova tra poco`);
   let data = null;
-  try { data = await res.json(); } catch { /* non JSON */ }
+  try { data = JSON.parse(res.text); } catch { /* non JSON */ }
   return { res, data };
 }
 
@@ -287,4 +331,4 @@ function unlink(account, identityId) {
   G.log(null, account.username, 'account_ops_unlinked', { gestionale: row.providerName });
 }
 
-module.exports = { providers, publicList, adminList, saveProvider, deleteProvider, start, finish, resolveAccount, identitiesOf, unlink, verifyIdToken, profileOf, uniqueUsername };
+module.exports = { getJson, providers, publicList, adminList, saveProvider, deleteProvider, start, finish, resolveAccount, identitiesOf, unlink, verifyIdToken, profileOf, uniqueUsername };

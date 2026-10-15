@@ -122,6 +122,11 @@ jobs:
           # Rete Docker di Caddy rilevata nei rilasci precedenti (vedi deploy/caddy-site.sh)
           PROXY_NETWORK=$($SSH "cat '$DIR/.proxy-network' 2>/dev/null" || true)
           echo "PROXY_NETWORK=$PROXY_NETWORK" >> "$GITHUB_ENV"
+          # Container di Caddy: da lì il gioco raggiunge i siti della stessa macchina (es. il gestionale)
+          PROXY_INTERNO=""
+          if [ -n "$PROXY_NETWORK" ]; then
+            PROXY_INTERNO=$($SSH "$DOCKER ps --format '{{.Names}} {{.Image}}'" | awk 'tolower($2) ~ /caddy/ { print $1; exit }' || true)
+          fi
           umask 077
           {
             echo "ZDG_IMAGE=$IMAGE:$GITHUB_SHA"
@@ -132,6 +137,7 @@ jobs:
             echo "MASTER_PASSWORD_RESET=1"
             echo "PUBLIC_URL=https://$DOMAIN"
             echo "VAPID_SUBJECT=mailto:consiglio@zerodarkteam.it"
+            echo "PROXY_INTERNO=$PROXY_INTERNO"
             # «Accedi con Zero Dark Ops»: solo se l'app è registrata nel gestionale (secret OPS_CLIENT_ID).
             if [ -n "$OPS_CLIENT_ID" ]; then
               echo "OPS_ISSUER=$OPS_ISSUER"
@@ -172,6 +178,13 @@ jobs:
       - name: Sito su Caddy
         if: steps.check.outputs.ok == 'true' && vars.CADDY_AUTO != 'false'
         run: $SSH "DOCKER='$DOCKER' sh '$DIR/caddy-site.sh' '$DOMAIN' '$ZDG_PORT' '$DIR'"
+
+      - name: Il gioco raggiunge il gestionale?
+        if: steps.check.outputs.ok == 'true'
+        continue-on-error: true
+        env:
+          OPS_ISSUER: ${{ vars.OPS_ISSUER || 'https://ops.zerodarkteam.it' }}
+        run: $SSH "$DOCKER exec -i -e OPS='$OPS_ISSUER' zero-dark-games node -" < deploy/ops-check.js
 
       - name: Controllo dall'esterno
         if: steps.check.outputs.ok == 'true'

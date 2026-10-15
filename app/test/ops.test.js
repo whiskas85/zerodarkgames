@@ -6,6 +6,8 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'zdg-ops-test-'));
+// Il «Caddy interno» dei test è questa macchina: serve quando la strada diretta non funziona.
+process.env.PROXY_INTERNO = '127.0.0.1';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -168,6 +170,17 @@ test('il gestionale rifiuta o risponde un altro emittente', async () => {
   assert.equal(err.flow.back, 'iscrizione');
   const s2 = await O.start(id, { mode: 'login', redirectUri: 'http://localhost:8090/auth/ops/callback', back: 'app' });
   await assert.rejects(O.finish(s2.state, s2.state, { code: 'x', iss: 'https://falso.example' }), /diverso/);
+});
+
+test('gestionale irraggiungibile direttamente: si passa dal proxy interno e si ricorda', async () => {
+  const port = server.address().port;
+  // Nome che non si risolve (come l'indirizzo pubblico che dal container non torna indietro).
+  const url = `http://ops-giochi.invalid:${port}/.well-known/openid-configuration`;
+  const first = await O.getJson(url);
+  assert.equal(first.res.ok, true);
+  assert.equal(first.data.issuer, issuer);
+  const again = await O.getJson(url);
+  assert.equal(again.res.ok, true);
 });
 
 test('configurazione dalla regia: https obbligatorio, niente doppioni', () => {
