@@ -171,7 +171,7 @@ app.use(express.json({ limit: '200kb' }));
 app.use(loadAuth);
 
 // Aperto anche da altri indirizzi: la regia lo usa per provare se l'indirizzo dei QR risponde.
-app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '*'); res.json({ ok: true }); });
+app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '*'); res.json({ ok: true, env: process.env.ZDG_ENV || 'production' }); });
 app.get('/api/time', (_req, res) => res.json({ now: Date.now() }));
 
 // ---- autenticazione staff

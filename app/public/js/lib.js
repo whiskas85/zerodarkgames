@@ -544,3 +544,17 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
     })();
   });
 }
+
+// Ambiente di test (testgames): una striscia in cima a ogni pagina, per non confonderlo con la produzione.
+try {
+  fetch('/api/health', { cache: 'no-store' }).then((r) => r.json()).then((d) => {
+    if (d?.env !== 'test' || document.querySelector('.env-ribbon')) return;
+    document.documentElement.classList.add('env-test');
+    const el = document.createElement('div');
+    el.className = 'env-ribbon';
+    const label = document.createElement('span');
+    label.textContent = 'Ambiente di test';
+    el.append(label);
+    document.body.prepend(el);
+  }).catch(() => {});
+} catch { /* niente rete */ }

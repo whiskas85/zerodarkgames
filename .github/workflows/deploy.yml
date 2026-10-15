@@ -1,18 +1,30 @@
-# Test, immagine Docker su GHCR e pubblicazione sul server (games.zerodarkteam.it).
-# La pubblicazione parte solo se la variabile di repository DEPLOY_ENABLED vale "true" (vedi README).
+# Test, immagine Docker su GHCR e pubblicazione sul server.
+# - push su main → ambiente di TEST (testgames.zerodarkteam.it);
+# - «Run workflow» con ambiente «produzione» → PRODUZIONE (games.zerodarkteam.it), anche con azzeramento dei dati.
+# La pubblicazione si spegne con la variabile di repository DEPLOY_ENABLED=false (vedi README).
 name: Test e pubblicazione
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Dove pubblicare
+        type: choice
+        options: [test, produzione]
+        default: test
+      azzera:
+        description: "Azzerare i dati (partite, account, impostazioni) prima di avviare? Per confermare scrivi AZZERA"
+        type: string
+        default: ""
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'test' }}
   cancel-in-progress: false
 
 env:
@@ -65,15 +77,20 @@ jobs:
     if: vars.DEPLOY_ENABLED != 'false'
     runs-on: ubuntu-latest
     environment:
-      name: production
-      url: https://games.zerodarkteam.it
+      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && 'production' || 'test' }}
+      url: https://${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && 'games' || 'testgames' }}.zerodarkteam.it
     env:
+      PROD: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione' }}
+      AZZERA: ${{ github.event_name == 'workflow_dispatch' && inputs.azzera == 'AZZERA' }}
       HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '209.227.239.117' }}
       USER: ${{ secrets.DEPLOY_USER }}
       PORT: ${{ secrets.DEPLOY_PORT || '22' }}
-      DIR: ${{ vars.DEPLOY_PATH || 'zerodarkgames' }}
-      ZDG_PORT: ${{ vars.ZDG_PORT || '8090' }}
-      DOMAIN: ${{ vars.DOMAIN || 'games.zerodarkteam.it' }}
+      # Produzione e test: cartella, container, porta, dominio e dati separati sullo stesso server.
+      DIR: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && (vars.DEPLOY_PATH || 'zerodarkgames') || 'zerodarkgames-test' }}
+      ZDG_PORT: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && (vars.ZDG_PORT || '8090') || '8091' }}
+      DOMAIN: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && (vars.DOMAIN || 'games.zerodarkteam.it') || 'testgames.zerodarkteam.it' }}
+      CONTAINER: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && 'zero-dark-games' || 'zero-dark-games-test' }}
+      ZDG_ENV: ${{ (github.event_name == 'workflow_dispatch' && inputs.ambiente == 'produzione') && 'production' || 'test' }}
       HAS_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_USER != '' && secrets.MASTER_PASSWORD != '' }}
     steps:
       - name: Secrets presenti?
@@ -119,8 +136,8 @@ jobs:
           OPS_CLIENT_ID: ${{ secrets.OPS_CLIENT_ID }}
           OPS_CLIENT_SECRET: ${{ secrets.OPS_CLIENT_SECRET }}
         run: |
-          # Rete Docker di Caddy rilevata nei rilasci precedenti (vedi deploy/caddy-site.sh)
-          PROXY_NETWORK=$($SSH "cat '$DIR/.proxy-network' 2>/dev/null" || true)
+          # Rete Docker di Caddy rilevata nei rilasci precedenti (vedi deploy/caddy-site.sh); il test la prende dalla produzione.
+          PROXY_NETWORK=$($SSH "cat '$DIR/.proxy-network' 2>/dev/null || cat '${{ vars.DEPLOY_PATH || 'zerodarkgames' }}/.proxy-network' 2>/dev/null" || true)
           echo "PROXY_NETWORK=$PROXY_NETWORK" >> "$GITHUB_ENV"
           # Container di Caddy: da lì il gioco raggiunge i siti della stessa macchina (es. il gestionale)
           PROXY_INTERNO=""
@@ -131,6 +148,8 @@ jobs:
           {
             echo "ZDG_IMAGE=$IMAGE:$GITHUB_SHA"
             echo "ZDG_PORT=$ZDG_PORT"
+            echo "ZDG_CONTAINER=$CONTAINER"
+            echo "ZDG_ENV=$ZDG_ENV"
             echo "PROXY_NETWORK=$PROXY_NETWORK"
             echo "MASTER_USER=$MASTER_USER"
             echo "MASTER_PASSWORD=$MASTER_PASSWORD"
@@ -160,7 +179,17 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "$DOCKER login ghcr.io -u '${{ github.actor }}' --password-stdin"
           FILES="-f docker-compose.prod.yml"
           if [ -n "$PROXY_NETWORK" ]; then FILES="$FILES -f docker-compose.proxy.yml"; fi
-          $SSH "cd '$DIR' && $COMPOSE $FILES pull && $COMPOSE $FILES up -d --remove-orphans && $DOCKER image prune -f"
+          $SSH "cd '$DIR' && $COMPOSE $FILES pull"
+          # Azzeramento (solo su richiesta esplicita «AZZERA»): copia compressa dei dati in $DIR/backup, poi volume vuoto.
+          if [ "$AZZERA" = "true" ]; then
+            VOL=$($SSH "$DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Name}}{{end}}{{end}}' '$CONTAINER' 2>/dev/null" || true)
+            if [ -z "$VOL" ]; then echo "::warning::Nessun dato da azzerare per $CONTAINER (primo avvio?)"; else
+              TS=$(date -u +%Y%m%d-%H%M%S)
+              $SSH "cd '$DIR' && mkdir -p backup && $COMPOSE $FILES stop zdg && $DOCKER run --rm -u 0 --entrypoint sh -v '$VOL':/data -v \"\$PWD/backup\":/backup '$IMAGE:$GITHUB_SHA' -c 'tar czf /backup/zdg-data-$TS.tgz -C /data . && find /data -mindepth 1 -delete'"
+              echo "::notice::Dati di $DOMAIN azzerati; copia in ~/$DIR/backup/zdg-data-$TS.tgz"
+            fi
+          fi
+          $SSH "cd '$DIR' && $COMPOSE $FILES up -d --remove-orphans && $DOCKER image prune -f"
           $SSH "$DOCKER logout ghcr.io >/dev/null"
 
       - name: Controllo di salute
@@ -170,21 +199,21 @@ jobs:
             if $SSH "curl -fsS http://127.0.0.1:$ZDG_PORT/api/health || wget -qO- http://127.0.0.1:$ZDG_PORT/api/health" >/dev/null 2>&1; then echo "Zero Dark Games risponde"; exit 0; fi
             sleep 3
           done
-          $SSH "$DOCKER logs --tail 50 zero-dark-games" || true
+          $SSH "$DOCKER logs --tail 50 '$CONTAINER'" || true
           echo "::error::Il container non risponde su 127.0.0.1:$ZDG_PORT"
           exit 1
 
       # Aggiunge una sola volta il sito a Caddy (rilevato sul server), con copia e ripristino se la configurazione non è valida.
       - name: Sito su Caddy
         if: steps.check.outputs.ok == 'true' && vars.CADDY_AUTO != 'false'
-        run: $SSH "DOCKER='$DOCKER' sh '$DIR/caddy-site.sh' '$DOMAIN' '$ZDG_PORT' '$DIR'"
+        run: $SSH "DOCKER='$DOCKER' sh '$DIR/caddy-site.sh' '$DOMAIN' '$ZDG_PORT' '$DIR' '$CONTAINER'"
 
       - name: Il gioco raggiunge il gestionale?
         if: steps.check.outputs.ok == 'true'
         continue-on-error: true
         env:
           OPS_ISSUER: ${{ vars.OPS_ISSUER || 'https://ops.zerodarkteam.it' }}
-        run: $SSH "$DOCKER exec -i -e OPS='$OPS_ISSUER' zero-dark-games node -" < deploy/ops-check.js
+        run: $SSH "$DOCKER exec -i -e OPS='$OPS_ISSUER' '$CONTAINER' node -" < deploy/ops-check.js
 
       - name: Controllo dall'esterno
         if: steps.check.outputs.ok == 'true'

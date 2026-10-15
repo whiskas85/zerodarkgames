@@ -3,7 +3,7 @@
 services:
   zdg:
     image: ${ZDG_IMAGE:-ghcr.io/whiskas85/zerodarkgames:latest}
-    container_name: zero-dark-games
+    container_name: ${ZDG_CONTAINER:-zero-dark-games}
     restart: unless-stopped
     env_file: .env
     environment:

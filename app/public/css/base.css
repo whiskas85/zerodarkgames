@@ -156,3 +156,7 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 .map-legend .pin-dot { width: 12px; height: 12px; }
 .scanner-tools { display: flex; gap: 10px; justify-content: center; }
 .scanner-tip { font-size: 12px; opacity: .8; margin: 0; }
+
+/* Ambiente di test */
+.env-ribbon { position: sticky; top: 0; z-index: 9999; background: repeating-linear-gradient(45deg, #f2c94c 0 14px, #1a1a1a 14px 28px); color: #111; text-align: center; font: 700 12px var(--f-mono, monospace); letter-spacing: .12em; text-transform: uppercase; padding: 4px 8px; }
+.env-ribbon span { background: #f2c94c; padding: 1px 10px; }

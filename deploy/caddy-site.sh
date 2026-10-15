@@ -1,12 +1,12 @@
 #!/bin/sh
 # Aggiunge UNA SOLA VOLTA il sito di Zero Dark Games a Caddy, rilevando come è installato sul server.
 # Sicurezze: copia del Caddyfile, validazione prima della ricarica, ripristino della copia in caso di errore.
-# Uso: caddy-site.sh <dominio> <porta-locale> <cartella-app>
+# Uso: caddy-site.sh <dominio> <porta-locale> <cartella-app> [container]
 set -eu
 DOMAIN="$1"
 PORT="$2"
 DIR="$3"
-APP=zero-dark-games
+APP="${4:-zero-dark-games}"
 DOCKER="${DOCKER:-docker}"
 
 warn() { echo "::warning::$*"; }
@@ -74,7 +74,7 @@ fi
 BLOCK=$(printf '# Zero Dark Games (aggiunto dal workflow di pubblicazione)\n%s {\n\tencode gzip\n\treverse_proxy %s\n}\n' "$DOMAIN" "$UP")
 if [ -n "$SITES" ] && grep -qE '^[[:space:]]*import[[:space:]]+/etc/caddy/siti/' "$FILE"; then
   # Un file tutto nostro nella cartella dei siti: niente da ripristinare nel Caddyfile se qualcosa va storto.
-  TARGET="$SITES/zerodarkgames.caddy"
+  TARGET="$SITES/${APP}.caddy"
   if ! { [ -w "$SITES" ] || [ -w "$TARGET" ]; }; then
     warn "La cartella $SITES non è scrivibile da $(whoami): crea $TARGET con il sito $DOMAIN → $UP"
     exit 0

@@ -176,9 +176,22 @@ Stack: Node.js 24 senza framework frontend (nessuna build), Express 5, SQLite in
 - Alla Soglia il validatore sceglie la coppia dalla lista (niente QR personale).
 - Le finestre armamenti possono essere sia a orario sia lanciate a mano.
 
+## Ambienti: test e produzione
+
+| Ambiente | Indirizzo | Quando si aggiorna | Sul server |
+| --- | --- | --- | --- |
+| **Test** | <https://testgames.zerodarkteam.it> | a ogni push su `main` | `~/zerodarkgames-test`, container `zero-dark-games-test`, porta 8091, dati propri |
+| **Produzione** | <https://games.zerodarkteam.it> | solo a mano: GitHub → Actions → «Test e pubblicazione» → *Run workflow* → ambiente **produzione** | `~/zerodarkgames`, container `zero-dark-games`, porta 8090 |
+
+Il test ha una striscia gialla «Ambiente di test» in cima a ogni pagina. I due ambienti hanno database separati: provare in test non tocca la produzione.
+
+**Azzerare i dati** (partite, account, inviti, impostazioni): *Run workflow* con l'ambiente scelto e, nel campo «Azzerare i dati», la parola `AZZERA`. Prima di svuotare il database il workflow ne salva una copia compressa sul server in `~/<cartella>/backup/zdg-data-<data>.tgz`; dopo resta solo il master del `.env`.
+
+«Accedi con Zero Dark Ops» in test: nel gestionale va aggiunto anche l'indirizzo di ritorno `https://testgames.zerodarkteam.it/auth/ops/callback` (oppure un'app separata, configurata dalla regia del test).
+
 ## Pubblicazione automatica (GitHub Actions)
 
-Il workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml) a ogni push su `main`:
+Il workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml) a ogni push su `main` (pubblica sul test; la produzione si pubblica a mano, vedi sopra):
 
 1. esegue i test (se uno fallisce non si pubblica nulla);
 2. costruisce l'immagine Docker e la carica su `ghcr.io/whiskas85/zerodarkgames` (`latest` e commit);
