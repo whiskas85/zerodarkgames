@@ -66,6 +66,7 @@ function boot() {
     history.replaceState(null, '', '/' + location.hash);
   }
   api('GET', '/api/public/ops').then((list) => { S.ops = list || []; if (S.auth === 'none') render(); }).catch(() => {});
+  api('GET', '/api/public/event').then((ev) => { S.event = ev; if (S.auth === 'none') render(); }).catch(() => {});
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   window.addEventListener('hashchange', render);
   window.addEventListener('online', () => { S.online = true; refresh(); flushQueue(); render(); });
@@ -508,6 +509,12 @@ function unveilOnce(key) {
 
 // ---------------------------------------------------------------- login
 
+// Solo la data (senza ora), es. «sabato 15 novembre 2026»; dalla stringa AAAA-MM-GG, senza fusi orari.
+function eventDate(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function viewLogin() {
   const pendingAltar = Object.keys(S.visits).length && location.hash.startsWith('#/altare/');
   const user = h('input', { class: 'input', id: 'login-user', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true });
@@ -536,6 +543,7 @@ function viewLogin() {
     h('div', { class: 'emblem big' }, h('span', null, '0')),
     h('p', { class: 'eyebrow' }, 'Consiglio Zero · Zero Dark Games'),
     h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
+    S.event ? h('p', { class: 'event-date' }, eventDate(S.event.date)) : null,
     pendingAltar ? h('p', { class: 'note' }, 'Avete inquadrato un Altare. Entrate: l\'Altare resterà nella vostra lista.') : null,
     S.invite ? h('p', { class: 'note' }, 'Hai un invito del Consiglio. Entra con il tuo account (anche con Zero Dark Ops) oppure registrati: l\'invito si accetta da solo.') : null,
     h('form', { class: 'login-form', onsubmit: login },

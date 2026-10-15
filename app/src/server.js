@@ -282,6 +282,16 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: r
 app.get('/api/public/games', (_req, res) => {
   res.json(q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"));
 });
+// Data del prossimo evento per la pagina di login: la partita vera (non di prova, non finita) in programma.
+app.get('/api/public/event', (_req, res) => {
+  const g = q.all("SELECT name, scheduledStart FROM games WHERE isDemo = 0 AND status != 'ended' AND scheduledStart IS NOT NULL AND scheduledStart != ''")
+    .map((x) => {
+      const v = String(x.scheduledStart);
+      const d = /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : Number.isFinite(Number(v)) ? new Date(Number(v)).toISOString().slice(0, 10) : null;
+      return d ? { name: x.name, date: d } : null;
+    }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date))[0];
+  res.json(g || null);
+});
 // Le iscrizioni passano dall'account del giocatore (/api/auth/register + /api/account/enroll).
 
 // ---- accesso coppie

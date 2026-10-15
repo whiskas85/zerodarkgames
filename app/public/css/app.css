@@ -41,6 +41,7 @@ h2 { font-size: 40px; font-weight: 900; }
 .login h1 { font-size: clamp(56px, 18vw, 92px); line-height: .86; font-weight: 900; }
 .login h1 em { font-style: normal; color: var(--blood); }
 .login-form { display: grid; gap: 12px; width: 100%; text-align: left; }
+.event-date { margin: -6px 0 0; font-family: var(--f-mono); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
 .login-ops { display: grid; gap: 10px; width: 100%; }
 .track-row .row { display: flex; gap: 8px; align-items: center; }
 .track-val { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 8px; border: 1px solid var(--line); background: var(--bg); }
