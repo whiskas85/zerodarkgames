@@ -435,6 +435,7 @@ function codesGrid(fresh = []) {
   return h('div', { class: 'codes' }, ms.codes.map((c) => h('div', { class: `code-card code-${c.state}` },
     h('div', { class: 'code-sector' }, h('span', { class: 'mono muted' }, c.roman), ' ', c.sectorName),
     secret(c.code, fresh.includes(c.sectorId)),
+    c.free ? h('div', { class: 'tiny' }, h('span', { class: 'chip chip-warn' }, 'Altare senza coppia')) : null,
     h('div', { class: 'tiny' }, c.state === 'revealed' ? h('span', { class: 'chip chip-blood' }, `rivelato ${fmtTime(c.revelation?.firedAt)}`)
       : c.state === 'never' ? h('span', { class: 'chip chip-brass' }, 'mai rivelato')
         : c.revelation?.status === 'skipped' ? h('span', { class: 'chip' }, 'saltato')
@@ -907,11 +908,14 @@ async function assignDialog(kind, item, move) {
 function viewAltars() {
   const ms = R.ms;
   const pre = PRE.includes(ms.clock.status);
-  const phrase = h('textarea', { class: 'input', rows: 3, 'data-keep': 'phrase', placeholder: `Una frase di almeno ${ms.teams.length} parole`, value: ms.game.phrase || '' });
+  const phrase = h('textarea', { class: 'input', rows: 3, 'data-keep': 'phrase', placeholder: `Una frase di almeno ${ms.points.length || ms.teams.length} parole`, value: ms.game.phrase || '' });
   const placed = ms.points.filter((p) => p.lat != null).length;
+  const withAltar = new Set(ms.points.map((p) => p.sectorId));
+  const freeSectors = (ms.sectors || []).filter((x) => !x.archived && !withAltar.has(x.id));
+  const addSel = h('select', { class: 'input input-sm', 'data-keep': 'free-altar' }, freeSectors.map((x) => h('option', { value: x.id }, `${x.roman} · ${x.name}`)));
   return h('div', { class: 'stack' },
     section('La Parola',
-      h('p', { class: 'muted tiny' }, 'La frase viene divisa in tanti frammenti quanti sono gli Altari (uno per coppia) e i pezzi vengono assegnati agli Altari in ordine casuale. Puoi poi correggere ogni frammento.'),
+      h('p', { class: 'muted tiny' }, 'La frase viene divisa in tanti frammenti quanti sono gli Altari (uno per coppia, più quelli senza coppia) e i pezzi vengono assegnati agli Altari in ordine casuale. Puoi poi correggere ogni frammento.'),
       phrase,
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-primary', disabled: !pre, onclick: () => confirmCall('Dividere la Parola?', 'I frammenti attuali vengono sostituiti (e tolti a chi li aveva).', 'POST', G('/phrase'), { phrase: phrase.value }, 'Parola divisa tra gli Altari') }, 'Dividi tra gli Altari'),
@@ -930,9 +934,15 @@ function viewAltars() {
             h('a', { class: 'btn btn-sm btn-ghost', href: '/campo', target: '_blank' }, 'Piazzalo io'))))))),
 
     sectionActions(`Altari (${ms.points.length}) · piazzati ${placed}/${ms.points.length}`, [
-      h('button', { class: 'btn btn-sm', disabled: !pre, onclick: () => call('POST', G('/points'), {}, 'Altari sincronizzati con le coppie') }, 'Sincronizza con le coppie'),
+      h('button', { class: 'btn btn-sm', disabled: !pre, onclick: () => call('POST', G('/points'), {}, 'Altari allineati alle coppie') }, 'Allinea alle coppie'),
       h('a', { class: 'btn btn-sm', href: '#mappa' }, 'Vedi in mappa'),
+      h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '' }, 'Esporta KMZ (ATAK)'),
       h('a', { class: 'btn btn-sm btn-primary', href: `/regia/stampa/altari/${R.gameId}`, target: '_blank' }, 'Stampa cartelli A4')],
+    h('p', { class: 'muted tiny' }, 'L\'Altare di una coppia nasce appena la coppia è formata e lo vedi subito qui e sulla mappa del campo; le coppie lo vedono in mappa solo dal via. Puoi creare Altari anche prima delle iscrizioni, per piazzarli nel bosco: restano «senza coppia» finché una coppia non prende quel Settore.'),
+    pre && freeSectors.length ? h('div', { class: 'row-actions' },
+      h('strong', { class: 'small' }, 'Nuovo Altare senza coppia'), addSel,
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/points/free'), { sectorId: Number(addSel.value) }, 'Altare creato') }, 'Crea'),
+      h('button', { class: 'btn btn-sm', onclick: () => confirmCall('Un Altare per ogni Settore?', `Si creano ${freeSectors.length} Altari, uno per ogni Settore che non ne ha ancora uno. Quelli che resteranno senza coppia daranno il loro Sigillo solo con il tradimento.`, 'POST', G('/points/free'), { all: true }, 'Altari creati') }, `Tutti i Settori (${freeSectors.length})`)) : null,
     ms.points.length ? h('div', { class: 'altars' }, ms.points.map((p) => {
       const url = `${R.baseUrl}/a/${p.qrToken}`;
       const isPlaced = p.lat != null;
@@ -940,6 +950,7 @@ function viewAltars() {
         h('img', { class: 'altar-qr', src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: `QR ${p.label}`, width: 120, height: 120, loading: 'lazy' }),
         h('div', { class: 'stack-sm grow' },
           h('div', { class: 'eyebrow' }, `${p.roman} · Settore ${p.sectorName}`),
+          p.free ? h('span', { class: 'chip chip-warn' }, 'Senza coppia · Sigillo solo dal tradimento') : null,
           placementChips(p, isPlaced),
           h('input', { class: 'input input-sm', 'data-keep': `pl-${p.id}`, value: p.label, onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { label: e.target.value }, 'Nome aggiornato') }),
           h('input', { class: 'input input-sm', 'data-keep': `pn-${p.id}`, value: p.locationNote || '', placeholder: 'Posizione nel bosco (solo regia)', onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { locationNote: e.target.value }, 'Posizione salvata') }),
@@ -951,8 +962,9 @@ function viewAltars() {
             ...placementButtons('point', p, isPlaced),
             isPlaced && p.photoFile ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/point/${p.id}?v=${p.placedAt}`, target: '_blank' }, 'Foto') : null,
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(url); toast('Link dell\'Altare copiato', 'ok'); } }, 'Copia link'),
-            pre ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare il QR?', 'Il cartello già stampato non funzionerà più: andrà ristampato.', 'POST', `/api/m/points/${p.id}/regen`, {}, 'QR rigenerato', true) }, 'Rigenera QR') : null)));
-    })) : h('p', { class: 'empty' }, 'Nessun Altare: forma le coppie e premi "Sincronizza".')));
+            pre ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare il QR?', 'Il cartello già stampato non funzionerà più: andrà ristampato.', 'POST', `/api/m/points/${p.id}/regen`, {}, 'QR rigenerato', true) }, 'Rigenera QR') : null,
+            pre && p.free ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'Altare?', `${p.label}: il cartello stampato non funzionerà più. Ricordati di rigenerare i Sigilli e di dividere di nuovo la Parola.`, 'DELETE', `/api/m/points/${p.id}`, null, 'Altare eliminato', true) }, 'Elimina') : null)));
+    })) : h('p', { class: 'empty' }, 'Nessun Altare: forma le coppie oppure crea gli Altari dei Settori qui sopra.')));
 }
 
 // ---------------------------------------------------------------- SIGILLI E TRADIMENTI
@@ -968,7 +980,7 @@ function viewCodes() {
   const H = g.truceMin;
   const F = H + g.firstRevelationDelayMin;
   const L = g.durationMin - g.lastRevelationBeforeEndMin;
-  const Rn = N - g.neverRevealedCount;
+  const Rn = N - ms.codes.filter((c) => c.neverRevealed).length;
 
   return h('div', { class: 'stack' },
     sectionActions('Sigilli dei Settori', [
@@ -976,11 +988,12 @@ function viewCodes() {
       h('button', { class: 'btn btn-sm', disabled: !pre || !N, onclick: () => confirmCall('Nuova estrazione?', `Si estraggono a caso ${g.neverRevealedCount} Sigilli che il Consiglio non rivelerà mai. Il calendario viene ricalcolato.`, 'POST', G('/never'), {}, 'Estrazione fatta') }, 'Estrai i mai rivelati'),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: toggleShowAll }, R.showAll ? 'Nascondi' : 'Mostra tutti')],
     h('p', { class: 'muted tiny' }, 'I Sigilli sono sfocati: tieni premuto per leggerne uno. Nelle app delle coppie appaiono come simulacri sfocati finché non vengono svelati: il proprio all\'apertura del cerchio, gli altri al momento del tradimento.'),
+    ms.codes.some((c) => c.free) ? h('p', { class: 'muted tiny' }, 'I Sigilli degli Altari senza coppia non li custodisce nessuno: non si vincono né si rubano, arrivano solo dal tradimento. Uno di loro è sempre l\'ultimo in calendario (il «lucchetto»): nessuno può finire prima di quell\'orario.') : null,
     codesGrid()),
 
     sectionActions('Calendario dei tradimenti', [
       pre ? h('button', { class: 'btn btn-sm', disabled: !N, onclick: () => confirmCall('Ricalcolare il calendario?', 'Orari ricalcolati e ordine dei Settori di nuovo casuale.', 'POST', G('/calendar'), {}, 'Calendario ricalcolato') }, 'Ricalcola (ordine casuale)') : null],
-    h('p', { class: 'mono tiny muted' }, `Caccia a ${H}′ · prima rivelazione F = ${F}′ · ultima L = ${L}′ · coppie N = ${N} · rivelazioni R = ${Math.max(0, Rn)}${Rn > 1 ? ` · intervallo ${((L - F) / (Rn - 1)).toFixed(1)}′` : ''}`),
+    h('p', { class: 'mono tiny muted' }, `Caccia a ${H}′ · prima rivelazione F = ${F}′ · ultima L = ${L}′ · Sigilli N = ${N} · rivelazioni R = ${Math.max(0, Rn)}${Rn > 1 ? ` · intervallo ${((L - F) / (Rn - 1)).toFixed(1)}′` : ''}`),
     ms.revelations.length ? h('div', { class: 'table-wrap' }, h('table', null,
       h('thead', null, h('tr', null, ['#', 'Orario dal via', 'Settore', 'Stato', 'Tra', ''].map((x) => h('th', null, x)))),
       h('tbody', null, ms.revelations.map((r) => h('tr', { class: `rev-${r.status}` },
@@ -1187,6 +1200,7 @@ function viewFieldMap() {
       toPlace.length ? h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`) : null,
       h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
+      h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
     R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa dove si trova: ${R.mapPick.label}`),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,

@@ -53,7 +53,7 @@ h1{font-size:30mm;line-height:.85;margin:0;font-weight:900}
 .warn{font-size:9pt;color:#5B615A;margin-top:auto}
 </style></head><body>
 <div class="toolbar"><span>${points.length} cartelli · ${esc(g.name)}</span><button onclick="print()">Stampa / Salva PDF</button><span>Nessun Sigillo e nessun frammento è stampato sui cartelli.</span></div>
-${sheets.join('\n') || '<p style="padding:40px">Nessun Altare: forma le coppie e sincronizza gli Altari.</p>'}
+${sheets.join('\n') || '<p style="padding:40px">Nessun Altare: forma le coppie o crea gli Altari dei Settori in regia.</p>'}
 </body></html>`;
 }
 

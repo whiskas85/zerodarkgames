@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { q, tx, DATA_DIR, getSetting, setSetting } = require('./db');
 const C = require('./constants');
+const { buildKmz } = require('./kmz');
 const G = require('./game');
 const rt = require('./realtime');
 const { randomToken, randomCode, HttpError } = require('./util');
@@ -342,11 +343,12 @@ function photoFile(kind, id) {
 // Per regia ed Eletti: tutto, compresi i doni non ancora comparsi.
 function fieldState(gameId) {
   const game = G.getGame(gameId);
+  const couples = new Set(q.all('SELECT sectorId FROM teams WHERE gameId = ? AND sectorId IS NOT NULL', game.id).map((r) => r.sectorId));
   const points = q.all(`SELECT p.*, s.name AS sectorName, s.roman, s.ord, s.color AS sectorColor FROM points p JOIN sectors s ON s.id = p.sectorId WHERE p.gameId = ? ORDER BY s.ord`, game.id)
     .map((p) => ({
       id: p.id, label: p.label, sectorId: p.sectorId, sectorName: p.sectorName, roman: p.roman, color: p.sectorColor, locationNote: p.locationNote,
       lat: p.lat, lng: p.lng, accuracy: p.accuracy, placedAt: p.placedAt, placedBy: p.placedBy, placeSource: p.placeSource, hasPhoto: !!p.photoFile,
-      squadId: p.squadId, provisional: !!p.provisional, ...taskFields(p),
+      squadId: p.squadId, provisional: !!p.provisional, free: !couples.has(p.sectorId), ...taskFields(p),
     }));
   return {
     game: { id: game.id, name: game.name, status: game.status },
@@ -357,6 +359,48 @@ function fieldState(gameId) {
     squads: squadsOf(game.id),
     landmarks: G.landmarksOf(game.id).map(landmarkOut),
   };
+}
+
+// ---------------------------------------------------------------- KMZ per ATAK
+
+const GIFT_LABEL = { draft: 'da piazzare', placed: 'piazzato, non ancora comparso', revealed: 'comparso in mappa', claimed: 'preso', expired: 'svanito' };
+const when = (ms) => (ms ? new Date(ms).toLocaleString('it-IT', { timeZone: process.env.TZ || 'Europe/Rome', dateStyle: 'short', timeStyle: 'short' }) : '');
+const kmzName = (game) => `giochi-del-buio-${String(game.name || game.id).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || game.id}.kmz`;
+const placeDesc = (x) => [
+  x.provisional ? '⚠ Piazzamento provvisorio: da confermare' : null,
+  x.placedAt ? `Piazzato ${when(x.placedAt)}${x.placedBy ? ` da ${String(x.placedBy).replace('eletti:', '')}` : ''}${x.accuracy ? ` · ±${x.accuracy} m` : ''}` : null,
+].filter(Boolean);
+
+// Regia ed Eletti: tutti i punti piazzati (luoghi, Altari, Doni) e i punti indicati per gli incarichi ancora da fare.
+function orgKmz(gameId) {
+  const st = fieldState(gameId);
+  const squad = Object.fromEntries(st.squads.map((x) => [x.id, x.name]));
+  const pending = (x) => x.lat == null || x.moveRequestedAt || x.provisional;
+  const folders = [
+    { name: 'Luoghi', items: st.landmarks.map((l) => ({ name: l.label, lat: l.lat, lng: l.lng, shape: 'circle', color: l.kind === 'soglia' ? '#c0392b' : '#d1ad62', provisional: l.provisional,
+      description: placeDesc(l).join('<br>') })) },
+    { name: 'Altari', items: st.points.map((p) => ({ name: `${p.roman} · ${p.label}${p.provisional ? ' (provvisorio)' : ''}`, lat: p.lat, lng: p.lng, shape: 'square', color: p.color, provisional: p.provisional,
+      description: [`Settore ${p.sectorName}${p.free ? ' · Altare senza coppia' : ''}`, p.locationNote, ...placeDesc(p)].filter(Boolean).join('<br>') })) },
+    { name: 'Doni', items: st.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((g) => ({ name: `${g.label} · ${g.name}${g.provisional ? ' (provvisorio)' : ''}`, lat: g.lat, lng: g.lng, shape: 'circle', color: g.color, provisional: g.provisional,
+      description: [`Stato: ${GIFT_LABEL[g.status] || g.status}`, ...placeDesc(g)].join('<br>') })) },
+    { name: 'Punti indicati dalla regia', items: [...st.points, ...st.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)), ...st.landmarks]
+      .filter((x) => x.targetLat != null && pending(x))
+      .map((x) => ({ name: `Da piazzare: ${x.label}`, lat: x.targetLat, lng: x.targetLng, shape: 'ring', color: '#ffffff',
+        description: [x.squadId ? `Squadra ${squad[x.squadId] || '?'}` : null, x.taskNote ? `Nota: ${x.taskNote}` : null].filter(Boolean).join('<br>') })) },
+  ];
+  return { name: kmzName(st.game), data: buildKmz(`${st.game.name} · tutti i punti`, folders) };
+}
+
+// Coppie: solo ciò che vedono sulla loro mappa (gli Altari dal via, i Doni comparsi).
+function teamKmz(team) {
+  const game = G.getGame(team.gameId);
+  const m = teamMap(team);
+  const folders = [
+    { name: 'Luoghi', items: m.landmarks.map((l) => ({ name: l.label, lat: l.lat, lng: l.lng, shape: 'circle', color: l.kind === 'soglia' ? '#c0392b' : '#d1ad62' })) },
+    { name: 'Altari', items: m.points.map((p) => ({ name: `${p.roman} · ${p.label}`, lat: p.lat, lng: p.lng, shape: 'square', color: p.mine ? '#d1ad62' : '#e0603f', description: `Settore ${p.sectorName}${p.mine ? ' · il vostro' : ''}` })) },
+    { name: 'Doni', items: m.gifts.map((g) => ({ name: `Dono ${g.label}`, lat: g.lat, lng: g.lng, shape: 'circle', color: '#d1ad62' })) },
+  ];
+  return { name: kmzName(game), data: buildKmz(game.name, folders) };
 }
 
 // ---------------------------------------------------------------- squadre degli Eletti
@@ -612,10 +656,12 @@ function electSummary(team, player) {
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.
+// Gli Altari compaiono alle coppie solo dal via: prima li vede solo l'organizzazione (regia ed Eletti).
 function teamMap(team) {
   if (team.kind === 'lobby') return null;
+  const started = team.kind === 'elect' || !C.PRE_START.includes(G.getGame(team.gameId).status);
   return {
-    points: q.all(`SELECT p.id, p.label, p.lat, p.lng, p.sectorId, s.name AS sectorName, s.roman FROM points p JOIN sectors s ON s.id = p.sectorId
+    points: !started ? [] : q.all(`SELECT p.id, p.label, p.lat, p.lng, p.sectorId, s.name AS sectorName, s.roman FROM points p JOIN sectors s ON s.id = p.sectorId
                    WHERE p.gameId = ? AND p.lat IS NOT NULL ORDER BY s.ord`, team.gameId)
       .map((p) => ({ ...p, mine: p.sectorId === team.sectorId })),
     landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId),
@@ -668,5 +714,5 @@ function useGift(team, giftId) {
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
-  placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
+  orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

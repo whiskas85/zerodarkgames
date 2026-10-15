@@ -703,6 +703,62 @@ test('incarichi: punto indicato sulla mappa, spostamento alla squadra che ha pia
   assert.throws(() => F.placePoint(p.id, g.id, { lat: 45, lng: 9 }, 'x'), /Foto/);
 });
 
+test('Altari senza coppia: creati subito, Sigillo solo dal tradimento e ultimo in calendario, visibili alle coppie dal via', () => {
+  const F = require('../src/field');
+  const g0 = G.createGame({ name: 'Senza coppia' }, 'test');
+  // Prima delle iscrizioni: un Altare per ogni Settore, subito in regia e piazzabile.
+  const { added } = G.addFreePoints(g0.id, { all: true }, 'test');
+  assert.equal(added, q.get('SELECT COUNT(*) AS n FROM sectors WHERE archived = 0').n);
+  assert.ok(F.fieldState(g0.id).points.every((p) => p.free));
+  const first = F.fieldState(g0.id).points[0];
+  F.placePoint(first.id, g0.id, { lat: 45, lng: 9, provisional: true }, 'regia');
+  // Le coppie prendono prima i Settori con l'Altare; l'Altare di una coppia nasce appena formata.
+  for (let i = 0; i < 4; i++) G.addPlayer(g0.id, { name: `P${i}` });
+  G.autoPair(g0.id, 'test');
+  const teams = teamsOf(g0.id);
+  assert.ok(teams.some((t) => t.sectorId === first.sectorId));
+  const st = F.fieldState(g0.id);
+  assert.equal(st.points.filter((p) => !p.free).length, 2);
+  // Tolgo tutti gli Altari senza coppia tranne due: restano anche se non sono piazzati (creati dalla regia).
+  const free = st.points.filter((p) => p.free);
+  free.slice(2).forEach((p) => G.deletePoint(p.id, 'test'));
+  assert.throws(() => G.deletePoint(st.points.find((p) => !p.free).id, 'test'), /di una coppia/);
+  G.ensurePoints(G.getGame(g0.id), 'test');
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM points WHERE gameId = ?', g0.id).n, 4);
+  G.updateGame(g0.id, { neverRevealedCount: 1 }, 'test');
+  G.generateCodes(g0.id, 'test');
+  G.setPhrase(g0.id, 'uno due tre quattro', 'test');
+  const freeSectors = new Set(free.slice(0, 2).map((p) => p.sectorId));
+  const codes = q.all('SELECT * FROM sector_codes WHERE gameId = ?', g0.id);
+  assert.equal(codes.length, 4);
+  // Mai rivelati solo tra le coppie; l'ultimo tradimento è di un Altare senza coppia (il lucchetto).
+  assert.ok(codes.filter((c) => c.neverRevealed).every((c) => !freeSectors.has(c.sectorId)));
+  const revs = q.all('SELECT * FROM revelations WHERE gameId = ? ORDER BY scheduledMin', g0.id);
+  assert.equal(revs.length, 3);
+  assert.ok(freeSectors.has(revs.at(-1).sectorId));
+  assert.ok(G.readiness(G.getGame(g0.id)).ok, JSON.stringify(G.readiness(G.getGame(g0.id)).issues));
+  // Taccuino: gli Altari senza coppia compaiono solo dal via; la mappa delle coppie è vuota fino al via.
+  const [A] = teamsOf(g0.id);
+  assert.equal(G.teamState(A).notebook.length, 2);
+  assert.equal(F.teamMap(A).points.length, 0);
+  for (const a of ['ready', 'circle']) G.control(g0.id, a, 'test');
+  assert.equal(F.teamMap(A).points.length, 0);
+  G.control(g0.id, 'start', 'test');
+  assert.equal(F.teamMap(A).points.length, 1);
+  const nb = G.teamState(A).notebook;
+  assert.equal(nb.length, 4);
+  assert.equal(nb.filter((n) => n.free).length, 2);
+  // KMZ per ATAK: zip valido con il KML e le icone.
+  const { name, data } = F.orgKmz(g0.id);
+  assert.match(name, /\.kmz$/);
+  assert.equal(data.readUInt32LE(0), 0x04034b50);
+  const zlib = require('zlib');
+  const kml = zlib.inflateRawSync(data.subarray(30 + data.readUInt16LE(26), 30 + data.readUInt16LE(26) + data.readUInt32LE(18))).toString();
+  assert.match(kml, /<kml/);
+  assert.match(kml, /provvisorio/);
+  assert.match(F.teamKmz(A).data.toString('latin1'), /doc\.kml/);
+});
+
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
   const F = require('../src/field');
   const g = setupGame(2);

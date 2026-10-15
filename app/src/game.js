@@ -271,8 +271,11 @@ function availableSectors(gameId) {
   return activeSectors().filter((s) => !used.has(s.id));
 }
 
+// Prima i Settori che hanno già un Altare (magari già piazzato nel bosco), poi gli altri.
 function firstFreeSector(gameId) {
-  return availableSectors(gameId)[0];
+  const withAltar = new Set(q.all('SELECT sectorId FROM points WHERE gameId = ?', gameId).map((r) => r.sectorId));
+  const free = availableSectors(gameId);
+  return free.find((s) => withAltar.has(s.id)) || free[0];
 }
 
 function createTeam(gameId, data, actor) {
@@ -296,6 +299,7 @@ function createTeam(gameId, data, actor) {
     log(g.id, actor, 'team_created', { teamId, sector: sector.name, members: pls.map((p) => p.name) });
     return teamId;
   });
+  syncPoints(g);
   // I telefoni dei giocatori entrati col codice personale diventano subito dispositivi della coppia.
   notifyState(g.id);
   return teamId;
@@ -471,6 +475,7 @@ function updateTeam(teamId, data, actor) {
       if (other) q.run('UPDATE teams SET sectorId = ? WHERE id = ?', t.sectorId, other.id);
     });
     log(g.id, actor, 'team_sector_changed', { teamId: t.id, sector: s.name, swappedWith: other?.id });
+    syncPoints(g);
   }
   if (Array.isArray(data.playerIds)) {
     if (!['draft', 'ready'].includes(g.status)) throw err(409, 'I membri si cambiano solo prima di aprire il cerchio');
@@ -500,6 +505,7 @@ function dissolveTeam(teamId, actor) {
     q.run('DELETE FROM teams WHERE id = ?', t.id);
   });
   log(g.id, actor, 'team_dissolved', { teamId: t.id });
+  syncPoints(g);
   notifyState(g.id);
 }
 
@@ -617,26 +623,69 @@ function usedSectorIds(gameId) {
   return q.all('SELECT sectorId FROM teams WHERE gameId = ? AND sectorId IS NOT NULL', gameId).map((r) => r.sectorId);
 }
 
-function ensurePoints(g, actor) {
-  requirePreStart(g, 'La modifica degli Altari');
+// Settori in gioco: quelli delle coppie più quelli degli Altari senza coppia, in ordine di Settore.
+function gameSectorIds(gameId) {
+  const ids = new Set([...usedSectorIds(gameId), ...q.all('SELECT sectorId FROM points WHERE gameId = ?', gameId).map((r) => r.sectorId)]);
+  return [...ids].sort((a, b) => (sectorById(a)?.ord ?? 0) - (sectorById(b)?.ord ?? 0));
+}
+
+// Altari: uno per ogni coppia con Settore, creato appena la coppia c'è. Gli Altari rimasti senza coppia
+// restano se sono stati aggiunti dalla regia o già piazzati nel bosco; gli altri si tolgono.
+function syncPoints(g) {
+  if (!C.PRE_START.includes(g.status)) return 0;
   const used = usedSectorIds(g.id);
+  let added = 0;
   tx(() => {
     for (const sid of used) {
       if (!q.get('SELECT 1 FROM points WHERE gameId = ? AND sectorId = ?', g.id, sid)) {
         q.run('INSERT INTO points (gameId, sectorId, qrToken, label) VALUES (?, ?, ?, ?)', g.id, sid, randomToken(18), altarLabel(sectorById(sid)));
+        added++;
       }
     }
-    if (used.length) q.run(`DELETE FROM points WHERE gameId = ? AND sectorId NOT IN (${used.map(() => '?').join(',')})`, g.id, ...used);
-    else q.run('DELETE FROM points WHERE gameId = ?', g.id);
+    q.run(`DELETE FROM points WHERE gameId = ? AND manual = 0 AND lat IS NULL${used.length ? ` AND sectorId NOT IN (${used.map(() => '?').join(',')})` : ''}`, g.id, ...used);
   });
-  log(g.id, actor, 'points_synced', { count: used.length });
+  return added;
+}
+
+function ensurePoints(g, actor) {
+  requirePreStart(g, 'La modifica degli Altari');
+  syncPoints(g);
+  log(g.id, actor, 'points_synced', { count: q.get('SELECT COUNT(*) AS n FROM points WHERE gameId = ?', g.id).n });
+}
+
+// Altare senza coppia: il suo Sigillo non lo custodisce nessuno, arriva solo dal Tradimento del Consiglio.
+// Si può creare subito (anche prima delle iscrizioni) per piazzarlo nel bosco; se poi una coppia prende
+// quel Settore, diventa il suo Altare.
+function addFreePoints(gameId, { sectorId, all } = {}, actor) {
+  const g = getGame(gameId);
+  requirePreStart(g, 'L\'aggiunta degli Altari');
+  const have = new Set(q.all('SELECT sectorId FROM points WHERE gameId = ?', g.id).map((r) => r.sectorId));
+  const list = all ? activeSectors().filter((x) => !have.has(x.id)) : [sectorById(Number(sectorId))];
+  if (!list[0]) throw err(all ? 409 : 400, all ? 'Tutti i Settori hanno già un Altare' : 'Settore non valido');
+  if (!all && have.has(list[0].id)) throw err(409, `Il Settore ${list[0].name} ha già un Altare`);
+  tx(() => list.forEach((x) => q.run('INSERT INTO points (gameId, sectorId, qrToken, label, manual) VALUES (?, ?, ?, ?, 1)', g.id, x.id, randomToken(18), altarLabel(x))));
+  log(g.id, actor, 'points_added', { count: list.length, sectors: list.map((x) => x.name) });
+  notifyState(g.id);
+  return { added: list.length };
+}
+
+function deletePoint(pointId, actor) {
+  const p = q.get('SELECT * FROM points WHERE id = ?', Number(pointId));
+  if (!p) throw err(404, 'Altare non trovato');
+  const g = getGame(p.gameId);
+  requirePreStart(g, 'L\'eliminazione di un Altare');
+  if (q.get('SELECT 1 FROM teams WHERE gameId = ? AND sectorId = ?', g.id, p.sectorId)) throw err(409, 'L\'Altare è di una coppia: si toglie solo cambiando o sciogliendo la coppia');
+  q.run('DELETE FROM points WHERE id = ?', p.id);
+  log(g.id, actor, 'point_deleted', { label: p.label });
+  notifyState(g.id);
 }
 
 function generateCodes(gameId, actor) {
   const g = getGame(gameId);
   requirePreStart(g, 'La generazione dei Sigilli');
-  const used = usedSectorIds(g.id);
-  if (used.length < 2) throw err(409, 'Servono almeno due coppie con Settore');
+  if (usedSectorIds(g.id).length < 2) throw err(409, 'Servono almeno due coppie con Settore');
+  syncPoints(g);
+  const used = gameSectorIds(g.id);
   tx(() => {
     const prevFlags = Object.fromEntries(q.all('SELECT sectorId, neverRevealed FROM sector_codes WHERE gameId = ?', g.id).map((r) => [r.sectorId, r.neverRevealed]));
     q.run('DELETE FROM sector_codes WHERE gameId = ?', g.id);
@@ -649,31 +698,33 @@ function generateCodes(gameId, actor) {
     }
   });
   log(g.id, actor, 'codes_generated', { count: used.length });
-  const target = Math.min(g.neverRevealedCount, used.length);
-  const flagged = q.get('SELECT COUNT(*) AS n FROM sector_codes WHERE gameId = ? AND neverRevealed = 1', g.id).n;
-  if (flagged !== target) extractNeverRevealed(g, actor);
+  const couples = new Set(usedSectorIds(g.id));
+  const flags = q.all('SELECT sectorId FROM sector_codes WHERE gameId = ? AND neverRevealed = 1', g.id);
+  if (flags.length !== Math.min(g.neverRevealedCount, couples.size) || flags.some((f) => !couples.has(f.sectorId))) extractNeverRevealed(g, actor);
   else buildCalendar(g, actor);
-  ensurePoints(g, actor);
   notifyState(g.id);
 }
 
 function extractNeverRevealed(g, actor) {
   requirePreStart(g, 'L\'estrazione dei Sigilli mai rivelati');
-  const codes = q.all('SELECT * FROM sector_codes WHERE gameId = ?', g.id);
-  if (!codes.length) throw err(409, 'Genera prima i Sigilli');
+  const all = q.all('SELECT * FROM sector_codes WHERE gameId = ?', g.id);
+  if (!all.length) throw err(409, 'Genera prima i Sigilli');
+  // I mai rivelati sono sempre Sigilli di coppie: quelli degli Altari senza coppia arrivano solo dal Tradimento.
+  const couples = new Set(usedSectorIds(g.id));
+  const codes = all.filter((c) => couples.has(c.sectorId));
   const k = Math.min(g.neverRevealedCount, codes.length);
   const chosen = new Set(shuffle(codes).slice(0, k).map((c) => c.id));
-  tx(() => codes.forEach((c) => q.run('UPDATE sector_codes SET neverRevealed = ? WHERE id = ?', chosen.has(c.id) ? 1 : 0, c.id)));
+  tx(() => all.forEach((c) => q.run('UPDATE sector_codes SET neverRevealed = ? WHERE id = ?', chosen.has(c.id) ? 1 : 0, c.id)));
   log(g.id, actor, 'never_revealed_extracted', { count: k });
   buildCalendar(g, actor);
 }
 
-// Sezione 7.1: orari delle rivelazioni in minuti dal via.
-function revelationOffsets(g, n) {
+// Sezione 7.1: orari delle rivelazioni in minuti dal via. n = Sigilli in gioco, never = quanti mai rivelati.
+function revelationOffsets(g, n, never = g.neverRevealedCount) {
   const H = g.truceMin;
   const F = H + g.firstRevelationDelayMin;
   const L = g.durationMin - g.lastRevelationBeforeEndMin;
-  const R = n - g.neverRevealedCount;
+  const R = n - never;
   if (R <= 0) return [];
   if (R === 1) return [F];
   const step = (L - F) / (R - 1);
@@ -683,8 +734,13 @@ function revelationOffsets(g, n) {
 function buildCalendar(g, actor) {
   requirePreStart(g, 'Il calendario delle rivelazioni');
   const codes = q.all('SELECT * FROM sector_codes WHERE gameId = ? AND neverRevealed = 0', g.id);
+  // Ultimo Tradimento («lucchetto»): il Sigillo di un Altare senza coppia, che nessuno può vincere o rubare.
+  // Così nessuno può finire prima di quell'orario.
+  const couples = new Set(usedSectorIds(g.id));
   const order = shuffle(codes);
-  const offsets = revelationOffsets(g, q.get('SELECT COUNT(*) AS n FROM sector_codes WHERE gameId = ?', g.id).n);
+  const lock = order.findIndex((c) => !couples.has(c.sectorId));
+  if (lock >= 0) order.push(...order.splice(lock, 1));
+  const offsets = revelationOffsets(g, order.length, 0);
   tx(() => {
     q.run('DELETE FROM revelations WHERE gameId = ?', g.id);
     offsets.forEach((m, i) => {
@@ -698,8 +754,8 @@ function buildCalendar(g, actor) {
 function retimeCalendar(g) {
   const revs = q.all("SELECT * FROM revelations WHERE gameId = ? AND status = 'scheduled' ORDER BY ord", g.id);
   if (!revs.length) return;
-  const n = q.get('SELECT COUNT(*) AS n FROM sector_codes WHERE gameId = ?', g.id).n;
-  const offsets = revelationOffsets(g, n);
+  const n = q.get('SELECT COUNT(*) AS n FROM sector_codes WHERE gameId = ? AND neverRevealed = 0', g.id).n;
+  const offsets = revelationOffsets(g, n, 0);
   revs.forEach((r, i) => q.run('UPDATE revelations SET scheduledMin = ? WHERE id = ?', offsets[i] ?? r.scheduledMin, r.id));
 }
 
@@ -754,7 +810,7 @@ function setPhrase(gameId, phrase, actor) {
   requirePreStart(g, 'La modifica della Parola');
   ensurePoints(g, actor);
   const points = q.all('SELECT * FROM points WHERE gameId = ?', g.id);
-  if (!points.length) throw err(409, 'Non ci sono Altari: forma prima le coppie');
+  if (!points.length) throw err(409, 'Non ci sono Altari: forma le coppie o aggiungi gli Altari');
   const words = String(phrase || '').trim().split(/\s+/).filter(Boolean);
   if (words.length < points.length) throw err(400, `La Parola deve avere almeno ${points.length} parole (una per Altare): ne ha ${words.length}`);
   const n = points.length;
@@ -822,14 +878,17 @@ function readiness(g) {
   if (withSector.length < 2) E('coppie', 'Servono almeno due coppie con Settore');
   if (teams.length !== withSector.length) E('coppie', 'Ci sono coppie senza Settore');
   const codeSectors = new Set(codes.map((c) => c.sectorId));
-  if (withSector.some((t) => !codeSectors.has(t.sectorId)) || codes.length !== withSector.length) E('sigilli', 'Sigilli da generare o rigenerare (le coppie sono cambiate)');
-  const k = Math.min(g.neverRevealedCount, codes.length);
-  if (codes.length && codes.filter((c) => c.neverRevealed).length !== k) E('sigilli', 'Estrazione dei Sigilli mai rivelati da rifare');
+  const inPlay = new Set([...withSector.map((t) => t.sectorId), ...points.map((p) => p.sectorId)]);
+  if ([...inPlay].some((sid) => !codeSectors.has(sid)) || codes.length !== inPlay.size) E('sigilli', 'Sigilli da generare o rigenerare (coppie o Altari sono cambiati)');
+  const coupleSectors = new Set(withSector.map((t) => t.sectorId));
+  const k = Math.min(g.neverRevealedCount, codes.filter((c) => coupleSectors.has(c.sectorId)).length);
+  const never = codes.filter((c) => c.neverRevealed);
+  if (codes.length && (never.length !== k || never.some((c) => !coupleSectors.has(c.sectorId)))) E('sigilli', 'Estrazione dei Sigilli mai rivelati da rifare');
   const expected = codes.filter((c) => !c.neverRevealed).map((c) => c.sectorId).sort().join(',');
   const inCal = revs.map((r) => r.sectorId).sort().join(',');
   if (codes.length && expected !== inCal) E('sigilli', 'Calendario delle rivelazioni da ricalcolare');
   const pointSectors = new Set(points.map((p) => p.sectorId));
-  if (withSector.some((t) => !pointSectors.has(t.sectorId)) || points.length !== withSector.length) E('altari', 'Altari da sincronizzare con le coppie');
+  if (withSector.some((t) => !pointSectors.has(t.sectorId))) E('altari', 'Altari da sincronizzare con le coppie');
   if (!points.length || frags.length !== points.length) E('altari', 'La Parola non è divisa tra tutti gli Altari');
   if (!g.emergencyRadioChannel) W('generale', 'Canale radio d\'emergenza non impostato');
   if (freePlayers) W('coppie', `${freePlayers} giocatori accettati senza coppia`);
@@ -844,7 +903,7 @@ function readiness(g) {
   const parts = [
     part('coppie', 'I', 'Coppie', '#coppie', `${withSector.length} coppie con Settore`),
     part('sigilli', 'II', 'Sigilli', '#sigilli', `${codes.length} Sigilli · ${revs.length} ${revs.length === 1 ? "tradimento" : "tradimenti"} in calendario`),
-    part('altari', 'III', 'Altari e Parola', '#altari', `${points.length} Altari · Parola divisa in ${frags.length} frammenti`),
+    part('altari', 'III', 'Altari e Parola', '#altari', `${points.length} Altari${points.length > withSector.length ? ` (${points.length - withSector.length} senza coppia)` : ''} · Parola divisa in ${frags.length} frammenti`),
     // IV · Campo: Altari piazzati nel bosco (foto + posizione) dallo strumento di campo.
     { key: 'campo', roman: 'IV', label: 'Campo', href: '#mappa', optional: true, done: points.length > 0 && placedAltars === points.length,
       detail: points.length ? `Altari piazzati ${placedAltars}/${points.length}${gifts.n ? ` · doni piazzati ${gifts.placed}/${gifts.n}` : ''}` : 'Gli Altari si piazzano dopo averli creati' },
@@ -1612,7 +1671,9 @@ function teamStateCore(team, player = null) {
   const board = teamFragmentsBoard(team);
   const ownedPoints = new Set(board.filter((f) => f.source).map((f) => f.pointId));
 
-  const notebook = gameTeams.map((t) => {
+  // Taccuino: un Sigillo per ogni Altare in gioco, anche di quelli senza coppia (questi solo dal via).
+  const coupleSectors = new Set(gameTeams.map((t) => t.sectorId));
+  const notebook = (C.PRE_START.includes(g.status) ? [...coupleSectors] : gameSectorIds(g.id)).map((sid) => ({ sectorId: sid })).map((t) => {
     const sec = sectorById(t.sectorId);
     const p = pointBySector[t.sectorId];
     let entry = { sectorId: sec.id, sectorName: sec.name, roman: sec.roman, code: null, source: null };
@@ -1622,6 +1683,7 @@ function teamStateCore(team, player = null) {
     else if (lastNote[t.sectorId]) entry = { ...entry, wrongAttempt: lastNote[t.sectorId].code };
     entry.visitedToken = p && visits.has(p.id) && scanValid(p.id) ? p.qrToken : null;
     entry.unlocked = p ? ownedPoints.has(p.id) : false;
+    if (!coupleSectors.has(t.sectorId)) entry.free = true;
     return entry;
   });
 
@@ -1694,11 +1756,12 @@ function masterState(gameId) {
   }
   const revs = q.all('SELECT * FROM revelations WHERE gameId = ? ORDER BY COALESCE(scheduledMin, 99999), ord', g.id);
   const revBySector = Object.fromEntries(revs.map((r) => [r.sectorId, r]));
+  const coupleSectors = new Set(teams.filter((t) => t.sectorId).map((t) => t.sectorId));
   const codes = q.all('SELECT * FROM sector_codes WHERE gameId = ?', g.id).map((c) => {
     const r = revBySector[c.sectorId];
     const s = sectorById(c.sectorId);
     return {
-      ...c, sectorName: s.name, roman: s.roman, sectorOrd: s.ord,
+      ...c, sectorName: s.name, roman: s.roman, sectorOrd: s.ord, free: !coupleSectors.has(c.sectorId),
       state: r && ['fired', 'manual'].includes(r.status) ? 'revealed' : c.neverRevealed ? 'never' : 'pending',
       revelation: r || null,
     };
@@ -1731,7 +1794,7 @@ function masterState(gameId) {
     revelations: revs.map((r) => ({ ...r, sectorName: sectorById(r.sectorId).name, roman: sectorById(r.sectorId).roman })),
     points: q.all(`SELECT p.*, f.id AS fragmentId, f.text AS fragmentText, f.position FROM points p
                    LEFT JOIN fragments f ON f.pointId = p.id WHERE p.gameId = ?`, g.id)
-      .map((p) => ({ ...p, sectorName: sectorById(p.sectorId).name, roman: sectorById(p.sectorId).roman, sectorOrd: sectorById(p.sectorId).ord }))
+      .map((p) => ({ ...p, sectorName: sectorById(p.sectorId).name, roman: sectorById(p.sectorId).roman, sectorOrd: sectorById(p.sectorId).ord, free: !coupleSectors.has(p.sectorId) }))
       .sort((a, b) => a.sectorOrd - b.sectorOrd),
     landmarks: landmarksOf(g.id),
     supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
@@ -1769,7 +1832,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  ensurePoints, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

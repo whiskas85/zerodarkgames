@@ -132,11 +132,11 @@ export function createField(F, { rerender }) {
         placedLine(l), l.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
         l.squadId ? h('div', { class: 'tiny muted' }, `Incarico: squadra ${squadName(l.squadId) || '?'}`) : null),
       h('button', { class: `btn btn-sm ${!isPending(l, 'landmark') ? '' : 'btn-primary'}`, onclick: () => openPlacement({ kind: 'landmark', id: l.id, label: l.label, item: l }) }, actionLabel(l))));
-    if (!d.points.length) return h('div', { class: 'stack-sm' }, h('ul', { class: 'campo-list' }, places), h('p', { class: 'empty' }, 'Nessun Altare: la regia deve prima formare le coppie e sincronizzare gli Altari.'));
+    if (!d.points.length) return h('div', { class: 'stack-sm' }, h('ul', { class: 'campo-list' }, places), h('p', { class: 'empty' }, 'Nessun Altare: la regia deve formare le coppie o creare gli Altari dei Settori.'));
     return h('ul', { class: 'campo-list' }, places, d.points.map((p) => h('li', { class: `campo-item ${!isPending(p, 'point') ? 'done' : ''}` },
       p.hasPhoto ? h('img', { class: 'campo-thumb', src: `/api/media/point/${p.id}?v=${p.placedAt}`, alt: `Foto di ${p.label}`, loading: 'lazy' }) : h('div', { class: 'campo-thumb empty-thumb' }, p.roman),
       h('div', { class: 'campo-info' },
-        h('strong', null, p.label), h('div', { class: 'small muted' }, `Settore ${p.sectorName}${p.locationNote ? ` · ${p.locationNote}` : ''}`),
+        h('strong', null, p.label), h('div', { class: 'small muted' }, `Settore ${p.sectorName}${p.free ? ' · senza coppia' : ''}${p.locationNote ? ` · ${p.locationNote}` : ''}`),
         placedLine(p), p.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
         p.squadId ? h('div', { class: 'tiny muted' }, `Incarico: squadra ${squadName(p.squadId) || '?'}`) : null,
         p.placedBy ? h('div', { class: 'tiny muted' }, `da ${p.placedBy}`) : null),
@@ -196,7 +196,8 @@ export function createField(F, { rerender }) {
       mapView.el,
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-sm', onclick: () => mapView.centerMe() }, '◎ La mia posizione'),
-        h('button', { class: 'btn btn-sm', onclick: () => mapView.autoCenter() }, 'Tutto il campo')),
+        h('button', { class: 'btn btn-sm', onclick: () => mapView.autoCenter() }, 'Tutto il campo'),
+        h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth' }, '⇩ KMZ (ATAK)')),
       h('div', { class: 'map-legend' },
         h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
         h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),

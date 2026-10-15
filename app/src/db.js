@@ -256,9 +256,11 @@ CREATE INDEX IF NOT EXISTS ix_identities_account ON account_identities(accountId
 `);
 // Regia e Soglia da un account dei giocatori (entrato anche con Zero Dark Ops): ci si arriva solo con un
 // link d'invito generato da un master, monouso e a scadenza.
-// Identificativo personale per l'app di tracciamento (Traccar Client): posizione anche a schermo spento.
 // Piazzamento provvisorio (senza cartello né foto): da confermare con il piazzamento normale.
 for (const t of ['points', 'gifts', 'landmarks']) addColumn(t, 'provisional', 'INTEGER NOT NULL DEFAULT 0');
+// Altare aggiunto dalla regia (anche senza coppia): resta anche se nessuna coppia ha quel Settore.
+addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
+// Identificativo personale per l'app di tracciamento (Traccar Client): posizione anche a schermo spento.
 addColumn('players', 'trackToken', 'TEXT');
 addColumn('players', 'trackSeenAt', 'INTEGER');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_players_track ON players(trackToken)');

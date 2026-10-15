@@ -329,6 +329,8 @@ app.post('/api/team/logout', wrap((req, res) => {
 }));
 
 // ---- API coppia
+// La mappa della coppia per ATAK / Google Earth: solo ciò che vede nell'app.
+app.get('/api/team/map.kmz', needTeam, (req, res, next) => { try { sendKmz(res, F.teamKmz(req.team)); } catch (e) { next(e); } });
 app.get('/api/team/state', needMember, wrap((req) => {
   if (!req.player && !req.team) return { noEnrollment: true, account: A.publicAccount(req.account) };
   // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
@@ -447,6 +449,12 @@ app.get('/api/field/whoami', (req, res) => {
   res.status(401).json({ error: 'Accesso riservato alla regia e agli Eletti' });
 });
 app.get('/api/field/state', needField, wrap((req) => F.fieldState(fieldGame(req))));
+const sendKmz = (res, { name, data }) => {
+  res.set({ 'Content-Type': 'application/vnd.google-earth.kmz', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' });
+  res.send(data);
+};
+// Tutti i punti per ATAK / Google Earth (regia ed Eletti).
+app.get('/api/field/export.kmz', needField, (req, res, next) => { try { sendKmz(res, F.orgKmz(fieldGame(req))); } catch (e) { next(e); } });
 app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame(req), req.user?.role === 'master' ? 'master' : 'elect')));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
@@ -538,6 +546,8 @@ m.post('/games/:id/codes', wrap((req) => { G.generateCodes(gameId(req), actor(re
 m.post('/games/:id/never', wrap((req) => { G.extractNeverRevealed(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
 m.post('/games/:id/calendar', wrap((req) => { G.buildCalendar(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
 m.post('/games/:id/points', wrap((req) => { G.ensurePoints(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
+m.post('/games/:id/points/free', wrap((req) => G.addFreePoints(gameId(req), req.body || {}, actor(req))));
+m.delete('/points/:pid', wrap((req) => { G.deletePoint(Number(req.params.pid), actor(req)); return { ok: true }; }));
 m.post('/games/:id/phrase', wrap((req) => { G.setPhrase(gameId(req), req.body.phrase, actor(req)); return { ok: true }; }));
 m.patch('/points/:pid', wrap((req) => { G.editPoint(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.post('/points/:pid/regen', wrap((req) => { G.regenPointToken(Number(req.params.pid), actor(req)); return { ok: true }; }));
