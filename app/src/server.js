@@ -12,12 +12,14 @@ const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
 const O = require('./ops');
+const St = require('./staff');
 
 const PORT = Number(process.env.PORT || 8080);
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const COOKIE_USER = 'zdg_u';
 const COOKIE_TEAM = 'zdg_t';
 const COOKIE_OPS = 'zdg_ops';
+const COOKIE_INVITE = 'zdg_inv';
 const ONE_YEAR = 365 * 24 * 3600;
 
 // ---------------------------------------------------------------- seed
@@ -117,7 +119,18 @@ function loadAuth(req, _res, next) {
       if (req.player?.teamId) req.team = q.get('SELECT * FROM teams WHERE id = ?', req.player.teamId);
     }
   }
+  // Account entrato con un invito del Consiglio: è anche master o validatore.
+  if (!req.user && req.account) req.user = St.staffOf(req.account.id);
   next();
+}
+
+// Dopo l'accesso di un account: se il browser porta un invito del Consiglio lo si accetta.
+// Torna l'utente dell'organizzazione (o null) e l'eventuale errore dell'invito.
+function acceptPendingInvite(req, res, account) {
+  const token = cookies(req)[COOKIE_INVITE];
+  if (!token) return { staff: St.staffOf(account.id) };
+  setCookie(req, res, COOKIE_INVITE, '', 0);
+  try { return { staff: St.claimInvite(token, account) }; } catch (e) { return { staff: St.staffOf(account.id), inviteError: e.message }; }
 }
 
 const needMaster = (req, _res, next) => (req.user?.role === 'master' ? next() : next(new HttpError(401, 'Accesso riservato alla regia')));
@@ -176,13 +189,28 @@ app.post('/api/auth/login', loginLimit, wrap((req, res) => {
   setCookie(req, res, COOKIE_TEAM, newSession('account', a.id));
   const p = A.currentPlayer(a);
   if (p) G.log(p.gameId, `giocatore:${p.id}`, 'player_login', { playerId: p.id });
-  return { role: 'player', username: a.username, home: '/#/home' };
+  const { staff, inviteError } = acceptPendingInvite(req, res, a);
+  if (staff) return { role: staff.role, username: a.username, home: St.homeOf(staff.role), inviteError };
+  return { role: 'player', username: a.username, home: '/#/home', inviteError };
 }));
 app.post('/api/auth/register', loginLimit, wrap((req, res) => {
   const a = A.register(req.body || {});
   setCookie(req, res, COOKIE_TEAM, newSession('account', a.id));
-  return { role: 'player', username: a.username };
+  const { staff, inviteError } = acceptPendingInvite(req, res, a);
+  return { role: staff ? staff.role : 'player', username: a.username, home: staff ? St.homeOf(staff.role) : null, inviteError };
 }));
+// Link d'invito del Consiglio: con l'account già aperto si accetta subito, altrimenti si passa dal login principale.
+app.get('/invito/:token', (req, res) => {
+  if (!St.validInvite(req.params.token)) return res.redirect('/?invito=invalido');
+  if (req.account) {
+    try {
+      const staff = St.claimInvite(req.params.token, req.account);
+      return res.redirect(St.homeOf(staff.role));
+    } catch { return res.redirect('/?invito=invalido'); }
+  }
+  setCookie(req, res, COOKIE_INVITE, req.params.token, 3600);
+  res.redirect('/?invito=1');
+});
 // Account del giocatore: profilo, iscrizioni, partite aperte; iscrizione a una partita.
 const needAccount = (req, _res, next) => (req.account ? next() : next(new HttpError(401, 'Accedi con il tuo account')));
 app.get('/api/account', needAccount, (req, res) => res.json({
@@ -210,6 +238,9 @@ app.get('/auth/ops/callback', loginLimit, async (req, res) => {
     const back = done.flow.back;
     if (!r.linked) setCookie(req, res, COOKIE_TEAM, newSession('account', r.account.id));
     if (r.linked) return res.redirect('/iscrizione?ops=collegato#profilo');
+    const { staff, inviteError } = acceptPendingInvite(req, res, r.account);
+    if (inviteError) return res.redirect(`/?ops_errore=${encodeURIComponent(inviteError)}`);
+    if (staff) return res.redirect(St.homeOf(staff.role));
     const p = A.currentPlayer(r.account);
     if (p) G.log(p.gameId, `giocatore:${p.id}`, 'player_login', { playerId: p.id, gestionale: done.provider.name });
     // Account nuovo o senza iscrizione: si sceglie la sfida.
@@ -236,11 +267,14 @@ app.get('/auth/ops/:id', async (req, res) => {
   }
 });
 
+// Esci dalla regia o dalla Soglia: si chiude tutto (anche l'account) e si torna al login principale.
 app.post('/api/auth/logout', wrap((req, res) => {
   const c = cookies(req);
-  if (c[COOKIE_USER]) q.run('DELETE FROM sessions WHERE token = ?', c[COOKIE_USER]);
-  setCookie(req, res, COOKIE_USER, '', 0);
-  return { ok: true };
+  for (const name of [COOKIE_USER, COOKIE_TEAM]) {
+    if (c[name]) q.run('DELETE FROM sessions WHERE token = ?', c[name]);
+    setCookie(req, res, name, '', 0);
+  }
+  return { ok: true, home: '/' };
 }));
 app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: req.team ? { id: req.team.id } : null }));
 
@@ -544,7 +578,13 @@ m.get('/accounts', (_req, res) => res.json(A.listAccounts()));
 m.delete('/accounts/:aid', wrap((req) => { A.deleteAccount(req.params.aid, actor(req)); return { ok: true }; }));
 m.post('/accounts/cleanup', wrap((req) => A.deleteOrphanAccounts(actor(req))));
 m.post('/accounts/:aid/password', wrap((req) => { A.resetPassword(req.params.aid, req.body.password, actor(req)); return { ok: true }; }));
-m.get('/users', (_req, res) => res.json(q.all('SELECT id, username, role, displayName, createdAt FROM users ORDER BY role, username')));
+m.get('/users', (_req, res) => res.json(q.all(`SELECT u.id, u.username, u.role, u.displayName, u.createdAt, u.accountId, a.username AS accountUsername,
+    (SELECT group_concat(i.providerName, ' · ') FROM account_identities i WHERE i.accountId = u.accountId) AS ops
+  FROM users u LEFT JOIN accounts a ON a.id = u.accountId ORDER BY u.role, u.username`)));
+// Inviti del Consiglio: link monouso (24 ore) per diventare master o validatore con il proprio account.
+m.get('/invites', (req, res) => res.json(St.pendingInvites().map((i) => ({ ...i, url: `${baseUrl(req)}/invito/${i.token}` }))));
+m.post('/invites', wrap((req) => { const i = St.createInvite(req.body?.role, actor(req)); return { ...i, url: `${baseUrl(req)}/invito/${i.token}` }; }));
+m.delete('/invites/:token', wrap((req) => { St.cancelInvite(req.params.token, actor(req)); return { ok: true }; }));
 m.post('/users', wrap((req) => {
   const { username, password, role, displayName } = req.body || {};
   if (!username?.trim() || !password || password.length < 6) throw new HttpError(400, 'Username e password (almeno 6 caratteri) obbligatori');
@@ -557,6 +597,7 @@ m.post('/users', wrap((req) => {
 m.patch('/users/:uid', wrap((req) => {
   const { password } = req.body || {};
   if (!password || password.length < 6) throw new HttpError(400, 'Password di almeno 6 caratteri');
+  if (q.get('SELECT accountId FROM users WHERE id = ?', Number(req.params.uid))?.accountId) throw new HttpError(409, 'Entra con il suo account: la password si cambia dal suo profilo');
   q.run('UPDATE users SET passHash = ? WHERE id = ?', hashPassword(password), Number(req.params.uid));
   return { ok: true };
 }));
@@ -643,7 +684,7 @@ app.use((e, req, res, _next) => {
   if (req.path.startsWith('/api/') || req.headers.accept?.includes('application/json')) {
     return res.status(status).json({ error: status >= 500 ? 'Errore interno' : e.message });
   }
-  if (status === 401) return res.redirect('/regia');
+  if (status === 401) return res.redirect('/');
   res.status(status).type('text').send(e.message);
 });
 

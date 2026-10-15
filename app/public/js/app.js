@@ -55,6 +55,11 @@ function boot() {
     toast('Link di accesso non valido o rigenerato dalla regia', 'error', 7000);
     history.replaceState(null, '', '/' + location.hash);
   }
+  // Invito del Consiglio: si entra (anche con Zero Dark Ops) e l'invito si accetta da solo.
+  const invite = new URLSearchParams(location.search).get('invito');
+  if (invite === 'invalido') toast('Invito scaduto o già usato: chiedine uno nuovo al Consiglio', 'error', 8000);
+  if (invite === '1') S.invite = true;
+  if (invite) history.replaceState(null, '', '/' + location.hash);
   const opsError = new URLSearchParams(location.search).get('ops_errore');
   if (opsError) {
     toast(opsError, 'error', 8000);
@@ -506,6 +511,7 @@ function viewLogin() {
     try {
       const r = await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
       vibrate(80);
+      if (r.inviteError) toast(r.inviteError, 'error', 8000);
       if (r.role !== 'player') { location.href = r.home; return; }
       await refresh();
     } catch (err) { toast(err.offline ? 'Serve la rete per accedere' : err.message, 'error'); }
@@ -523,6 +529,7 @@ function viewLogin() {
     h('p', { class: 'eyebrow' }, 'Consiglio Zero · Zero Dark Games'),
     h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
     pendingAltar ? h('p', { class: 'note' }, 'Avete inquadrato un Altare. Entrate: l\'Altare resterà nella vostra lista.') : null,
+    S.invite ? h('p', { class: 'note' }, 'Hai un invito del Consiglio. Entra con il tuo account (anche con Zero Dark Ops) oppure registrati: l\'invito si accetta da solo.') : null,
     h('form', { class: 'login-form', onsubmit: login },
       h('label', { class: 'field', for: 'login-user' }, h('span', null, 'Username')), user,
       h('label', { class: 'field', for: 'login-pass' }, h('span', null, 'Password')), pass,
@@ -547,7 +554,8 @@ function viewNoEnrollment() {
     h('p', { class: 'eyebrow' }, `Account · ${a.username || ''}`),
     h('h1', null, a.nickname || a.name || 'Benvenuto'),
     h('p', { class: 'muted' }, 'Non sei ancora iscritto a una partita. Scegli come entrare nel buio: Legati, Temerario Solitario o Eletti del Consiglio.'),
-    h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/iscrizione#scelta' }, 'Scegli la tua sfida'),
+    staffLink(a, 'btn btn-primary btn-xl btn-block'),
+    h('a', { class: `btn ${a.staff ? '' : 'btn-primary btn-xl '}btn-block`, href: '/iscrizione#scelta' }, a.staff ? 'Iscriviti a una partita' : 'Scegli la tua sfida'),
     h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: async () => {
       try { await api('POST', '/api/team/logout'); } catch { /* offline */ }
       location.href = '/';
@@ -1566,7 +1574,14 @@ function accountBar(st) {
   return h('div', { class: 'account-bar' },
     h('span', { class: 'small muted' }, acc ? ['Entrato come ', h('strong', null, `@${acc.username}`), acc.ops?.length ? ` · ${acc.ops[0].providerName}` : null] : 'Entrato con QR o codice d\'accesso'),
     acc ? h('a', { class: 'btn btn-sm btn-ghost', href: '/iscrizione#profilo' }, 'Profilo') : null,
+    staffLink(acc, 'btn btn-sm'),
     h('button', { class: 'btn btn-sm', type: 'button', onclick: logout }, 'Esci'));
+}
+
+// Account che fa parte dell'organizzazione: scorciatoia per la regia o la Soglia.
+function staffLink(acc, cls) {
+  if (!acc?.staff) return null;
+  return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/soglia' }, acc.staff === 'master' ? 'Vai in regia' : 'Vai alla Soglia');
 }
 
 function viewSettings() {

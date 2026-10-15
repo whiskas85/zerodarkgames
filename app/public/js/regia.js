@@ -159,7 +159,7 @@ function topbar() {
     h('div', { class: 'top-actions' },
       R.gameId ? h('a', { class: 'btn btn-sm', href: `/tabellone?g=${R.gameId}`, target: '_blank' }, 'Tabellone') : null,
       h('a', { class: 'btn btn-sm', href: '/soglia', target: '_blank' }, 'Soglia'),
-      h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout'); location.reload(); } }, 'Esci')));
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
 }
 
 function sidebar() {
@@ -202,26 +202,10 @@ function tick() {
 
 // ---------------------------------------------------------------- login
 
+// Niente login proprio: tutto passa dal login principale (username e password o Zero Dark Ops).
 function viewLogin() {
-  const u = h('input', { class: 'input', autocomplete: 'username', placeholder: 'utente', required: true });
-  const p = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'password', required: true });
-  return h('main', { class: 'login-page' },
-    h('form', { class: 'card login-card', onsubmit: async (e) => {
-      e.preventDefault();
-      try {
-        const me = await api('POST', '/api/auth/login', { username: u.value, password: p.value });
-        if (me.role === 'player') { location.href = '/'; return; }
-        if (me.role !== 'master') { toast('Questo account è un validatore: usa la pagina Soglia', 'error'); setTimeout(() => (location.href = '/soglia'), 1200); return; }
-        R.me = me;
-        await start();
-      } catch (err) { toast(err.message, 'error'); }
-    } },
-    h('div', { class: 'emblem' }, h('span', null, '0')),
-    h('h1', null, 'Regia'),
-    h('p', { class: 'muted' }, 'Accesso riservato al Consiglio Zero.'),
-    h('label', { class: 'field' }, h('span', null, 'Utente'), u),
-    h('label', { class: 'field' }, h('span', null, 'Password'), p),
-    h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Entra')));
+  location.replace(R.me?.role === 'validator' ? '/soglia' : '/');
+  return h('main', { class: 'login-page' }, h('p', { class: 'muted' }, 'Accesso…'));
 }
 
 // ---------------------------------------------------------------- componenti
@@ -2150,6 +2134,40 @@ function publicUrlSection() {
       h('li', null, 'In Wi-Fi (http) il gioco funziona, ma notifiche push, installazione dell\'app e fotocamera interna richiedono https: per provarle usa il tunnel.')));
 }
 
+// ---- inviti del Consiglio: un link monouso (24 ore) per entrare in regia o alla Soglia con il proprio account
+let invites = null;
+let lastInvite = null;
+function invitesBlock() {
+  if (!invites) {
+    invites = [];
+    api('GET', '/api/m/invites').then((r) => { invites = r; if (tab() === 'impostazioni') render(); }).catch(() => {});
+  }
+  const role = h('select', { class: 'input', 'data-keep': 'inv-role' }, h('option', { value: 'validator' }, 'Validatore (Soglia)'), h('option', { value: 'master' }, 'Master (regia)'));
+  const create = async () => {
+    if (role.value === 'master' && !(await dialog({ title: 'Invito da master?', text: 'Chi apre il link diventa master: vede tutto e comanda la partita. Mandalo solo alla persona giusta: vale una volta sola e per 24 ore.', okLabel: 'Crea il link', danger: true }))) return;
+    try {
+      lastInvite = await api('POST', '/api/m/invites', { role: role.value });
+      invites = null;
+      render();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  const copy = (url) => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok'));
+  const until = (t) => new Date(t).toLocaleString('it-IT', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return h('div', { class: 'stack-sm' },
+    h('strong', null, 'Invita con il suo account'),
+    h('p', { class: 'muted tiny' }, 'Chi apre il link entra dal login principale, con username e password o con Zero Dark Ops, e diventa master o validatore. Il link vale una volta sola e per 24 ore.'),
+    h('div', { class: 'row-actions' }, role, h('button', { class: 'btn btn-primary', onclick: create }, 'Crea link d\'invito')),
+    lastInvite && invites?.some((i) => i.token === lastInvite.token) ? h('div', { class: 'card stack-sm' },
+      h('span', { class: 'eyebrow' }, `Invito da ${lastInvite.role === 'master' ? 'master' : 'validatore'} · fino a ${until(lastInvite.expiresAt)}`),
+      h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(lastInvite.url)}`, alt: 'QR dell\'invito', width: 160, height: 160 }),
+      h('code', { class: 'mono tiny', style: 'word-break: break-all' }, lastInvite.url),
+      h('button', { class: 'btn btn-sm', onclick: () => copy(lastInvite.url) }, 'Copia link')) : null,
+    invites?.length ? h('ul', { class: 'users' }, invites.map((i) => h('li', null,
+      h('span', { class: 'chip' }, i.role === 'master' ? 'master' : 'validatore'), h('span', { class: 'tiny muted' }, `in attesa · fino a ${until(i.expiresAt)}`),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => copy(i.url) }, 'Copia'),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { try { await api('DELETE', `/api/m/invites/${encodeURIComponent(i.token)}`); invites = null; render(); } catch (e) { toast(e.message, 'error'); } } }, 'Annulla')))) : null);
+}
+
 // ---- «Accedi con Zero Dark Ops»: gestionali delle squadre da cui i giocatori entrano (OpenID Connect).
 let opsInfo = null;
 let opsEdit = null; // null | 'new' | id del gestionale in modifica
@@ -2205,7 +2223,7 @@ function accountsSection() {
   if (!accountsCache) { loadAccounts(); return section('Account dei giocatori', h('p', { class: 'muted' }, 'Caricamento…')); }
   const f = accountsFilter.trim().toLowerCase();
   const list = accountsCache.filter((a) => !f || [a.username, a.name, a.nickname, a.softairTeam].some((x) => (x || '').toLowerCase().includes(f)));
-  const orphans = accountsCache.filter((a) => !a.enrollments).length;
+  const orphans = accountsCache.filter((a) => !a.enrollments && !a.staff).length;
   const reset = async (a) => {
     const pwd = await dialog({ title: `Nuova password per @${a.username}`, text: `${a.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
     if (pwd) call('POST', `/api/m/accounts/${a.id}/password`, { password: pwd }, 'Password reimpostata');
@@ -2225,12 +2243,31 @@ function accountsSection() {
       h('thead', null, h('tr', null, ['Account', 'Team softair', 'Iscrizioni', ''].map((x) => h('th', null, x)))),
       h('tbody', null, list.map((a) => h('tr', null,
         h('td', null, h('strong', null, a.name), a.nickname ? h('span', { class: 'muted' }, ` «${a.nickname}»`) : null, h('div', { class: 'tiny brass' }, `@${a.username}`),
-          a.ops ? h('span', { class: 'chip', title: a.hasPassword ? 'Entra anche con username e password' : 'Entra solo dal gestionale' }, a.hasPassword ? a.ops : `solo ${a.ops}`) : null),
+          a.ops ? h('span', { class: 'chip', title: a.hasPassword ? 'Entra anche con username e password' : 'Entra solo dal gestionale' }, a.hasPassword ? a.ops : `solo ${a.ops}`) : null,
+          a.staff ? h('span', { class: 'chip chip-warn' }, a.staff === 'master' ? 'master' : 'validatore') : null),
         h('td', null, a.softairTeam || '—'),
         h('td', { class: 'tiny' }, a.enrollments ? a.games : h('span', { class: 'chip' }, 'nessuna')),
         h('td', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => reset(a) }, 'Password'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(a) }, 'Elimina'))))))) : h('p', { class: 'empty' }, f ? 'Nessun account trovato.' : 'Nessun account registrato.'));
+}
+
+// Organizzazione: master e validatori (con password o entrati con un invito dal loro account).
+function orgSection() {
+  if (!R.users.length) api('GET', '/api/m/users').then((u) => { R.users = u; if (tab() === 'impostazioni') render(); }).catch(() => {});
+  const uName = h('input', { class: 'input', placeholder: 'username', 'data-keep': 'u-name' });
+  const uPass = h('input', { class: 'input', type: 'password', placeholder: 'password (min 6)', 'data-keep': 'u-pass', autocomplete: 'new-password' });
+  const uRole = h('select', { class: 'input', 'data-keep': 'u-role' }, h('option', { value: 'validator' }, 'Validatore (Soglia)'), h('option', { value: 'master' }, 'Master (regia)'));
+  return section('Organizzazione',
+          h('ul', { class: 'users' }, R.users.map((u) => h('li', null, h('strong', null, u.displayName && u.accountId ? u.displayName : u.username), h('span', { class: 'chip' }, u.role === 'master' ? 'master' : 'validatore'),
+            u.accountId ? h('span', { class: 'tiny brass', title: 'Entra con il suo account dei Giochi' }, `@${u.accountUsername}${u.ops ? ` · ${u.ops}` : ''}`) : null,
+            u.id !== R.me.id ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await confirmCall(u.accountId ? 'Togliere dall\'organizzazione?' : 'Eliminare l\'utente?', u.accountId ? `${u.displayName || u.username} non entrerà più in regia né alla Soglia; il suo account dei Giochi resta.` : u.username, 'DELETE', `/api/m/users/${u.id}`, undefined, u.accountId ? 'Tolto dall\'organizzazione' : 'Utente eliminato', true)) { R.users = []; render(); } } }, u.accountId ? 'Togli' : 'Elimina') : h('span', { class: 'tiny muted' }, 'tu'),
+            u.accountId ? null : h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const p = await dialog({ title: `Nuova password per ${u.username}`, input: { type: 'password', placeholder: 'min 6 caratteri' }, okLabel: 'Salva' }); if (p) call('PATCH', `/api/m/users/${u.id}`, { password: p }, 'Password aggiornata'); } }, 'Password')))),
+          invitesBlock(),
+          h('form', { class: 'form-grid', onsubmit: async (e) => {
+            e.preventDefault();
+            if (await call('POST', '/api/m/users', { username: uName.value, password: uPass.value, role: uRole.value }, 'Utente creato')) { R.users = []; uName.value = ''; uPass.value = ''; uName.dataset.fresh = uPass.dataset.fresh = '1'; render(); }
+          } }, uName, uPass, uRole, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi')));
 }
 
 function viewNewGame(first) {
@@ -2241,6 +2278,7 @@ function viewNewGame(first) {
         h('p', { class: 'muted' }, 'Il primo passo è crearne una (qui sotto) oppure una partita di prova: le altre voci del menu si attivano appena esiste una partita. Poi: iscrizioni e coppie → Sigilli → Altari e Parola → cerchio → VIA.')) : null,
       gameForm({ name: '', bookUrl: '/regolamento.html' }, true)),
     first ? opsSection() : null,
+    first ? orgSection() : null,
     first ? accountsSection() : null,
     section('Vuoi solo provare?',
       h('p', { class: 'muted' }, 'Crea una partita di prova già preparata, con giocatori finti, e fai avanzare il tempo per vedere tutto il gioco in pochi minuti.'),
@@ -2250,13 +2288,9 @@ function viewNewGame(first) {
 function viewSettings() {
   const ms = R.ms;
   const g = ms.game;
-  if (!R.users.length) api('GET', '/api/m/users').then((u) => { R.users = u; if (tab() === 'impostazioni') render(); }).catch(() => {});
   const tpl = Object.keys(ms.templateLabels).map((k) => h('label', { class: 'field' }, h('span', null, ms.templateLabels[k]),
     h('textarea', { class: 'input', rows: 2, name: k, 'data-keep': `tpl-${k}`, value: g.templates[k] })));
   const timers = g.timers.map((t) => h('label', { class: 'field' }, h('span', null, `${t.label} (min)`), h('input', { class: 'input', type: 'number', step: '0.5', min: 0.5, name: t.id, value: t.minutes, 'data-keep': `tm-${t.id}` })));
-  const uName = h('input', { class: 'input', placeholder: 'username', 'data-keep': 'u-name' });
-  const uPass = h('input', { class: 'input', type: 'password', placeholder: 'password (min 6)', 'data-keep': 'u-pass', autocomplete: 'new-password' });
-  const uRole = h('select', { class: 'input', 'data-keep': 'u-role' }, h('option', { value: 'validator' }, 'Validatore (Soglia)'), h('option', { value: 'master' }, 'Master (regia)'));
   return h('div', { class: 'stack' },
     publicUrlSection(),
     opsSection(),
@@ -2271,14 +2305,7 @@ function viewSettings() {
         section('Timer delle coppie',
           h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },
             timers, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer'))),
-        section('Organizzazione',
-          h('ul', { class: 'users' }, R.users.map((u) => h('li', null, h('strong', null, u.username), h('span', { class: 'chip' }, u.role === 'master' ? 'master' : 'validatore'),
-            u.id !== R.me.id ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await confirmCall('Eliminare l\'utente?', u.username, 'DELETE', `/api/m/users/${u.id}`, undefined, 'Utente eliminato', true)) { R.users = []; render(); } } }, 'Elimina') : h('span', { class: 'tiny muted' }, 'tu'),
-            h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const p = await dialog({ title: `Nuova password per ${u.username}`, input: { type: 'password', placeholder: 'min 6 caratteri' }, okLabel: 'Salva' }); if (p) call('PATCH', `/api/m/users/${u.id}`, { password: p }, 'Password aggiornata'); } }, 'Password')))),
-          h('form', { class: 'form-grid', onsubmit: async (e) => {
-            e.preventDefault();
-            if (await call('POST', '/api/m/users', { username: uName.value, password: uPass.value, role: uRole.value }, 'Utente creato')) { R.users = []; uName.value = ''; uPass.value = ''; uName.dataset.fresh = uPass.dataset.fresh = '1'; render(); }
-          } }, uName, uPass, uRole, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
+        orgSection(),
         section('Notifiche alla regia',
           h('p', { class: 'muted tiny' }, 'Ricevi push per iscrizioni e messaggi delle coppie (serve HTTPS).'),
           h('button', { class: 'btn', onclick: async () => { try { await enablePush('staff'); toast('Notifiche attive', 'ok'); } catch (e) { toast(e.message, 'error', 6000); } } }, 'Attiva notifiche')),

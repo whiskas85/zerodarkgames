@@ -14,7 +14,9 @@ function publicAccount(a) {
   if (!a) return null;
   // ops: gestionali collegati (Zero Dark Ops); senza password si entra solo da lì.
   const ops = q.all('SELECT id, iss, providerName, opsName, squadra FROM account_identities WHERE accountId = ? ORDER BY id', a.id);
-  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops };
+  // staff: ruolo nell'organizzazione ottenuto con un invito del Consiglio (master o validatore).
+  const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id)?.role || null;
+  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops, staff };
 }
 
 function register(data) {
@@ -125,7 +127,7 @@ function enroll(account, data) {
 // ---- gestione dalla regia
 
 function listAccounts() {
-  return q.all(`SELECT a.id, a.username, a.name, a.nickname, a.softairTeam, a.phone, a.createdAt, a.passHash != '' AS hasPassword,
+  return q.all(`SELECT a.id, a.username, a.name, a.nickname, a.softairTeam, a.phone, a.createdAt, a.passHash != '' AS hasPassword, (SELECT role FROM users u WHERE u.accountId = a.id) AS staff,
                   (SELECT group_concat(i.providerName, ' · ') FROM account_identities i WHERE i.accountId = a.id) AS ops,
                   (SELECT COUNT(*) FROM players p WHERE p.accountId = a.id) AS enrollments,
                   (SELECT COUNT(*) FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = a.id AND g.status != 'ended') AS active,
@@ -137,6 +139,8 @@ function listAccounts() {
 function deleteAccount(id, actor) {
   const a = q.get('SELECT * FROM accounts WHERE id = ?', Number(id));
   if (!a) throw err(404, 'Account non trovato');
+  const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id);
+  if (staff) throw err(409, `${a.username} fa parte dell'organizzazione (${staff.role === 'master' ? 'master' : 'validatore'}): toglilo prima da Organizzazione`);
   const busy = q.get(`SELECT g.name FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = ? AND g.status != 'ended' AND p.teamId IS NOT NULL`, a.id);
   if (busy) throw err(409, `${a.username} è in una coppia o tra gli Eletti nella partita «${busy.name}»: toglilo prima da lì`);
   tx(() => {
@@ -151,7 +155,8 @@ function deleteAccount(id, actor) {
 
 // Account senza alcuna iscrizione (es. dopo aver eliminato una partita).
 function deleteOrphanAccounts(actor) {
-  const ids = q.all('SELECT id FROM accounts a WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.accountId = a.id)').map((r) => r.id);
+  // Chi fa parte dell'organizzazione (master, validatori) resta anche senza iscrizioni.
+  const ids = q.all('SELECT id FROM accounts a WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.accountId = a.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.accountId = a.id)').map((r) => r.id);
   tx(() => {
     for (const id of ids) {
       q.run("DELETE FROM sessions WHERE kind = 'account' AND refId = ?", id);

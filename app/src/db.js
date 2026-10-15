@@ -254,6 +254,16 @@ CREATE TABLE IF NOT EXISTS account_identities (
 );
 CREATE INDEX IF NOT EXISTS ix_identities_account ON account_identities(accountId);
 `);
+// Regia e Soglia da un account dei giocatori (entrato anche con Zero Dark Ops): ci si arriva solo con un
+// link d'invito generato da un master, monouso e a scadenza.
+addColumn('users', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE CASCADE');
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_account ON users(accountId);
+CREATE TABLE IF NOT EXISTS staff_invites (
+  token TEXT PRIMARY KEY, role TEXT NOT NULL CHECK (role IN ('master','validator')), createdBy TEXT,
+  createdAt INTEGER NOT NULL, expiresAt INTEGER NOT NULL, usedAt INTEGER, usedBy INTEGER
+);
+`);
 // Messaggi con una singola squadra di Eletti (null = tutti gli Eletti).
 addColumn('messages', 'squadId', 'INTEGER');
 

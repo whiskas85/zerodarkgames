@@ -18,7 +18,7 @@ cp .env.example .env        # poi cambia almeno MASTER_PASSWORD
 docker compose up -d --build
 ```
 
-Apri <http://localhost:8090/regia> ed entra con `MASTER_USER` / `MASTER_PASSWORD` del file `.env`.
+Apri <http://localhost:8090> ed entra con `MASTER_USER` / `MASTER_PASSWORD` del file `.env`: si finisce in regia.
 I dati (SQLite) restano nel volume `zdg-data` anche dopo aggiornamenti e riavvii.
 
 Comandi utili:
@@ -105,6 +105,20 @@ Da quel momento compare **Accedi con Zero Dark Ops** nell'app e nella pagina di 
 - **chi ha già un account** lo collega dal profilo (**Collega Zero Dark Ops**) e poi entra con un tocco; dal profilo si scollega (se l'account non ha una password, prima va impostata);
 - l'identità è la coppia (gestionale, `sub`): un account del gestionale vale per un solo account dei Giochi. Più squadre con il loro gestionale: un gestionale per ciascuna, ognuno con il suo pulsante.
 
+### Regia e Soglia con il proprio account (inviti)
+
+Nessuno diventa master o validatore da solo, neanche dal gestionale: i ruoli dei Giochi li dà solo un master, con un **link d'invito**.
+
+1. In regia, **Impostazioni → Organizzazione → Invita con il suo account**: scegli *Master* o *Validatore* e premi **Crea link d'invito** (link e QR).
+2. Chi lo apre arriva al login principale, entra con il suo account (username e password o **Accedi con Zero Dark Ops**) oppure si registra: l'invito si accetta da solo e si finisce in regia o alla Soglia.
+3. Il link vale **una volta sola** e per **24 ore**; finché non è usato si può annullare. In *Organizzazione* si vede chi è entrato così (`@account · Zero Dark Ops`) e con **Togli** gli si toglie il ruolo (l'account dei Giochi resta).
+
+Per entrare in regia con il tuo account di Zero Dark Ops: entra come `MASTER_USER`, crea un invito da master, aprilo e scegli **Accedi con Zero Dark Ops**. L'utente `MASTER_USER` del file `.env` resta come accesso d'emergenza (es. se il gestionale non risponde).
+
+**I validatori** sono gli Ufficiali della Soglia: entrano solo in `/soglia`, dove registrano l'esito delle coppie che portano la Parola; non vedono la regia né i Sigilli.
+
+Regia e Soglia non hanno un login proprio: tutto passa dal login principale (`/`), che manda ognuno al suo posto; **Esci** riporta lì.
+
 Il giro è *authorization code* con PKCE S256; l'id_token è verificato (firma RS256 con le chiavi del gestionale, emittente, destinatario, scadenza, nonce). I Giochi non tengono token del gestionale: la sessione è quella solita dell'app. Il gestionale accetta solo indirizzi di ritorno `https://` (o `http://localhost` per le prove).
 
 ## Provare dai telefoni in Wi-Fi
@@ -136,9 +150,9 @@ docker-compose.yml   .env.example
 app/
   Dockerfile
   src/      server.js (API, pagine)  game.js (motore)  db.js (SQLite)  realtime.js (SSE + Web Push)  print.js (stampe A4)
-            accounts.js (account dei giocatori)  ops.js (accesso con Zero Dark Ops, OpenID Connect)
+            accounts.js (account dei giocatori)  ops.js (accesso con Zero Dark Ops, OpenID Connect)  staff.js (inviti per regia e Soglia)
   public/   index.html + js/app.js (PWA coppie)  regia.html + js/regia.js  soglia.html  tabellone.html  iscrizione.html  sw.js
-  test/     engine.test.js (criteri di accettazione)  ops.test.js (accesso con Zero Dark Ops)
+  test/     engine.test.js (criteri di accettazione)  ops.test.js (accesso con Zero Dark Ops)  staff.test.js (inviti)
 ```
 
 Stack: Node.js 24 senza framework frontend (nessuna build), Express 5, SQLite integrato (`node:sqlite`), Server-Sent Events, Web Push (chiavi VAPID generate al primo avvio e salvate nel database).
