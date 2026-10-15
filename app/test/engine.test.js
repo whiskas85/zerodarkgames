@@ -240,6 +240,33 @@ test('partita di prova: pronta subito e tempo che avanza fino alla fine', () => 
   assert.throws(() => G.advanceDemo(real.id, 5, 'test'), /prova/);
 });
 
+test('finestre armamenti: si modificano anche aperte o chiuse', () => {
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const id = G.saveSupply(g.id, { description: 'BB' }, 'test');
+  G.fireSupply(id, 'test');
+  const row = () => q.get('SELECT * FROM supply_drops WHERE id = ?', id);
+  // Aperta fino a chiusura: si corregge il contenuto e le si dà una fine.
+  G.saveSupply(g.id, { description: '2 casse di BB', message: 'Al Cuore!' }, 'test', id);
+  assert.equal(row().description, '2 casse di BB');
+  assert.equal(row().closesAt, null);
+  assert.throws(() => G.shiftSupply(id, -5, 'test'), /Chiudi ora/);
+  G.shiftSupply(id, 15, 'test');
+  assert.ok(row().closesAt > Date.now() + 14 * 60000);
+  // Durata cambiata da aperta (dall'apertura); vuota torna fino a chiusura.
+  G.saveSupply(g.id, { durationMin: 40 }, 'test', id);
+  assert.equal(row().closesAt, row().firedAt + 40 * 60000);
+  G.saveSupply(g.id, { durationMin: '' }, 'test', id);
+  assert.equal(row().closesAt, null);
+  G.closeSupply(id, 'test');
+  // Chiusa: si corregge solo il contenuto.
+  G.saveSupply(g.id, { description: '3 casse', durationMin: 99 }, 'test', id);
+  assert.equal(row().description, '3 casse');
+  assert.equal(row().status, 'closed');
+});
+
 test('Settori e Altari: crea, modifica, elimina o archivia', () => {
   const id = G.saveSector(null, { name: 'Vento', element: 'i mulini', motto: 'Arriviamo ovunque' }, 'test');
   let s = G.sectorsAdmin().find((x) => x.id === id);

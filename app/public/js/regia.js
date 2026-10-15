@@ -1362,6 +1362,14 @@ function timelineEvents(exclude = null) {
     const end = gf.expiresAfterMin ? at + gf.expiresAfterMin : null;
     ev.push({ at, to: end, label: `Dono ${gf.label} (${gf.name})${gf.status === 'claimed' ? ' · preso' : gf.status === 'expired' ? ' · svanito' : gf.revealedAt ? ' · in mappa' : ''}`, kind: 'gift', done: ['claimed', 'expired'].includes(gf.status), ref: { type: 'gift', id: gf.id } });
   }
+  // Uscite dalla Soglia: ogni coppia che si presenta con la Parola, con l'esito della validazione.
+  for (const v of ms.validations || []) {
+    const t = ms.teams.find((x) => x.id === v.teamId);
+    const miss = v.missing ? JSON.parse(v.missing) : [];
+    const what = v.result === 'valid' ? `Parola valida${t?.finishPosition ? ` · ${t.finishPosition}° posto` : ''}`
+      : `respinta: ${v.result === 'wrong' ? 'Parola errata' : 'Parola incompleta'}${miss.length ? ` (${miss.map((m) => `#${m.position}${m.status === 'wrong' ? ' ✗' : ''}`).join(', ')})` : ''}`;
+    ev.push({ at: tb.toMin(v.at), label: `Soglia: ${t ? teamLabel(t) : 'coppia'} — ${what}`, kind: `soglia tl-soglia-${v.result === 'valid' ? 'ok' : 'ko'}`, done: true, ref: { type: 'validation', id: v.id } });
+  }
   // Scontri (ingaggi) registrati dalle coppie, con l'esito.
   for (const e of ms.combat?.timeline || []) {
     if (!e.createdAt) continue;
@@ -1379,7 +1387,7 @@ function engagementText(e) {
 }
 
 // Una riga fissa per tipo di avvenimento: l'altezza sulla timeline dice cos'è.
-const TL_LANES = ['phase', 'revelation', 'supply', 'gift', 'engagement'];
+const TL_LANES = ['phase', 'revelation', 'supply', 'gift', 'engagement', 'soglia'];
 const laneOf = (e) => Math.max(0, TL_LANES.indexOf(String(e.kind).split(' ')[0]));
 
 const fmtClockMin = (m) => `${m < 0 ? '−' : ''}${fmtMin(Math.abs(m))}`;
@@ -1558,7 +1566,7 @@ function liveTimeline() {
     h('div', { class: 'tl-legend tiny' },
       h('span', null, h('i', { class: 'tl-key tl-truce-k' }), 'tregua'), h('span', null, h('i', { class: 'tl-key tl-last-k' }), 'ultima mezz\'ora'),
       h('span', null, h('i', { class: 'tl-key tl-revelation' }), 'tradimenti'), h('span', null, h('i', { class: 'tl-key tl-supply' }), 'armamenti'),
-      h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-engagement' }), 'scontri'), h('span', null, h('i', { class: 'tl-key tl-now-k' }), 'adesso')),
+      h('span', null, h('i', { class: 'tl-key tl-gift' }), 'doni'), h('span', null, h('i', { class: 'tl-key tl-engagement' }), 'scontri'), h('span', null, h('i', { class: 'tl-key tl-soglia tl-soglia-ok' }), 'Soglia'), h('span', null, h('i', { class: 'tl-key tl-now-k' }), 'adesso')),
     track,
     h('p', { class: 'tiny muted' }, tb.known ? '' : 'La partita non ha un orario di inizio: la timeline è in minuti dal via. ',
       nextEv ? ['Prossimo: ', h('strong', null, nextEv.label), ` a ${fmtClockMin(nextEv.at)}`, tb.toWall(nextEv.at) ? ` (alle ${fmtTime(tb.toWall(nextEv.at))})` : ''] : 'Clicca un punto vuoto per programmare armamenti o l\'annuncio di un dono; clicca un avvenimento per spostarlo o farlo partire.'));
@@ -1629,6 +1637,13 @@ async function planDialog(min) {
 // Avvenimento sulla timeline: cosa è e cosa se ne può fare.
 async function eventDialog(e) {
   const ms = R.ms;
+  if (e.ref?.type === 'validation') {
+    const v = (ms.validations || []).find((y) => y.id === e.ref.id);
+    if (!v) return;
+    return modal({ title: e.label, okLabel: 'Chiudi', body: h('div', { class: 'stack-sm' },
+      h('p', null, `Alle ${fmtTime(v.at, true)} (${fmtClockMin(e.at)} dal via), validatore ${v.username || '—'}.`),
+      v.notes ? h('p', { class: 'muted' }, `Note: ${v.notes}`) : null) });
+  }
   if (e.ref?.type === 'engagement') {
     const x = (ms.combat?.timeline || []).find((y) => y.id === e.ref.id);
     if (!x) return;
@@ -1652,7 +1667,7 @@ async function eventDialog(e) {
     if (!s) return;
     if (s.status === 'scheduled') {
       const act = await actionDialog(e.label, `${supplyWhen(s)}${s.durationMin ? ` · per ${s.durationMin}′` : ''}`, [
-        ['move', '◷ Sposta o cambia durata'], active ? ['fire', 'Apri adesso'] : null, ['early', '−5′ (anticipa)'], ['late', '+5′ (posticipa)'], ['delete', 'Elimina'],
+        ['move', 'Modifica (orario, durata, contenuto)…'], active ? ['fire', 'Apri adesso'] : null, ['early', '−5′ (anticipa)'], ['late', '+5′ (posticipa)'], ['delete', 'Elimina'],
       ]);
       if (act === 'move') return supplyDialog(s);
       if (act === 'fire') return call('POST', `/api/m/supply/${s.id}/fire`, {}, 'Armamenti aperti');
@@ -1661,14 +1676,18 @@ async function eventDialog(e) {
       if (act === 'delete') return confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true);
       return;
     }
-    if (s.status === 'fired' && s.closesAt) {
-      const act = await actionDialog(e.label, 'La finestra è aperta.', [['shorter', '−5′ (accorcia)'], ['longer', '+5′ (prolunga)'], ['close', 'Chiudi adesso']]);
+    if (s.status === 'fired') {
+      const act = await actionDialog(e.label, s.closesAt ? `La finestra è aperta, si chiude alle ${fmtTime(s.closesAt)}.` : 'La finestra è aperta fino a chiusura.', [
+        s.closesAt ? ['shorter', '−5′ (accorcia)'] : null, s.closesAt ? ['longer', '+5′ (prolunga)'] : ['in15', 'Chiudi tra 15′'], ['edit', 'Modifica…'], ['close', 'Chiudi adesso']]);
       if (act === 'shorter') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: -5 }, 'Accorciata di 5 minuti');
       if (act === 'longer') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: 5 }, 'Prolungata di 5 minuti');
+      if (act === 'in15') return call('POST', `/api/m/supply/${s.id}/shift`, { minutes: 15 }, 'Si chiude tra 15 minuti');
+      if (act === 'edit') return supplyEditDialog(s);
       if (act === 'close') return confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true);
       return;
     }
-    return actionDialog(e.label, 'Finestra già conclusa.', []);
+    const act = await actionDialog(e.label, 'Finestra già conclusa.', [['edit', 'Modifica il contenuto…']]);
+    if (act === 'edit') return supplyEditDialog(s);
   }
   if (e.ref?.type === 'revelation') {
     const r = ms.revelations.find((x) => x.id === e.ref.id);
@@ -1840,10 +1859,10 @@ async function supplyDialog(s = null, preset = null) {
   setTimeout(() => desc.focus(), 50);
   const r = await timelineModal({
     extra,
-    title: s ? 'Sposta la finestra armamenti' : 'Nuova finestra armamenti',
+    title: s ? 'Modifica la finestra armamenti' : 'Nuova finestra armamenti',
     intro: 'All\'apertura parte l\'annuncio a tutte le coppie e nelle app compare il conto alla rovescia della chiusura; allo scadere della durata la finestra si chiude con un secondo annuncio. Si apre solo a partita in corso.',
     nowLabel: 'Apri adesso', withDuration: true, durationLabel: 'Resta aperta per (minuti)', defaultDuration: s?.durationMin ?? 15, allowDurationEmpty: true,
-    exclude: s ? { kind: 'supply', id: s.id } : null, initial, okLabel: s ? 'Sposta' : 'Programma',
+    exclude: s ? { kind: 'supply', id: s.id } : null, initial, okLabel: s ? 'Salva' : 'Programma',
   });
   if (!r) return;
   const body = { description: desc.value.trim(), message: msg.value.trim(), durationMin: r.durationMin ?? '' };
@@ -1859,6 +1878,29 @@ async function supplyDialog(s = null, preset = null) {
   load();
 }
 const supplyDraft = { desc: '', msg: '' };
+
+// Finestra già aperta o chiusa: contenuto, messaggio e (se aperta) durata.
+async function supplyEditDialog(s) {
+  const fired = s.status === 'fired';
+  const desc = h('input', { class: 'input', maxlength: 200, value: s.description || '', placeholder: 'es. 2 casse di BB (solo regia)' });
+  const msg = h('textarea', { class: 'input', rows: 2, maxlength: 500 });
+  msg.value = s.message || '';
+  const dur = h('input', { class: 'input input-sm w-90', type: 'number', min: 1, max: 600, value: s.durationMin ?? '', placeholder: 'nessuna' });
+  const ok = await modal({
+    title: fired ? 'Finestra armamenti aperta' : 'Finestra armamenti chiusa',
+    okLabel: 'Salva',
+    body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Cosa contiene'), desc),
+      h('label', { class: 'field' }, h('span', null, 'Messaggio alle coppie'), msg),
+      h('p', { class: 'tiny muted' }, 'L\'annuncio di apertura è già partito: il messaggio cambiato resta nella scheda della finestra.'),
+      fired ? h('label', { class: 'field' }, h('span', null, `Durata totale dall'apertura delle ${fmtTime(s.firedAt)} (minuti, vuoto = fino a chiusura)`), dur) : null),
+    onOk: () => true,
+  });
+  if (!ok) return;
+  const body = { description: desc.value.trim(), message: msg.value.trim() };
+  if (fired) body.durationMin = dur.value;
+  call('PATCH', `/api/m/supply/${s.id}`, body, 'Finestra aggiornata');
+}
 
 function viewSupply() {
   const ms = R.ms;
@@ -1878,6 +1920,7 @@ function viewSupply() {
         h('thead', null, h('tr', null, ['Apertura', 'Durata', 'Stato', 'Descrizione', ''].map((x) => h('th', null, x)))),
         h('tbody', null, ms.supply.map((s) => {
           const open = s.status === 'fired' && s.closesAt;
+          const openEnded = s.status === 'fired' && !s.closesAt;
           return h('tr', { class: open ? 'row-open' : '' },
             h('td', { class: 'mono' }, s.status === 'scheduled' ? supplyWhen(s) : `aperta ${fmtTime(s.firedAt)}`),
             h('td', { class: 'mono' }, s.durationMin ? `${s.durationMin}′` : '—'),
@@ -1885,10 +1928,11 @@ function viewSupply() {
             h('td', { class: 'tiny' }, s.description || '—', s.message ? h('div', { class: 'muted' }, `«${s.message}»`) : null),
             h('td', { class: 'row-actions' },
               s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !active, title: active ? '' : 'Si apre solo a partita in corso', onclick: () => confirmCall('Aprire adesso?', 'Parte subito l\'annuncio a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/fire`, {}, 'Armamenti aperti') }, 'Apri ora') : null,
-              s.status === 'scheduled' ? h('button', { class: 'btn btn-sm', onclick: () => supplyDialog(s) }, '◷ Sposta…') : null,
+              h('button', { class: 'btn btn-sm', onclick: () => (s.status === 'scheduled' ? supplyDialog(s) : supplyEditDialog(s)) }, 'Modifica…'),
               s.status === 'scheduled' && (s.scheduledMin != null || s.scheduledAt) ? [shift(s, -5, 'Anticipata di 5 minuti'), shift(s, 5, 'Posticipata di 5 minuti')] : null,
-              open ? [shift(s, -5, 'Accorciata di 5 minuti'), shift(s, 5, 'Prolungata di 5 minuti'),
-                h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true) }, 'Chiudi ora')] : null,
+              open ? [shift(s, -5, 'Accorciata di 5 minuti'), shift(s, 5, 'Prolungata di 5 minuti')] : null,
+              openEnded ? h('button', { class: 'btn btn-sm', onclick: () => call('POST', `/api/m/supply/${s.id}/shift`, { minutes: 15 }, 'Si chiude tra 15 minuti') }, 'Chiudi tra 15′') : null,
+              s.status === 'fired' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true) }, 'Chiudi ora') : null,
               s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true) }, 'Elimina') : null));
         })))) : h('p', { class: 'empty' }, 'Nessuna finestra armamenti.')));
 }

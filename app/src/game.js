@@ -968,8 +968,23 @@ function saveSupply(gameId, data, actor, id = null) {
   const g = getGame(gameId);
   const old = id ? q.get('SELECT * FROM supply_drops WHERE id = ? AND gameId = ?', id, g.id) : null;
   if (id && !old) throw err(404, 'Finestra non trovata');
-  if (old && old.status !== 'scheduled') throw err(409, 'Finestra già aperta: usa prolunga o chiudi');
   const num = (v) => (v === '' || v == null ? null : parseFloat(v));
+  // Già aperta o chiusa: si correggono contenuto e messaggio; da aperta anche la durata (vuota = fino a chiusura).
+  if (old && old.status !== 'scheduled') {
+    const description = data.description !== undefined ? String(data.description || '').trim() || null : old.description;
+    const message = data.message !== undefined ? String(data.message || '').trim() || null : old.message;
+    let { closesAt, durationMin } = old;
+    if (old.status === 'fired' && data.durationMin !== undefined) {
+      durationMin = num(data.durationMin);
+      if (durationMin != null && (!Number.isFinite(durationMin) || durationMin <= 0 || durationMin > 600)) throw err(400, 'Durata non valida (minuti)');
+      closesAt = durationMin != null ? old.firedAt + Math.round(durationMin * 60000) : null;
+      if (closesAt != null && closesAt < Date.now() + 30000) throw err(409, 'Con questa durata la finestra sarebbe già finita: usa «Chiudi ora»');
+    }
+    q.run('UPDATE supply_drops SET description = ?, message = ?, durationMin = ?, closesAt = ? WHERE id = ?', description, message, durationMin, closesAt, old.id);
+    log(g.id, actor, 'supply_edited', { id: old.id, durationMin });
+    notifyState(g.id);
+    return old.id;
+  }
   const m = num(data.scheduledMin);
   if (m != null && (!Number.isFinite(m) || m < 0 || m > g.durationMin)) throw err(400, 'Minuto dal via non valido');
   const at = num(data.scheduledAt);
@@ -1031,6 +1046,11 @@ function shiftSupply(id, minutes, actor) {
     else throw err(409, 'Finestra a mano: aprila con "Apri ora"');
   } else if (s.status === 'fired' && s.closesAt) {
     q.run('UPDATE supply_drops SET closesAt = MAX(?, closesAt + ?), durationMin = MAX(1, durationMin + ?) WHERE id = ?', Date.now() + 30000, m * 60000, m, s.id);
+  } else if (s.status === 'fired') {
+    // Aperta fino a chiusura: «chiudi tra m minuti» le dà una fine.
+    if (m <= 0) throw err(409, 'La finestra non ha una durata: usa «Chiudi ora»');
+    const closesAt = Date.now() + Math.round(m * 60000);
+    q.run('UPDATE supply_drops SET closesAt = ?, durationMin = ? WHERE id = ?', closesAt, Math.max(1, Math.round((closesAt - s.firedAt) / 60000)), s.id);
   } else throw err(409, 'Finestra già chiusa');
   log(s.gameId, actor, 'supply_shifted', { id: s.id, minutes: m, open: s.status === 'fired' });
   notifyState(s.gameId);

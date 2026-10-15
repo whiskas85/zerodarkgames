@@ -321,10 +321,10 @@ tr.gift-row-claimed td { opacity: .6; }
 
 /* Timeline del torneo */
 .timeline-modal { gap: 10px; }
-.tl-track { position: relative; height: 72px; margin: 18px 4px 4px; border-top: 2px solid var(--line); cursor: crosshair; }
+.tl-track { position: relative; height: 82px; margin: 18px 4px 4px; border-top: 2px solid var(--line); cursor: crosshair; }
 .tl-tick { position: absolute; top: -6px; height: 10px; border-left: 1px solid var(--line); }
 .tl-tick i { position: absolute; top: -16px; left: -10px; font-style: normal; font-size: 10px; color: var(--muted); font-family: var(--f-mono, monospace); white-space: nowrap; }
-.tl-game { position: absolute; top: 0; height: 64px; background: rgba(255, 255, 255, .03); }
+.tl-game { position: absolute; top: 0; height: 76px; background: rgba(255, 255, 255, .03); }
 .tl-truce { position: absolute; top: 0; height: 8px; background: rgba(90, 160, 224, .45); }
 .tl-last { position: absolute; top: 0; height: 8px; background: rgba(224, 96, 63, .55); }
 .tl-ev { position: absolute; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; }
@@ -336,6 +336,12 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-ev.tl-eng-pending, .tl-ev.tl-eng-contested { box-shadow: 0 0 0 2px #f2d27a; }
 .tl-ev.tl-eng-cancelled { opacity: .35; }
 .tl-row.tl-engagement { border-left-color: #c9573f; background: none; }
+/* Uscite dalla Soglia: verde se la Parola è valida, rosso se respinta. Restano piene anche nel passato. */
+.tl-soglia, .tl-key.tl-soglia { border-radius: 2px; }
+.tl-soglia-ok, .tl-key.tl-soglia-ok { background: #4caf50; }
+.tl-soglia-ko { background: #e5484d; }
+.tl-ev.tl-soglia.tl-done { opacity: 1; }
+.tl-row.tl-soglia { border-left-color: #4caf50; background: none; }
 .tl-phase { background: #c9c9c9; }
 .tl-done { opacity: .35; }
 .tl-now { position: absolute; top: -8px; bottom: 0; border-left: 2px dashed #3b82f6; }
@@ -359,8 +365,8 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-row.tl-revelation, .tl-row.tl-supply, .tl-row.tl-gift, .tl-row.tl-phase { background: none; }
 
 /* Timeline in regia: avanza in tempo reale, cliccabile */
-.tl-live { height: 92px; margin-top: 22px; }
-.tl-live .tl-game { height: 90px; }
+.tl-live { height: 106px; margin-top: 22px; }
+.tl-live .tl-game { height: 104px; }
 .tl-live .tl-ev { border: 0; padding: 0; cursor: pointer; width: 12px; height: 12px; margin-left: -6px; box-shadow: 0 0 0 2px var(--paper); }
 .tl-live .tl-ev.tl-range { height: 10px; margin-left: 0; }
 /* Barre: la parte già trascorsa (fino a --cut) è semitrasparente come gli avvenimenti passati. */
@@ -370,7 +376,7 @@ tr.gift-row-claimed td { opacity: .6; }
 .demo-sep { color: var(--muted); padding: 0 4px; }
 .rules-frame { width: 100%; height: calc(100vh - 210px); min-height: 480px; border: 2px solid var(--line); background: var(--bg); }
 .tl-live .tl-ev:hover, .tl-live .tl-ev:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
-.tl-past { position: absolute; top: 0; height: 90px; background: rgba(0, 0, 0, .25); pointer-events: none; }
+.tl-past { position: absolute; top: 0; height: 104px; background: rgba(0, 0, 0, .25); pointer-events: none; }
 .tl-live .tl-now { border-left-width: 3px; pointer-events: none; transition: left 1s linear; }
 .tl-live .tl-now i { white-space: nowrap; font-weight: 700; bottom: -18px; }
 .tl-now-k { background: #3b82f6; }
