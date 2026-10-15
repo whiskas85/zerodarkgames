@@ -450,6 +450,49 @@ test('alleanze e scontri: Sigilli condivisi, vinti dalla parte vincente, timer d
   assert.throws(() => K.requestAlliance(A, Cc.id), /Blocco riproposta/);
 });
 
+test('vittoria senza Sigilli nuovi: si ruba un Sigillo dal taccuino della parte sconfitta', () => {
+  const K = require('../src/combat');
+  const g = setupGame(5);
+  const [A, B, Cc, D, E] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const known = (t, s) => G.teamState(t).notebook.find((n) => n.sectorId === s.sectorId);
+  // Prima vittoria di D su C: Sigillo nuovo, niente furto.
+  const e1 = K.reportEngagement(Cc, D.id, 'lost');
+  assert.equal(known(D, Cc).source, 'won');
+  assert.equal(K.combatState(D).steals.length, 0);
+  // C intanto ha scoperto il Sigillo di B (e D no).
+  q.run('INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, ?)', Cc.id, B.sectorId, codeOf(g.id, B.sectorId), Date.now(), 'note');
+  // Seconda vittoria su C: D non ottiene niente di nuovo, gli si propone solo il Sigillo di B.
+  const e2 = K.reportEngagement(Cc, D.id, 'lost');
+  assert.notEqual(e1.id, e2.id);
+  const st = K.combatState(D).steals;
+  assert.equal(st.length, 1);
+  assert.deepEqual(st[0].candidates.map((c) => c.sectorId), [B.sectorId]);
+  assert.throws(() => K.stealCode(D, e2.id, A.sectorId), /non si può rubare/);
+  const got = K.stealCode(D, e2.id, B.sectorId);
+  assert.equal(got.code, codeOf(g.id, B.sectorId));
+  assert.equal(known(D, B).code, codeOf(g.id, B.sectorId));
+  assert.equal(K.combatState(D).steals.length, 0);
+  assert.throws(() => K.stealCode(D, e2.id, B.sectorId), /già scelto/);
+  // Niente da rubare (C non conosce altro che D non sappia): nessuna proposta.
+  K.reportEngagement(Cc, D.id, 'lost');
+  assert.equal(K.combatState(D).steals.length, 0);
+  // Alleanza sconfitta: si sommano i taccuini di tutta l'alleanza.
+  q.run('INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, ?)', A.id, E.sectorId, codeOf(g.id, E.sectorId), Date.now(), 'note');
+  K.respondRequest(A, K.requestAlliance(Cc, A.id).id, true);
+  // D conosce già C; A è nuovo, quindi vince il Sigillo di A senza furto.
+  K.reportEngagement(Cc, D.id, 'lost');
+  assert.equal(known(D, A).source, 'won');
+  assert.equal(K.combatState(D).steals.length, 0);
+  // Ora D li conosce tutti e due: si propone E (dal taccuino di A, alleato di C).
+  advanceTo(g.id, 7);
+  K.reportEngagement(Cc, D.id, 'lost');
+  assert.deepEqual(K.combatState(D).steals[0].candidates.map((c) => c.sectorId), [E.sectorId]);
+});
+
 test('squadre di Eletti: membri, incarichi di piazzamento e incarichi liberi', () => {
   const F = require('../src/field');
   const g = setupGame(3);

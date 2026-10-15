@@ -56,6 +56,25 @@ function giveCode(toTeamId, fromTeamId, source) {
   return true;
 }
 
+// Settori di cui una coppia conosce il Sigillo: il proprio, quelli rivelati dal Consiglio, quelli nel taccuino.
+function knownSectors(t) {
+  const set = new Set(t.sectorId ? [t.sectorId] : []);
+  for (const r of G.revealedCodes(t.gameId)) set.add(r.sectorId);
+  for (const n of q.all('SELECT sectorId FROM team_code_notes WHERE teamId = ? AND correct = 1', t.id)) set.add(n.sectorId);
+  return set;
+}
+
+// Vittoria senza Sigilli nuovi: si ruba un Sigillo dal taccuino della parte sconfitta (di tutta l'alleanza),
+// tra quelli che il vincitore non conosce ancora.
+function stealCandidates(e, winnerId) {
+  const me = team(winnerId);
+  const mine = knownSectors(me);
+  const pool = new Set();
+  for (const l of JSON.parse(e.losers)) for (const sid of knownSectors(team(l))) if (!mine.has(sid)) pool.add(sid);
+  return q.all('SELECT s.id AS sectorId, s.name AS sectorName, s.roman FROM sectors s JOIN sector_codes c ON c.sectorId = s.id AND c.gameId = ? ORDER BY s.ord', me.gameId)
+    .filter((s) => pool.has(s.sectorId));
+}
+
 const names = (ids) => ids.map((id) => team(id)?.sectorName).filter(Boolean);
 
 function notify(teamIds, gameId, push) {
@@ -185,6 +204,7 @@ function applyEngagement(e, by) {
   const winners = JSON.parse(e.winners);
   const losers = JSON.parse(e.losers);
   const won = [];
+  const stealers = [];
   tx(() => {
     q.run("UPDATE engagements SET status = 'confirmed', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), by, e.id);
     if (e.result === 'draw') {
@@ -192,7 +212,15 @@ function applyEngagement(e, by) {
       return;
     }
     // Ogni vincitore (e ogni suo alleato) riceve i Sigilli di tutta la parte sconfitta.
-    for (const w of winners) for (const l of losers) if (giveCode(w, l, 'won')) won.push(l);
+    const gained = new Set();
+    for (const w of winners) for (const l of losers) if (giveCode(w, l, 'won')) { won.push(l); gained.add(w); }
+    // Chi non ottiene niente di nuovo (li conosceva già tutti) sceglie un Sigillo da rubare alla parte sconfitta.
+    for (const w of winners) {
+      if (!gained.has(w) && stealCandidates(e, w).length) {
+        q.run('INSERT OR IGNORE INTO engagement_steals (engagementId, teamId, createdAt) VALUES (?, ?, ?)', e.id, w, Date.now());
+        stealers.push(w);
+      }
+    }
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
     for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}`);
   });
@@ -201,7 +229,8 @@ function applyEngagement(e, by) {
     notify([...winners, ...losers], e.gameId, { title: 'Pareggio', body: 'Blocco ingaggio: 5 minuti.', tag: `eng-${e.id}` });
     return;
   }
-  notify(winners, e.gameId, { title: 'Scontro vinto', body: `Sigilli conquistati: ${names(losers).join(', ')}. Li trovate nel taccuino.`, tag: `eng-${e.id}`, url: '/#/codici' });
+  notify(winners.filter((w) => !stealers.includes(w)), e.gameId, { title: 'Scontro vinto', body: `Sigilli conquistati: ${names(losers).join(', ')}. Li trovate nel taccuino.`, tag: `eng-${e.id}`, url: '/#/codici' });
+  notify(stealers, e.gameId, { title: 'Scontro vinto', body: 'I loro Sigilli li conoscete già: scegliete quale rubare.', tag: `eng-${e.id}`, url: '/#/scontri' });
   notify(losers, e.gameId, { title: 'Scontro perso', body: 'Cappellino: Veglia di 2 minuti, poi tornate in gioco.', tag: `eng-${e.id}`, url: '/#/timer' });
 }
 
@@ -285,6 +314,36 @@ function engagementOut(e, meId) {
 
 const VICTORY_SHOW_MS = 10 * 60000;
 
+// Il vincitore sceglie quale Sigillo rubare: lo riceve nel taccuino e lo vede svelarsi.
+function stealCode(me, engagementId, sectorId) {
+  requireCouple(me);
+  const s = q.get('SELECT * FROM engagement_steals WHERE engagementId = ? AND teamId = ?', Number(engagementId), me.id);
+  if (!s) throw err(404, 'Nessun Sigillo da rubare per questo scontro');
+  if (s.chosenAt) throw err(409, 'Avete già scelto il Sigillo di questo scontro');
+  const e = q.get('SELECT * FROM engagements WHERE id = ?', s.engagementId);
+  const pick = stealCandidates(e, me.id).find((c) => c.sectorId === Number(sectorId));
+  if (!pick) throw err(409, 'Questo Sigillo non si può rubare: sceglietene un altro');
+  const sc = q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', me.gameId, pick.sectorId);
+  tx(() => {
+    q.run('INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, ?)', me.id, pick.sectorId, sc.code, Date.now(), 'won');
+    q.run('UPDATE engagement_steals SET sectorId = ?, chosenAt = ? WHERE id = ?', pick.sectorId, Date.now(), s.id);
+  });
+  G.log(me.gameId, `coppia:${me.id}`, 'seal_stolen', { by: me.sectorName, sector: pick.sectorName, engagementId: e.id });
+  rt.toTeams(me.gameId, 'state', {}, me.id);
+  rt.toStaff(me.gameId, 'combat');
+  return { ...pick, code: sc.code };
+}
+
+// Furti ancora da scegliere (il popup si può chiudere: la scelta resta nella pagina Scontri).
+function pendingSteals(me) {
+  return q.all('SELECT * FROM engagement_steals WHERE teamId = ? AND chosenAt IS NULL ORDER BY id', me.id).map((s) => {
+    const e = q.get('SELECT * FROM engagements WHERE id = ?', s.engagementId);
+    if (!e || e.status !== 'confirmed') return null;
+    const candidates = stealCandidates(e, me.id);
+    return candidates.length ? { engagementId: e.id, against: victoryOut(e).against, candidates } : null;
+  }).filter(Boolean);
+}
+
 function victoryOut(e) {
   const winners = JSON.parse(e.winners);
   const face = [e.reporterTeamId, e.opponentTeamId].find((id) => !winners.includes(id));
@@ -320,6 +379,7 @@ function combatState(me) {
     toConfirm: recent.filter((e) => e.status === 'pending' && JSON.parse(e.losers).includes(me.id)).map((e) => engagementOut(e, me.id)),
     // Vittorie appena confermate (anche degli alleati): il telefono mostra la Vittoria con i Sigilli di tutta
     // la parte sconfitta, anche quelli che si conoscevano già (rivelati, annotati, da un'alleanza).
+    steals: pendingSteals(me),
     victories: recent.filter((e) => e.status === 'confirmed' && e.result !== 'draw' && JSON.parse(e.winners).includes(me.id) && e.resolvedAt > now - VICTORY_SHOW_MS)
       .map((e) => victoryOut(e)),
     history: recent.slice(0, 15).map((e) => engagementOut(e, me.id)),
@@ -345,4 +405,4 @@ function masterCombat(gameId) {
   };
 }
 
-module.exports = { requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };

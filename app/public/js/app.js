@@ -143,7 +143,10 @@ function setState(st) {
     for (const v of victories) seenVictories.add(v.id);
     store.set('zdg_seen_victories', [...seenVictories].slice(-50));
     const v = victories[victories.length - 1];
-    setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against), 300);
+    // Nessun Sigillo nuovo: la Vittoria propone quale rubare.
+    const steal = (st.combat.steals || []).find((x) => victories.some((y) => y.id === x.engagementId));
+    if (steal) setTimeout(() => showSteal(steal), 300);
+    else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against), 300);
   }
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Allinea gli Altari visitati del server con quelli locali.
@@ -758,7 +761,7 @@ const teamName = (t) => `${t.roman} ${t.sectorName}`;
 
 // Alleanze e scontri sono due pagine. Le alleanze degli altri sono segrete: negli scontri si vede solo la coppia.
 const alliancePending = (st) => (st?.combat ? st.combat.incoming.length : 0);
-const fightPending = (st) => (st?.combat ? st.combat.toConfirm.length : 0);
+const fightPending = (st) => (st?.combat ? st.combat.toConfirm.length + (st.combat.steals || []).length : 0);
 
 function viewAlliances() {
   const st = S.state;
@@ -834,6 +837,12 @@ function viewCombat() {
 
   return h('div', { class: 'stack' },
     h('h2', null, 'Scontri'),
+
+    (c.steals || []).map((x) => h('div', { class: 'combat-card ask' },
+      h('div', { class: 'eyebrow' }, 'Sigillo da rubare'),
+      h('strong', null, `Vittoria contro ${x.against ? teamName(x.against) : 'la parte sconfitta'}`),
+      h('p', { class: 'small muted' }, 'I loro Sigilli li conoscete già: scegliete quale rubare dal loro taccuino.'),
+      h('button', { class: 'btn btn-primary', onclick: () => showSteal(x) }, 'Scegli il Sigillo'))),
 
     c.toConfirm.length ? h('div', { class: 'stack-sm' }, c.toConfirm.map((e) => h('div', { class: 'combat-card ask' },
       h('div', { class: 'eyebrow' }, 'Esito da confermare'),
@@ -1328,6 +1337,49 @@ function showVictory(won, against) {
     h('div', { class: 'row' },
       h('a', { class: 'btn btn-primary btn-block', href: '#/codici', onclick: () => el.remove() }, 'Vai al taccuino'),
       h('button', { class: 'btn btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi')));
+}
+
+// Vittoria senza Sigilli nuovi: si sceglie quale rubare tra quelli che la parte sconfitta conosce e voi no.
+function showSteal(steal) {
+  vibrate([120, 60, 120, 60, 400]);
+  beep();
+  const box = h('div', { class: 'battle-seals' });
+  const actions = h('div', { class: 'row' });
+  const close = () => el.remove();
+  const choose = async (c, btn) => {
+    box.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    btn.classList.add('on');
+    try {
+      const r = await api('POST', `/api/team/engagement/${steal.engagementId}/steal`, { sectorId: c.sectorId });
+      const code = h('div', { class: 'battle-code mono' }, ghost(`steal-${r.sectorId}`, r.code.length, 'ghost-strong'));
+      box.replaceChildren(h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${r.roman} · Settore ${r.sectorName}`), code));
+      intro.textContent = 'Sigillo rubato:';
+      // Il simulacro sfocato si svela nel Sigillo vero, come negli ingaggi.
+      setTimeout(() => { code.replaceChildren(h('span', { class: 'unveil' }, r.code)); vibrate(60); }, 1100);
+      actions.replaceChildren(
+        h('a', { class: 'btn btn-primary btn-block', href: '#/codici', onclick: close }, 'Vai al taccuino'),
+        h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'));
+      refresh();
+    } catch (e) {
+      toast(e.offline ? 'Serve la rete per rubare il Sigillo' : e.message, 'error', 7000);
+      box.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      btn.classList.remove('on');
+    }
+  };
+  box.append(h('div', { class: 'opp-grid' }, steal.candidates.map((c) => {
+    const btn = h('button', { type: 'button', class: 'opp', onclick: () => choose(c, btn) }, h('strong', null, `${c.roman} ${c.sectorName}`));
+    return btn;
+  })));
+  actions.append(h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Scelgo dopo'));
+  const intro = h('p', { class: 'muted' }, 'I loro Sigilli li conoscete già. Scegliete quale rubare dal taccuino della parte sconfitta:');
+  const el = battleOverlay('victory',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'eyebrow' }, 'Scontro vinto'),
+    h('h2', { class: 'battle-title' }, 'Vittoria'),
+    steal.against ? h('p', null, `Avete battuto il Settore ${steal.against.sectorName}.`) : null,
+    intro, box,
+    h('p', { class: 'small muted' }, 'Lo trovate anche nel taccuino dei Codici.'),
+    actions);
 }
 
 function showDefeat(timerUid, reason) {

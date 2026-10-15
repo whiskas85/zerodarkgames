@@ -1672,6 +1672,6 @@ module.exports = {
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
-  validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
+  revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };

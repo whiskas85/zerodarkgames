@@ -341,6 +341,7 @@ app.post('/api/team/alliance/break', needTeam, teamRateLimit, wrap((req) => K.re
 app.post('/api/team/alliance/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondRequest(req.team, req.params.id, !!req.body.accept)));
 app.post('/api/team/alliance/:id/cancel', needTeam, wrap((req) => K.cancelRequest(req.team, req.params.id)));
 app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result)));
+app.post('/api/team/engagement/:id/steal', needTeam, teamRateLimit, wrap((req) => K.stealCode(req.team, req.params.id, req.body.sectorId)));
 app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm)));
 // Posizione GPS del telefono (nessun limite di frequenza condiviso con le azioni: arriva ogni ~20 s).
 const lastPos = new Map();
