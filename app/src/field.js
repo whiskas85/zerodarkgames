@@ -6,7 +6,7 @@ const { q, tx, DATA_DIR, getSetting, setSetting } = require('./db');
 const C = require('./constants');
 const G = require('./game');
 const rt = require('./realtime');
-const { randomToken, HttpError } = require('./util');
+const { randomToken, randomCode, HttpError } = require('./util');
 
 const err = (status, msg) => new HttpError(status, msg);
 const PHOTO_DIR = path.join(DATA_DIR, 'photos');
@@ -499,6 +499,52 @@ function trackingActive(team, status) {
   return false;
 }
 
+// Posizione da Traccar Client (protocollo OsmAnd: parametri nell'indirizzo o nel modulo; versioni nuove: JSON con
+// location.coords). L'identificativo è il trackToken personale del giocatore.
+function parseTraccar(query, body) {
+  const b = Array.isArray(body) ? body[body.length - 1] || {} : body || {};
+  const loc = b.location || {};
+  const c = loc.coords || {};
+  const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
+  let lat = pick(query.lat, b.lat, c.latitude);
+  let lng = pick(query.lon, b.lon, query.lng, b.lng, c.longitude);
+  const pair = pick(query.location, typeof b.location === 'string' ? b.location : undefined);
+  if ((lat == null || lng == null) && pair) [lat, lng] = String(pair).split(',');
+  const ts = pick(query.timestamp, b.timestamp, loc.timestamp);
+  let at = null;
+  if (ts != null) {
+    const n = Number(ts);
+    at = Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : Date.parse(ts);
+  }
+  return {
+    id: String(pick(query.id, query.deviceid, b.id, b.deviceid, b.device_id) || ''),
+    lat: parseFloat(lat), lng: parseFloat(lng), acc: parseFloat(pick(query.accuracy, b.accuracy, c.accuracy)), at: Number.isFinite(at) ? at : null,
+  };
+}
+
+function recordTraccar(query, body) {
+  const p = parseTraccar(query, body);
+  const player = p.id ? q.get('SELECT * FROM players WHERE trackToken = ?', p.id) : null;
+  if (!player) return { ok: false, reason: 'unknown' };
+  const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
+  if (!team) return { ok: true, tracking: false };
+  // Punti rimasti in memoria nel telefono (senza rete): conta solo la posizione attuale.
+  if (p.at && Date.now() - p.at > 2 * 60000) return { ok: true, ignored: 'vecchia' };
+  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now(), player.id);
+  return recordPosition(team, player, { deviceId: `trk-${player.id}-${p.id.slice(0, 12)}`, lat: p.lat, lng: p.lng, acc: Number.isFinite(p.acc) ? p.acc : undefined });
+}
+
+// Identificativo per Traccar Client (creato alla prima richiesta) e ultimo segnale ricevuto da lì.
+function trackingInfo(player) {
+  if (!player.trackToken) {
+    let t;
+    do t = randomCode(10).toLowerCase(); while (q.get('SELECT 1 FROM players WHERE trackToken = ?', t));
+    q.run('UPDATE players SET trackToken = ? WHERE id = ?', t, player.id);
+    player = q.get('SELECT * FROM players WHERE id = ?', player.id);
+  }
+  return { deviceId: player.trackToken, lastAt: player.trackSeenAt || null };
+}
+
 function recordPosition(team, player, body) {
   const game = G.getGame(team.gameId);
   if (!trackingActive(team, game.status)) return { ok: true, tracking: false };
@@ -527,7 +573,13 @@ function positionsOf(gameId, viewer = 'master') {
                       LEFT JOIN players pl ON pl.id = pos.playerId
                       LEFT JOIN elect_squads sq ON sq.id = pl.squadId
                       WHERE pos.gameId = ? AND pos.at > ?`, Number(gameId), now - POSITION_MAX_AGE);
-  return rows.filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
+  // Stessa persona da due fonti (app aperta e Traccar Client): resta solo la posizione più recente.
+  const latest = new Map();
+  for (const r of rows) {
+    const k = r.playerId != null ? `p${r.playerId}` : `d${r.deviceId}`;
+    if (!latest.has(k) || latest.get(k).at < r.at) latest.set(k, r);
+  }
+  return [...latest.values()].filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
     deviceId: r.deviceId, teamId: r.teamId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
     label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
     who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),
@@ -609,7 +661,7 @@ function useGift(team, giftId) {
 }
 
 module.exports = {
-  recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
+  recordTraccar, parseTraccar, trackingInfo, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
   placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

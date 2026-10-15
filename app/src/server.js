@@ -352,6 +352,23 @@ app.post('/api/team/position', needTeam, wrap((req) => {
   lastPos.set(key, now);
   return F.recordPosition(req.team, req.player, req.body || {});
 }));
+// Traccar Client (posizione anche con l'app chiusa o lo schermo spento): risponde sempre OK, altrimenti il
+// telefono continua a riprovare all'infinito.
+const lastTraccar = new Map();
+app.all(['/api/traccar', '/api/traccar/'], express.urlencoded({ extended: false }), (req, res) => {
+  const key = String(req.query.id || req.query.deviceid || req.body?.device_id || req.body?.id || req.ip);
+  const now = Date.now();
+  if (now - (lastTraccar.get(key) || 0) >= 5000) {
+    lastTraccar.set(key, now);
+    try { F.recordTraccar(req.query, req.body); } catch { /* posizione non valida: si ignora */ }
+  }
+  res.type('text').send('OK');
+});
+// Configurazione di Traccar Client per questo giocatore.
+app.get('/api/team/tracking', needMember, wrap((req) => {
+  if (!req.player) throw new HttpError(409, 'Entra con il tuo account o con il tuo codice personale per avere l\'identificativo');
+  return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.trackingInfo(req.player) };
+}));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));
 app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));

@@ -130,6 +130,15 @@ Da quel momento cartelli degli Altari, credenziali, QR dell'iscrizione e link di
 L'IP del PC si trova con `ipconfig` ("Indirizzo IPv4" della scheda Wi-Fi). Con DHCP può cambiare: se cambia, aggiorna l'impostazione e ristampa i QR.
 L'impostazione ha la precedenza su `PUBLIC_URL` del file `.env`; con "Torna a…" si ripristina.
 
+## Posizione anche a schermo spento (Traccar Client)
+
+Il browser manda la posizione solo con l'app aperta e lo schermo acceso (limite di Android e iOS per le app web). Per averla sempre, ogni giocatore installa **Traccar Client** (gratis, [Android](https://play.google.com/store/apps/details?id=org.traccar.client) e [iPhone](https://apps.apple.com/app/traccar-client/id843156974)) e lo configura da **Impostazioni → Posizione anche a schermo spento** nell'app dei Giochi: indirizzo del server (`<indirizzo pubblico>/api/traccar`) e identificativo personale, da copiare. Frequenza consigliata 30 secondi, posizione «Sempre», niente ottimizzazione della batteria.
+
+- Le posizioni arrivano a `/api/traccar` (protocollo OsmAnd: parametri nell'indirizzo o nel modulo, oppure JSON con `location.coords` delle versioni nuove) e valgono come quelle dell'app; il server risponde sempre `OK`.
+- Se la stessa persona manda la posizione sia dall'app aperta sia da Traccar Client, in mappa c'è un solo punto (il più recente).
+- I punti vecchi rimasti nel telefono senza rete (più di 2 minuti) non contano; come per l'app, le coppie compaiono solo a partita iniziata.
+- Serve l'accesso personale (account o codice personale): con il codice comune della coppia non c'è un identificativo.
+
 ## Telefoni e HTTPS
 
 Su `localhost` del PC funziona tutto. Dai telefoni in rete locale (`http://<IP-del-PC>:8090`) il gioco funziona, ma il browser **non** abilita installazione PWA, notifiche push, fotocamera in-app e schermo sempre acceso: questi richiedono **HTTPS**.

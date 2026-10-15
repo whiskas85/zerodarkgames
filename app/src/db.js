@@ -256,6 +256,10 @@ CREATE INDEX IF NOT EXISTS ix_identities_account ON account_identities(accountId
 `);
 // Regia e Soglia da un account dei giocatori (entrato anche con Zero Dark Ops): ci si arriva solo con un
 // link d'invito generato da un master, monouso e a scadenza.
+// Identificativo personale per l'app di tracciamento (Traccar Client): posizione anche a schermo spento.
+addColumn('players', 'trackToken', 'TEXT');
+addColumn('players', 'trackSeenAt', 'INTEGER');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_players_track ON players(trackToken)');
 addColumn('users', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE CASCADE');
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_account ON users(accountId);

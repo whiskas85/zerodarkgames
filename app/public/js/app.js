@@ -923,7 +923,8 @@ function updateTracking(st) {
 function trackingNote(st) {
   if (!trackingOn(st)) return null;
   return h('p', { class: 'track-note small' }, '📍 ', st.team.kind === 'elect' ? 'La posizione di questo telefono è visibile alla regia e agli altri Eletti.' : 'Durante la partita la posizione di questo telefono è visibile al Consiglio.',
-    h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg ? ` ${trackMsg}` : ''));
+    h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg ? ` ${trackMsg}` : ''),
+    st.player ? [' ', h('a', { href: '#/impostazioni' }, 'Anche a schermo spento →')] : null);
 }
 
 // ---------------------------------------------------------------- Mappa
@@ -1657,6 +1658,36 @@ function staffLink(acc, cls) {
   return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/soglia' }, acc.staff === 'master' ? 'Vai in regia' : 'Vai alla Soglia');
 }
 
+// Traccar Client: manda la posizione anche con l'app chiusa o lo schermo spento (il browser non può).
+let trackInfo = null;
+function trackingCard() {
+  if (!trackInfo) {
+    trackInfo = { loading: true };
+    api('GET', '/api/team/tracking').then((r) => { trackInfo = r; render(); }).catch((e) => { trackInfo = { error: e.message }; render(); });
+  }
+  const t = trackInfo;
+  const copyRow = (label, value) => h('div', { class: 'track-row' },
+    h('div', { class: 'eyebrow' }, label),
+    h('div', { class: 'row' }, h('code', { class: 'mono track-val' }, value),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => navigator.clipboard?.writeText(value).then(() => toast(`${label}: copiato`, 'ok')) }, 'Copia')));
+  return h('div', { class: 'card stack-sm', id: 'tracciamento' },
+    h('strong', null, 'Posizione anche a schermo spento'),
+    h('p', { class: 'muted small' }, 'Con l\'app chiusa o lo schermo spento il telefono smette di mandare la posizione: è un limite del browser. L\'app gratuita Traccar Client la manda al Consiglio sempre, anche in tasca.'),
+    t.loading ? h('p', { class: 'muted small' }, 'Caricamento…') : t.error ? h('p', { class: 'bad-text small' }, t.error) : [
+      h('ol', { class: 'track-steps small' },
+        h('li', null, 'Installa Traccar Client: ', h('a', { href: 'https://play.google.com/store/apps/details?id=org.traccar.client', target: '_blank', rel: 'noopener' }, 'Android'), ' · ', h('a', { href: 'https://apps.apple.com/app/traccar-client/id843156974', target: '_blank', rel: 'noopener' }, 'iPhone'), '.'),
+        h('li', null, 'Nelle impostazioni di Traccar Client copia questi due valori:')),
+      copyRow('Indirizzo del server (Server URL)', t.serverUrl),
+      copyRow('Identificativo del dispositivo (Device identifier)', t.deviceId),
+      h('ol', { class: 'track-steps small', start: 3 },
+        h('li', null, 'Frequenza 30 secondi, precisione alta. Consenti la posizione «Sempre» e, su Android, togli l\'ottimizzazione della batteria per Traccar Client.'),
+        h('li', null, 'Attiva il servizio (interruttore in alto). Lascialo acceso per tutta la partita.')),
+      h('p', { class: 'small' }, t.lastAt ? ['Ultima posizione ricevuta da Traccar Client: ', h('strong', null, fmtTime(t.lastAt))] : h('span', { class: 'muted' }, 'Nessuna posizione ricevuta finora da Traccar Client (arrivano a partita iniziata).'),
+        ' ', h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { trackInfo = null; render(); } }, 'Aggiorna')),
+      h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo. Il Consiglio vede la posizione solo a partita iniziata.'),
+    ]);
+}
+
 function viewSettings() {
   const set = (k, v) => { S.settings[k] = v; store.set('zdg_settings', S.settings); applyTheme(); render(); };
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -1675,6 +1706,7 @@ function viewSettings() {
     st?.account ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo account'), h('p', null, h('strong', null, st.account.username), ` · ${st.account.name}`),
       h('a', { class: 'btn btn-sm', href: '/iscrizione#profilo' }, 'Profilo e password')) : null,
     st?.player?.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, st.player.accessCode), h('p', { class: 'muted small' }, 'Con questo codice entri da qualsiasi telefono e segui sempre la tua coppia.')) : null,
+    st?.player && st.team?.kind !== 'lobby' ? trackingCard() : null,
     h('button', { class: 'btn btn-block', onclick: () => openTour() }, '▶ Rivedi il tour dell\'app'),
     h('button', { class: 'btn btn-danger btn-block', onclick: logout }, 'Esci da questo dispositivo'));
 }

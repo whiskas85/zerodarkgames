@@ -517,6 +517,35 @@ test('vittoria senza Sigilli nuovi: si ruba un Sigillo dal taccuino della parte 
   assert.deepEqual(K.combatState(D).steals[0].candidates.map((c) => c.sectorId), [E.sectorId]);
 });
 
+test('Traccar Client: posizione anche a schermo spento, un solo punto per persona', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const pl = q.get('SELECT * FROM players WHERE gameId = ? AND teamId IS NOT NULL ORDER BY id LIMIT 1', g.id);
+  const info = F.trackingInfo(pl);
+  assert.match(info.deviceId, /^[a-z0-9]{10}$/);
+  assert.equal(F.trackingInfo(q.get('SELECT * FROM players WHERE id = ?', pl.id)).deviceId, info.deviceId);
+  // Protocollo OsmAnd: parametri nell'indirizzo.
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.2', accuracy: '8', timestamp: String(Math.floor(Date.now() / 1000)) }, {});
+  let mine = F.positionsOf(g.id).filter((x) => x.teamId === pl.teamId);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].lat, 45.1);
+  // Versione nuova: JSON con location.coords.
+  F.recordTraccar({}, { device_id: info.deviceId, location: { timestamp: new Date().toISOString(), coords: { latitude: 45.2, longitude: 9.3, accuracy: 5 } } });
+  mine = F.positionsOf(g.id).filter((x) => x.teamId === pl.teamId);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].lat, 45.2);
+  // Con l'app aperta sullo stesso giocatore: in mappa resta un solo punto, il più recente.
+  F.recordPosition(q.get('SELECT * FROM teams WHERE id = ?', pl.teamId), pl, { deviceId: 'telefono-aperto-1', lat: 45.3, lng: 9.4, acc: 6 });
+  mine = F.positionsOf(g.id).filter((x) => x.teamId === pl.teamId);
+  assert.equal(mine.length, 1);
+  // Punti vecchi rimasti nel telefono e identificativi sconosciuti: ignorati.
+  assert.equal(F.recordTraccar({ id: info.deviceId, lat: '1', lon: '1', timestamp: String(Math.floor(Date.now() / 1000) - 3600) }, {}).ignored, 'vecchia');
+  assert.equal(F.recordTraccar({ id: 'sconosciuto', lat: '1', lon: '1' }, {}).ok, false);
+});
+
 test('squadre di Eletti: membri, incarichi di piazzamento e incarichi liberi', () => {
   const F = require('../src/field');
   const g = setupGame(3);
