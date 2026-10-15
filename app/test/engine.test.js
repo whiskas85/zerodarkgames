@@ -204,6 +204,16 @@ test('partita di prova: pronta subito e tempo che avanza fino alla fine', () => 
   assert.ok(q.get("SELECT 1 FROM supply_drops WHERE gameId = ? AND status = 'scheduled'", id));
   G.advanceDemo(id, 30, 'test');
   assert.ok(q.get("SELECT 1 FROM supply_drops WHERE gameId = ? AND status = 'fired'", id));
+  // Indietro nel tempo: prima della fine della tregua si torna in tregua; mai prima del VIA.
+  G.advanceDemo(id, -68, 'test');
+  assert.equal(G.getGame(id).status, 'truce');
+  assert.ok(G.clockOf(G.getGame(id)).elapsedMs < 3 * 60000);
+  G.advanceDemo(id, -60, 'test');
+  assert.ok(G.clockOf(G.getGame(id)).elapsedMs < 1000);
+  assert.throws(() => G.advanceDemo(id, -5, 'test'), /VIA/);
+  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'fired'", id).n, 1);
+  G.advanceDemo(id, 75, 'test');
+  assert.equal(G.getGame(id).status, 'hunt');
   G.advanceDemo(id, 200, 'test');
   assert.equal(G.getGame(id).status, 'ended');
   const t = q.get('SELECT * FROM teams WHERE gameId = ?', id);

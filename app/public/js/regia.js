@@ -313,13 +313,14 @@ function viewLive() {
 function demoPanel() {
   const st = R.ms.clock.status;
   const active = ACTIVE.includes(st);
-  const adv = (m) => h('button', { class: 'btn btn-sm', disabled: !active, onclick: () => call('POST', G('/advance'), { minutes: m }, `Tempo avanzato di ${m} minuti`) }, `+${m} min`);
+  const adv = (m) => h('button', { class: `btn btn-sm ${m < 0 ? 'btn-ghost' : ''}`, disabled: !active, onclick: () => call('POST', G('/advance'), { minutes: m }, m > 0 ? `Tempo avanzato di ${m} minuti` : `Tempo riportato indietro di ${-m} minuti`) }, `${m > 0 ? '+' : '−'}${Math.abs(m)} min`);
   return h('div', { class: 'panel demo' },
     h('div', { class: 'panel-head' }, h('h2', null, 'Partita di prova'), h('span', { class: 'chip chip-brass' }, 'solo test')),
     h('p', { class: 'muted tiny' }, active
       ? "Fai passare il tempo di gioco per vedere subito tregua → caccia, tradimenti, doni, ultima mezz'ora e fine. Le coppie ricevono tutto come in una partita vera."
       : "I pulsanti si attivano dopo il VIA (non in pausa). Per entrare come coppia usa \"Apri app\" nella scheda Iscrizioni e coppie, oppure il codice d'accesso da un altro telefono o da una finestra in incognito."),
-    h('div', { class: 'row-actions' }, adv(1), adv(5), adv(15), adv(30), adv(60)));
+    h('div', { class: 'row-actions' }, adv(-60), adv(-30), adv(-15), adv(-5), adv(-1), h('span', { class: 'demo-sep', 'aria-hidden': 'true' }, '·'), adv(1), adv(5), adv(15), adv(30), adv(60)),
+    active ? h('p', { class: 'tiny muted' }, 'Tornando indietro ciò che è già successo (tradimenti, armamenti aperti, scontri) resta com\'è; la fase torna a quella del momento.') : null);
 }
 
 async function createDemo() {
@@ -1443,6 +1444,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
     })),
     tb.nowMin != null ? h('span', { class: 'tl-now', style: { left: pct(tb.nowMin) } }, h('i', null, 'adesso')) : null,
     sel, tip);
+  setPastCuts(track, tb.nowMin);
   track.addEventListener('click', (e) => {
     const r = track.getBoundingClientRect();
     const m = Math.round(lo + ((e.clientX - r.left) / r.width) * (span - lo));
@@ -1532,7 +1534,7 @@ function liveTimeline() {
     events.map((e, i) => h('button', {
       type: 'button',
       class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.open ? 'tl-open' : ''} ${e.done ? 'tl-done' : ''}`,
-      'data-at': e.at,
+      'data-at': e.at, 'data-to': e.to ?? '',
       style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${16 + laneOf(e) * 14}px` },
       title: `${fmtClockMin(e.at)} · ${e.label}`,
       'aria-label': `${fmtClockMin(e.at)} ${e.label}`,
@@ -1557,6 +1559,16 @@ function liveTimeline() {
       nextEv ? ['Prossimo: ', h('strong', null, nextEv.label), ` a ${fmtClockMin(nextEv.at)}`, tb.toWall(nextEv.at) ? ` (alle ${fmtTime(tb.toWall(nextEv.at))})` : ''] : 'Clicca un punto vuoto per programmare armamenti o l\'annuncio di un dono; clicca un avvenimento per spostarlo o farlo partire.'));
 }
 
+// Barre (armamenti, doni): la parte già trascorsa diventa semitrasparente, il resto della finestra resta pieno.
+function setPastCuts(track, nowMin) {
+  for (const el of track.querySelectorAll('.tl-range')) {
+    const at = Number(el.dataset.at);
+    const to = el.dataset.to === '' ? NaN : Number(el.dataset.to);
+    const cut = nowMin == null || !Number.isFinite(to) ? 0 : to <= at ? (nowMin >= at ? 100 : 0) : Math.min(100, Math.max(0, ((nowMin - at) / (to - at)) * 100));
+    el.style.setProperty('--cut', `${cut}%`);
+  }
+}
+
 // Ogni secondo: l'indicatore "adesso" e la parte già trascorsa avanzano.
 function tickTimeline() {
   const track = document.querySelector('.tl-live');
@@ -1577,7 +1589,9 @@ function tickTimeline() {
     const at = Number(el.dataset.at);
     const pa = ((Math.min(Math.max(at, lo), span) - lo) / (span - lo)) * 100;
     el.style.width = `${Math.max(p - pa, 0)}%`;
+    el.dataset.to = tb.nowMin;
   }
+  setPastCuts(track, tb.nowMin);
 }
 
 // Punto vuoto della timeline: cosa programmare in quel momento.

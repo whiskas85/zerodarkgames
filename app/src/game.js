@@ -1428,10 +1428,23 @@ function advanceDemo(gameId, minutes, actor) {
   const g = getGame(gameId);
   if (!g.isDemo) throw err(403, 'Il tempo si può far avanzare solo nelle partite di prova');
   if (!C.ACTIVE.includes(g.status)) throw err(409, 'Il tempo avanza solo a partita in corso (non in pausa)');
-  const m = parseFloat(minutes);
-  if (!Number.isFinite(m) || m <= 0 || m > 240) throw err(400, 'Minuti non validi');
+  let m = parseFloat(minutes);
+  if (!Number.isFinite(m) || m === 0 || Math.abs(m) > 240) throw err(400, 'Minuti non validi');
+  // Indietro: non prima del VIA. Ciò che è già successo (tradimenti, armamenti, scontri) resta registrato.
+  if (m < 0) {
+    const back = elapsedMs(g) / 60000;
+    if (back < 0.01) throw err(409, 'Siete già al VIA: non si torna più indietro');
+    m = Math.max(m, -back);
+  }
   q.run('UPDATE games SET startedAt = startedAt - ? WHERE id = ?', Math.round(m * 60000), g.id);
-  log(g.id, actor, 'demo_advance', { minutes: m });
+  log(g.id, actor, m > 0 ? 'demo_advance' : 'demo_rewind', { minutes: m });
+  if (m < 0) {
+    // Tornando prima dell'inizio di una fase si torna anche alla fase precedente.
+    const now = getGame(g.id);
+    const e = elapsedMs(now) / 60000;
+    if (now.status === 'last_half_hour' && e < now.durationMin - C.LAST_PHASE_MIN) setStatus(now, 'hunt');
+    if (getGame(g.id).status === 'hunt' && e < now.truceMin) setStatus(getGame(g.id), 'truce');
+  }
   tickGame(getGame(g.id));
   notifyState(g.id);
 }
