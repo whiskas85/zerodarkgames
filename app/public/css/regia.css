@@ -94,12 +94,14 @@ tr.row-won td { background: var(--ok-soft); }
 tr.row-withdrawn td { opacity: .5; }
 
 /* Sigilli: sfocati finché non li tieni premuti. */
-.codes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.code-card { border: 2px solid var(--line); padding: 10px; display: grid; gap: 6px; background: var(--bg); }
+.codes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.code-card { border: 2px solid var(--line); padding: 16px; display: grid; gap: 10px; background: var(--bg); min-width: 0; align-content: start; }
+.code-card .code-sector { font-size: 18px; font-weight: 700; }
+.code-card .chip { white-space: normal; max-width: 100%; line-height: 1.3; }
 .code-card.code-revealed { border-color: var(--blood); }
 .code-card.code-never { border-style: dashed; border-color: var(--brass); }
 .code-sector { font-weight: 700; }
-.secret { font-size: 24px; font-weight: 600; letter-spacing: .14em; filter: blur(8px); cursor: pointer; user-select: none; -webkit-user-select: none; transition: filter .15s; touch-action: none; }
+.secret { font-size: 34px; font-weight: 600; letter-spacing: .14em; filter: blur(8px); cursor: pointer; user-select: none; -webkit-user-select: none; transition: filter .15s; touch-action: none; }
 .secret.peek { filter: none; }
 .code-revealed .secret { filter: none; color: var(--blood); }
 
