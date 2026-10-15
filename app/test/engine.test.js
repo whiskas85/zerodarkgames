@@ -240,6 +240,28 @@ test('partita di prova: pronta subito e tempo che avanza fino alla fine', () => 
   assert.throws(() => G.advanceDemo(real.id, 5, 'test'), /prova/);
 });
 
+test('spostamenti tra Eletti e Settori: da soli o in scambio, la squadra passa a chi diventa Eletto', () => {
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [a1, a2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const e1 = G.addElectPerson(g.id, { name: 'Eletto Uno' }, 'test');
+  const elect = q.get("SELECT * FROM teams WHERE gameId = ? AND kind = 'elect'", g.id);
+  const sq = Number(q.run('INSERT INTO elect_squads (gameId, name, color, createdAt) VALUES (?, ?, ?, ?)', g.id, 'Lupi', '#fff', Date.now()).lastInsertRowid);
+  q.run('UPDATE players SET squadId = ? WHERE id = ?', sq, e1);
+  const at = (id) => q.get('SELECT teamId, squadId FROM players WHERE id = ?', id);
+  // Coppia completa: serve lo scambio.
+  assert.throws(() => G.movePlayer(e1, { toTeamId: A.id }, 'test'), /completa/);
+  G.movePlayer(e1, { toTeamId: A.id, swapWithId: a1.id }, 'test');
+  assert.deepEqual(at(e1), { teamId: A.id, squadId: null });
+  assert.deepEqual(at(a1.id), { teamId: elect.id, squadId: sq });
+  // Da solo tra gli Eletti: la coppia resta incompleta; poi l'Eletto torna nella coppia incompleta.
+  G.movePlayer(a2.id, { toTeamId: elect.id }, 'test');
+  assert.equal(at(a2.id).teamId, elect.id);
+  G.movePlayer(a1.id, { toTeamId: A.id }, 'test');
+  assert.equal(at(a1.id).teamId, A.id);
+  assert.throws(() => G.movePlayer(a1.id, { toTeamId: A.id }, 'test'), /già lì/);
+});
+
 test('finestre armamenti: si modificano anche aperte o chiuse', () => {
   const g = setupGame(2);
   G.control(g.id, 'ready', 'test');

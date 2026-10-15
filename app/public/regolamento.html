@@ -97,6 +97,12 @@ footer .motto{margin:0}
 footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.emblem::before{animation:pulse 4s ease-in-out infinite}}
 @keyframes pulse{50%{inset:16px;opacity:.5}}
+@media print{
+  body{background:#fff}
+  .rule,.place,.stamp,.callout,.quick{break-inside:avoid}
+  .sec-head{break-after:avoid}
+  a{color:inherit;text-decoration:none}
+}
 </style>
 
 <div class="wrap">
@@ -131,6 +137,8 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
     <div class="place"><h3>Il Patto<small>l'alleanza</small></h3><p>Fino a tre coppie che combattono insieme. Vince comunque una sola.</p></div>
     <div class="place"><h3>Il Caduto<small>chi è stato eliminato</small></h3><p>Porta il cappellino rosso. Finché lo indossa è fuori gioco e nessuno può colpirlo.</p></div>
     <div class="place"><h3>Il Tradimento<small>la rivelazione di un codice</small></h3><p>Il Consiglio rende pubblico il Sigillo di un Settore, tramite l'app.</p></div>
+    <div class="place"><h3>Gli Eletti<small>la mano del Consiglio</small></h3><p>Non cercano la Parola: la custodiscono. Sono gli occhi e le mani del Consiglio nel bosco.</p></div>
+    <div class="place"><h3>I Doni<small>ciò che il Consiglio semina</small></h3><p>Compaiono quando meno ve l'aspettate. Nessuno sa cosa contengono finché non li ha in mano.</p></div>
   </div>
   <div class="sectors" aria-label="I Settori">
     <div class="stamp"><span class="n">SETTORE I</span><span class="name">Fuoco</span><span class="el">le fornaci</span><span class="m">Bruciamo per primi</span></div>
@@ -146,6 +154,15 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
     <div class="stamp"><span class="n">SETTORE XI</span><span class="name">Ghiaccio</span><span class="el">i passi d'alta quota</span><span class="m">Resistiamo al freddo</span></div>
     <div class="stamp"><span class="n">SETTORE XII</span><span class="name">Fulmine</span><span class="el">le centrali</span><span class="m">Colpiamo una volta sola</span></div>
   </div>
+</section>
+
+<section id="sfide">
+  <div class="sec-head"><span class="eyebrow">Prima di scegliere</span><h2>Quale sfida fa per voi</h2></div>
+  <div class="places">
+    <div class="place"><h3>I Legati<small>impegno fisico: alto</small></h3><p>Quattro ore nel bosco senza sosta vera: si cammina, si corre, si fugge e si insegue su terreno vario, di giorno e nel buio, sempre in due. Servono fiato, gambe e voglia di sporcarsi. Vale anche per il Temerario Solitario, che diventa Legato di uno sconosciuto.</p></div>
+    <div class="place"><h3>Gli Eletti<small>impegno fisico: medio</small></h3><p>Ci si muove per gli incarichi della propria squadra e si presidiano i luoghi del gioco: tratti a passo sostenuto, alternati ad attese e appostamenti. Un ritmo più regolare, senza la corsa continua dei Legati.</p></div>
+  </div>
+  <div class="callout"><p>Se avete dubbi sulla vostra forma o qualche acciacco, ditelo al Consiglio prima dei Giochi: troveremo il posto giusto per voi.</p></div>
 </section>
 
 <section id="in-breve">
@@ -170,7 +187,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
   <div class="sec-head"><span class="eyebrow">Regolamento</span><h2>Le leggi del bosco</h2></div>
   <p>Questo è il regolamento completo. Non ci sono arbitri: il gioco funziona solo se ognuno rispetta le regole da solo.</p>
   <ul class="toc">
-    <li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li>
+    <li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li><li><a href="#r13">13 I Doni</a></li><li><a href="#r14">14 Gli Eletti</a></li>
   </ul>
 
   <article class="rule" id="r1">
@@ -364,7 +381,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
       <ul>
         <li>Al Cuore si può sempre tornare per recuperare pallini e caricatori.</li>
         <li>Il Cuore non è zona franca: ci si può ingaggiare, e chi si apposta lo fa a proprio rischio.</li>
-        <li>In alcuni momenti l'app annuncia doni al Cuore: dotazioni extra per chi arriva a prenderle.</li>
+        <li>In alcuni momenti l'app annuncia gli armamenti al Cuore: dotazioni extra per chi arriva a prenderle, finché la finestra resta aperta.</li>
       </ul>
     </div>
   </article>
@@ -401,6 +418,35 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li><b>Ritiro:</b> se un operatore si ritira, la coppia esce dalla classifica. I codici già ceduti restano validi.</li>
         <li><b>Contestazioni:</b> non ci sono arbitri. Un ingaggio contestato vale come pareggio e si segnala a fine gioco.</li>
         <li><b>Tempi:</b> fermi, stalli e blocchi si cronometrano da soli, con l'app o con l'orologio.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r13">
+    <div class="rule-head"><span class="num">13</span><h3>I Doni<small>ciò che il Consiglio semina</small></h3></div>
+    <div class="rule-body">
+      <p>Il Consiglio non gioca, ma a volte lascia cadere qualcosa nel bosco. Un Dono compare sulla mappa dell'app senza preavviso, in un punto che nessuno si aspetta. Non sapete cosa sia finché non lo avete preso.</p>
+      <ul>
+        <li>Un Dono è di chi arriva per primo e ne inquadra il QR con l'app. Dopo, per gli altri, non c'è più.</li>
+        <li>Alcuni Doni non aspettano: se nessuno li raggiunge in tempo, svaniscono.</li>
+        <li>Ciò che contengono lo scopre solo chi li prende. Alcuni aiutano voi, altri ostacolano qualcun altro, altri ancora piegano per un momento le leggi del bosco.</li>
+        <li>Un Dono preso si conserva nell'app e si usa quando lo decidete voi. Scegliete bene il momento: si usa una volta sola.</li>
+        <li>Correre verso un Dono è correre verso tutti gli altri che lo hanno visto. Siete ingaggiabili anche lì.</li>
+      </ul>
+      <div class="callout"><p><b>Non chiedete al Consiglio cosa c'è dentro.</b> Il Consiglio non risponde.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="r14">
+    <div class="rule-head"><span class="num">14</span><h3>Gli Eletti del Consiglio<small>la mano del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <p>Gli Eletti non cercano la Parola: la custodiscono. Tengono in piedi i Giochi per conto del Consiglio e ne difendono i luoghi dalle coppie troppo audaci.</p>
+      <ul>
+        <li>Sono divisi in squadre. Ogni squadra riceve i suoi incarichi dal Consiglio, nell'app: piazzare gli Altari e i Doni, presidiare i luoghi del gioco, sorvegliare il bosco.</li>
+        <li>Non hanno un Sigillo, non aprono gli Altari e non entrano in classifica: non hanno nulla da cedere e nulla da vincere.</li>
+        <li>Ricevono annunci e avvisi come tutti e parlano con il Consiglio dalla loro app.</li>
+        <li>Si entra tra gli Eletti candidandosi all'iscrizione; è il Consiglio a scegliere chi accettare e in quale squadra.</li>
+        <li>Valgono per loro le stesse leggi di sicurezza e fair play di tutti.</li>
       </ul>
     </div>
   </article>

@@ -373,6 +373,32 @@ function removeFromElect(playerId, actor) {
   notifyState(p.gameId);
 }
 
+// Spostamento tra Eletti e coppie: da solo (verso una coppia incompleta o tra gli Eletti) oppure in scambio con
+// una persona dell'altra parte. Chi diventa Eletto prende la squadra di chi esce dagli Eletti.
+function movePlayer(playerId, { toTeamId, swapWithId } = {}, actor) {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(playerId));
+  if (!p || !p.teamId) throw err(404, 'Persona non trovata in una coppia o tra gli Eletti');
+  const g = getGame(p.gameId);
+  if (g.status === 'ended') throw err(409, 'Partita finita');
+  const from = q.get('SELECT * FROM teams WHERE id = ?', p.teamId);
+  const to = q.get('SELECT * FROM teams WHERE id = ? AND gameId = ?', Number(toTeamId), g.id);
+  if (!to) throw err(404, 'Destinazione non trovata');
+  if (to.id === from.id) throw err(409, 'È già lì');
+  if ((from.kind === 'elect') === (to.kind === 'elect')) throw err(409, 'Lo spostamento è tra Eletti e coppie');
+  if (to.kind !== 'elect' && to.status === 'withdrawn') throw err(409, 'Coppia ritirata');
+  const other = swapWithId ? q.get('SELECT * FROM players WHERE id = ? AND teamId = ?', Number(swapWithId), to.id) : null;
+  if (swapWithId && !other) throw err(400, 'La persona da scambiare non è lì');
+  if (!other && to.kind === 'couple' && q.get('SELECT COUNT(*) AS n FROM players WHERE teamId = ?', to.id).n >= 2) throw err(409, 'La coppia è completa: scegli con chi scambiare');
+  const squad = from.kind === 'elect' ? p.squadId : other?.squadId ?? null;
+  tx(() => {
+    q.run('UPDATE players SET teamId = ?, squadId = ? WHERE id = ?', to.id, to.kind === 'elect' ? squad : null, p.id);
+    if (other) q.run('UPDATE players SET teamId = ?, squadId = ? WHERE id = ?', from.id, from.kind === 'elect' ? squad : null, other.id);
+  });
+  const label = (t) => (t.kind === 'elect' ? 'Eletti' : `Settore ${sectorById(t.sectorId)?.name || ''}`);
+  log(g.id, actor, 'player_moved', { name: p.name, from: label(from), to: label(to), swap: other?.name || null });
+  notifyState(g.id);
+}
+
 // Luoghi del gioco (la Soglia, il Cerchio di inizio): una riga per partita, creata alla prima richiesta.
 const LANDMARKS = [{ kind: 'cerchio', label: 'Cerchio di inizio' }, { kind: 'soglia', label: 'La Soglia' }];
 function landmarksOf(gameId) {
@@ -1747,6 +1773,6 @@ module.exports = {
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
-  settleDemoJump, revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
+  movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };

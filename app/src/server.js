@@ -491,6 +491,7 @@ m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.b
 m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
+m.post('/players/:pid/move', wrap((req) => { G.movePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
 m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body || {}, actor(req))));
 m.delete('/notices/:nid', wrap((req) => { G.deleteNotice(Number(req.params.nid), actor(req)); return { ok: true }; }));

@@ -67,6 +67,7 @@ In regia i Sigilli veri sono sfocati e si leggono tenendo premuto; il prossimo t
 ## Eletti del Consiglio
 
 Un gruppo per partita con un numero qualsiasi di persone, divise in **squadre**. Non esiste un codice comune: ogni Eletto, una volta accettato, entra con il proprio **accesso personale** (QR o codice, stampato in "Stampa accessi").
+**Spostamenti tra Eletti e Settori:** in *Squadre Eletti* «↔ Settore…» porta un Eletto in una coppia (in una incompleta, o al posto di un Legato che diventa Eletto nella stessa squadra); nelle schede delle coppie «→ Eletti…» fa il contrario, da solo o in scambio. L'accesso personale segue la persona.
 Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza Altari e Doni** (con scanner, GPS e foto), mappa del campo, messaggi con la regia (a tutti gli Eletti o solo alla propria squadra), avvisi, annunci, timer e regolamento. Non hanno Sigillo, non usano gli Altari e non entrano in classifica.
 
 ## Avvisi e notifiche

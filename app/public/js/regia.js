@@ -581,6 +581,39 @@ const pairSel = new Set();
 
 const ROLE_LABELS = { pair: 'Coppia', single: 'Temerario solitario', elect: 'Candidato agli Eletti' };
 
+// Spostamenti Eletti <-> Settori: da soli o in scambio con una persona dell'altra parte.
+const shortName = (p) => p.nickname || p.name;
+async function moveToCoupleDialog(m) {
+  const couples = R.ms.teams.filter((t) => t.kind !== 'elect' && t.status !== 'withdrawn');
+  if (!couples.length) return toast('Non ci sono ancora coppie', 'error');
+  const opts = couples.flatMap((t) => (t.members.length < 2
+    ? [{ teamId: t.id, label: `${teamLabel(t)} — entra nella coppia${t.members[0] ? ` con ${shortName(t.members[0])}` : ''}` }]
+    : t.members.map((x) => ({ teamId: t.id, swapWithId: x.id, label: `${teamLabel(t)} — al posto di ${shortName(x)} (che diventa Eletto)` }))));
+  const radios = opts.map((o, i) => h('input', { type: 'radio', name: 'mv', value: i, checked: i === 0 }));
+  const pick = await modal({
+    title: `${shortName(m)}: dagli Eletti a un Settore`, okLabel: 'Sposta',
+    body: h('div', { class: 'stack-sm move-list' },
+      h('p', { class: 'muted tiny' }, 'Chi esce da una coppia completa diventa Eletto nella stessa squadra. L\'accesso personale segue la persona: al prossimo aggiornamento il telefono passa alla nuova app.'),
+      opts.map((o, i) => h('label', { class: 'radio-line' }, radios[i], h('span', null, o.label)))),
+    onOk: () => opts[radios.findIndex((r) => r.checked)],
+  });
+  if (pick) call('POST', `/api/m/players/${m.id}/move`, { toTeamId: pick.teamId, swapWithId: pick.swapWithId }, pick.swapWithId ? 'Scambio fatto' : 'Spostato nella coppia');
+}
+async function moveToElectDialog(m, t) {
+  const elect = R.ms.elect;
+  const opts = [{ label: `Solo ${shortName(m)} tra gli Eletti (la coppia resta con ${t.members.length - 1} giocatore)` },
+    ...elect.members.map((x) => { const sq = (R.ms.squads || []).find((y) => y.id === x.squadId); return { swapWithId: x.id, label: `Scambio con ${shortName(x)}${sq ? ` (squadra ${sq.name})` : ''}, che entra nella coppia` }; })];
+  const radios = opts.map((o, i) => h('input', { type: 'radio', name: 'mv', value: i, checked: i === 0 }));
+  const pick = await modal({
+    title: `${shortName(m)}: dal Settore ${t.sectorName} agli Eletti`, okLabel: 'Sposta',
+    body: h('div', { class: 'stack-sm move-list' },
+      h('p', { class: 'muted tiny' }, 'In uno scambio chi diventa Eletto prende la squadra di chi entra nella coppia.'),
+      opts.map((o, i) => h('label', { class: 'radio-line' }, radios[i], h('span', null, o.label)))),
+    onOk: () => opts[radios.findIndex((r) => r.checked)],
+  });
+  if (pick) call('POST', `/api/m/players/${m.id}/move`, { toTeamId: elect.id, swapWithId: pick.swapWithId }, pick.swapWithId ? 'Scambio fatto' : 'Spostato tra gli Eletti');
+}
+
 function personLine(p) {
   const acc = p.username || R.ms?.players.find((x) => x.id === p.id)?.username;
   return [h('strong', null, p.name), p.nickname ? h('span', { class: 'muted' }, ` «${p.nickname}»`) : null, acc ? h('span', { class: 'tiny brass' }, ` @${acc}`) : null];
@@ -703,7 +736,8 @@ function teamCard(t, editable) {
           : h('strong', { class: 'team-sector' }, `Settore ${t.sectorName}`),
         h('input', { class: 'input input-sm', 'data-keep': `tname-${t.id}`, value: t.displayName || '', placeholder: 'Nome della coppia', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { displayName: e.target.value }) })),
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
-    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null, resetBtn(m)))),
+    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null, resetBtn(m),
+      R.ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Sposta tra gli Eletti, da solo o in scambio', onclick: () => moveToElectDialog(m, t) }, '→ Eletti…') : null))),
     h('div', { class: 'team-access' },
       h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso', width: 84, height: 84, loading: 'lazy' }),
       h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso'), h('div', { class: 'mono access' }, t.accessCode),
@@ -1289,7 +1323,7 @@ function viewSquads() {
                 h('div', { class: 'row-actions' },
                   h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                   ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)))),
-            h('td', { class: 'row-actions' }, resetBtn(m), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
+            h('td', { class: 'row-actions' }, resetBtn(m), ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm', title: 'Sposta in una coppia, da solo o in scambio', onclick: () => moveToCoupleDialog(m) }, '↔ Settore…') : null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
         })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra.' : 'Nessun Eletto: aggiungili qui sotto.'),
       h('h3', { class: 'sub' }, 'Aggiungi un Eletto a mano (già accettato)'),
       h('form', { class: 'form-grid', onsubmit: async (ev) => {
@@ -2387,7 +2421,11 @@ function viewRules() {
   const url = R.ms?.game?.bookUrl || '/regolamento.html';
   const local = url.startsWith('/');
   return h('div', { class: 'stack rules-view' },
-    sectionActions('Regolamento', [h('a', { class: 'btn btn-sm', href: url, target: '_blank', rel: 'noopener' }, 'Apri in una nuova scheda')],
+    sectionActions('Regolamento', [
+      // Stampa del solo regolamento: dalla finestra di stampa si sceglie «Salva come PDF».
+      local ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => { try { document.querySelector('.rules-frame').contentWindow.print(); } catch { window.open(url, '_blank'); } } }, 'Stampa o salva PDF') : null,
+      local ? h('a', { class: 'btn btn-sm', href: url, download: 'regolamento-giochi-del-buio.html' }, 'Scarica') : null,
+      h('a', { class: 'btn btn-sm btn-ghost', href: url, target: '_blank', rel: 'noopener' }, 'Apri in una nuova scheda')],
       local ? null : h('p', { class: 'muted tiny' }, `Regolamento esterno (${url}): se qui sotto non si vede, aprilo in una nuova scheda.`),
       h('iframe', { class: 'rules-frame', src: url, title: 'Regolamento' })));
 }
