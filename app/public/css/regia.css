@@ -314,7 +314,7 @@ tr.gift-row-claimed td { opacity: .6; }
 
 /* Timeline del torneo */
 .timeline-modal { gap: 10px; }
-.tl-track { position: relative; height: 70px; margin: 18px 4px 4px; border-top: 2px solid var(--line); cursor: crosshair; }
+.tl-track { position: relative; height: 72px; margin: 18px 4px 4px; border-top: 2px solid var(--line); cursor: crosshair; }
 .tl-tick { position: absolute; top: -6px; height: 10px; border-left: 1px solid var(--line); }
 .tl-tick i { position: absolute; top: -16px; left: -10px; font-style: normal; font-size: 10px; color: var(--muted); font-family: var(--f-mono, monospace); white-space: nowrap; }
 .tl-game { position: absolute; top: 0; height: 64px; background: rgba(255, 255, 255, .03); }
@@ -352,11 +352,12 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-row.tl-revelation, .tl-row.tl-supply, .tl-row.tl-gift, .tl-row.tl-phase { background: none; }
 
 /* Timeline in regia: avanza in tempo reale, cliccabile */
-.tl-live { height: 84px; margin-top: 22px; }
+.tl-live { height: 92px; margin-top: 22px; }
+.tl-live .tl-game { height: 90px; }
 .tl-live .tl-ev { border: 0; padding: 0; cursor: pointer; width: 12px; height: 12px; margin-left: -6px; box-shadow: 0 0 0 2px var(--paper); }
 .tl-live .tl-ev.tl-range { height: 10px; margin-left: 0; }
 .tl-live .tl-ev:hover, .tl-live .tl-ev:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
-.tl-past { position: absolute; top: 0; height: 78px; background: rgba(0, 0, 0, .25); pointer-events: none; }
+.tl-past { position: absolute; top: 0; height: 90px; background: rgba(0, 0, 0, .25); pointer-events: none; }
 .tl-live .tl-now { border-left-width: 3px; pointer-events: none; transition: left 1s linear; }
 .tl-live .tl-now i { white-space: nowrap; font-weight: 700; bottom: -18px; }
 .tl-now-k { background: #3b82f6; }

@@ -1368,6 +1368,10 @@ function engagementText(e) {
   return `${what}${state}${stolen.length ? ` · ${stolen.join(' · ')}` : ''}`;
 }
 
+// Una riga fissa per tipo di avvenimento: l'altezza sulla timeline dice cos'è.
+const TL_LANES = ['phase', 'revelation', 'supply', 'gift', 'engagement'];
+const laneOf = (e) => Math.max(0, TL_LANES.indexOf(String(e.kind).split(' ')[0]));
+
 const fmtClockMin = (m) => `${m < 0 ? '−' : ''}${fmtMin(Math.abs(m))}`;
 
 /**
@@ -1429,7 +1433,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
     h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
     events.map((e, i) => h('span', {
       class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.done ? 'tl-done' : ''}`,
-      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${18 + (i % 4) * 9}px` },
+      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${18 + laneOf(e) * 9}px` },
       title: `${fmtClockMin(e.at)} · ${e.label}`,
     })),
     tb.nowMin != null ? h('span', { class: 'tl-now', style: { left: pct(tb.nowMin) } }, h('i', null, 'adesso')) : null,
@@ -1523,7 +1527,7 @@ function liveTimeline() {
     events.map((e, i) => h('button', {
       type: 'button',
       class: `tl-ev tl-${e.kind} ${e.to != null ? 'tl-range' : ''} ${e.done ? 'tl-done' : ''}`,
-      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${20 + (i % 4) * 12}px` },
+      style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${16 + laneOf(e) * 14}px` },
       title: `${fmtClockMin(e.at)} · ${e.label}`,
       'aria-label': `${fmtClockMin(e.at)} ${e.label}`,
       onclick: (ev) => { ev.stopPropagation(); eventDialog(e); },
