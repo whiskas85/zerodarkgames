@@ -636,6 +636,7 @@ function viewLobbyHome(st) {
         : pl.role === 'single' ? 'Il Consiglio sta estraendo il vostro compagno e il Settore. L\'app si aggiornerà da sola.' : 'Il Consiglio sta formando le coppie e assegnando i Settori. L\'app si aggiornerà da sola.'),
       partner ? h('p', { class: 'small' }, 'Il vostro Legato: ', h('strong', null, partner.name), partner.nickname ? ` «${partner.nickname}»` : '') : null),
     trackFlag(st),
+    locationInvite(st),
     pushInvite(),
     latestNotice(st),
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, '?'), 'Il vostro Sigillo'),
@@ -664,6 +665,7 @@ function viewElectHome(st) {
       h('p', { class: 'muted' }, 'Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi. Seguite gli avvisi e i messaggi della regia.')),
     supplyCard(st),
     trackFlag(st),
+    locationInvite(st),
     trackingNote(st),
     st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
@@ -714,6 +716,7 @@ function viewHome() {
     phase,
     supplyCard(st),
     trackFlag(st),
+    locationInvite(st),
     trackingNote(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/alleanze' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
@@ -1690,6 +1693,45 @@ function staffLink(acc, cls) {
   return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/soglia' }, acc.staff === 'master' ? 'Vai in regia' : 'Vai alla Soglia');
 }
 
+// ---------------------------------------------------------------- Posizione dell'app
+// Il permesso si chiede subito (tour, home, pagina Traccar) e non al via, quando non c'è tempo per le impostazioni.
+// S.geoPerm: 'granted' | 'prompt' | 'denied' | 'unknown' (browser senza Permissions API).
+S.geoPerm = 'unknown';
+async function checkGeoPerm() {
+  try {
+    const p = await navigator.permissions.query({ name: 'geolocation' });
+    S.geoPerm = p.state;
+    p.onchange = () => { S.geoPerm = p.state; render(); };
+  } catch { S.geoPerm = 'unknown'; }
+  render();
+}
+function askLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { toast('Posizione non disponibile su questo dispositivo', 'error'); resolve(false); return; }
+    navigator.geolocation.getCurrentPosition(
+      () => { S.geoPerm = 'granted'; toast('Posizione consentita', 'ok'); render(); resolve(true); },
+      (e) => { if (e.code === 1) S.geoPerm = 'denied'; toast(e.code === 1 ? 'Posizione negata: consentila dalle impostazioni del sito' : 'Posizione non trovata ora (al chiuso?), ma il permesso è dato', e.code === 1 ? 'error' : 'info', 7000); if (e.code !== 1) S.geoPerm = 'granted'; render(); resolve(e.code !== 1); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  });
+}
+const GEO_DENIED_HELP = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+  ? 'Su iPhone: Impostazioni → Privacy → Localizzazione → Safari (o l\'app) → «Mentre usi l\'app», poi ricarica.'
+  : 'Su Android: tocca il lucchetto accanto all\'indirizzo → Autorizzazioni → Posizione → Consenti, poi ricarica.';
+// Riquadro con lo stato del permesso e il pulsante per darlo.
+function locationBox(onChange) {
+  if (S.geoPerm === 'granted') return h('p', { class: 'ok-text' }, '✓ Posizione consentita per questa app.');
+  if (S.geoPerm === 'denied') return h('div', { class: 'stack-sm' }, h('p', { class: 'bad-text small' }, 'La posizione è bloccata per questa app.'), h('p', { class: 'small muted' }, GEO_DENIED_HELP));
+  return h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => askLocation().then(() => onChange?.()) }, '📍 Consenti la posizione');
+}
+// Invito nelle home finché il permesso non c'è.
+function locationInvite(st) {
+  if (!st || S.geoPerm === 'granted' || S.geoPerm === 'unknown' || ['ended'].includes(st.clock?.status)) return null;
+  return h('div', { class: 'card push-invite' },
+    h('strong', null, 'Consenti la posizione adesso'),
+    h('p', { class: 'muted small' }, 'Durante la partita il Consiglio vede dove siete e la mappa vi mostra Altari e doni. Datelo ora: al via non c\'è tempo per le impostazioni.'),
+    locationBox());
+}
+
 // ---------------------------------------------------------------- Traccar Client
 // Manda la posizione anche con l'app chiusa o lo schermo spento (il browser non può). Una procedura guidata
 // porta a installarlo, configurarlo e provarlo a schermo spento: solo quando la prova riesce sparisce l'avviso.
@@ -1754,13 +1796,13 @@ function viewTraccar() {
   const { step, since } = trk();
   // Durante la prova si controlla ogni 5 secondi quanti segnali sono arrivati.
   clearInterval(trackPoll);
-  if (since && step === 3) trackPoll = setInterval(() => { if (location.hash !== '#/traccar') { clearInterval(trackPoll); return; } loadTracking(since); }, 5000);
-  const verified = t.verifiedAt && step !== 3;
+  if (since && step === 4) trackPoll = setInterval(() => { if (location.hash !== '#/traccar') { clearInterval(trackPoll); return; } loadTracking(since); }, 5000);
+  const verified = t.verifiedAt && step !== 4;
   const copyRow = (label, value) => h('div', { class: 'track-row' },
     h('div', { class: 'eyebrow' }, label),
     h('div', { class: 'row' }, h('code', { class: 'mono track-val' }, value || '…'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => navigator.clipboard?.writeText(value).then(() => toast(`${label}: copiato`, 'ok')) }, 'Copia')));
-  const steps = ['Installa', 'Configura', 'Permessi', 'Prova'];
+  const steps = ['Posizione', 'Installa', 'Configura', 'Permessi', 'Prova'];
   const nav = (back, next, nextLabel = 'Avanti →') => h('div', { class: 'row wiz-nav' },
     back != null ? h('button', { class: 'btn', type: 'button', onclick: () => setTrk({ step: back }) }, '‹ Indietro') : h('span'),
     next != null ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => setTrk({ step: next }) }, nextLabel) : null);
@@ -1774,25 +1816,33 @@ function viewTraccar() {
         h('strong', null, stale ? '⚠ Verificato, ma non manda la posizione' : '✓ Traccar funziona'),
         h('p', { class: 'small' }, stale ? 'Durante la partita non arriva niente da più di 10 minuti: apri Traccar Client e controlla che il tracciamento sia acceso e che ci sia rete.' : 'Il Consiglio riceve la tua posizione anche a schermo spento. Prima della partita accendi Traccar Client e lascialo acceso fino alla fine.'),
         h('p', { class: 'small muted' }, `Verificato ${fmtTime(t.verifiedAt)}${t.lastAt ? ` · ultimo segnale ${fmtTime(t.lastAt)}${t.lastAcc ? ` (±${t.lastAcc} m)` : ''}` : ''}`)),
+      h('div', { class: 'card stack-sm' }, h('strong', null, 'Posizione di questa app'), locationBox()),
       copyRow('Indirizzo del server (Server URL)', t.serverUrl),
       copyRow('Identificativo del dispositivo (Device identifier)', t.deviceId),
       h('div', { class: 'row' },
         h('button', { class: 'btn', type: 'button', onclick: () => loadTracking(null) }, '↻ Aggiorna'),
-        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => setTrk({ step: 3, since: null }) }, 'Rifai la prova')),
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => setTrk({ step: 4, since: null }) }, 'Rifai la prova')),
       h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo. Il Consiglio vede la posizione solo a partita iniziata.'));
   }
 
   let body;
   if (step === 0) {
     body = [
+      h('p', null, 'Prima di tutto questa app deve poter usare la posizione del telefono: serve per la mappa e, a partita iniziata, per far sapere al Consiglio dove sei quando l\'app è aperta.'),
+      locationBox(),
+      h('p', { class: 'small muted' }, 'Traccar Client (il passo dopo) fa lo stesso quando l\'app è chiusa o lo schermo è spento.'),
+      nav(null, 1, S.geoPerm === 'granted' ? 'Avanti →' : 'Salta per ora →'),
+    ];
+  } else if (step === 1) {
+    body = [
       h('p', null, 'Con l\'app chiusa o lo schermo spento il telefono smette di mandare la posizione: è un limite del browser. ', h('strong', null, 'Traccar Client'), ', gratuita, la manda al Consiglio sempre, anche in tasca.'),
       h('div', { class: 'stack-sm' },
         PLATFORM !== 'ios' ? h('a', { class: `btn btn-block ${PLATFORM === 'android' ? 'btn-primary' : ''}`, href: STORE.android, target: '_blank', rel: 'noopener' }, '⤓ Traccar Client per Android (Play Store)') : null,
         PLATFORM !== 'android' ? h('a', { class: `btn btn-block ${PLATFORM === 'ios' ? 'btn-primary' : ''}`, href: STORE.ios, target: '_blank', rel: 'noopener' }, '⤓ Traccar Client per iPhone (App Store)') : null),
       h('p', { class: 'small muted' }, 'Cerca «Traccar Client» (l\'icona blu con il segnaposto bianco). Non serve creare account.'),
-      nav(null, 1, 'L\'ho installata →'),
+      nav(0, 2, 'L\'ho installata →'),
     ];
-  } else if (step === 1) {
+  } else if (step === 2) {
     body = [
       h('p', null, 'Apri Traccar Client e, nelle impostazioni, copia questi due valori (tieni premuto per incollare):'),
       t.loading ? h('p', { class: 'muted' }, 'Caricamento…') : t.error ? h('p', { class: 'bad-text' }, t.error) : [
@@ -1804,9 +1854,9 @@ function viewTraccar() {
         h('li', null, h('strong', null, 'Distanza (Distance)'), ': 0'),
         h('li', null, 'Se c\'è, ', h('strong', null, 'Offline buffering'), ': acceso')),
       h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo.'),
-      nav(0, 2, 'Fatto →'),
+      nav(1, 3, 'Fatto →'),
     ];
-  } else if (step === 2) {
+  } else if (step === 3) {
     body = [
       h('p', null, 'Perché la posizione parta anche in tasca, il telefono deve permetterlo:'),
       PLATFORM === 'ios' ? h('ol', { class: 'track-steps' },
@@ -1817,7 +1867,7 @@ function viewTraccar() {
           h('li', null, 'Quando Traccar chiede la posizione scegli ', h('strong', null, '«Consenti sempre»'), ' (o da Impostazioni → App → Traccar Client → Autorizzazioni → Posizione).'),
           h('li', null, 'Impostazioni → App → Traccar Client → Batteria: ', h('strong', null, '«Senza restrizioni»'), ' (togli l\'ottimizzazione).'),
           h('li', null, 'Su Xiaomi, Huawei, Samsung: consenti anche l\'avvio automatico / l\'attività in background.')),
-      nav(1, 3, 'Fatto →'),
+      nav(2, 4, 'Fatto →'),
     ];
   } else {
     const test = t.test;
@@ -1842,12 +1892,12 @@ function viewTraccar() {
           : h('p', { class: 'small muted' }, pings >= 2 ? 'Ancora qualche secondo…' : 'Blocca lo schermo e aspetta in tasca: i segnali arrivano ogni 30 secondi.'),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => setTrk({ since: Date.now() }) }, 'Ricomincia la prova'))
         : h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => setTrk({ since: Date.now() }) }, '▶ Inizia la prova'),
-      nav(2, null),
+      nav(3, null),
     ];
   }
   return h('div', { class: 'stack' },
     h('h2', null, 'Attiva Traccar Client'),
-    h('p', { class: 'muted small' }, 'La tua posizione arriva al Consiglio anche con lo schermo spento. Quattro passi, circa tre minuti.'),
+    h('p', { class: 'muted small' }, 'La tua posizione arriva al Consiglio anche con lo schermo spento. Cinque passi, circa tre minuti.'),
     head,
     h('div', { class: 'card stack' }, body));
 }
@@ -1929,6 +1979,21 @@ function tourSlides() {
     title: 'Regia e radio',
     text: ['In fondo allo schermo c\'è sempre il canale radio d\'emergenza. Per tutto il resto scrivete alla regia dall\'app. Se la partita viene sospesa, lo schermo diventa rosso: fermatevi e ascoltate la radio.'],
   };
+  const position = {
+    icon: h('div', { class: 'tour-ico' }, '📍'),
+    title: 'La vostra posizione',
+    text: [elect ? 'Durante i Giochi la regia e gli altri Eletti vedono dove siete: servono per piazzare Altari e doni e per coordinarvi.' : 'Durante la partita il Consiglio vede dove siete (per la vostra sicurezza e per arbitrare) e la mappa vi mostra Altari, doni e la Soglia.',
+      'Il telefono chiederà il permesso: consentitelo adesso, al via non ci sarà tempo. La posizione arriva al Consiglio solo a partita iniziata.'],
+    // Il tour non si ridisegna con l'app: il riquadro si aggiorna da solo dopo la risposta.
+    extra: () => { const box = h('div'); const draw = () => mount(box, locationBox(draw)); draw(); return box; },
+  };
+  const traccar = st?.player ? {
+    icon: h('div', { class: 'tour-ico' }, '⌁'),
+    title: 'Traccar Client',
+    text: ['Con lo schermo spento o l\'app chiusa il telefono smette di mandare la posizione: è un limite del browser. L\'app gratuita Traccar Client la manda sempre, anche in tasca.',
+      'Una procedura guidata vi porta a installarla e a provarla a schermo spento: tre minuti. Finché non è verificata, l\'app ve lo ricorda.'],
+    extra: () => h('a', { class: 'btn btn-primary btn-block', href: '#/traccar', onclick: () => document.querySelector('.tour .tour-top .btn')?.click() }, 'Configura Traccar adesso →'),
+  } : null;
   const install = {
     icon: h('div', { class: 'tour-ico' }, '⇩'),
     title: 'Portatela con voi',
@@ -1938,14 +2003,14 @@ function tourSlides() {
   if (elect) {
     return [welcome,
       { icon: h('div', { class: 'tour-ico' }, '⛨'), title: 'Il vostro compito', text: ['Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi: logistica, Altari, il Cuore, i doni. Non hanno Sigillo e non cercano la Parola: obbediscono al Consiglio.'] },
-      notices, timers, radio, install];
+      position, traccar, notices, timers, radio, install].filter(Boolean);
   }
   return [welcome,
     { icon: sealDemo, title: 'Il Sigillo', text: ['Ogni coppia custodisce un Sigillo segreto. Prima del cerchio vedete solo un simulacro sfocato: si svela quando il Consiglio apre il cerchio. Toccate quello qui sopra.', 'Se perdete un ingaggio lo mostrate a tutto schermo, con l\'orologio che prova che non è uno screenshot.'] },
     { icon: h('div', { class: 'tour-ico' }, '⌖'), title: 'Gli Altari', text: ['Nel bosco ci sono gli Altari, uno per Settore, con un QR.'], extra: () => h('ol', { class: 'tour-steps' }, h('li', null, 'Toccate «Scansiona Altare» e inquadrate il QR: lo scanner è dentro l\'app.'), h('li', null, 'Allontanatevi: vicino all\'Altare si combatte.'), h('li', null, 'Inserite il Sigillo di quel Settore e ottenete un frammento.'), h('li', { class: 'muted' }, 'Senza rete? L\'Altare resta in lista e il Sigillo parte appena torna il segnale.')) },
     { icon: h('div', { class: 'tour-parola' }, h('strong', { class: 'mono' }, 'Frammenti: 4 / 8'), demoSegments), title: 'La Parola', text: ['Ogni Altare custodisce un frammento della Parola. Potete anche aggiungere quelli ricevuti da altre coppie: l\'app verifica che siano veri. Con la Parola intera, correte alla Soglia: vince chi arriva primo.'] },
     { icon: h('div', { class: 'tour-notebook' }, h('div', null, h('span', { class: 'mono muted' }, 'I'), ' Fuoco ', ghost('tour-nb1', 6)), h('div', null, h('span', { class: 'mono muted' }, 'III'), ' Terra ', h('strong', { class: 'mono' }, '7D2Q9K'), ' ', h('span', { class: 'chip chip-blood' }, 'rivelato'))), title: 'Il taccuino', text: ['Ogni tanto il Consiglio tradisce: rivela a tutti il Sigillo di un Settore, che finisce nel vostro taccuino. Lì potete anche verificare un Sigillo che vi hanno mostrato: l\'app vi dice se è vero.'] },
-    notices, timers, radio, install];
+    position, traccar, notices, timers, radio, install].filter(Boolean);
 }
 
 function openTour() {
@@ -1990,5 +2055,6 @@ function openTour() {
 
 // Avvio dopo l'inizializzazione di tutto il modulo.
 boot();
+checkGeoPerm();
 
 export { ApiError };
