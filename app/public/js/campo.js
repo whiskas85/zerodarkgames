@@ -18,6 +18,8 @@ const field = createField(F, { rerender: (tab) => { if (tab) location.hash = tab
 window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 'altari'; render(); });
 
 (async function boot() {
+  // Service worker: serve anche per installare la pagina come app (telefono, tablet, computer).
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try {
     F.who = await api('GET', '/api/field/whoami');
   } catch {

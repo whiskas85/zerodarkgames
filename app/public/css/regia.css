@@ -387,7 +387,14 @@ tr.gift-row-claimed td { opacity: .6; }
 .comms { height: calc(100vh - 118px); min-height: 460px; }
 .comms-tree { max-height: 100%; }
 .wa-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; border: 2px solid var(--line); background: var(--paper); }
-@media (max-width: 860px) { .comms { height: auto; } .wa-pane { height: 70vh; } }
+@media (max-width: 860px) {
+  .comms { height: auto; min-height: 0; }
+  .wa-pane { height: calc(100dvh - 130px); min-height: 380px; }
+  .comms.chat-open .comms-tree, .comms:not(.chat-open) .wa-pane { display: none; }
+  .comms-tree { position: static; max-height: none; }
+}
+.wa-back { display: none; justify-self: start; margin: -4px 0 2px -8px; }
+@media (max-width: 860px) { .wa-back { display: inline-flex; } }
 .wa-head { display: grid; gap: 2px; padding: 10px 14px; border-bottom: 2px solid var(--line); border-left: 6px solid var(--c, var(--blood)); }
 .wa-head strong { font-size: 17px; }
 .wa-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
@@ -437,3 +444,71 @@ tr.gift-row-claimed td { opacity: .6; }
 .ally-chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
 .ally-link { color: var(--c); }
 .ally-line { display: inline-block; width: 22px; border-top: 3px dashed #d1ad62; vertical-align: middle; }
+
+/* ---------------------------------------------------------------- tablet e telefono
+   Sotto gli 860 px la barra in alto non resta fissa (sul telefono occuperebbe mezzo schermo):
+   resta fissa la fila delle sezioni. Testi lunghi (indirizzi, link) vanno a capo invece di allargare i pannelli. */
+.content { overflow-wrap: anywhere; }
+/* Le tabelle no: restano leggibili e, se non ci stanno, scorrono di lato nel loro riquadro. */
+.content table { overflow-wrap: normal; }
+.content table .chip { white-space: nowrap; }
+.form-grid { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+.form-grid.wide { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.toggle-row { flex-wrap: wrap; }
+.reg-link { flex-wrap: wrap; }
+.places { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+@media (max-width: 860px) {
+  .topbar { position: static; gap: 8px 10px; padding: 8px 12px; }
+  .brand .eyebrow { display: none; }
+  .brand-t { font-size: 19px; }
+  .game-select { order: 5; flex: 1 1 100%; max-width: none; }
+  .top-clock { order: 2; margin-left: auto; gap: 8px; }
+  .clock-big { font-size: 22px; }
+  .top-actions { order: 6; flex: 1 1 100%; flex-wrap: wrap; }
+  .sidebar { position: sticky; top: 0; z-index: 15; background: var(--bg); }
+}
+@media (max-width: 600px) {
+  .content { padding: 10px; }
+  .panel { padding: 12px; gap: 10px; }
+  .panel-head h2 { font-size: 22px; }
+  .chip { white-space: normal; }
+  .top-clock .mono.muted { display: none; }
+  .top-actions .btn { flex: 1 1 auto; }
+  .altar-card, .place-card { padding: 10px; gap: 10px; }
+  .altar-qr { width: 84px; height: 84px; padding: 4px; }
+  .tl-tick:not(.tl-hour) i { display: none; }
+  .huge { font-size: 40px; }
+}
+@media (max-width: 600px) {
+  .codes { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .code-card { padding: 10px; }
+  .secret { font-size: 24px; letter-spacing: .08em; }
+}
+/* Telefono: tabelle come schede (etichetta della colonna a sinistra, valore a destra; azioni in fondo). */
+@media (max-width: 600px) {
+  .content .table-wrap { overflow: visible; }
+  .content .table-wrap table, .content .table-wrap tbody, .content .table-wrap tr { display: block; width: auto; }
+  .content .table-wrap thead { display: none; }
+  .content .table-wrap tr { border: 2px solid var(--line); background: var(--bg); padding: 8px 10px; margin-bottom: 8px; }
+  .content .table-wrap td { display: grid; grid-template-columns: minmax(84px, 34%) 1fr; gap: 10px; align-items: center; border: 0; padding: 4px 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+  .content .table-wrap td::before { content: attr(data-label); font: 600 11px var(--f-mono, monospace); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .content .table-wrap td[data-label=""] { grid-template-columns: 1fr; }
+  .content .table-wrap td[data-label=""]::before { display: none; }
+  .content .table-wrap td.row-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
+  .content .table-wrap td.row-actions::before { flex: 1 1 100%; }
+  .content .table-wrap td.row-actions > * { margin: 0; }
+  .content .table-wrap td:empty { display: none; }
+  .content .table-wrap .chip { white-space: normal; }
+  .map-tools { left: 54px; right: 8px; max-width: none; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 4px; }
+  .map-tools .btn { flex: none; }
+}
+/* Mappa su telefono e tablet verticale: la mappa sopra, l'elenco «Da piazzare» sotto (non sopra la mappa). */
+@media (max-width: 860px) {
+  .map-full { height: auto; min-height: 0; margin: 0; }
+  .map-full .regia-map { height: 62vh; min-height: 340px; }
+  .map-side { position: static; width: auto; max-height: none; margin-top: 10px; box-shadow: none; background: var(--paper); }
+}
+@media (max-width: 600px) {
+  .elect-access { flex-wrap: wrap; }
+  .elect-access img { width: 96px; height: 96px; }
+}

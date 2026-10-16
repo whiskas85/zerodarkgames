@@ -5,6 +5,8 @@ const $root = document.getElementById('root');
 const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 
 (async function boot() {
+  // Service worker: serve anche per installare la pagina come app (telefono, tablet, computer).
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try { V.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
   if (V.me) await start(); else render();
 })();

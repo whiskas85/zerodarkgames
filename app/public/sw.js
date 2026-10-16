@@ -1,8 +1,8 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v43';
+const VERSION = 'zdg-v44';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
-  '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/field-ui.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
+  '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/field-ui.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
 ];
 const PAGES = { '/campo': '/campo.html', '/regia': '/regia.html', '/soglia': '/soglia.html', '/tabellone': '/tabellone.html', '/iscrizione': '/iscrizione.html' };
 

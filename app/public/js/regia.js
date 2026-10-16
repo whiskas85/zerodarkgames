@@ -40,6 +40,10 @@ const tab = () => (location.hash.slice(1) || 'live');
 
 // ---------------------------------------------------------------- avvio
 
+// Installazione come app (computer, tablet, Android): il browser la propone, noi mostriamo il pulsante.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); R.install = e; render(); });
+window.addEventListener('appinstalled', () => { R.install = null; toast('Regia installata come app', 'ok'); render(); });
+
 (async function boot() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   window.addEventListener('hashchange', () => { render(); if (FIELD_TABS.includes(tab())) loadField(); });
@@ -203,7 +207,16 @@ function render() {
     }[tab()] || viewLive)();
     mount($root, topbar(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
+  labelTables($root);
   tick();
+}
+
+// Sul telefono le tabelle diventano schede: ogni cella porta il nome della sua colonna (vedi regia.css).
+function labelTables(root) {
+  for (const t of root.querySelectorAll('.table-wrap table')) {
+    const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    for (const tr of t.querySelectorAll('tbody tr')) [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || ''; });
+  }
 }
 
 function topbar() {
@@ -220,6 +233,7 @@ function topbar() {
     h('div', { class: 'top-actions' },
       R.gameId ? h('a', { class: 'btn btn-sm', href: `/tabellone?g=${R.gameId}`, target: '_blank' }, 'Tabellone') : null,
       h('a', { class: 'btn btn-sm', href: '/soglia', target: '_blank' }, 'Soglia'),
+      R.install ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
       R.push ? pushButton() : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
 }
@@ -362,7 +376,7 @@ function viewLive() {
           h('td', null, t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}° posto`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : h('span', { class: 'chip chip-brass' }, 'in gioco')),
           h('td', null, h('span', { class: `dot ${t.online ? 'dot-ok' : ''}` }), ' ', t.online || ''),
           h('td', { class: 'row-actions' },
-            h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'team', id: t.id }; location.hash = 'comunicazioni'; } }, t.unread ? `Messaggi (${t.unread})` : 'Messaggio'),
+            h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'team', id: t.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, t.unread ? `Messaggi (${t.unread})` : 'Messaggio'),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => fragmentsDialog(t) }, 'Frammenti'))))))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
 
     combatPanel(),
@@ -1360,7 +1374,7 @@ function viewSquads() {
         h('div', { class: 'squad-head' },
           h('input', { class: 'gt-color', type: 'color', value: sq.color, 'aria-label': 'Colore', onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { color: e.target.value }) }),
           h('input', { class: 'input input-sm squad-name', value: sq.name, 'data-keep': `sq-n-${sq.id}`, onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { name: e.target.value }, 'Nome aggiornato') }),
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; location.hash = 'comunicazioni'; } }, 'Scrivi'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, 'Scrivi'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina')),
         h('div', { class: `tiny ${pr.todo ? 'bad' : 'muted'}` }, `${pr.todo} piazzamenti da fare · Incarichi fatti ${pr.tasksDone}/${sq.tasks.length}`),
         h('div', { class: 'squad-members' }, sq.members.length ? sq.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name)) : h('span', { class: 'tiny muted' }, 'Nessun membro: assegnali qui sotto')),
@@ -1555,7 +1569,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
 
   // Riga della timeline: tacche ogni 15′, fasi, avvenimenti (punti o finestre), adesso.
   const track = h('div', { class: 'tl-track', title: 'Tocca per scegliere il minuto' },
-    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: 'tl-tick', style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
     h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
@@ -1649,7 +1663,7 @@ function liveTimeline() {
   const { lo, span, pct } = timelineScale(events);
   const tb = timeBase();
   const track = h('div', { class: 'tl-track tl-live', title: 'Clicca un punto vuoto per programmare qualcosa in quel momento', 'data-lo': lo, 'data-span': span },
-    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: 'tl-tick', style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
     h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
@@ -2067,7 +2081,7 @@ function viewComms() {
   R.chat = { kind: cur.kind, id: cur.id };
   if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
   const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
-  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; render(); } },
+  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; R.chatOpen = true; render(); } },
     h('span', { class: 'tree-label' }, label, sub ? h('span', { class: 'tiny muted' }, sub) : null), unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
 
   // Tutte le coppie: broadcast (annunci). Coppie: chat privata. Eletti e squadre: canali di gruppo.
@@ -2078,7 +2092,8 @@ function viewComms() {
   queueMicrotask(() => { if (R.chatStick !== false) thread.scrollTop = thread.scrollHeight; });
   thread.addEventListener('scroll', () => { R.chatStick = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 40; });
 
-  return h('div', { class: 'comms' },
+  // Sul telefono: elenco delle conversazioni oppure la conversazione aperta, come nelle app di messaggi.
+  return h('div', { class: `comms ${R.chatOpen ? 'chat-open' : ''}` },
     h('nav', { class: 'comms-tree', 'aria-label': 'Destinatari' },
       node('all', null, '📣 Tutte le coppie', 'annuncio a tutti'),
       ms.teams.map((t) => node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || 'chat privata', t.unread, { child: true })),
@@ -2086,7 +2101,7 @@ function viewComms() {
       ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `canale · ${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
       ms.squads.length ? null : h('p', { class: 'tiny muted tree-hint' }, 'Le squadre degli Eletti compaiono qui quando le crei.')),
     h('section', { class: 'wa-pane', style: cur.color ? { '--c': cur.color } : null },
-      h('header', { class: 'wa-head' }, h('strong', null, cur.title), h('span', { class: 'tiny muted' }, cur.sub)),
+      h('header', { class: 'wa-head' }, h('button', { class: 'btn btn-sm btn-ghost wa-back', type: 'button', onclick: () => { R.chatOpen = false; render(); } }, '‹ Conversazioni'), h('strong', null, cur.title), h('span', { class: 'tiny muted' }, cur.sub)),
       thread,
       waComposer(cur)));
 }
