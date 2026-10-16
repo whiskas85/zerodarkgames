@@ -751,16 +751,16 @@ function viewTeams() {
           h('div', null, h('strong', null, ms.game.registrationOpen ? 'Iscrizioni aperte' : 'Iscrizioni chiuse'), h('div', { class: 'tiny muted' }, 'I giocatori creano il loro account (username e password) e si candidano online; tu li approvi e assegni il Settore. Chi ha dimenticato la password: pulsante "Password" accanto al nome.')),
           h('button', { class: `btn btn-sm ${ms.game.registrationOpen ? '' : 'btn-primary'}`, disabled: st !== 'draft', onclick: () => call('PATCH', `/api/m/games/${R.gameId}`, { registrationOpen: !ms.game.registrationOpen }) }, ms.game.registrationOpen ? 'Chiudi' : 'Apri')),
         ms.spots ? h('div', { class: 'tiny' }, h('strong', null, 'Posti liberi: '),
-          `${ms.spots.couples} ${ms.spots.couples === 1 ? 'coppia' : 'coppie'} · ${ms.spots.singles} ${ms.spots.singles === 1 ? 'temerario' : 'temerari'} su ${ms.spots.capacity} coppie in tutto`,
-          ms.spots.maxSingles != null ? ` (temerari al massimo ${ms.spots.maxSingles})` : '',
-          h('span', { class: 'muted' }, ' · due temerari fanno una coppia.')) : null,
+          `${ms.spots.couples} ${ms.spots.couples === 1 ? 'Settore' : 'Settori'} per le coppie · ${ms.spots.singles} ${ms.spots.singles === 1 ? 'posto' : 'posti'} per i temerari`,
+          h('span', { class: 'muted' }, ` · ${ms.spots.capacity} Settori aperti = ${ms.spots.places} posti; iscritti ${ms.spots.taken.pairs} ${ms.spots.taken.pairs === 1 ? 'coppia' : 'coppie'} e ${ms.spots.taken.singles} ${ms.spots.taken.singles === 1 ? 'temerario' : 'temerari'}${ms.spots.taken.others ? ` (+${ms.spots.taken.others} aggiunti a mano)` : ''}`),
+          ms.spots.maxSingles != null ? ` · temerari al massimo ${ms.spots.maxSingles}` : '') : null,
         // Quante coppie (e quanti temerari) accettare: vuoto = una coppia per Settore, temerari senza tetto a parte.
         ms.spots ? h('form', { class: 'form-grid seats-form', onsubmit: (e) => {
           e.preventDefault();
           const fd = Object.fromEntries(new FormData(e.target).entries());
           call('PATCH', `/api/m/games/${R.gameId}`, { maxCouples: fd.maxCouples, maxSingles: fd.maxSingles }, 'Posti aggiornati');
         } },
-          h('label', { class: 'field' }, h('span', null, 'Coppie da accettare'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxCouples', 'data-keep': 'seat-c', value: ms.game.maxCouples ?? '', placeholder: `${(R.ms.sectors || []).filter((x) => !x.archived).length} (uno per Settore)` })),
+          h('label', { class: 'field' }, h('span', null, 'Settori da aprire'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxCouples', 'data-keep': 'seat-c', value: ms.game.maxCouples ?? '', placeholder: `${(R.ms.sectors || []).filter((x) => !x.archived).length} (tutti i Settori)` })),
           h('label', { class: 'field' }, h('span', null, 'Temerari solitari al massimo (persone)'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxSingles', 'data-keep': 'seat-s', value: ms.game.maxSingles ?? '', placeholder: 'senza limite a parte' })),
           h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva posti')) : null,
         ms.game.registrationOpen ? h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(regUrl)}`, alt: 'QR iscrizione', width: 96, height: 96 }), h('div', null, h('div', { class: 'mono' }, regUrl), h('a', { href: regUrl, target: '_blank', class: 'tiny' }, 'Apri il modulo'))) : null,
@@ -2318,7 +2318,7 @@ function gameForm(g, isNew) {
   f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
   f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
   f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
-  f('maxCouples', 'Posti coppie (vuoto = uno per Settore)', 'number', { attrs: { min: 0, placeholder: 'uno per Settore' } }),
+  f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
   f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
   h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, isNew ? 'Crea partita' : 'Salva parametri'),
     locked ? h('span', { class: 'tiny muted' }, 'Tempi e Sigilli non sono più modificabili dopo il via.') : null));

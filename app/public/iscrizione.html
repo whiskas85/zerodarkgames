@@ -200,7 +200,7 @@
     // Posti liberi per la sfida (null = nessun limite, come per gli Eletti).
     const spotsLeft = (game, mode) => (mode === 'pair' ? game?.spots?.couples : mode === 'single' ? game?.spots?.singles : null) ?? null;
     const spotsText = (mode, n) => (n === 0 ? 'Posti esauriti'
-      : mode === 'pair' ? `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per le coppie` : `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per i temerari`);
+      : mode === 'pair' ? `${n} ${n === 1 ? 'Settore libero' : 'Settori liberi'} per le coppie` : `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per i temerari`);
 
     // ---- passo 2: scelta della sfida
     function pageChoose() {

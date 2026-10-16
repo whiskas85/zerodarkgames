@@ -277,8 +277,11 @@ function availableSectors(gameId) {
 
 // Prima i Settori che hanno già un Altare (magari già piazzato nel bosco), poi gli altri.
 /**
- * Posti liberi per l'iscrizione. Le coppie sono al massimo una per Settore (o il limite della regia);
- * due temerari solitari fanno una coppia. Contano le iscrizioni in attesa e quelle accettate.
+ * Posti liberi per l'iscrizione. La regia decide quanti Settori aprire (N, di base tutti i Settori attivi):
+ * N Settori sono 2N posti. Settori liberi per le coppie = N − coppie iscritte − temerari già accoppiabili (2 = 1 Settore);
+ * posti per i temerari = 2N − 2 × coppie iscritte − temerari iscritti. Esempio: 9 Settori, 3 coppie e 1 temerario
+ * in attesa → 6 Settori per le coppie, 18 − 6 − 1 = 11 posti per i temerari.
+ * Contano le iscrizioni in attesa e quelle accettate.
  */
 function spotsOf(gameId) {
   const g = getGame(gameId);
@@ -289,10 +292,11 @@ function spotsOf(gameId) {
   // Giocatori aggiunti a mano dalla regia (non Eletti): occupano mezza coppia ciascuno.
   const others = q.get(`SELECT COUNT(*) AS n FROM players p LEFT JOIN teams t ON t.id = p.teamId
                         WHERE p.gameId = ? AND p.${live} AND p.requestedRole IS NULL AND COALESCE(t.kind, 'couple') != 'elect'`, g.id).n;
-  const free = Math.max(0, capacity - pairs - (singles + others) / 2);
-  let freeSingles = Math.floor(free * 2);
+  const loose = singles + others;
+  const couples = Math.max(0, capacity - pairs - Math.floor(loose / 2));
+  let freeSingles = Math.max(0, capacity * 2 - pairs * 2 - loose);
   if (g.maxSingles != null) freeSingles = Math.max(0, Math.min(freeSingles, g.maxSingles - singles));
-  return { couples: Math.floor(free), singles: freeSingles, capacity, maxSingles: g.maxSingles ?? null, taken: { pairs, singles, others } };
+  return { couples, singles: freeSingles, capacity, places: capacity * 2, maxSingles: g.maxSingles ?? null, taken: { pairs, singles, others } };
 }
 
 function firstFreeSector(gameId) {

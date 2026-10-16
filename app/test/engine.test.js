@@ -759,27 +759,29 @@ test('Altari senza coppia: creati subito, Sigillo solo dal tradimento e ultimo i
   assert.match(F.teamKmz(A).data.toString('latin1'), /doc\.kml/);
 });
 
-test('posti per l\'iscrizione: coppie e temerari, limiti della regia', () => {
+test('posti per l\'iscrizione: Settori da aprire, coppie e temerari', () => {
   const A = require('../src/accounts');
   const g = G.createGame({ name: 'Posti' }, 'test');
-  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 2, maxSingles: 1 }, 'test');
-  const acc = (u) => A.register({ username: u, password: 'password1', name: u, softairTeam: 'nessuno' });
-  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [2, 1]);
-  const r = A.enroll(acc('posti1'), { gameId: g.id, mode: 'pair' });
-  // Il compagno entra con il codice: non occupa un'altra coppia.
-  A.enroll(acc('posti2'), { gameId: g.id, mode: 'pair', pairCode: r.pairCode });
-  assert.equal(G.spotsOf(g.id).couples, 1);
-  A.enroll(acc('posti3'), { gameId: g.id, mode: 'single' });
-  // Un temerario occupa mezza coppia: niente più coppie intere, e il limite dei temerari è raggiunto.
+  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 9 }, 'test');
+  let n = 0;
+  const acc = () => A.register({ username: `posti${++n}`, password: 'password1', name: `P${n}`, softairTeam: 'nessuno' });
+  const pair = () => { const r = A.enroll(acc(), { gameId: g.id, mode: 'pair' }); A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: r.pairCode }); };
+  // 9 Settori = 18 posti. 3 coppie e 1 temerario in attesa → 6 Settori per le coppie, 18 − 6 − 1 = 11 temerari.
+  pair(); pair(); pair();
+  A.enroll(acc(), { gameId: g.id, mode: 'single' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles, G.spotsOf(g.id).places], [6, 11, 18]);
+  // Un secondo temerario: con il primo fanno un Settore.
+  A.enroll(acc(), { gameId: g.id, mode: 'single' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [5, 10]);
+  // Limiti: Settori finiti e tetto ai temerari.
+  G.updateGame(g.id, { maxCouples: 4, maxSingles: 2 }, 'test');
   assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 0]);
-  assert.throws(() => A.enroll(acc('posti4'), { gameId: g.id, mode: 'pair' }), /coppie esauriti/);
-  assert.throws(() => A.enroll(acc('posti5'), { gameId: g.id, mode: 'single' }), /temerari solitari esauriti/);
-  // Gli Eletti non hanno limite; senza limiti si torna a un posto coppia per Settore.
-  A.enroll(acc('posti6'), { gameId: g.id, mode: 'elect' });
+  assert.throws(() => A.enroll(acc(), { gameId: g.id, mode: 'pair' }), /coppie esauriti/);
+  assert.throws(() => A.enroll(acc(), { gameId: g.id, mode: 'single' }), /temerari solitari esauriti/);
+  // Gli Eletti non hanno limite; vuoto = tutti i Settori attivi.
+  A.enroll(acc(), { gameId: g.id, mode: 'elect' });
   G.updateGame(g.id, { maxCouples: '', maxSingles: '' }, 'test');
-  const sectors = q.get('SELECT COUNT(*) AS n FROM sectors WHERE archived = 0').n;
-  assert.equal(G.spotsOf(g.id).capacity, sectors);
-  assert.equal(G.spotsOf(g.id).singles, Math.floor((sectors - 1.5) * 2));
+  assert.equal(G.spotsOf(g.id).capacity, q.get('SELECT COUNT(*) AS n FROM sectors WHERE archived = 0').n);
 });
 
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
