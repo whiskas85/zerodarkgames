@@ -211,12 +211,15 @@ app.get('/invito/:token', (req, res) => {
   setCookie(req, res, COOKIE_INVITE, req.params.token, 3600);
   res.redirect('/?invito=1');
 });
+// Partite aperte alle iscrizioni, con i posti liberi per coppie e temerari solitari.
+const openGames = () => q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC")
+  .map((g) => { const s = G.spotsOf(g.id); return { ...g, spots: { couples: s.couples, singles: s.singles } }; });
 // Account del giocatore: profilo, iscrizioni, partite aperte; iscrizione a una partita.
 const needAccount = (req, _res, next) => (req.account ? next() : next(new HttpError(401, 'Accedi con il tuo account')));
 app.get('/api/account', needAccount, (req, res) => res.json({
   account: A.publicAccount(req.account),
   enrollments: A.enrollments(req.account),
-  games: q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"),
+  games: openGames(),
 }));
 app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.account, req.body || {}); return { ok: true }; }));
 app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
@@ -279,9 +282,7 @@ app.post('/api/auth/logout', wrap((req, res) => {
 app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: req.team ? { id: req.team.id } : null }));
 
 // ---- iscrizione pubblica
-app.get('/api/public/games', (_req, res) => {
-  res.json(q.all("SELECT id, name, scheduledStart FROM games WHERE registrationOpen = 1 AND status = 'draft' ORDER BY id DESC"));
-});
+app.get('/api/public/games', (_req, res) => res.json(openGames()));
 // Data del prossimo evento per la pagina di login: la partita vera (non di prova, non finita) in programma.
 app.get('/api/public/event', (_req, res) => {
   const g = q.all("SELECT name, scheduledStart FROM games WHERE isDemo = 0 AND status != 'ended' AND scheduledStart IS NOT NULL AND scheduledStart != ''")

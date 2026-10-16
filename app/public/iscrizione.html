@@ -53,6 +53,10 @@
     .who a, .linkish { color: var(--brass); background: none; border: 0; font: inherit; padding: 0; cursor: pointer; text-decoration: underline; }
     .card { display: grid; gap: 4px; }
     .stack { display: grid; gap: 12px; }
+    .spots { display: inline-block; justify-self: start; margin: 2px 0 4px; padding: 3px 10px; border: 1px solid var(--ok, #6fbf73); color: var(--ok, #6fbf73); font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    .spots-low { border-color: var(--warn); color: var(--warn); }
+    .spots-full { border-color: var(--blood); color: var(--blood); }
+    .path-full { opacity: .55; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -193,6 +197,11 @@
       ];
     }
 
+    // Posti liberi per la sfida (null = nessun limite, come per gli Eletti).
+    const spotsLeft = (game, mode) => (mode === 'pair' ? game?.spots?.couples : mode === 'single' ? game?.spots?.singles : null) ?? null;
+    const spotsText = (mode, n) => (n === 0 ? 'Posti esauriti'
+      : mode === 'pair' ? `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per le coppie` : `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per i temerari`);
+
     // ---- passo 2: scelta della sfida
     function pageChoose() {
       const game = S.games.find((g) => g.id === S.gameId);
@@ -204,11 +213,16 @@
         h('div', { class: 'step' }, 'Passo 2 di 3 · Scegli la tua sfida'),
         S.games.length > 1 ? h('label', { class: 'field' }, h('span', null, 'Partita'),
           h('select', { class: 'input', onchange: (e) => { S.gameId = Number(e.target.value); render(); } }, S.games.map((g) => h('option', { value: g.id, selected: g.id === S.gameId }, g.name)))) : h('h2', null, game.name),
-        mine ? enrolledCard(mine) : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => h('a', { class: 'path', href: `#${key}` },
-          h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
-          c.text.map((t) => h('p', null, t)),
-          h('div', { class: 'dare' }, c.dare),
-          h('span', { class: 'btn btn-primary path-go' }, 'Scelgo questa sfida →')))),
+        mine ? enrolledCard(mine) : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => {
+          const left = spotsLeft(game, c.mode);
+          const full = left === 0;
+          return h(full ? 'div' : 'a', { class: `path ${full ? 'path-full' : ''}`, href: full ? null : `#${key}`, 'aria-disabled': full ? 'true' : null },
+            h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
+            left != null ? h('div', { class: `spots ${full ? 'spots-full' : left <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, left)) : null,
+            c.text.map((t) => h('p', null, t)),
+            h('div', { class: 'dare' }, c.dare),
+            full ? h('span', { class: 'btn path-go', 'aria-hidden': 'true' }, 'Posti esauriti') : h('span', { class: 'btn btn-primary path-go' }, 'Scelgo questa sfida →'));
+        })),
       ];
     }
 
@@ -279,7 +293,9 @@
         h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Cambia sfida'),
         steps(3),
         h('div', { class: 'step' }, `Passo 3 di 3 · ${game?.name || ''}`),
-        h('div', { class: 'chosen' }, h('span', { class: 'path-tag' }, c.tag), h('span', { class: 'path-title' }, c.title), h('div', { class: 'dare' }, c.dare)),
+        h('div', { class: 'chosen' }, h('span', { class: 'path-tag' }, c.tag), h('span', { class: 'path-title' }, c.title),
+          spotsLeft(game, c.mode) != null ? h('div', { class: `spots ${spotsLeft(game, c.mode) <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, spotsLeft(game, c.mode))) : null,
+          h('div', { class: 'dare' }, c.dare)),
         form,
       ];
     }

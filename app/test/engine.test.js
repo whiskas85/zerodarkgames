@@ -759,6 +759,29 @@ test('Altari senza coppia: creati subito, Sigillo solo dal tradimento e ultimo i
   assert.match(F.teamKmz(A).data.toString('latin1'), /doc\.kml/);
 });
 
+test('posti per l\'iscrizione: coppie e temerari, limiti della regia', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Posti' }, 'test');
+  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 2, maxSingles: 1 }, 'test');
+  const acc = (u) => A.register({ username: u, password: 'password1', name: u, softairTeam: 'nessuno' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [2, 1]);
+  const r = A.enroll(acc('posti1'), { gameId: g.id, mode: 'pair' });
+  // Il compagno entra con il codice: non occupa un'altra coppia.
+  A.enroll(acc('posti2'), { gameId: g.id, mode: 'pair', pairCode: r.pairCode });
+  assert.equal(G.spotsOf(g.id).couples, 1);
+  A.enroll(acc('posti3'), { gameId: g.id, mode: 'single' });
+  // Un temerario occupa mezza coppia: niente più coppie intere, e il limite dei temerari è raggiunto.
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 0]);
+  assert.throws(() => A.enroll(acc('posti4'), { gameId: g.id, mode: 'pair' }), /coppie esauriti/);
+  assert.throws(() => A.enroll(acc('posti5'), { gameId: g.id, mode: 'single' }), /temerari solitari esauriti/);
+  // Gli Eletti non hanno limite; senza limiti si torna a un posto coppia per Settore.
+  A.enroll(acc('posti6'), { gameId: g.id, mode: 'elect' });
+  G.updateGame(g.id, { maxCouples: '', maxSingles: '' }, 'test');
+  const sectors = q.get('SELECT COUNT(*) AS n FROM sectors WHERE archived = 0').n;
+  assert.equal(G.spotsOf(g.id).capacity, sectors);
+  assert.equal(G.spotsOf(g.id).singles, Math.floor((sectors - 1.5) * 2));
+});
+
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
   const F = require('../src/field');
   const g = setupGame(2);

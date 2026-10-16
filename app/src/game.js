@@ -99,8 +99,10 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles']);
+// Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
+const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
 const LOCKED_AFTER_START = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength']);
 
@@ -123,7 +125,8 @@ function updateGame(id, data, actor) {
     if (data[f] === undefined) continue;
     if (started && LOCKED_AFTER_START.has(f)) continue;
     let v = data[f];
-    if (INT_FIELDS.has(f)) {
+    if (NULLABLE_INT.has(f) && (v === '' || v === null)) v = null;
+    else if (INT_FIELDS.has(f)) {
       v = parseInt(v, 10);
       if (!Number.isFinite(v) || v < 0) throw err(400, `Valore non valido per ${f}`);
     }
@@ -273,6 +276,25 @@ function availableSectors(gameId) {
 }
 
 // Prima i Settori che hanno già un Altare (magari già piazzato nel bosco), poi gli altri.
+/**
+ * Posti liberi per l'iscrizione. Le coppie sono al massimo una per Settore (o il limite della regia);
+ * due temerari solitari fanno una coppia. Contano le iscrizioni in attesa e quelle accettate.
+ */
+function spotsOf(gameId) {
+  const g = getGame(gameId);
+  const capacity = g.maxCouples ?? activeSectors().length;
+  const live = "status IN ('pending','accepted')";
+  const pairs = q.get(`SELECT COUNT(DISTINCT regGroup) AS n FROM players WHERE gameId = ? AND ${live} AND requestedRole = 'pair'`, g.id).n;
+  const singles = q.get(`SELECT COUNT(*) AS n FROM players WHERE gameId = ? AND ${live} AND requestedRole = 'single'`, g.id).n;
+  // Giocatori aggiunti a mano dalla regia (non Eletti): occupano mezza coppia ciascuno.
+  const others = q.get(`SELECT COUNT(*) AS n FROM players p LEFT JOIN teams t ON t.id = p.teamId
+                        WHERE p.gameId = ? AND p.${live} AND p.requestedRole IS NULL AND COALESCE(t.kind, 'couple') != 'elect'`, g.id).n;
+  const free = Math.max(0, capacity - pairs - (singles + others) / 2);
+  let freeSingles = Math.floor(free * 2);
+  if (g.maxSingles != null) freeSingles = Math.max(0, Math.min(freeSingles, g.maxSingles - singles));
+  return { couples: Math.floor(free), singles: freeSingles, capacity, maxSingles: g.maxSingles ?? null, taken: { pairs, singles, others } };
+}
+
 function firstFreeSector(gameId) {
   const withAltar = new Set(q.all('SELECT sectorId FROM points WHERE gameId = ?', gameId).map((r) => r.sectorId));
   const free = availableSectors(gameId);
@@ -1772,6 +1794,7 @@ function masterState(gameId) {
     clock: clockOf(g),
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
     readiness: readiness(g),
+    spots: spotsOf(g.id),
     next: nextEvents(g),
     sectors: sectors(),
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
@@ -1833,7 +1856,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  spotsOf, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

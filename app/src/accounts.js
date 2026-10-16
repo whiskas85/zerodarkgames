@@ -97,6 +97,10 @@ function enroll(account, data) {
   let group = null;
   let teamName = null;
   let partner = null;
+  // Posti: chi si unisce al compagno occupa il posto già preso dalla sua coppia.
+  const spots = G.spotsOf(g.id);
+  if (mode === 'pair' && !String(data.pairCode || '').trim() && spots.couples < 1) throw err(409, 'Posti per le coppie esauriti: puoi candidarti come Temerario Solitario se ci sono posti, o chiedere al Consiglio');
+  if (mode === 'single' && spots.singles < 1) throw err(409, 'Posti per i temerari solitari esauriti');
   if (mode === 'pair') {
     const code = String(data.pairCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code) {
