@@ -554,6 +554,7 @@ function viewLogin() {
       h('span', { class: 'login-or' }, 'oppure'),
       S.ops.map((o) => h('a', { class: 'btn btn-block btn-ops', href: `/auth/ops/${encodeURIComponent(o.id)}?ritorno=app` }, `Accedi con ${o.name}`))) : null,
     h('a', { class: 'btn btn-block', href: '/iscrizione' }, 'Non hai un account? Registrati'),
+    h('a', { class: 'btn btn-block btn-ghost', href: '/regolamento.html', target: '_blank', rel: 'noopener' }, '📖 Leggi il regolamento'),
     h('details', { class: 'login-alt' },
       h('summary', null, 'Hai un QR o un codice d\'accesso del Consiglio?'),
       h('form', { class: 'login-form', onsubmit: byCode },
