@@ -58,9 +58,66 @@ async function start() {
   stream('/api/stream?as=staff', {
     open: () => load(),
     refresh: (d) => { if (d.gameId === R.gameId || d.gameId == null) load(); },
+    // Con la regia aperta l'avviso arriva anche qui (iscrizioni, messaggi, scontri contestati…).
+    notify: (n) => {
+      toast(h('a', { href: n.url?.startsWith('/regia') ? n.url.replace('/regia', '') || '#' : '#' }, h('strong', null, n.title), n.body ? h('div', { class: 'small' }, n.body) : null), 'info', 9000);
+      if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    },
   });
   await load();
+  checkPush(true);
 }
+
+// ---------------------------------------------------------------- notifiche della regia
+
+// Stato su questo dispositivo: 'on' | 'off' | 'denied' | 'unsupported'.
+async function checkPush(renew = false) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { R.push = 'unsupported'; render(); return; }
+  if (Notification.permission === 'denied') { R.push = 'denied'; render(); return; }
+  try {
+    // Permesso già dato: si riregistra in silenzio (le iscrizioni push del browser a volte scadono).
+    if (renew && Notification.permission === 'granted') await enablePush('staff');
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    const st = sub ? await api('GET', `/api/m/push/status?endpoint=${encodeURIComponent(sub.endpoint)}`) : null;
+    R.push = Notification.permission === 'granted' && st?.thisDevice ? 'on' : 'off';
+  } catch { R.push = 'off'; }
+  render();
+}
+
+async function pushDialog() {
+  const iphone = /iPhone|iPad/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
+  const text = {
+    on: 'Le notifiche della regia arrivano su questo dispositivo: nuove iscrizioni e candidature agli Eletti, messaggi delle coppie, scontri contestati, doni presi.',
+    off: 'Attivale per ricevere un avviso a ogni nuova iscrizione (coppie, temerari, candidature agli Eletti), ai messaggi delle coppie, agli scontri contestati e ai doni presi, anche con la regia chiusa.',
+    denied: 'Il browser ha bloccato le notifiche per questo sito: riattivale dalle impostazioni del sito (lucchetto nella barra dell\'indirizzo), poi ricarica la pagina.',
+    unsupported: 'Questo browser non supporta le notifiche push (serve HTTPS).',
+  }[R.push || 'off'];
+  let dlg = null;
+  const off = async () => {
+    try {
+      const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+      if (sub) await api('POST', '/api/m/push/off', { endpoint: sub.endpoint });
+      toast('Notifiche disattivate su questo dispositivo', 'ok');
+    } catch (e) { toast(e.message, 'error', 7000); }
+    dlg?.querySelector('.dlg-actions .btn-ghost')?.click();
+  };
+  const ok = await modal({
+    title: 'Notifiche della regia', okLabel: R.push === 'on' ? 'Invia una prova' : R.push === 'off' ? 'Attiva notifiche' : 'Ho capito', cancelLabel: 'Chiudi',
+    // Niente da fare (bloccate o non supportate): un solo pulsante.
+    onOpen: (d) => { dlg = d; if (!['on', 'off'].includes(R.push)) d.querySelector('.dlg-actions .btn-ghost')?.remove(); },
+    body: h('div', { class: 'stack-sm' }, h('p', null, text),
+      iphone ? h('p', { class: 'tiny muted' }, 'Su iPhone le notifiche arrivano solo se l\'app è aggiunta alla schermata Home (Condividi → Aggiungi a Home) e aperta da lì.') : null,
+      R.push === 'on' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: off }, 'Disattiva su questo dispositivo') : null),
+  });
+  try {
+    if (ok && R.push === 'off') { await enablePush('staff'); toast('Notifiche attive su questo dispositivo', 'ok'); }
+    else if (ok && R.push === 'on') { const r = await api('POST', '/api/m/push/test'); toast(`Prova inviata a ${r.devices} ${r.devices === 1 ? 'dispositivo' : 'dispositivi'}`, 'ok'); }
+  } catch (e) { toast(e.message, 'error', 7000); }
+  checkPush();
+}
+
+const pushButton = (cls = 'btn btn-sm') => h('button', { class: `${cls} ${R.push === 'off' ? 'btn-primary' : ''}`, type: 'button', onclick: pushDialog, title: 'Notifiche della regia' },
+  R.push === 'on' ? '🔔 Notifiche attive' : R.push === 'off' ? '🔔 Attiva notifiche' : '🔕 Notifiche');
 
 async function loadGames() {
   R.games = await api('GET', '/api/m/games');
@@ -163,6 +220,7 @@ function topbar() {
     h('div', { class: 'top-actions' },
       R.gameId ? h('a', { class: 'btn btn-sm', href: `/tabellone?g=${R.gameId}`, target: '_blank' }, 'Tabellone') : null,
       h('a', { class: 'btn btn-sm', href: '/soglia', target: '_blank' }, 'Soglia'),
+      R.push ? pushButton() : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
 }
 
@@ -2481,8 +2539,8 @@ function viewSettings() {
             timers, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer'))),
         orgSection(),
         section('Notifiche alla regia',
-          h('p', { class: 'muted tiny' }, 'Ricevi push per iscrizioni e messaggi delle coppie (serve HTTPS).'),
-          h('button', { class: 'btn', onclick: async () => { try { await enablePush('staff'); toast('Notifiche attive', 'ok'); } catch (e) { toast(e.message, 'error', 6000); } } }, 'Attiva notifiche')),
+          h('p', { class: 'muted tiny' }, 'Un avviso a ogni nuova iscrizione (coppie, temerari, candidature agli Eletti), ai messaggi delle coppie, agli scontri contestati e ai doni presi. Si attiva su ogni dispositivo (telefono, computer) dove vuoi riceverle.'),
+          pushButton('btn')),
         section('Partita di prova',
           h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),
           h('button', { class: 'btn', onclick: createDemo }, 'Crea partita di prova')),

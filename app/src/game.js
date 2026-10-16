@@ -198,7 +198,8 @@ function publicRegister(data) {
   const teamName = mode === 'pair' ? data.teamName?.trim().slice(0, 60) || null : null;
   const ids = tx(() => players.map((p) => addPlayer(g.id, p, { self: true, regGroup: group, requestedTeamName: teamName, requestedRole: mode })));
   const what = { pair: 'Iscrizione coppia', single: 'Temerario solitario', elect: 'Candidatura agli Eletti' }[mode];
-  rt.pushMasters({ title: `${what} da approvare`, body: `${players.map((p) => p.name).join(' e ')} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie' });
+  rt.pushMasters({ title: `${what} da approvare`, body: `${players.map((p) => p.name).join(' e ')} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie', tag: `iscrizione-${ids[0]}` });
+  rt.toStaff(g.id, 'registration');
   return { ok: true, mode, paired: mode === 'pair', playerIds: ids };
 }
 

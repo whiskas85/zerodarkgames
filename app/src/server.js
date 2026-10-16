@@ -421,7 +421,7 @@ app.get('/api/stream', (req, res, next) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 4000\n\n');
   res.write(`event: hello\ndata: ${JSON.stringify({ now: Date.now() })}\n\n`);
-  if (asStaff) rt.addClient({ res, kind: 'user', userId: req.user.id });
+  if (asStaff) rt.addClient({ res, kind: 'user', userId: req.user.id, role: req.user.role });
   else {
     const gameId = req.team?.gameId ?? req.player.gameId;
     rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null });
@@ -482,6 +482,18 @@ const m = express.Router();
 m.use(needMaster);
 const gameId = (req) => Number(req.params.id);
 
+// Notifiche della regia su questo dispositivo: stato, prova, spegnimento.
+m.get('/push/status', wrap((req) => ({
+  thisDevice: !!(req.query.endpoint && q.get('SELECT 1 FROM push_subs WHERE endpoint = ? AND userId = ?', String(req.query.endpoint), req.user.id)),
+  devices: q.get('SELECT COUNT(*) AS n FROM push_subs WHERE userId = ?', req.user.id).n,
+})));
+m.post('/push/test', wrap(async (req) => ({ devices: await rt.pushUser(req.user.id, { title: 'Prova notifiche', body: 'Le notifiche della regia arrivano su questo dispositivo.', tag: 'push-test', url: '/regia' }) })));
+m.post('/push/off', wrap((req) => {
+  const ep = String(req.body?.endpoint || '');
+  q.run('UPDATE push_subs SET userId = NULL WHERE endpoint = ? AND userId = ?', ep, req.user.id);
+  q.run('DELETE FROM push_subs WHERE endpoint = ? AND userId IS NULL AND teamId IS NULL AND playerId IS NULL', ep);
+  return { ok: true };
+}));
 m.get('/sectors', (_req, res) => res.json(G.sectorsAdmin()));
 m.post('/sectors', wrap((req) => ({ id: G.saveSector(null, req.body || {}, actor(req)) })));
 m.patch('/sectors/:sid', wrap((req) => ({ id: G.saveSector(Number(req.params.sid), req.body || {}, actor(req)) })));

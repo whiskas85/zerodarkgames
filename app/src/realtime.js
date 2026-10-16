@@ -102,13 +102,22 @@ function pushTeams(gameId, payload, teamId = null) {
   sendPush(subs, payload).catch(() => {});
 }
 
+// Avvisi alla regia: push sui dispositivi dei master e, a chi ha la regia aperta, un avviso nella pagina.
 function pushMasters(payload) {
   const subs = q.all("SELECT p.* FROM push_subs p JOIN users u ON u.id = p.userId WHERE u.role = 'master'");
   sendPush(subs, payload).catch(() => {});
+  for (const c of clients) if (c.kind === 'user' && c.role === 'master') write(c, 'notify', payload);
+}
+
+// Notifica di prova ai soli dispositivi di un utente della regia.
+async function pushUser(userId, payload) {
+  const subs = q.all('SELECT * FROM push_subs WHERE userId = ?', userId);
+  await sendPush(subs, payload);
+  return subs.length;
 }
 
 function pushSubs(subs, payload) {
   sendPush(subs, payload).catch(() => {});
 }
 
-module.exports = { addClient, toTeams, toTeamsWhere, toStaff, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushSubs, gameSubs };
+module.exports = { addClient, toTeams, toTeamsWhere, toStaff, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };

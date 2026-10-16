@@ -119,7 +119,7 @@ function enroll(account, data) {
     return id;
   });
   const what = { pair: partner ? 'Legato (si unisce alla coppia)' : 'Coppia (in attesa del compagno)', single: 'Temerario solitario', elect: 'Candidatura agli Eletti' }[mode];
-  rt.pushMasters({ title: `${what} da approvare`, body: `${account.name}${partner ? ` con ${partner.name}` : ''} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie' });
+  rt.pushMasters({ title: `${what} da approvare`, body: `${account.name}${partner ? ` con ${partner.name}` : ''} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie', tag: `iscrizione-${playerId}` });
   rt.toStaff(g.id, 'registration');
   return { ok: true, playerId, mode, pairCode: mode === 'pair' && !partner ? group : null, partner: partner ? partner.name : null };
 }
