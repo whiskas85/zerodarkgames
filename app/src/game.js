@@ -965,6 +965,31 @@ function setStatus(g, status, extra = {}) {
   Object.assign(g, cols);
 }
 
+// Solo nell'ambiente di test: una partita finita torna «pronta» con tutto il gioco azzerato (Sigilli, Altari,
+// Parola, coppie e piazzamenti restano), per rigiocarla senza rifare il setup.
+const isTestEnv = () => process.env.ZDG_ENV === 'test';
+function restartGame(g, actor) {
+  if (!isTestEnv()) throw err(403, 'Far ripartire una partita finita è possibile solo nell\'ambiente di test');
+  const teamIds = teamsOf(g.id).map((t) => t.id);
+  const inTeams = teamIds.length ? `(${teamIds.map(() => '?').join(',')})` : '(NULL)';
+  tx(() => {
+    for (const t of ['team_fragments', 'team_code_notes', 'team_visits', 'team_timers']) q.run(`DELETE FROM ${t} WHERE teamId IN ${inTeams}`, ...teamIds);
+    q.run("UPDATE teams SET status = 'active', finishPosition = NULL, wonAt = NULL WHERE gameId = ?", g.id);
+    q.run('DELETE FROM engagement_steals WHERE engagementId IN (SELECT id FROM engagements WHERE gameId = ?)', g.id);
+    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
+    // Tradimenti: quelli aggiunti a mano spariscono, gli altri tornano in calendario.
+    q.run('DELETE FROM revelations WHERE gameId = ? AND scheduledMin IS NULL', g.id);
+    q.run("UPDATE revelations SET status = 'scheduled', firedAt = NULL WHERE gameId = ?", g.id);
+    q.run("UPDATE supply_drops SET status = 'scheduled', firedAt = NULL, closesAt = NULL, closedAt = NULL WHERE gameId = ?", g.id);
+    // Doni: tornano piazzati (non ancora comparsi) o da piazzare.
+    q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
+           claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
+    setStatus(g, 'ready', { startedAt: null, totalPausedMs: 0, pausedAt: null, pausedFrom: null, endedAt: null });
+  });
+  log(g.id, actor, 'game_restarted');
+  pushTraccarOn(g);
+}
+
 // Si parte a breve: a tutti i telefoni della partita, «accendi Traccar» (l'avviso nell'app sparisce al primo segnale).
 function pushTraccarOn(g) {
   rt.pushTeams(g.id, { title: 'Accendi Traccar Client', body: 'I Giochi stanno per iniziare: apri Traccar Client e accendi il tracciamento. L\'avviso sparisce appena arriva il primo segnale.', tag: 'traccar-on', url: '/#/home' });
@@ -1016,6 +1041,10 @@ function control(gameId, action, actor) {
     case 'end':
       need(...C.ACTIVE, 'paused');
       endGame(g, actor, now);
+      break;
+    case 'restart':
+      need('ended');
+      restartGame(g, actor);
       break;
     default:
       throw err(400, 'Azione sconosciuta');
@@ -1855,6 +1884,7 @@ function masterState(gameId) {
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
     readiness: readiness(g),
     spots: spotsOf(g.id),
+    env: process.env.ZDG_ENV || 'production',
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
     pushOff: pushReport(g.id).people.filter((p) => (p.state === 'off' || p.traccar !== 'ok') && ['couple', 'elect'].includes(p.group)).length,
     next: nextEvents(g),

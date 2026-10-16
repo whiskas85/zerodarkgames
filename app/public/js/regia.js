@@ -322,6 +322,9 @@ function controlButtons() {
   if (st === 'circle') b.push(act('start', 'VIA!', 'btn-primary btn-go', 'Dare il VIA?', 'Parte l\'orologio di partita: tregua di ' + R.ms.game.truceMin + ' minuti, poi la caccia. Tutte le coppie ricevono l\'annuncio.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', 'Le coppie non vedranno più il Sigillo fino al prossimo cerchio.'));
   if (ACTIVE.includes(st)) b.push(act('pause', 'Sospendi', 'btn-danger', 'Sospendere la partita?', 'Tutti gli orologi e il calendario si fermano. Banner rosso su tutti i dispositivi.', true), act('end', 'Termina', '', 'Terminare la partita?', 'Gli Altari si chiudono e si calcola la classifica finale.', true));
   if (st === 'paused') b.push(act('resume', 'Riprendi', 'btn-primary', 'Riprendere la partita?', 'Gli orologi ripartono da dove si erano fermati.'), act('end', 'Termina', '', 'Terminare la partita?', 'Gli Altari si chiudono e si calcola la classifica finale.', true));
+  // Solo nell'ambiente di test: una partita finita si rigioca senza rifare il setup.
+  if (st === 'ended' && R.ms?.env === 'test') b.push(act('restart', '↺ Riparti da capo (test)', 'btn-primary', 'Far ripartire la partita?',
+    'La partita torna «pronta»: frammenti, Sigilli trovati, Altari visitati, scontri, alleanze, annunci, messaggi, validazioni e classifica vengono azzerati; tradimenti e armamenti tornano in calendario e i doni piazzati tornano non comparsi. Coppie, Settori, Sigilli, Altari, Parola e piazzamenti restano. Solo in ambiente di test.', true));
   return b;
 }
 

@@ -841,6 +841,29 @@ test('Traccar: segnali anche prima del via, verifica con la prova a schermo spen
   assert.equal(F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', pl.id)).state, 'stale');
 });
 
+test('partita finita: in test riparte da capo, in produzione no', () => {
+  const g = setupGame(3);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const p = pointOf(g.id, A.sectorId);
+  scanUnlock(A, p.qrToken, codeOf(g.id, A.sectorId));
+  G.revealNext(g.id, 'test');
+  G.control(g.id, 'end', 'test');
+  assert.throws(() => G.control(g.id, 'restart', 'test'), /ambiente di test/);
+  process.env.ZDG_ENV = 'test';
+  try { G.control(g.id, 'restart', 'test'); } finally { delete process.env.ZDG_ENV; }
+  const g2 = G.getGame(g.id);
+  assert.deepEqual([g2.status, g2.startedAt, g2.endedAt], ['ready', null, null]);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM team_fragments WHERE teamId = ?', A.id).n, 0);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM team_visits WHERE teamId = ?', A.id).n, 0);
+  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status != 'scheduled'", g.id).n, 0);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM announcements WHERE gameId = ?', g.id).n, 0);
+  assert.ok(q.get('SELECT COUNT(*) AS n FROM fragments WHERE gameId = ?', g.id).n > 0);
+  // Si rigioca: cerchio, via.
+  for (const a of ['circle', 'start']) G.control(g.id, a, 'test');
+  assert.equal(G.getGame(g.id).status, 'truce');
+});
+
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
   const F = require('../src/field');
   const g = setupGame(2);
