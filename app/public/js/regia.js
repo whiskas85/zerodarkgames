@@ -28,6 +28,7 @@ const TABS = [
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
+  ['notifiche', 'Notifiche'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['regolamento', 'Regolamento'],
@@ -203,7 +204,7 @@ function render() {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
@@ -252,7 +253,8 @@ function sidebar() {
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
-    id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null))));
+    id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,
+    id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Persone senza notifiche' }, R.ms.pushOff) : null))));
 }
 
 function tick() {
@@ -2206,6 +2208,66 @@ function noticeTargetLabel(n) {
     return t ? `Settore ${t.sectorName}` : 'una coppia';
   }
   return ms.noticeTargets[n.target] || n.target;
+}
+
+// ---------------------------------------------------------------- NOTIFICHE: chi non le riceve
+
+async function loadPushReport() {
+  try { R.pushRep = { gameId: R.gameId, at: Date.now(), ...(await api('GET', G('/push-report'))) }; } catch (e) { toast(e.message, 'error'); }
+  render();
+}
+
+const PUSH_STATE = {
+  on: (x) => h('span', { class: 'chip chip-ok' }, `attive${x.devices > 1 ? ` · ${x.devices} dispositivi` : ''}`),
+  shared: () => h('span', { class: 'chip chip-warn', title: 'Le riceve solo il telefono entrato con il codice della coppia, non il suo' }, 'solo telefono della coppia'),
+  off: () => h('span', { class: 'chip chip-blood' }, 'non attive'),
+};
+
+function viewPushReport() {
+  const rep = R.pushRep;
+  if (!rep || rep.gameId !== R.gameId || Date.now() - rep.at > 60000) { if (!R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }
+  if (!rep || rep.gameId !== R.gameId) return h('p', { class: 'empty' }, 'Caricamento…');
+  const onlyMissing = R.pushOnlyMissing !== false;
+  const show = (list) => (onlyMissing ? list.filter((x) => x.state !== 'on') : list);
+  const groups = [
+    ['couple', 'Coppie'], ['elect', 'Eletti del Consiglio'], ['free', 'Accettati senza coppia'], ['pending', 'Iscrizioni in attesa'],
+  ].map(([key, label]) => ({ key, label, all: rep.people.filter((p) => p.group === key) }));
+  const missing = rep.people.filter((p) => p.state !== 'on');
+  const off = rep.people.filter((p) => p.state === 'off');
+  const copyList = () => {
+    const lines = missing.map((p) => `${p.name}${p.nickname ? ` «${p.nickname}»` : ''}${p.where ? ` (${p.where})` : ''}${p.phone ? ` · ${p.phone}` : ''}`);
+    const text = `Notifiche dei Giochi del Buio da attivare:\n${lines.join('\n')}\n\nApri l'app (${R.baseUrl || location.origin}), entra con il tuo account e premi «Attiva le notifiche». Su iPhone prima aggiungi l'app alla schermata Home.`;
+    navigator.clipboard?.writeText(text).then(() => toast('Elenco copiato: incollalo nel gruppo WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
+  };
+  const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
+    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['Persona', 'Dove', 'Telefono', 'Notifiche']).map((x) => h('th', null, x)))),
+    h('tbody', null, list.map((p) => (staff
+      ? h('tr', null, h('td', null, h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
+      : h('tr', null,
+        h('td', null, personLine(p)),
+        h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
+        h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
+        h('td', null, PUSH_STATE[p.state](p))))))));
+  return h('div', { class: 'stack' },
+    sectionActions('Chi non riceve le notifiche', [
+      h('button', { class: `btn btn-sm ${onlyMissing ? 'on' : ''}`, onclick: () => { R.pushOnlyMissing = !onlyMissing; render(); } }, onlyMissing ? 'Mostra tutti' : 'Solo chi non le ha'),
+      h('button', { class: 'btn btn-sm', onclick: loadPushReport }, '↻ Aggiorna'),
+      missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
+      h('p', { class: 'muted tiny' }, 'Senza notifiche una persona non riceve tradimenti, annunci, messaggi e avvisi quando l\'app è chiusa. Si attivano dall\'app con «Attiva le notifiche», su ogni telefono. «Solo telefono della coppia»: le riceve il telefono entrato con il codice della coppia, non quello personale.'),
+      h('div', { class: 'row-actions' },
+        h('span', { class: `chip ${off.length ? 'chip-blood' : 'chip-ok'}` }, `${off.length} senza notifiche`),
+        h('span', { class: 'chip chip-warn' }, `${missing.length - off.length} solo sul telefono della coppia`),
+        h('span', { class: 'chip chip-ok' }, `${rep.people.length - missing.length} con notifiche`),
+        h('span', { class: 'tiny muted' }, `aggiornato ${fmtTime(rep.at)}`))),
+    ...groups.filter((g) => g.all.length).map((g) => {
+      const list = show(g.all);
+      const n = g.all.filter((p) => p.state !== 'on').length;
+      return section(`${g.label} · ${n ? `${n} su ${g.all.length} senza` : 'tutti con notifiche'}`,
+        list.length ? table(list) : h('p', { class: 'empty' }, 'Tutti hanno le notifiche attive.'));
+    }),
+    section(`Organizzazione · ${rep.staff.filter((u) => u.state === 'off').length} senza`,
+      h('p', { class: 'muted tiny' }, 'Master e validatori: si attivano dalla regia con il pulsante 🔔 in alto.'),
+      show(rep.staff).length ? table(show(rep.staff), true) : h('p', { class: 'empty' }, 'Tutti hanno le notifiche attive.')));
 }
 
 function viewNotices() {

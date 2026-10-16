@@ -1762,6 +1762,35 @@ function nextEvents(g) {
   };
 }
 
+/**
+ * Chi riceve le notifiche push. Per ogni persona della partita (in attesa, accettata, in coppia o tra gli Eletti):
+ * 'on' = ha un telefono suo con le notifiche attive; 'shared' = solo il telefono della coppia (entrato col codice
+ * della coppia) le riceve; 'off' = nessun dispositivo. In più l'organizzazione (master e validatori).
+ */
+function pushReport(gameId) {
+  const g = getGame(gameId);
+  const own = Object.fromEntries(q.all('SELECT playerId, COUNT(*) AS n FROM push_subs WHERE playerId IS NOT NULL GROUP BY playerId').map((r) => [r.playerId, r.n]));
+  const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
+  const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
+  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username,
+                               t.kind AS teamKind, s.name AS sectorName, s.roman, s.ord
+                        FROM players p LEFT JOIN accounts a ON a.id = p.accountId LEFT JOIN teams t ON t.id = p.teamId
+                        LEFT JOIN sectors s ON s.id = t.sectorId
+                        WHERE p.gameId = ? AND p.status IN ('pending','accepted')`, g.id).map((p) => {
+    const mine = own[p.id] || 0;
+    const team = p.teamId ? shared[p.teamId] || 0 : 0;
+    const group = p.teamKind === 'elect' ? 'elect' : p.teamKind === 'couple' ? 'couple' : p.status === 'pending' ? 'pending' : 'free';
+    return {
+      id: p.id, name: p.name, nickname: p.nickname, phone: p.phone, username: p.username, status: p.status, requestedRole: p.requestedRole,
+      group, where: group === 'couple' ? `${p.roman || ''} ${p.sectorName || ''}`.trim() : group === 'elect' ? (squads[p.squadId] ? `Squadra ${squads[p.squadId]}` : 'Eletti') : null,
+      sectorOrd: p.ord ?? 999, devices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
+    };
+  }).sort((a, b) => a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
+  const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
+                       FROM users u ORDER BY u.role = 'master' DESC, u.username`).map((u) => ({ ...u, state: u.devices ? 'on' : 'off' }));
+  return { people, staff };
+}
+
 function masterState(gameId) {
   const g = getGame(gameId);
   const elect = ensureElect(g.id);
@@ -1799,6 +1828,8 @@ function masterState(gameId) {
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
     readiness: readiness(g),
     spots: spotsOf(g.id),
+    // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
+    pushOff: pushReport(g.id).people.filter((p) => p.state === 'off' && ['couple', 'elect'].includes(p.group)).length,
     next: nextEvents(g),
     sectors: sectors(),
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
@@ -1860,7 +1891,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  spotsOf, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  spotsOf, pushReport, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

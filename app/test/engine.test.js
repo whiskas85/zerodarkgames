@@ -784,6 +784,23 @@ test('posti per l\'iscrizione: Settori da aprire, coppie e temerari', () => {
   assert.equal(G.spotsOf(g.id).capacity, q.get('SELECT COUNT(*) AS n FROM sectors WHERE archived = 0').n);
 });
 
+test('notifiche: chi le ha sul suo telefono, solo su quello della coppia, o per niente', () => {
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [a1, a2] = q.all('SELECT id FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const now = Date.now();
+  q.run('INSERT INTO push_subs (endpoint, data, playerId, createdAt) VALUES (?, ?, ?, ?)', 'https://push/a1', '{}', a1.id, now);
+  q.run('INSERT INTO push_subs (endpoint, data, teamId, createdAt) VALUES (?, ?, ?, ?)', 'https://push/b', '{}', B.id, now);
+  const rep = G.pushReport(g.id);
+  const st = Object.fromEntries(rep.people.map((p) => [p.id, p.state]));
+  assert.equal(st[a1.id], 'on');
+  assert.equal(st[a2.id], 'off');
+  for (const p of q.all('SELECT id FROM players WHERE teamId = ?', B.id)) assert.equal(st[p.id], 'shared');
+  assert.ok(rep.people.every((p) => p.group === 'couple' && p.where));
+  assert.equal(G.masterState(g.id).pushOff, 1);
+  assert.ok(Array.isArray(rep.staff));
+});
+
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
   const F = require('../src/field');
   const g = setupGame(2);

@@ -495,6 +495,7 @@ m.post('/push/off', wrap((req) => {
   q.run('DELETE FROM push_subs WHERE endpoint = ? AND userId IS NULL AND teamId IS NULL AND playerId IS NULL', ep);
   return { ok: true };
 }));
+m.get('/games/:id/push-report', wrap((req) => G.pushReport(gameId(req))));
 m.get('/sectors', (_req, res) => res.json(G.sectorsAdmin()));
 m.post('/sectors', wrap((req) => ({ id: G.saveSector(null, req.body || {}, actor(req)) })));
 m.patch('/sectors/:sid', wrap((req) => ({ id: G.saveSector(Number(req.params.sid), req.body || {}, actor(req)) })));
