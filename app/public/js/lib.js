@@ -8,7 +8,8 @@ export function h(tag, attrs, ...children) {
       if (v == null || v === false) continue;
       if (k === 'value') value = v;
       else if (k === 'class') el.className = v;
-      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      // Le variabili CSS (--c ecc.) vanno impostate con setProperty: Object.assign le ignora.
+      else if (k === 'style' && typeof v === 'object') for (const [p, x] of Object.entries(v)) { if (x == null) continue; if (p.startsWith('--')) el.style.setProperty(p, x); else el.style[p] = x; }
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
       else if (k === 'html') el.innerHTML = v;
       else if (k in el && typeof v !== 'string') el[k] = v;

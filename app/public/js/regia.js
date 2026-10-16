@@ -753,7 +753,16 @@ function viewTeams() {
         ms.spots ? h('div', { class: 'tiny' }, h('strong', null, 'Posti liberi: '),
           `${ms.spots.couples} ${ms.spots.couples === 1 ? 'coppia' : 'coppie'} · ${ms.spots.singles} ${ms.spots.singles === 1 ? 'temerario' : 'temerari'} su ${ms.spots.capacity} coppie in tutto`,
           ms.spots.maxSingles != null ? ` (temerari al massimo ${ms.spots.maxSingles})` : '',
-          h('span', { class: 'muted' }, ' · due temerari fanno una coppia; i limiti si cambiano in Impostazioni.')) : null,
+          h('span', { class: 'muted' }, ' · due temerari fanno una coppia.')) : null,
+        // Quante coppie (e quanti temerari) accettare: vuoto = una coppia per Settore, temerari senza tetto a parte.
+        ms.spots ? h('form', { class: 'form-grid seats-form', onsubmit: (e) => {
+          e.preventDefault();
+          const fd = Object.fromEntries(new FormData(e.target).entries());
+          call('PATCH', `/api/m/games/${R.gameId}`, { maxCouples: fd.maxCouples, maxSingles: fd.maxSingles }, 'Posti aggiornati');
+        } },
+          h('label', { class: 'field' }, h('span', null, 'Coppie da accettare'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxCouples', 'data-keep': 'seat-c', value: ms.game.maxCouples ?? '', placeholder: `${(R.ms.sectors || []).filter((x) => !x.archived).length} (uno per Settore)` })),
+          h('label', { class: 'field' }, h('span', null, 'Temerari solitari al massimo (persone)'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxSingles', 'data-keep': 'seat-s', value: ms.game.maxSingles ?? '', placeholder: 'senza limite a parte' })),
+          h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva posti')) : null,
         ms.game.registrationOpen ? h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(regUrl)}`, alt: 'QR iscrizione', width: 96, height: 96 }), h('div', null, h('div', { class: 'mono' }, regUrl), h('a', { href: regUrl, target: '_blank', class: 'tiny' }, 'Apri il modulo'))) : null,
         h('h3', { class: 'sub' }, 'Aggiungi giocatore a mano (già accettato)'),
         h('form', { class: 'form-grid', onsubmit: async (e) => {
@@ -1026,7 +1035,7 @@ function viewAltars() {
         h('img', { class: 'altar-qr', src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: `QR ${p.label}`, width: 120, height: 120, loading: 'lazy' }),
         h('div', { class: 'stack-sm grow' },
           h('div', { class: 'eyebrow' }, `${p.roman} · Settore ${p.sectorName}`),
-          p.free ? h('span', { class: 'chip chip-warn' }, 'Senza coppia · Sigillo solo dal tradimento') : null,
+          p.free ? h('span', { class: 'chip chip-warn', title: 'Nessuna coppia custodisce questo Sigillo: arriva solo dal tradimento' }, 'Senza coppia') : null,
           placementChips(p, isPlaced),
           h('input', { class: 'input input-sm', 'data-keep': `pl-${p.id}`, value: p.label, onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { label: e.target.value }, 'Nome aggiornato') }),
           h('input', { class: 'input input-sm', 'data-keep': `pn-${p.id}`, value: p.locationNote || '', placeholder: 'Posizione nel bosco (solo regia)', onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { locationNote: e.target.value }, 'Posizione salvata') }),
@@ -1365,9 +1374,10 @@ function viewSquads() {
       h('form', { class: 'form-grid', onsubmit: async (e) => {
         e.preventDefault();
         if (await squadCall('POST', G('/squads'), { name: newName.value, color: newColor.value }, 'Squadra creata')) newName.value = '';
-      } }, h('label', { class: 'field' }, h('span', null, 'Nome'), newName), h('label', { class: 'field' }, h('span', null, 'Colore'), newColor), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea squadra'))),
-
-    d.squads.length ? h('div', { class: 'squads' }, d.squads.map((sq) => {
+      } }, h('label', { class: 'field' }, h('span', null, 'Nome'), newName), h('label', { class: 'field' }, h('span', null, 'Colore'), newColor), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea squadra')),
+      // Le squadre stanno dentro il loro pannello, sotto il titolo (prima galleggiavano tra due pannelli).
+      h('h3', { class: 'sub' }, `Le squadre (${d.squads.length})`),
+      d.squads.length ? h('div', { class: 'squads' }, d.squads.map((sq) => {
       const pr = progress(sq);
       const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
       return h('div', { class: 'squad-card', style: { '--c': sq.color } },
@@ -1390,7 +1400,8 @@ function viewSquads() {
           if (!taskIn.value.trim()) return;
           if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value }, `Incarico inviato a ${sq.name}`)) taskIn.value = '';
         } }, taskIn, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')));
-    })) : h('p', { class: 'empty' }, 'Nessuna squadra: creane una qui sopra.'),
+    })) : h('p', { class: 'empty' }, 'Nessuna squadra: creane una qui sopra.')),
+
 
     sectionActions(`Eletti del Consiglio (${members.length})`, [
       h('span', { class: 'chip' }, `${ms.elect.online} online · ${ms.elect.pushDevices} con notifiche`),

@@ -270,8 +270,8 @@ tr.gift-row-claimed td { opacity: .6; }
 .first-steps p { margin: 0; }
 
 /* Squadre degli Eletti */
-.squads { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.squad-card { display: grid; gap: 8px; padding: 12px; background: var(--paper); border: 2px solid var(--line); border-top: 6px solid var(--c); }
+.squads { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; }
+.squad-card { display: grid; gap: 8px; padding: 12px; background: var(--bg); border: 2px solid var(--line); border-top: 6px solid var(--c); }
 .squad-head { display: flex; gap: 8px; align-items: center; }
 .squad-name { flex: 1; font-weight: 700; }
 .squad-members { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -289,6 +289,11 @@ tr.gift-row-claimed td { opacity: .6; }
 .altar-card.is-placed, .place-card.is-placed { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
 .places { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .place-card { display: flex; gap: 12px; padding: 12px; border: 2px solid var(--line); background: var(--bg); }
+/* Il contenuto delle schede non deve mai allargarle: le etichette vanno a capo, i campi si stringono. */
+.altar-card > .stack-sm, .place-card > .stack-sm { grid-template-columns: minmax(0, 1fr); }
+.altar-card .chip, .place-card .chip { white-space: normal; max-width: 100%; line-height: 1.3; }
+.altar-card .stack-sm > .chip, .place-card .stack-sm > .chip { justify-self: start; }
+.altars { grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); }
 .place-ico { width: 52px; height: 52px; flex: none; display: grid; place-items: center; font-size: 28px; border: 2px solid var(--brass); color: var(--brass); border-radius: 50%; }
 .pick-map { height: 320px; }
 .radio-row { display: flex; flex-wrap: wrap; gap: 16px; }
