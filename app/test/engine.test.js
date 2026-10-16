@@ -822,8 +822,21 @@ test('Traccar: segnali anche prima del via, verifica con la prova a schermo spen
   // Identificativo sconosciuto: ignorato; prova scaduta: rifiutata.
   assert.equal(F.recordTraccar({ id: 'nessuno', lat: '45', lon: '9' }, {}).ok, false);
   assert.throws(() => F.verifyTracking(pl, Date.now() - 3600000), /scaduta/);
+  // Partita pronta (si parte a breve): senza un segnale negli ultimi 3 minuti compare «accendi Traccar»;
+  // il primo segnale lo toglie.
+  G.control(g.id, 'ready', 'test');
+  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now() - 4 * 60000, pl.id);
+  const fresh = () => F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', pl.id));
+  assert.deepEqual([fresh().prompt, fresh().state, fresh().soon], [true, 'off', true]);
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1' }, {});
+  // L'identificativo non cambia dopo la verifica.
+  assert.equal(q.get('SELECT trackToken FROM players WHERE id = ?', pl.id).trackToken, info.deviceId);
+  assert.deepEqual([fresh().prompt, fresh().state], [false, 'ok']);
+  // Chi non l'ha mai configurato: avviso con la procedura guidata.
+  const other = q.get('SELECT * FROM players WHERE gameId = ? AND teamId IS NOT NULL AND id != ? LIMIT 1', g.id, pl.id);
+  assert.deepEqual([F.trackingStatus(other).prompt, F.trackingStatus(other).state], [true, 'none']);
   // A partita in corso, nessun segnale da più di 10 minuti: l'avviso torna.
-  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  for (const a of ['circle', 'start']) G.control(g.id, a, 'test');
   q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now() - 11 * 60000, pl.id);
   assert.equal(F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', pl.id)).state, 'stale');
 });

@@ -26,6 +26,9 @@ body.no-scroll { overflow: hidden; }
 .banner strong { font-family: var(--f-display); text-transform: uppercase; font-size: 22px; letter-spacing: .02em; }
 .banner-pause { background: #b3140a; color: #fff; }
 .banner-truce { background: var(--paper-2); border-left: 6px solid var(--brass); }
+.banner-traccar { background: color-mix(in srgb, var(--warn) 16%, var(--paper)); border-left: 6px solid var(--warn); gap: 6px; }
+.banner-traccar strong { color: var(--warn); }
+.banner-traccar .trk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .banner-last { background: var(--blood-soft); border-left: 6px solid var(--blood); }
 .banner-queue { background: var(--paper-2); border-left: 6px solid var(--warn); font-size: 14px; }
 

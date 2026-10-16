@@ -435,6 +435,8 @@ function banners() {
   if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + st.game.emergencyRadioChannel : ''}`)));
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
+  const trkOn = traccarPrompt(st);
+  if (trkOn) out.push(trkOn);
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
   if (S.queue.length) out.push(h('div', { class: 'banner banner-queue' }, h('strong', null, `${S.queue.length} in attesa di rete`), h('span', null, S.queue.map((q) => q.label).join(' · '))));
   if (st.openNew) out.push(h('a', { class: 'banner banner-action', href: '/iscrizione#scelta' }, h('strong', null, 'Nuova partita aperta'), h('span', null, 'Iscriviti ai prossimi Giochi del Buio')));
@@ -1708,10 +1710,31 @@ async function loadTracking(since = trk().since) {
   render();
 }
 
+// Apre Traccar Client: su Android con un link «intent» (se non è installata si apre il Play Store);
+// su iPhone non c'è un modo per aprirla da qui, si va alla sua pagina dell'App Store (pulsante «Apri»).
+const traccarOpenUrl = () => (PLATFORM === 'android'
+  ? `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=org.traccar.client;S.browser_fallback_url=${encodeURIComponent(STORE.android)};end`
+  : STORE.ios);
+
+// Si parte a breve (partita pronta o cerchio aperto) o si sta giocando, e da Traccar non arriva niente:
+// avviso su tutte le pagine, finché non arriva il primo segnale.
+function traccarPrompt(st) {
+  const t = st?.tracking;
+  if (!st?.player || !t?.prompt) return null;
+  const setup = t.state === 'none' && !t.everSeen;
+  return h('div', { class: 'banner banner-traccar', role: 'alert' },
+    h('strong', null, t.soon ? '📍 Si parte a breve: accendi Traccar' : '📍 Traccar non manda la posizione'),
+    h('span', null, setup ? 'Traccar Client non è ancora configurato su questo telefono: fallo adesso, servono tre minuti.' : 'Apri Traccar Client e accendi il tracciamento. Questo avviso sparisce appena il Consiglio riceve il primo segnale.'),
+    h('span', { class: 'trk-actions' },
+      setup ? h('a', { class: 'btn btn-sm btn-primary', href: '#/traccar' }, 'Configura Traccar →')
+        : h('a', { class: 'btn btn-sm btn-primary', href: traccarOpenUrl(), rel: 'noopener' }, PLATFORM === 'android' ? 'Apri Traccar' : 'Apri Traccar (App Store)'),
+      setup ? null : h('a', { class: 'btn btn-sm btn-ghost', href: '#/traccar' }, 'Aiuto')));
+}
+
 // L'avviso nelle schermate principali: resta finché Traccar non è verificato (o se smette di mandare durante la partita).
 function trackFlag(st) {
   const t = st?.tracking;
-  if (!st?.player || !t || t.state === 'ok') return null;
+  if (!st?.player || !t || t.state === 'ok' || t.prompt) return null;
   return h('a', { class: `card track-flag ${t.state === 'stale' ? 'stale' : ''}`, href: '#/traccar' },
     h('strong', null, t.state === 'stale' ? '⚠ Traccar non manda la posizione' : '⚠ Traccar da attivare'),
     h('span', { class: 'small' }, t.state === 'stale'

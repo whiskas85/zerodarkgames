@@ -579,7 +579,10 @@ function recordTraccar(query, body) {
   if (p.at && Date.now() - p.at > 2 * 60000) return { ok: true, ignored: 'vecchia' };
   // Segnale ricevuto (anche prima del via o prima della coppia): serve alla verifica, senza salvare la posizione.
   const now = Date.now();
+  // Primo segnale dopo un silenzio: l'app di quella persona si aggiorna e toglie l'avviso «accendi Traccar».
+  const wasQuiet = !player.trackSeenAt || now - player.trackSeenAt > 2 * 60000;
   q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', now, player.id);
+  if (wasQuiet && player.teamId) { rt.toTeamsWhere(player.gameId, 'state', {}, (c) => c.playerId === player.id || c.teamId === player.teamId); rt.toStaff(player.gameId, 'traccar'); }
   q.run('INSERT INTO track_pings (playerId, at, acc) VALUES (?, ?, ?)', player.id, now, Number.isFinite(p.acc) ? Math.round(p.acc) : null);
   q.run('DELETE FROM track_pings WHERE playerId = ? AND id NOT IN (SELECT id FROM track_pings WHERE playerId = ? ORDER BY id DESC LIMIT 60)', player.id, player.id);
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
@@ -589,10 +592,11 @@ function recordTraccar(query, body) {
 
 // Identificativo per Traccar Client (creato alla prima richiesta), stato della verifica e segnali ricevuti
 // dall'inizio della prova (since).
-const TRACK_STALE_MS = 10 * 60000;
 const TRACK_TEST_MIN_PINGS = 2;
 const TRACK_TEST_MIN_MS = 45000;
 function trackingInfo(player, since = null) {
+  // Sempre dal database: una copia vecchia del giocatore senza identificativo ne creerebbe uno nuovo.
+  player = q.get('SELECT * FROM players WHERE id = ?', player.id);
   if (!player.trackToken) {
     let t;
     do t = randomCode(10).toLowerCase(); while (q.get('SELECT 1 FROM players WHERE trackToken = ?', t));
@@ -614,11 +618,10 @@ function trackingInfo(player, since = null) {
  * (e, a partita in corso, segnali recenti); 'stale' = verificato ma da 10 minuti non arriva niente durante la partita.
  */
 function trackingStatus(player) {
-  if (!player?.trackVerifiedAt) return { state: 'none' };
+  if (!player) return { state: 'none' };
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
-  const live = team ? trackingActive(team, G.getGame(team.gameId).status) : false;
-  if (live && (!player.trackSeenAt || Date.now() - player.trackSeenAt > TRACK_STALE_MS)) return { state: 'stale', live };
-  return { state: 'ok', live };
+  const st = G.trackStateOf(player, G.getGame(player.gameId), team);
+  return { ...st, everSeen: !!player.trackSeenAt, verifiedAt: player.trackVerifiedAt || null };
 }
 
 // Fine della prova: almeno 2 segnali da Traccar dopo l'inizio, su almeno 45 secondi (il telefono era in tasca).

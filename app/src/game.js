@@ -170,6 +170,24 @@ function deleteGame(id, actor) {
   log(null, actor, 'game_deleted', { id: g.id, name: g.name });
 }
 
+/**
+ * Traccar Client di una persona, nello stato della sua partita:
+ * - «soon» = partita pronta o cerchio aperto (si parte a breve), «live» = partita in corso;
+ * - in quei momenti serve un segnale recente (3 minuti prima del via, 10 durante): altrimenti «prompt» = chiedi di accenderlo;
+ * - state: 'ok' (acceso/verificato) · 'off' (verificato ma spento) · 'stale' (tace durante la partita) · 'none' (mai verificato).
+ */
+const TRACK_SOON_MS = 3 * 60000;
+const TRACK_LIVE_MS = 10 * 60000;
+function trackStateOf(player, game, team) {
+  const soon = !!team && ['ready', 'circle'].includes(game.status);
+  const live = !!team && (team.kind === 'elect' ? !['draft', 'ended'].includes(game.status) && !soon : [...C.ACTIVE, 'paused'].includes(game.status) && team.status !== 'withdrawn');
+  const verified = !!player.trackVerifiedAt;
+  if (!soon && !live) return { state: verified ? 'ok' : 'none', soon, live, prompt: false };
+  const recent = player.trackSeenAt && Date.now() - player.trackSeenAt < (soon ? TRACK_SOON_MS : TRACK_LIVE_MS);
+  if (recent) return { state: 'ok', soon, live, prompt: false, on: true };
+  return { state: !verified ? 'none' : soon ? 'off' : 'stale', soon, live, prompt: true };
+}
+
 function requirePreStart(g, what = 'Questa modifica') {
   if (!C.PRE_START.includes(g.status)) throw err(409, `${what} è possibile solo prima del via`);
 }
@@ -947,6 +965,11 @@ function setStatus(g, status, extra = {}) {
   Object.assign(g, cols);
 }
 
+// Si parte a breve: a tutti i telefoni della partita, «accendi Traccar» (l'avviso nell'app sparisce al primo segnale).
+function pushTraccarOn(g) {
+  rt.pushTeams(g.id, { title: 'Accendi Traccar Client', body: 'I Giochi stanno per iniziare: apri Traccar Client e accendi il tracciamento. L\'avviso sparisce appena arriva il primo segnale.', tag: 'traccar-on', url: '/#/home' });
+}
+
 function control(gameId, action, actor) {
   const g = getGame(gameId);
   const now = Date.now();
@@ -957,6 +980,7 @@ function control(gameId, action, actor) {
       const r = readiness(g);
       if (!r.ok) throw err(409, 'Setup incompleto: ' + r.issues.filter((i) => i.level === 'error').map((i) => i.text).join('; '));
       setStatus(g, 'ready', { registrationOpen: 0 });
+      pushTraccarOn(g);
       break;
     }
     case 'draft':
@@ -966,6 +990,7 @@ function control(gameId, action, actor) {
     case 'circle':
       need('ready');
       setStatus(g, 'circle');
+      pushTraccarOn(g);
       break;
     case 'start': {
       need('circle');
@@ -1772,9 +1797,8 @@ function pushReport(gameId) {
   const own = Object.fromEntries(q.all('SELECT playerId, COUNT(*) AS n FROM push_subs WHERE playerId IS NOT NULL GROUP BY playerId').map((r) => [r.playerId, r.n]));
   const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
-  const live = [...C.ACTIVE, 'paused'].includes(g.status);
   const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt,
-                               t.kind AS teamKind, s.name AS sectorName, s.roman, s.ord
+                               t.kind AS teamKind, t.status AS teamStatus, s.name AS sectorName, s.roman, s.ord
                         FROM players p LEFT JOIN accounts a ON a.id = p.accountId LEFT JOIN teams t ON t.id = p.teamId
                         LEFT JOIN sectors s ON s.id = t.sectorId
                         WHERE p.gameId = ? AND p.status IN ('pending','accepted')`, g.id).map((p) => {
@@ -1786,7 +1810,7 @@ function pushReport(gameId) {
       group, where: group === 'couple' ? `${p.roman || ''} ${p.sectorName || ''}`.trim() : group === 'elect' ? (squads[p.squadId] ? `Squadra ${squads[p.squadId]}` : 'Eletti') : null,
       sectorOrd: p.ord ?? 999, devices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
       // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
-      traccar: !p.trackVerifiedAt ? 'none' : live && (!p.trackSeenAt || Date.now() - p.trackSeenAt > 10 * 60000) ? 'stale' : 'ok', trackSeenAt: p.trackSeenAt || null,
+      traccar: trackStateOf(p, g, p.teamId ? { kind: p.teamKind, status: p.teamStatus } : null).state, trackSeenAt: p.trackSeenAt || null,
     };
   }).sort((a, b) => a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
   const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
@@ -1894,7 +1918,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  spotsOf, pushReport, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  spotsOf, pushReport, trackStateOf, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
