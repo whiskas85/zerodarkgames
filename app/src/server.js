@@ -337,9 +337,11 @@ app.get('/api/team/state', needMember, wrap((req) => {
   // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
   const openNew = req.account && G.getGame(req.player?.gameId ?? req.team.gameId).status === 'ended'
     && q.get("SELECT 1 FROM games g WHERE g.registrationOpen = 1 AND g.status = 'draft' AND NOT EXISTS (SELECT 1 FROM players p WHERE p.gameId = g.id AND p.accountId = ?)", req.account.id);
-  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), openNew: !!openNew };
+  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
   const st = G.teamState(req.team, req.player);
   st.map = F.teamMap(req.team);
+  // Stato di Traccar Client per questa persona (il «flag» resta finché la prova non riesce).
+  st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
@@ -380,7 +382,12 @@ app.all(['/api/traccar', '/api/traccar/'], express.urlencoded({ extended: false 
 // Configurazione di Traccar Client per questo giocatore.
 app.get('/api/team/tracking', needMember, wrap((req) => {
   if (!req.player) throw new HttpError(409, 'Entra con il tuo account o con il tuo codice personale per avere l\'identificativo');
-  return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.trackingInfo(req.player) };
+  return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.trackingInfo(req.player, req.query.since) };
+}));
+// Fine della prova a schermo spento: se i segnali sono arrivati, Traccar è verificato.
+app.post('/api/team/tracking/verify', needMember, wrap((req) => {
+  if (!req.player) throw new HttpError(409, 'Entra con il tuo account o con il tuo codice personale');
+  return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.verifyTracking(req.player, req.body?.since) };
 }));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));

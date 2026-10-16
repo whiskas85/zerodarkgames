@@ -395,7 +395,7 @@ function render() {
   preserveInputs(() => {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
-      timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings,
+      timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
       avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
@@ -633,6 +633,7 @@ function viewLobbyHome(st) {
         ? 'Il Consiglio sta valutando la vostra candidatura. Intanto esplorate l\'app: quando sarete accettati e avrete il vostro Settore, questo telefono si aggiornerà da solo.'
         : pl.role === 'single' ? 'Il Consiglio sta estraendo il vostro compagno e il Settore. L\'app si aggiornerà da sola.' : 'Il Consiglio sta formando le coppie e assegnando i Settori. L\'app si aggiornerà da sola.'),
       partner ? h('p', { class: 'small' }, 'Il vostro Legato: ', h('strong', null, partner.name), partner.nickname ? ` «${partner.nickname}»` : '') : null),
+    trackFlag(st),
     pushInvite(),
     latestNotice(st),
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, '?'), 'Il vostro Sigillo'),
@@ -660,6 +661,7 @@ function viewElectHome(st) {
       c.running || c.status === 'paused' ? h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—') : h('div', { class: 'phase-big' }, c.status === 'ended' ? 'I Giochi sono finiti' : 'Al servizio del Consiglio'),
       h('p', { class: 'muted' }, 'Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi. Seguite gli avvisi e i messaggi della regia.')),
     supplyCard(st),
+    trackFlag(st),
     trackingNote(st),
     st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
@@ -709,6 +711,7 @@ function viewHome() {
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
     supplyCard(st),
+    trackFlag(st),
     trackingNote(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/alleanze' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
@@ -939,7 +942,7 @@ function trackingNote(st) {
   if (!trackingOn(st)) return null;
   return h('p', { class: 'track-note small' }, '📍 ', st.team.kind === 'elect' ? 'La posizione di questo telefono è visibile alla regia e agli altri Eletti.' : 'Durante la partita la posizione di questo telefono è visibile al Consiglio.',
     h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg ? ` ${trackMsg}` : ''),
-    st.player ? [' ', h('a', { href: '#/impostazioni' }, 'Anche a schermo spento →')] : null);
+    st.player ? [' ', h('a', { href: '#/traccar' }, 'Anche a schermo spento →')] : null);
 }
 
 // ---------------------------------------------------------------- Mappa
@@ -1685,34 +1688,145 @@ function staffLink(acc, cls) {
   return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/soglia' }, acc.staff === 'master' ? 'Vai in regia' : 'Vai alla Soglia');
 }
 
-// Traccar Client: manda la posizione anche con l'app chiusa o lo schermo spento (il browser non può).
+// ---------------------------------------------------------------- Traccar Client
+// Manda la posizione anche con l'app chiusa o lo schermo spento (il browser non può). Una procedura guidata
+// porta a installarlo, configurarlo e provarlo a schermo spento: solo quando la prova riesce sparisce l'avviso.
 let trackInfo = null;
-function trackingCard() {
-  if (!trackInfo) {
-    trackInfo = { loading: true };
-    api('GET', '/api/team/tracking').then((r) => { trackInfo = r; render(); }).catch((e) => { trackInfo = { error: e.message }; render(); });
+let trackPoll = null;
+let trackInfoSince;
+const TRK_KEY = 'zdg_traccar';
+const trk = () => store.get(TRK_KEY, { step: 0, since: null });
+const setTrk = (v) => { store.set(TRK_KEY, { ...trk(), ...v }); render(); };
+const PLATFORM = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'ios' : /Android/i.test(navigator.userAgent) ? 'android' : 'other';
+const STORE = {
+  android: 'https://play.google.com/store/apps/details?id=org.traccar.client',
+  ios: 'https://apps.apple.com/app/traccar-client/id843156974',
+};
+
+async function loadTracking(since = trk().since) {
+  try { trackInfo = await api('GET', `/api/team/tracking${since ? `?since=${since}` : ''}`); } catch (e) { trackInfo = { error: e.message }; }
+  render();
+}
+
+// L'avviso nelle schermate principali: resta finché Traccar non è verificato (o se smette di mandare durante la partita).
+function trackFlag(st) {
+  const t = st?.tracking;
+  if (!st?.player || !t || t.state === 'ok') return null;
+  return h('a', { class: `card track-flag ${t.state === 'stale' ? 'stale' : ''}`, href: '#/traccar' },
+    h('strong', null, t.state === 'stale' ? '⚠ Traccar non manda la posizione' : '⚠ Traccar da attivare'),
+    h('span', { class: 'small' }, t.state === 'stale'
+      ? 'Da più di 10 minuti il Consiglio non riceve la tua posizione da Traccar Client: aprilo e controlla che il tracciamento sia acceso.'
+      : 'Senza Traccar Client il Consiglio perde la tua posizione appena chiudi l\'app. Installalo e fai la prova: 3 minuti.'),
+    h('span', { class: 'btn btn-sm btn-primary' }, t.state === 'stale' ? 'Controlla' : 'Attiva Traccar →'));
+}
+
+function viewTraccar() {
+  const st = S.state;
+  if (!st?.player) {
+    return h('div', { class: 'stack' }, h('h2', null, 'Traccar Client'),
+      h('p', { class: 'muted' }, 'Per configurare Traccar entra con il tuo account o con il tuo codice personale: l\'identificativo è legato a te, non al telefono della coppia.'));
   }
-  const t = trackInfo;
+  if (!trackInfo || trackInfoSince !== trk().since) { trackInfoSince = trk().since; trackInfo = { loading: true }; loadTracking(trackInfoSince); }
+  const t = trackInfo || {};
+  const { step, since } = trk();
+  // Durante la prova si controlla ogni 5 secondi quanti segnali sono arrivati.
+  clearInterval(trackPoll);
+  if (since && step === 3) trackPoll = setInterval(() => { if (location.hash !== '#/traccar') { clearInterval(trackPoll); return; } loadTracking(since); }, 5000);
+  const verified = t.verifiedAt && step !== 3;
   const copyRow = (label, value) => h('div', { class: 'track-row' },
     h('div', { class: 'eyebrow' }, label),
-    h('div', { class: 'row' }, h('code', { class: 'mono track-val' }, value),
+    h('div', { class: 'row' }, h('code', { class: 'mono track-val' }, value || '…'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => navigator.clipboard?.writeText(value).then(() => toast(`${label}: copiato`, 'ok')) }, 'Copia')));
-  return h('div', { class: 'card stack-sm', id: 'tracciamento' },
-    h('strong', null, 'Posizione anche a schermo spento'),
-    h('p', { class: 'muted small' }, 'Con l\'app chiusa o lo schermo spento il telefono smette di mandare la posizione: è un limite del browser. L\'app gratuita Traccar Client la manda al Consiglio sempre, anche in tasca.'),
-    t.loading ? h('p', { class: 'muted small' }, 'Caricamento…') : t.error ? h('p', { class: 'bad-text small' }, t.error) : [
-      h('ol', { class: 'track-steps small' },
-        h('li', null, 'Installa Traccar Client: ', h('a', { href: 'https://play.google.com/store/apps/details?id=org.traccar.client', target: '_blank', rel: 'noopener' }, 'Android'), ' · ', h('a', { href: 'https://apps.apple.com/app/traccar-client/id843156974', target: '_blank', rel: 'noopener' }, 'iPhone'), '.'),
-        h('li', null, 'Nelle impostazioni di Traccar Client copia questi due valori:')),
+  const steps = ['Installa', 'Configura', 'Permessi', 'Prova'];
+  const nav = (back, next, nextLabel = 'Avanti →') => h('div', { class: 'row wiz-nav' },
+    back != null ? h('button', { class: 'btn', type: 'button', onclick: () => setTrk({ step: back }) }, '‹ Indietro') : h('span'),
+    next != null ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => setTrk({ step: next }) }, nextLabel) : null);
+  const head = h('div', { class: 'wiz-steps', 'aria-label': 'Passi' }, steps.map((x, i) => h('button', { type: 'button', class: `wiz-step ${i === step ? 'on' : i < step ? 'done' : ''}`, onclick: () => setTrk({ step: i }) }, h('span', { class: 'mono' }, i + 1), x)));
+
+  if (verified) {
+    const stale = t.state === 'stale';
+    return h('div', { class: 'stack' },
+      h('h2', null, 'Traccar Client'),
+      h('div', { class: `card stack-sm ${stale ? 'track-flag stale' : 'track-ok'}` },
+        h('strong', null, stale ? '⚠ Verificato, ma non manda la posizione' : '✓ Traccar funziona'),
+        h('p', { class: 'small' }, stale ? 'Durante la partita non arriva niente da più di 10 minuti: apri Traccar Client e controlla che il tracciamento sia acceso e che ci sia rete.' : 'Il Consiglio riceve la tua posizione anche a schermo spento. Prima della partita accendi Traccar Client e lascialo acceso fino alla fine.'),
+        h('p', { class: 'small muted' }, `Verificato ${fmtTime(t.verifiedAt)}${t.lastAt ? ` · ultimo segnale ${fmtTime(t.lastAt)}${t.lastAcc ? ` (±${t.lastAcc} m)` : ''}` : ''}`)),
       copyRow('Indirizzo del server (Server URL)', t.serverUrl),
       copyRow('Identificativo del dispositivo (Device identifier)', t.deviceId),
-      h('ol', { class: 'track-steps small', start: 3 },
-        h('li', null, 'Frequenza 30 secondi, precisione alta. Consenti la posizione «Sempre» e, su Android, togli l\'ottimizzazione della batteria per Traccar Client.'),
-        h('li', null, 'Attiva il servizio (interruttore in alto). Lascialo acceso per tutta la partita.')),
-      h('p', { class: 'small' }, t.lastAt ? ['Ultima posizione ricevuta da Traccar Client: ', h('strong', null, fmtTime(t.lastAt))] : h('span', { class: 'muted' }, 'Nessuna posizione ricevuta finora da Traccar Client (arrivano a partita iniziata).'),
-        ' ', h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { trackInfo = null; render(); } }, 'Aggiorna')),
-      h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo. Il Consiglio vede la posizione solo a partita iniziata.'),
-    ]);
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', type: 'button', onclick: () => loadTracking(null) }, '↻ Aggiorna'),
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => setTrk({ step: 3, since: null }) }, 'Rifai la prova')),
+      h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo. Il Consiglio vede la posizione solo a partita iniziata.'));
+  }
+
+  let body;
+  if (step === 0) {
+    body = [
+      h('p', null, 'Con l\'app chiusa o lo schermo spento il telefono smette di mandare la posizione: è un limite del browser. ', h('strong', null, 'Traccar Client'), ', gratuita, la manda al Consiglio sempre, anche in tasca.'),
+      h('div', { class: 'stack-sm' },
+        PLATFORM !== 'ios' ? h('a', { class: `btn btn-block ${PLATFORM === 'android' ? 'btn-primary' : ''}`, href: STORE.android, target: '_blank', rel: 'noopener' }, '⤓ Traccar Client per Android (Play Store)') : null,
+        PLATFORM !== 'android' ? h('a', { class: `btn btn-block ${PLATFORM === 'ios' ? 'btn-primary' : ''}`, href: STORE.ios, target: '_blank', rel: 'noopener' }, '⤓ Traccar Client per iPhone (App Store)') : null),
+      h('p', { class: 'small muted' }, 'Cerca «Traccar Client» (l\'icona blu con il segnaposto bianco). Non serve creare account.'),
+      nav(null, 1, 'L\'ho installata →'),
+    ];
+  } else if (step === 1) {
+    body = [
+      h('p', null, 'Apri Traccar Client e, nelle impostazioni, copia questi due valori (tieni premuto per incollare):'),
+      t.loading ? h('p', { class: 'muted' }, 'Caricamento…') : t.error ? h('p', { class: 'bad-text' }, t.error) : [
+        copyRow('Identificativo del dispositivo (Device identifier)', t.deviceId),
+        copyRow('Indirizzo del server (Server URL)', t.serverUrl)],
+      h('ul', { class: 'track-steps small' },
+        h('li', null, h('strong', null, 'Precisione (Location accuracy)'), ': alta / High'),
+        h('li', null, h('strong', null, 'Intervallo (Interval)'), ': 30 secondi'),
+        h('li', null, h('strong', null, 'Distanza (Distance)'), ': 0'),
+        h('li', null, 'Se c\'è, ', h('strong', null, 'Offline buffering'), ': acceso')),
+      h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo.'),
+      nav(0, 2, 'Fatto →'),
+    ];
+  } else if (step === 2) {
+    body = [
+      h('p', null, 'Perché la posizione parta anche in tasca, il telefono deve permetterlo:'),
+      PLATFORM === 'ios' ? h('ol', { class: 'track-steps' },
+        h('li', null, 'Impostazioni → Traccar Client → Posizione: ', h('strong', null, 'Sempre'), ' e ', h('strong', null, 'Posizione esatta'), ' attiva.'),
+        h('li', null, 'Impostazioni → Traccar Client: ', h('strong', null, 'Aggiornamento app in background'), ' attivo.'),
+        h('li', null, 'Non chiudere Traccar dal multitasking (scorrendolo via).'))
+        : h('ol', { class: 'track-steps' },
+          h('li', null, 'Quando Traccar chiede la posizione scegli ', h('strong', null, '«Consenti sempre»'), ' (o da Impostazioni → App → Traccar Client → Autorizzazioni → Posizione).'),
+          h('li', null, 'Impostazioni → App → Traccar Client → Batteria: ', h('strong', null, '«Senza restrizioni»'), ' (togli l\'ottimizzazione).'),
+          h('li', null, 'Su Xiaomi, Huawei, Samsung: consenti anche l\'avvio automatico / l\'attività in background.')),
+      nav(1, 3, 'Fatto →'),
+    ];
+  } else {
+    const test = t.test;
+    const elapsed = since ? Math.floor((Date.now() - since) / 1000) : 0;
+    const pings = test?.pings || 0;
+    const ready = since && pings >= 2 && elapsed >= 45;
+    body = [
+      h('ol', { class: 'track-steps' },
+        h('li', null, 'In Traccar Client ', h('strong', null, 'accendi il tracciamento'), ' (l\'interruttore in alto).'),
+        h('li', null, 'Torna qui e premi ', h('strong', null, '«Inizia la prova»'), '.'),
+        h('li', null, h('strong', null, 'Blocca lo schermo'), ' e metti il telefono in tasca per ', h('strong', null, 'un minuto'), '.'),
+        h('li', null, 'Riapri questa pagina: se sono arrivati almeno 2 segnali, Traccar è verificato.')),
+      since ? h('div', { class: `card stack-sm track-test ${ready ? 'ok' : ''}` },
+        h('div', { class: 'eyebrow' }, `Prova iniziata alle ${fmtTime(since)} · ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}′ ` : ''}${elapsed % 60}″`),
+        h('div', { class: 'track-count' }, h('span', { class: 'mono' }, pings), ` ${pings === 1 ? 'segnale ricevuto' : 'segnali ricevuti'}`),
+        pings ? h('p', { class: 'small muted' }, `Ultimo alle ${fmtTime(test.lastAt)}${t.lastAcc ? ` · ±${t.lastAcc} m` : ''}`) : null,
+        !pings && elapsed > 90 ? h('div', { class: 'small bad-text' }, 'Ancora niente da Traccar. Controlla: ',
+          h('ul', null, h('li', null, 'indirizzo del server e identificativo copiati senza spazi;'), h('li', null, 'il tracciamento acceso in Traccar Client;'), h('li', null, 'la rete dati attiva e la posizione «Sempre».'))) : null,
+        ready ? h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: async () => {
+          try { trackInfo = await api('POST', '/api/team/tracking/verify', { since }); setTrk({ step: 0, since: null }); vibrate([60, 40, 160]); toast('Traccar verificato: funziona anche a schermo spento', 'ok', 6000); refresh(); } catch (e) { toast(e.message, 'error', 7000); }
+        } }, '✓ Conferma: Traccar funziona')
+          : h('p', { class: 'small muted' }, pings >= 2 ? 'Ancora qualche secondo…' : 'Blocca lo schermo e aspetta in tasca: i segnali arrivano ogni 30 secondi.'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => setTrk({ since: Date.now() }) }, 'Ricomincia la prova'))
+        : h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => setTrk({ since: Date.now() }) }, '▶ Inizia la prova'),
+      nav(2, null),
+    ];
+  }
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Attiva Traccar Client'),
+    h('p', { class: 'muted small' }, 'La tua posizione arriva al Consiglio anche con lo schermo spento. Quattro passi, circa tre minuti.'),
+    head,
+    h('div', { class: 'card stack' }, body));
 }
 
 function viewSettings() {
@@ -1733,7 +1847,7 @@ function viewSettings() {
     st?.account ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo account'), h('p', null, h('strong', null, st.account.username), ` · ${st.account.name}`),
       h('a', { class: 'btn btn-sm', href: '/iscrizione#profilo' }, 'Profilo e password')) : null,
     st?.player?.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, st.player.accessCode), h('p', { class: 'muted small' }, 'Con questo codice entri da qualsiasi telefono e segui sempre la tua coppia.')) : null,
-    st?.player && st.team?.kind !== 'lobby' ? trackingCard() : null,
+    st?.player ? h('a', { class: `card toggle-row track-link ${st.tracking?.state === 'ok' ? '' : 'warn'}`, href: '#/traccar' }, h('div', null, h('strong', null, 'Traccar Client'), h('div', { class: 'muted small' }, st.tracking?.state === 'ok' ? 'Verificato: la posizione arriva anche a schermo spento.' : st.tracking?.state === 'stale' ? 'Verificato, ma non manda la posizione.' : 'Da attivare: posizione anche a schermo spento.')), h('span', { class: `chip ${st.tracking?.state === 'ok' ? 'chip-ok' : 'chip-warn'}` }, st.tracking?.state === 'ok' ? 'attivo' : 'da fare')) : null,
     h('button', { class: 'btn btn-block', onclick: () => openTour() }, '▶ Rivedi il tour dell\'app'),
     h('button', { class: 'btn btn-danger btn-block', onclick: logout }, 'Esci da questo dispositivo'));
 }

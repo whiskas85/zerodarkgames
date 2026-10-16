@@ -1772,7 +1772,8 @@ function pushReport(gameId) {
   const own = Object.fromEntries(q.all('SELECT playerId, COUNT(*) AS n FROM push_subs WHERE playerId IS NOT NULL GROUP BY playerId').map((r) => [r.playerId, r.n]));
   const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
-  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username,
+  const live = [...C.ACTIVE, 'paused'].includes(g.status);
+  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt,
                                t.kind AS teamKind, s.name AS sectorName, s.roman, s.ord
                         FROM players p LEFT JOIN accounts a ON a.id = p.accountId LEFT JOIN teams t ON t.id = p.teamId
                         LEFT JOIN sectors s ON s.id = t.sectorId
@@ -1784,6 +1785,8 @@ function pushReport(gameId) {
       id: p.id, name: p.name, nickname: p.nickname, phone: p.phone, username: p.username, status: p.status, requestedRole: p.requestedRole,
       group, where: group === 'couple' ? `${p.roman || ''} ${p.sectorName || ''}`.trim() : group === 'elect' ? (squads[p.squadId] ? `Squadra ${squads[p.squadId]}` : 'Eletti') : null,
       sectorOrd: p.ord ?? 999, devices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
+      // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
+      traccar: !p.trackVerifiedAt ? 'none' : live && (!p.trackSeenAt || Date.now() - p.trackSeenAt > 10 * 60000) ? 'stale' : 'ok', trackSeenAt: p.trackSeenAt || null,
     };
   }).sort((a, b) => a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
   const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
@@ -1829,7 +1832,7 @@ function masterState(gameId) {
     readiness: readiness(g),
     spots: spotsOf(g.id),
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
-    pushOff: pushReport(g.id).people.filter((p) => p.state === 'off' && ['couple', 'elect'].includes(p.group)).length,
+    pushOff: pushReport(g.id).people.filter((p) => (p.state === 'off' || p.traccar !== 'ok') && ['couple', 'elect'].includes(p.group)).length,
     next: nextEvents(g),
     sectors: sectors(),
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize

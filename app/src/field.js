@@ -575,23 +575,63 @@ function recordTraccar(query, body) {
   const p = parseTraccar(query, body);
   const player = p.id ? q.get('SELECT * FROM players WHERE trackToken = ?', p.id) : null;
   if (!player) return { ok: false, reason: 'unknown' };
-  const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
-  if (!team) return { ok: true, tracking: false };
   // Punti rimasti in memoria nel telefono (senza rete): conta solo la posizione attuale.
   if (p.at && Date.now() - p.at > 2 * 60000) return { ok: true, ignored: 'vecchia' };
-  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now(), player.id);
+  // Segnale ricevuto (anche prima del via o prima della coppia): serve alla verifica, senza salvare la posizione.
+  const now = Date.now();
+  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', now, player.id);
+  q.run('INSERT INTO track_pings (playerId, at, acc) VALUES (?, ?, ?)', player.id, now, Number.isFinite(p.acc) ? Math.round(p.acc) : null);
+  q.run('DELETE FROM track_pings WHERE playerId = ? AND id NOT IN (SELECT id FROM track_pings WHERE playerId = ? ORDER BY id DESC LIMIT 60)', player.id, player.id);
+  const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
+  if (!team) return { ok: true, tracking: false };
   return recordPosition(team, player, { deviceId: `trk-${player.id}-${p.id.slice(0, 12)}`, lat: p.lat, lng: p.lng, acc: Number.isFinite(p.acc) ? p.acc : undefined });
 }
 
-// Identificativo per Traccar Client (creato alla prima richiesta) e ultimo segnale ricevuto da lì.
-function trackingInfo(player) {
+// Identificativo per Traccar Client (creato alla prima richiesta), stato della verifica e segnali ricevuti
+// dall'inizio della prova (since).
+const TRACK_STALE_MS = 10 * 60000;
+const TRACK_TEST_MIN_PINGS = 2;
+const TRACK_TEST_MIN_MS = 45000;
+function trackingInfo(player, since = null) {
   if (!player.trackToken) {
     let t;
     do t = randomCode(10).toLowerCase(); while (q.get('SELECT 1 FROM players WHERE trackToken = ?', t));
     q.run('UPDATE players SET trackToken = ? WHERE id = ?', t, player.id);
-    player = q.get('SELECT * FROM players WHERE id = ?', player.id);
   }
-  return { deviceId: player.trackToken, lastAt: player.trackSeenAt || null };
+  player = q.get('SELECT * FROM players WHERE id = ?', player.id);
+  const s = Number(since) || null;
+  const test = s ? q.get('SELECT COUNT(*) AS n, MAX(at) AS last, MIN(at) AS first FROM track_pings WHERE playerId = ? AND at >= ?', player.id, s) : null;
+  const lastAcc = q.get('SELECT acc FROM track_pings WHERE playerId = ? ORDER BY id DESC LIMIT 1', player.id)?.acc ?? null;
+  return {
+    deviceId: player.trackToken, lastAt: player.trackSeenAt || null, lastAcc, verifiedAt: player.trackVerifiedAt || null,
+    test: test ? { since: s, pings: test.n, firstAt: test.first, lastAt: test.last } : null,
+    ...trackingStatus(player),
+  };
+}
+
+/**
+ * Stato di Traccar per il «flag» nell'app: 'none' = da configurare e verificare; 'ok' = verificato
+ * (e, a partita in corso, segnali recenti); 'stale' = verificato ma da 10 minuti non arriva niente durante la partita.
+ */
+function trackingStatus(player) {
+  if (!player?.trackVerifiedAt) return { state: 'none' };
+  const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
+  const live = team ? trackingActive(team, G.getGame(team.gameId).status) : false;
+  if (live && (!player.trackSeenAt || Date.now() - player.trackSeenAt > TRACK_STALE_MS)) return { state: 'stale', live };
+  return { state: 'ok', live };
+}
+
+// Fine della prova: almeno 2 segnali da Traccar dopo l'inizio, su almeno 45 secondi (il telefono era in tasca).
+function verifyTracking(player, since) {
+  const s = Number(since);
+  if (!s || s > Date.now() || Date.now() - s > 20 * 60000) throw err(400, 'Prova scaduta: ricominciala');
+  const t = q.get('SELECT COUNT(*) AS n, MAX(at) AS last FROM track_pings WHERE playerId = ? AND at >= ?', player.id, s);
+  if (t.n < TRACK_TEST_MIN_PINGS) throw err(409, t.n ? 'È arrivato un solo segnale: lascia il telefono bloccato ancora un po\'' : 'Da Traccar non è arrivato nessun segnale: controlla indirizzo, identificativo e che il servizio sia acceso');
+  if (Date.now() - s < TRACK_TEST_MIN_MS) throw err(409, 'Ancora qualche secondo: la prova dura almeno 45 secondi');
+  q.run('UPDATE players SET trackVerifiedAt = ? WHERE id = ?', Date.now(), player.id);
+  G.log(player.gameId, `giocatore:${player.id}`, 'traccar_verified', { name: player.name, pings: t.n });
+  rt.toStaff(player.gameId, 'traccar');
+  return trackingInfo(player);
 }
 
 function recordPosition(team, player, body) {
@@ -712,7 +752,7 @@ function useGift(team, giftId) {
 }
 
 module.exports = {
-  recordTraccar, parseTraccar, trackingInfo, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
+  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
   orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

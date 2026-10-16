@@ -267,6 +267,13 @@ addColumn('games', 'maxSingles', 'INTEGER');
 addColumn('players', 'trackToken', 'TEXT');
 addColumn('players', 'trackSeenAt', 'INTEGER');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_players_track ON players(trackToken)');
+// Verifica di Traccar Client: la prova a schermo spento è riuscita (segnali arrivati con il telefono in tasca).
+addColumn('players', 'trackVerifiedAt', 'INTEGER');
+// Segnali di Traccar Client (solo ora e precisione, non la posizione): servono a verificare che funzioni anche prima del via.
+db.exec(`CREATE TABLE IF NOT EXISTS track_pings (
+  id INTEGER PRIMARY KEY, playerId INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE, at INTEGER NOT NULL, acc REAL
+);
+CREATE INDEX IF NOT EXISTS ix_track_pings ON track_pings(playerId, at);`);
 addColumn('users', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE CASCADE');
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_account ON users(accountId);

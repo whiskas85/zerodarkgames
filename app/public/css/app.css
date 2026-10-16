@@ -412,3 +412,24 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 @keyframes battle-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
 @media (prefers-reduced-motion: reduce) { .battle-overlay, .battle-title, .battle-burst { animation: none; } }
 .scanner-cam { justify-self: center; max-width: 92vw; min-height: 44px; padding: 8px 12px; border-radius: 22px; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-weight: 700; }
+
+/* Traccar Client: avviso finché non è verificato, procedura guidata a passi. */
+.track-flag { display: grid; gap: 6px; border-color: var(--warn); border-left: 6px solid var(--warn); color: inherit; text-decoration: none; }
+.track-flag strong { color: var(--warn); }
+.track-flag.stale { border-color: var(--blood); }
+.track-flag.stale strong { color: var(--blood); }
+.track-flag .btn { justify-self: start; }
+.track-ok { border-left: 6px solid var(--ok); }
+.track-ok strong { color: var(--ok); }
+.track-link { color: inherit; text-decoration: none; }
+.track-link.warn { border-left: 6px solid var(--warn); }
+.wiz-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.wiz-step { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 2px solid var(--line); background: none; color: var(--muted); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.wiz-step .mono { font-size: 16px; }
+.wiz-step.on { border-color: var(--blood); color: var(--ink); }
+.wiz-step.done { border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); color: var(--ok); }
+.wiz-nav { justify-content: space-between; }
+.track-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.track-test.ok { border-color: var(--ok); }
+.track-count { font-size: 18px; font-weight: 700; }
+.track-count .mono { font-size: 34px; }

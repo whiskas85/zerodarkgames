@@ -797,8 +797,35 @@ test('notifiche: chi le ha sul suo telefono, solo su quello della coppia, o per 
   assert.equal(st[a2.id], 'off');
   for (const p of q.all('SELECT id FROM players WHERE teamId = ?', B.id)) assert.equal(st[p.id], 'shared');
   assert.ok(rep.people.every((p) => p.group === 'couple' && p.where));
-  assert.equal(G.masterState(g.id).pushOff, 1);
+  // Il numero in regia conta anche chi non ha Traccar verificato (qui nessuno).
+  assert.equal(G.masterState(g.id).pushOff, 4);
+  assert.ok(rep.people.every((p) => p.traccar === 'none'));
   assert.ok(Array.isArray(rep.staff));
+});
+
+test('Traccar: segnali anche prima del via, verifica con la prova a schermo spento, avviso se smette', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const pl = q.get('SELECT * FROM players WHERE gameId = ? AND teamId IS NOT NULL LIMIT 1', g.id);
+  const info = F.trackingInfo(pl);
+  assert.equal(info.state, 'none');
+  const since = Date.now() - 60000;
+  // Prima del via: il segnale conta per la verifica (senza salvare la posizione).
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1', accuracy: '6' }, {});
+  assert.throws(() => F.verifyTracking(pl, since), /un solo segnale/);
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1', accuracy: '5' }, {});
+  assert.equal(F.trackingInfo(pl, since).test.pings, 2);
+  assert.throws(() => F.verifyTracking(pl, Date.now() - 5000), /45 secondi/);
+  const ok = F.verifyTracking(pl, since);
+  assert.equal(ok.state, 'ok');
+  assert.ok(ok.verifiedAt);
+  // Identificativo sconosciuto: ignorato; prova scaduta: rifiutata.
+  assert.equal(F.recordTraccar({ id: 'nessuno', lat: '45', lon: '9' }, {}).ok, false);
+  assert.throws(() => F.verifyTracking(pl, Date.now() - 3600000), /scaduta/);
+  // A partita in corso, nessun segnale da più di 10 minuti: l'avviso torna.
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now() - 11 * 60000, pl.id);
+  assert.equal(F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', pl.id)).state, 'stale');
 });
 
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
