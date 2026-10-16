@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap">
   <link rel="stylesheet" href="/css/base.css">
   <style>
-    main { max-width: 620px; margin: 0 auto; padding: 32px 16px 64px; display: grid; gap: 20px; }
+    main { max-width: 620px; margin: 0 auto; padding: 32px 16px 64px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; overflow-wrap: anywhere; }
     h1 { font-size: clamp(52px, 15vw, 84px); font-weight: 900; line-height: .86; }
     h1 em { font-style: normal; color: var(--blood); }
     h2 { font-size: 26px; }
@@ -28,9 +28,9 @@
     .paths { display: grid; gap: 12px; }
     .path { display: grid; gap: 8px; padding: 18px 18px 16px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); text-decoration: none; }
     .path:hover, .path:focus-visible { border-color: var(--blood); box-shadow: inset 6px 0 0 var(--blood); background: var(--paper-2); }
-    .path-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .path-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
     .path-title { font-family: var(--f-display); font-weight: 900; font-size: 32px; text-transform: uppercase; line-height: 1; }
-    .path-tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .path-tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
     .path p { margin: 0; font-family: "Source Serif 4", Georgia, serif; font-size: 17px; line-height: 1.5; }
     .dare { font-family: var(--f-display); font-weight: 800; font-size: 20px; text-transform: uppercase; color: var(--blood); letter-spacing: .02em; }
     .path-go { justify-self: start; margin-top: 4px; }
@@ -53,7 +53,9 @@
     .who a, .linkish { color: var(--brass); background: none; border: 0; font: inherit; padding: 0; cursor: pointer; text-decoration: underline; }
     .card { display: grid; gap: 4px; }
     .stack { display: grid; gap: 12px; }
-    .spots { display: inline-block; justify-self: start; margin: 2px 0 4px; padding: 3px 10px; border: 1px solid var(--ok, #6fbf73); color: var(--ok, #6fbf73); font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    .spots { display: inline-block; justify-self: start; margin: 2px 0 4px; padding: 6px 12px; border: 2px solid var(--ok, #6fbf73); color: var(--ok, #6fbf73); font-family: var(--f-mono); font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+    .spots-sum { display: flex; flex-wrap: wrap; gap: 8px; }
+    .spots-sum .spots { margin: 0; }
     .spots-low { border-color: var(--warn); color: var(--warn); }
     .spots-full { border-color: var(--blood); color: var(--blood); }
     .path-full { opacity: .55; cursor: not-allowed; }
@@ -213,12 +215,16 @@
         h('div', { class: 'step' }, 'Passo 2 di 3 · Scegli la tua sfida'),
         S.games.length > 1 ? h('label', { class: 'field' }, h('span', null, 'Partita'),
           h('select', { class: 'input', onchange: (e) => { S.gameId = Number(e.target.value); render(); } }, S.games.map((g) => h('option', { value: g.id, selected: g.id === S.gameId }, g.name)))) : h('h2', null, game.name),
+        !mine && game?.spots ? h('div', { class: 'spots-sum', 'aria-label': 'Posti disponibili' },
+          h('span', { class: `spots ${game.spots.couples === 0 ? 'spots-full' : game.spots.couples <= 2 ? 'spots-low' : ''}` }, spotsText('pair', game.spots.couples)),
+          h('span', { class: `spots ${game.spots.singles === 0 ? 'spots-full' : game.spots.singles <= 2 ? 'spots-low' : ''}` }, spotsText('single', game.spots.singles))) : null,
         mine ? enrolledCard(mine) : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => {
           const left = spotsLeft(game, c.mode);
           const full = left === 0;
           return h(full ? 'div' : 'a', { class: `path ${full ? 'path-full' : ''}`, href: full ? null : `#${key}`, 'aria-disabled': full ? 'true' : null },
             h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
-            left != null ? h('div', { class: `spots ${full ? 'spots-full' : left <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, left)) : null,
+            left != null ? h('div', { class: `spots ${full ? 'spots-full' : left <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, left))
+              : c.mode === 'elect' ? h('div', { class: 'spots' }, 'Posti senza limite') : null,
             c.text.map((t) => h('p', null, t)),
             h('div', { class: 'dare' }, c.dare),
             full ? h('span', { class: 'btn path-go', 'aria-hidden': 'true' }, 'Posti esauriti') : h('span', { class: 'btn btn-primary path-go' }, 'Scelgo questa sfida →'));
