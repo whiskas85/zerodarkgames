@@ -1054,7 +1054,7 @@ function viewMap(focus = null) {
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
-    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: 'team', lat: x.lat, lng: x.lng, color: x.color, title: `${x.roman} ${x.sectorName}`, popup: `<strong>${x.roman} ${x.sectorName}</strong><br>${x.source} · posizione delle ${fmtTime(x.at)}` })),
+    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
   ]);
   teamMapView.setCircles([
@@ -1174,6 +1174,7 @@ function viewMyGifts() {
 
 // ---------------------------------------------------------------- Skill e Doni con effetto
 
+const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SKILL_KIND = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
 const giftType = (g) => (S.state?.skills?.giftCatalog || []).find((t) => t.id === g.typeId && t.available);
 

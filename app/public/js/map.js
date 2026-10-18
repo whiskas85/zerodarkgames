@@ -27,6 +27,14 @@ export const PERSON_ELECT = '#d1ad62';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// Colore chiaro (testo scuro sopra) o scuro (testo bianco).
+function isLight(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 160;
+}
+
 // Segnaposto: Altare (quadrato con numero romano), Dono (cerchio con icona), io (punto blu).
 export function pinHtml(item) {
   // Piazzato provvisorio (senza cartello né foto): stesso segnaposto con il triangolo di attenzione «!».
@@ -38,6 +46,8 @@ export function pinHtml(item) {
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
   // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
   // Coppie magenta, Eletti del colore della squadra; chi è, lo dice il popup.
+  // Coppie: il pallino porta il numero romano del Settore.
+  if (item.kind === 'team' && item.text) return `<span class="dot-wrap"><span class="pin-dot pin-dot-num ${item.stale ? 'pin-stale' : ''} ${isLight(item.color || PERSON_TEAM) ? 'on-light' : ''}" style="--c:${esc(item.color || PERSON_TEAM)}">${esc(item.text)}</span></span>`;
   if (item.kind === 'team' || item.kind === 'elect') return `<span class="dot-wrap"><span class="pin-dot ${item.stale ? 'pin-stale' : ''}" style="--c:${esc(item.color || (item.kind === 'team' ? PERSON_TEAM : PERSON_ELECT))}"></span></span>`;
   return '<span class="pin pin-me"></span>';
 }

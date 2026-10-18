@@ -430,7 +430,7 @@ function sightingsFor(me, now = Date.now()) {
   }
   const list = [];
   for (const { t, pos, source, until, scan } of out.values()) {
-    const base = { teamId: t.id, sectorName: t.sectorName, roman: t.roman, color: t.sectorColor, source, until, at: pos.at };
+    const base = { teamId: t.id, sectorName: t.sectorName, displayName: t.displayName || null, roman: t.roman, color: t.sectorColor, source, until, at: pos.at };
     if (scan && hasSkill(t.id, 'silenzio')) {
       // Area di 100 m che contiene la posizione vera, con il centro spostato in modo stabile.
       const a = seeded(`${t.id}:${me.id}:${Math.floor(now / (10 * MIN))}`) * 2 * Math.PI;
