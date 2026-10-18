@@ -93,9 +93,11 @@ const immune = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'scudo', now)
 const reliquiaOn = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'reliquia', now);
 const hidden = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'ombra', now);
 
-function latestPos(teamId, now = Date.now()) {
-  return q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, now - POS_FRESH_MS);
+function latestPos(teamId, now = Date.now(), maxAge = POS_FRESH_MS) {
+  return q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, now - maxAge);
 }
+// Chi vede le posizioni (Rete, Tracker, Occhio…) vede anche l'ultima arrivata da Traccar, che può mandarla ogni 5 minuti.
+const SIGHT_FRESH_MS = 10 * MIN;
 
 function distM(a, b) {
   const R = 6371000; const r = Math.PI / 180;
@@ -222,6 +224,8 @@ function applySkill(g, me, s, p) {
       startEffect(me, 'skill', s.id, { target: t.id, data: { taskId: task.id } });
       endNow(g.id, me.id, s.id);
       rt.pushMasters({ title: 'Maestro della caccia', body: `Una coppia manda gli Eletti a caccia del Settore ${t.sectorName}: assegna la missione a una squadra.`, url: '/regia#squadre' });
+      // Con la regia aperta: allarme e salto alla pagina Squadre, dove si assegna la caccia.
+      rt.toStaffEvent('task_pending', { gameId: g.id, title: 'Maestro della caccia', body: `Caccia al Settore ${t.sectorName}: assegnala a una squadra di Eletti.` });
       return { targetName: t.sectorName, message: `Il Consiglio manderà gli Eletti a caccia del Settore ${t.sectorName}.` };
     }
     case 'rete':
@@ -481,7 +485,7 @@ function sightingsFor(me, now = Date.now()) {
   const add = (t, source, until, scan) => {
     if (hidden(t, now)) return;
     if (scan && immune(t, now)) return;
-    const pos = latestPos(t.id, now);
+    const pos = latestPos(t.id, now, SIGHT_FRESH_MS);
     if (!pos) return;
     const prev = out.get(t.id);
     if (prev && (prev.until || Infinity) >= (until || Infinity) && !prev.approx) return;
@@ -491,9 +495,9 @@ function sightingsFor(me, now = Date.now()) {
   for (const e of mine) {
     if (e.code === 'rete') for (const t of couples) add(t, 'Rete del Consiglio', e.endsAt, true);
     if (e.code === 'occhio') {
-      const here = latestPos(me.id, now);
+      const here = latestPos(me.id, now, SIGHT_FRESH_MS);
       const radius = JSON.parse(e.data || '{}').radius || eyeOf(g).radius;
-      if (here) for (const t of couples) { const p = latestPos(t.id, now); if (p && distM(here, p) <= radius) add(t, 'Occhio del Consiglio', e.endsAt, true); }
+      if (here) for (const t of couples) { const p = latestPos(t.id, now, SIGHT_FRESH_MS); if (p && distM(here, p) <= radius) add(t, 'Occhio del Consiglio', e.endsAt, true); }
     }
     if (['tracker', 'tracciamento'].includes(e.code)) { const t = couples.find((x) => x.id === e.targetTeamId); if (t) add(t, e.code === 'tracker' ? 'Tracker' : 'Tracciamento', e.endsAt, false); }
   }
@@ -567,10 +571,10 @@ function watchedBy(e, now = Date.now()) {
     .filter((t) => !hidden(t, now));
   if (e.code === 'rete') return others.filter((t) => !immune(t, now)).map((t) => t.id);
   if (e.code === 'occhio') {
-    const here = latestPos(e.teamId, now);
+    const here = latestPos(e.teamId, now, SIGHT_FRESH_MS);
     if (!here) return [];
     const radius = JSON.parse(e.data || '{}').radius || eyeOf(G.getGame(e.gameId)).radius;
-    return others.filter((t) => { if (immune(t, now)) return false; const p = latestPos(t.id, now); return p && distM(here, p) <= radius; }).map((t) => t.id);
+    return others.filter((t) => { if (immune(t, now)) return false; const p = latestPos(t.id, now, SIGHT_FRESH_MS); return p && distM(here, p) <= radius; }).map((t) => t.id);
   }
   return e.targetTeamId && others.some((t) => t.id === e.targetTeamId) ? [e.targetTeamId] : [];
 }

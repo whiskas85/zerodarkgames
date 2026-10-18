@@ -71,6 +71,14 @@ async function start() {
       await load();
       emergencyAlarm();
     },
+    // Maestro della caccia: incarico da assegnare. Allarme e salto alla pagina Squadre.
+    task_pending: async (d) => {
+      if (d.gameId && d.gameId !== R.gameId) return;
+      location.hash = 'squadre';
+      await load();
+      toast(h('a', { href: '#squadre' }, h('strong', null, `🎯 ${d.title}`), h('div', { class: 'small' }, d.body)), 'info', 15000);
+      emergencyAlarm();
+    },
     // Con la regia aperta l'avviso arriva anche qui (iscrizioni, messaggi, scontri contestati…).
     notify: (n) => {
       toast(h('a', { href: n.url?.startsWith('/regia') ? n.url.replace('/regia', '') || '#' : '#' }, h('strong', null, n.title), n.body ? h('div', { class: 'small' }, n.body) : null), 'info', 9000);
@@ -215,7 +223,7 @@ function render() {
       live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
-    mount($root, topbar(), emergencyBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
   labelTables($root);
   tick();
@@ -252,6 +260,15 @@ function emergencyAlarm() {
 }
 
 // Fascia rossa in cima a ogni pagina finché ci sono emergenze aperte.
+// Incarichi chiesti dalle coppie (Maestro della caccia…) ancora da assegnare: banner in ogni pagina finché restano aperti.
+function taskBanner() {
+  const list = R.ms?.pendingTasks || [];
+  if (!list.length || tab() === 'squadre') return null;
+  return h('a', { class: 'task-banner', href: '#squadre' },
+    h('strong', null, `🎯 ${list.length === 1 ? 'Incarico da assegnare' : `${list.length} incarichi da assegnare`}`),
+    h('span', null, ' — ', list.map((t) => t.text || t.targetLabel || 'Incarico').join(' · ')));
+}
+
 function emergencyBanner() {
   const open = openEmergencies();
   if (!open.length) return null;
