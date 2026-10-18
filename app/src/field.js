@@ -358,7 +358,58 @@ function fieldState(gameId) {
     giftTypes: giftTypes(),
     squads: squadsOf(game.id),
     landmarks: G.landmarksOf(game.id).map(landmarkOut),
+    pois: poisOf(game.id),
   };
+}
+
+// ---------------------------------------------------------------- punti di interesse
+
+const poiOut = (x) => ({ id: x.id, label: x.label, description: x.description, lat: x.lat, lng: x.lng, accuracy: x.accuracy, createdAt: x.createdAt, createdBy: x.createdBy });
+const poisOf = (gameId) => q.all('SELECT * FROM pois WHERE gameId = ? ORDER BY label COLLATE NOCASE, id', gameId).map(poiOut);
+
+function readPoi(body, old = null) {
+  const label = body.label !== undefined ? String(body.label || '').trim().slice(0, 60) : old?.label;
+  if (!label) throw err(400, 'Dai un nome al punto');
+  const description = body.description !== undefined ? String(body.description || '').trim().slice(0, 500) || null : old?.description ?? null;
+  let { lat, lng } = old || {};
+  let acc = old?.accuracy ?? null;
+  if (body.lat !== undefined || body.lng !== undefined) {
+    lat = parseFloat(body.lat);
+    lng = parseFloat(body.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw err(400, 'Posizione non valida');
+    acc = Number.isFinite(parseFloat(body.acc)) ? Math.round(parseFloat(body.acc)) : null;
+  }
+  return { label, description, lat, lng, acc };
+}
+
+const poiChanged = (gameId) => { rt.toStaff(gameId, 'pois'); rt.toTeams(gameId, 'state', {}); };
+
+function createPoi(gameId, body, who) {
+  const g = G.getGame(gameId);
+  const p = readPoi(body || {});
+  const id = Number(q.run('INSERT INTO pois (gameId, label, description, lat, lng, accuracy, createdAt, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, p.label, p.description, p.lat, p.lng, p.acc, Date.now(), who).lastInsertRowid);
+  G.log(g.id, who, 'poi_created', { label: p.label });
+  poiChanged(g.id);
+  return poiOut(q.get('SELECT * FROM pois WHERE id = ?', id));
+}
+
+function updatePoi(id, gameId, body, who) {
+  const old = q.get('SELECT * FROM pois WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
+  if (!old) throw err(404, 'Punto di interesse non trovato');
+  const p = readPoi(body || {}, old);
+  q.run('UPDATE pois SET label = ?, description = ?, lat = ?, lng = ?, accuracy = ?, updatedAt = ? WHERE id = ?', p.label, p.description, p.lat, p.lng, p.acc, Date.now(), old.id);
+  G.log(old.gameId, who, 'poi_updated', { label: p.label });
+  poiChanged(old.gameId);
+  return poiOut(q.get('SELECT * FROM pois WHERE id = ?', old.id));
+}
+
+function deletePoi(id, gameId, who) {
+  const old = q.get('SELECT * FROM pois WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
+  if (!old) throw err(404, 'Punto di interesse non trovato');
+  q.run('DELETE FROM pois WHERE id = ?', old.id);
+  G.log(old.gameId, who, 'poi_deleted', { label: old.label });
+  poiChanged(old.gameId);
 }
 
 // ---------------------------------------------------------------- KMZ per ATAK
@@ -383,6 +434,7 @@ function orgKmz(gameId) {
       description: [`Settore ${p.sectorName}${p.free ? ' · Altare senza coppia' : ''}`, p.locationNote, ...placeDesc(p)].filter(Boolean).join('<br>') })) },
     { name: 'Doni', items: st.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((g) => ({ name: `${g.label} · ${g.name}${g.provisional ? ' (provvisorio)' : ''}`, lat: g.lat, lng: g.lng, shape: 'circle', color: g.color, provisional: g.provisional,
       description: [`Stato: ${GIFT_LABEL[g.status] || g.status}`, ...placeDesc(g)].join('<br>') })) },
+    { name: 'Punti di interesse', items: st.pois.map((x) => ({ name: x.label, lat: x.lat, lng: x.lng, shape: 'diamond', color: '#b07ad9', description: x.description || '' })) },
     { name: 'Punti indicati dalla regia', items: [...st.points, ...st.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)), ...st.landmarks]
       .filter((x) => x.targetLat != null && pending(x))
       .map((x) => ({ name: `Da piazzare: ${x.label}`, lat: x.targetLat, lng: x.targetLng, shape: 'ring', color: '#ffffff',
@@ -757,5 +809,5 @@ function useGift(team, giftId) {
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
   giftTypes, saveGiftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
-  orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
+  createPoi, updatePoi, deletePoi, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

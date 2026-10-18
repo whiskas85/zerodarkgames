@@ -77,6 +77,10 @@ function icon(shape, hex, provisional = false) {
         const m = Math.max(Math.abs(dx), Math.abs(dy));
         if (m <= 13.5) set(x, y, m >= 9.5 ? rgb : dark);
         else if (m <= 15) set(x, y, white);
+      } else if (shape === 'diamond') {
+        const m = Math.abs(dx) + Math.abs(dy);
+        if (m <= 13) set(x, y, rgb);
+        else if (m <= 15.5) set(x, y, white);
       } else if (shape === 'ring') {
         if (d <= 14 && d >= 9) set(x, y, rgb);
         else if (d <= 15.5 && d > 14) set(x, y, dark);

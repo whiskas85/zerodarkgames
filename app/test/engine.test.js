@@ -864,6 +864,32 @@ test('partita finita: in test riparte da capo, in produzione no', () => {
   assert.equal(G.getGame(g.id).status, 'truce');
 });
 
+test('punti di interesse: creati dal campo, modificati, nel KMZ, usati come posizione', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  assert.throws(() => F.createPoi(g.id, { label: '', lat: 45, lng: 9 }, 'regia'), /nome/);
+  assert.throws(() => F.createPoi(g.id, { label: 'X', lat: 'a', lng: 9 }, 'regia'), /Posizione/);
+  const p = F.createPoi(g.id, { label: 'Radura dei castagni', description: 'Ingresso dal sentiero nord', lat: 45.123, lng: 9.456, acc: 6 }, 'eletti:Uno');
+  assert.deepEqual([p.label, p.description, p.accuracy], ['Radura dei castagni', 'Ingresso dal sentiero nord', 6]);
+  const u = F.updatePoi(p.id, g.id, { description: '' }, 'regia');
+  assert.deepEqual([u.label, u.description, u.lat], ['Radura dei castagni', null, 45.123]);
+  assert.equal(F.fieldState(g.id).pois.length, 1);
+  // Nel KMZ per ATAK c'è la cartella dei punti di interesse.
+  const zlib = require('zlib');
+  const { data } = F.orgKmz(g.id);
+  const kml = zlib.inflateRawSync(data.subarray(30 + data.readUInt16LE(26), 30 + data.readUInt16LE(26) + data.readUInt32LE(18))).toString();
+  assert.match(kml, /Punti di interesse/);
+  assert.match(kml, /Radura dei castagni/);
+  // Piazzare un Altare sulla coordinata del punto (posizione «manuale»).
+  const pt = q.get('SELECT * FROM points WHERE gameId = ? LIMIT 1', g.id);
+  F.placePoint(pt.id, g.id, { lat: u.lat, lng: u.lng, source: 'manual', provisional: true }, 'regia');
+  assert.equal(q.get('SELECT lat FROM points WHERE id = ?', pt.id).lat, 45.123);
+  // Solo i punti della propria partita.
+  assert.throws(() => F.deletePoi(p.id, g.id + 999, 'regia'), /non trovato/);
+  F.deletePoi(p.id, g.id, 'regia');
+  assert.equal(F.fieldState(g.id).pois.length, 0);
+});
+
 test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piazzamento normale', () => {
   const F = require('../src/field');
   const g = setupGame(2);

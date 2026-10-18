@@ -463,6 +463,10 @@ const sendKmz = (res, { name, data }) => {
 };
 // Tutti i punti per ATAK / Google Earth (regia ed Eletti).
 app.get('/api/field/export.kmz', needField, (req, res, next) => { try { sendKmz(res, F.orgKmz(fieldGame(req))); } catch (e) { next(e); } });
+// Punti di interesse del campo.
+app.post('/api/field/pois', needField, wrap((req) => F.createPoi(fieldGame(req), req.body || {}, fieldWho(req))));
+app.patch('/api/field/pois/:id', needField, wrap((req) => F.updatePoi(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
+app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
 app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame(req), req.user?.role === 'master' ? 'master' : 'elect')));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));

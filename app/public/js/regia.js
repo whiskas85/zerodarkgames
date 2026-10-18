@@ -165,6 +165,7 @@ async function call(method, url, body, okMsg) {
   }
 }
 const G = (path) => `/api/m/games/${R.gameId}${path}`;
+const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function confirmCall(title, text, method, url, body, okMsg, danger = false) {
   if (!(await dialog({ title, text, okLabel: 'Conferma', danger }))) return null;
@@ -1173,6 +1174,9 @@ function fieldMapItems(d) {
     ...(d.landmarks || []).map((l) => landmarkItem(l, `<br>${placedInfo(l)}${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}
       <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
     ...targetItems(d),
+    // Punti di interesse segnati dal campo (regia ed Eletti).
+    ...(d.pois || []).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
+      popup: `<strong>◆ ${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>${escHtml(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>` })),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
@@ -1275,6 +1279,7 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
     h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
     h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato'),
+    h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse (si aggiunge dal campo)'),
     h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),

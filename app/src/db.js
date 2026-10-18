@@ -263,6 +263,14 @@ addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
 // Posti per l'iscrizione: coppie (vuoto = una per Settore) e temerari solitari (vuoto = senza limite a parte).
 addColumn('games', 'maxCouples', 'INTEGER');
 addColumn('games', 'maxSingles', 'INTEGER');
+// Punti di interesse segnati sul campo (regia ed Eletti): coordinata, titolo e descrizione.
+// Servono da promemoria e come posizione già pronta per piazzare Altari, Doni e luoghi.
+db.exec(`CREATE TABLE IF NOT EXISTS pois (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  label TEXT NOT NULL, description TEXT, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL,
+  createdAt INTEGER NOT NULL, createdBy TEXT, updatedAt INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_pois_game ON pois(gameId);`);
 // Identificativo personale per l'app di tracciamento (Traccar Client): posizione anche a schermo spento.
 addColumn('players', 'trackToken', 'TEXT');
 addColumn('players', 'trackSeenAt', 'INTEGER');

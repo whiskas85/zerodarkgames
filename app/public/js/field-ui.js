@@ -1,9 +1,11 @@
 // Lavoro sul campo (Altari e Doni da piazzare, incarichi delle squadre, mappa del campo).
 // Usato dall'app degli Eletti (dentro la loro app) e dallo strumento di campo della regia (/campo).
-import { h, mount, api, fmtTime, toast, store, scanQR, vibrate } from './lib.js';
+import { h, mount, api, fmtTime, toast, dialog, store, scanQR, vibrate } from './lib.js';
 import { createMapView, watchPosition, positionItem, landmarkItem, accuracyHint, PLACE_MAX_ACC } from './map.js';
 
 const GIFT_STATE = { draft: 'Da piazzare', placed: 'Piazzato · non ancora annunciato', revealed: 'Annunciato: in mappa alle coppie', claimed: 'Preso', expired: 'Svanito (scaduto)' };
+
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Distanza approssimata in metri.
 export const meters = (a, b) => Math.round(Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180)));
@@ -179,6 +181,9 @@ export function createField(F, { rerender }) {
       ...d.gifts.filter((g) => F.who.role === 'master' || !['claimed', 'expired'].includes(g.status)).map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color,
         state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
         popup: `<strong>${g.label} · ${g.name}</strong><br>${g.provisional ? '⚠ Provvisorio · ' : ''}${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}` })),
+      // Punti di interesse segnati da regia ed Eletti.
+      ...(d.pois || []).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
+        popup: `<strong>◆ ${esc(x.label)}</strong>${x.description ? `<br>${esc(x.description)}` : ''}<br><small>${esc(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>` })),
       // Punti indicati dalla regia per gli incarichi ancora da fare (della propria squadra; la regia li vede tutti).
       ...[...d.points.map((p) => ['point', p]), ...d.gifts.map((g) => ['gift', g]), ...(d.landmarks || []).map((l) => ['landmark', l])]
         .filter(([k, x]) => x.targetLat != null && isPending(x, k) && (F.who.role === 'master' || (sq && x.squadId === sq.id)))
@@ -197,7 +202,8 @@ export function createField(F, { rerender }) {
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-sm', onclick: () => mapView.centerMe() }, '◎ La mia posizione'),
         h('button', { class: 'btn btn-sm', onclick: () => mapView.autoCenter() }, 'Tutto il campo'),
-        h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth' }, '⇩ KMZ (ATAK)')),
+        h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
+        h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => openPoi() }, '＋ Punto di interesse')),
       h('div', { class: 'map-legend' },
         h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
         h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
@@ -205,9 +211,95 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
         h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
         h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato dalla regia'),
+        h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse'),
         h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Altri Eletti (colore della squadra)'),
         h('span', null, h('span', { class: 'pin pin-me' }), ' Tu')),
-      d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null);
+      d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null,
+      poiList());
+  }
+
+  // ------------------------------------------------------------ punti di interesse
+  // Coordinate con un nome e una descrizione (es. «Radura dei castagni»): restano sulla mappa di regia ed Eletti
+  // e si possono usare come posizione quando si piazza un Altare, un Dono o un luogo.
+  const byDistance = (list) => (F.me ? [...list].sort((a, b) => meters(F.me, a) - meters(F.me, b)) : list);
+  function poiList() {
+    const list = byDistance(F.data?.pois || []);
+    return h('div', { class: 'card stack-sm' },
+      h('div', { class: 'row-actions' }, h('strong', { class: 'grow' }, `Punti di interesse (${list.length})`),
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openPoi() }, '＋ Aggiungi')),
+      list.length ? h('ul', { class: 'campo-list' }, list.map((x) => h('li', { class: 'campo-item' },
+        h('div', { class: 'campo-thumb empty-thumb poi-thumb' }, '◆'),
+        h('div', { class: 'campo-info' },
+          h('strong', null, x.label),
+          x.description ? h('div', { class: 'small' }, x.description) : null,
+          h('div', { class: 'tiny muted' }, `${F.me ? `a ${fmtDist(meters(F.me, x))} · ` : ''}${String(x.createdBy || '').replace('eletti:', '')} · ${fmtTime(x.createdAt)}`)),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { mapView.map?.setView([x.lat, x.lng], 18); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, 'Mappa'),
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => openPoi(x) }, 'Modifica')))))
+        : h('p', { class: 'muted small' }, 'Nessun punto: segna radure, sentieri, ingressi, posti per gli Altari… Li ritrovi qui e quando piazzi.'));
+  }
+
+  // Scheda per aggiungere o modificare un punto: posizione (GPS o tocco sulla mappa), nome, descrizione.
+  function openPoi(existing = null) {
+    startGps();
+    const sheetMap = createMapView({ className: 'sheet-map' });
+    let manual = existing ? { lat: existing.lat, lng: existing.lng, acc: existing.accuracy ?? null } : null;
+    const label = h('input', { class: 'input', maxlength: 60, placeholder: 'es. Radura dei castagni', value: existing?.label || '' });
+    const desc = h('textarea', { class: 'input', rows: 3, maxlength: 500, placeholder: 'Descrizione (facoltativa): cosa c\'è, come arrivarci, a cosa serve…' });
+    desc.value = existing?.description || '';
+    const posLine = h('div', { class: 'mono small' });
+    const saveBtn = h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button' }, existing ? 'Salva le modifiche' : 'Salva il punto');
+    const position = () => manual || F.me;
+    const sync = () => {
+      const p = position();
+      posLine.textContent = manual ? `${existing && manual.lat === existing.lat && manual.lng === existing.lng ? 'Posizione salvata' : 'Punto scelto sulla mappa'} (${manual.lat.toFixed(5)}, ${manual.lng.toFixed(5)})`
+        : p ? `GPS: ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · ± ${p.acc} m` : (F.geoError || 'Ricerca della posizione GPS…');
+      posLine.className = `mono small ${p ? 'ok-text' : 'bad-text'}`;
+      saveBtn.disabled = !p;
+      if (F.me) sheetMap.setMe(F.me);
+      sheetMap.setItems(manual ? [{ key: 'poi-new', kind: 'poi', lat: manual.lat, lng: manual.lng, title: label.value || 'Punto' }] : []);
+    };
+    const tick = setInterval(sync, 1000);
+    sheetMap.ready.then(() => {
+      sheetMap.onTap((ll) => { manual = { lat: ll.lat, lng: ll.lng, acc: null }; sync(); vibrate(30); });
+      sync();
+      if (manual) sheetMap.map?.setView([manual.lat, manual.lng], 17); else if (F.me) sheetMap.centerMe(17);
+      sheetMap.refresh();
+    });
+    const close = () => { clearInterval(tick); sheet.remove(); document.body.classList.remove('no-scroll'); };
+    saveBtn.addEventListener('click', async () => {
+      const p = position();
+      if (!p) return;
+      if (!label.value.trim()) { toast('Dai un nome al punto', 'error'); label.focus(); return; }
+      saveBtn.disabled = true;
+      try {
+        const body = { gameId: F.gameId, label: label.value, description: desc.value, lat: p.lat, lng: p.lng, acc: p.acc ?? '' };
+        await api(existing ? 'PATCH' : 'POST', existing ? `/api/field/pois/${existing.id}?gameId=${F.gameId}` : `/api/field/pois?gameId=${F.gameId}`, body);
+        toast(existing ? 'Punto aggiornato' : `Punto «${label.value.trim()}» salvato`, 'ok');
+        close();
+        load();
+      } catch (e) { toast(e.offline ? 'Nessuna rete: riprova appena c\'è segnale' : e.message, 'error', 6000); saveBtn.disabled = false; }
+    });
+    const sheet = h('div', { class: 'place-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': existing ? 'Modifica punto di interesse' : 'Nuovo punto di interesse' },
+      h('div', { class: 'place-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Punto di interesse'), h('h2', null, existing ? existing.label : 'Nuovo punto')),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: close }, 'Annulla')),
+      h('section', { class: 'place-step' },
+        h('div', { class: 'step-title' }, h('span', { class: 'step-n' }, '1'), 'Posizione'),
+        h('p', { class: 'muted small' }, 'Di base è dove sei tu (GPS). Per un altro punto tocca la mappa.'),
+        posLine, sheetMap.el,
+        manual && !existing ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { manual = null; sync(); } }, 'Usa il GPS') : null),
+      h('section', { class: 'place-step stack-sm' },
+        h('div', { class: 'step-title' }, h('span', { class: 'step-n' }, '2'), 'Nome e descrizione'),
+        label, desc),
+      h('section', { class: 'place-step stack-sm' }, saveBtn,
+        existing ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
+          if (!(await dialog({ title: 'Eliminare il punto?', text: `«${existing.label}» sparisce dalla mappa di tutti.`, okLabel: 'Elimina', danger: true }))) return;
+          try { await api('DELETE', `/api/field/pois/${existing.id}?gameId=${F.gameId}`); toast('Punto eliminato', 'ok'); close(); load(); } catch (e) { toast(e.message, 'error'); }
+        } }, 'Elimina il punto') : null));
+    document.body.append(sheet);
+    document.body.classList.add('no-scroll');
+    sync();
+    if (!existing) setTimeout(() => label.focus(), 300);
   }
   const leaveMap = () => { mapOn = false; };
 
@@ -267,11 +359,31 @@ export function createField(F, { rerender }) {
     // Provvisorio: solo la posizione, senza cartello né foto. In mappa con il triangolo «!»; si conferma poi col piazzamento normale.
     const provBtn = h('button', { class: 'btn btn-warn btn-block', type: 'button', disabled: true }, '⚠ Piazza provvisorio (senza foto)');
     const position = () => manual || F.me;
+    // Ricerca tra i punti di interesse: il punto scelto diventa la posizione del piazzamento.
+    const pois = F.data?.pois || [];
+    const poiBox = h('div', { class: 'poi-search', hidden: true });
+    const poiQuery = h('input', { class: 'input', type: 'search', placeholder: 'Cerca per nome o descrizione…', autocomplete: 'off' });
+    const poiResults = h('ul', { class: 'poi-results' });
+    const drawPoiResults = () => {
+      const t = poiQuery.value.trim().toLowerCase();
+      const list = byDistance(pois.filter((x) => !t || `${x.label} ${x.description || ''}`.toLowerCase().includes(t))).slice(0, 12);
+      mount(poiResults, list.length ? list.map((x) => h('li', null, h('button', { type: 'button', class: 'poi-result', onclick: () => {
+        manual = { lat: x.lat, lng: x.lng, acc: null, poi: x.label };
+        poiBox.hidden = true;
+        sync();
+        sheetMap.map?.setView([x.lat, x.lng], 18);
+        vibrate(30);
+      } }, h('strong', null, '◆ ', x.label), x.description ? h('span', { class: 'small muted' }, x.description) : null,
+        F.me ? h('span', { class: 'tiny muted' }, `a ${fmtDist(meters(F.me, x))}`) : null))) : h('li', { class: 'muted small' }, 'Nessun punto trovato'));
+    };
+    poiQuery.addEventListener('input', drawPoiResults);
+    mount(poiBox, poiQuery, poiResults);
+    const poiBtn = pois.length ? h('button', { class: 'btn btn-block', type: 'button', onclick: () => { poiBox.hidden = !poiBox.hidden; if (!poiBox.hidden) { drawPoiResults(); poiQuery.focus(); } } }, `🔎 Usa un punto di interesse (${pois.length})`) : null;
     const sync = () => {
       const p = position();
       // GPS troppo impreciso per piazzare: si aspetta un valore migliore o si tocca il punto sulla mappa.
       const tooVague = !manual && p && p.acc > PLACE_MAX_ACC;
-      posLine.textContent = manual ? `Punto scelto sulla mappa (${manual.lat.toFixed(5)}, ${manual.lng.toFixed(5)})`
+      posLine.textContent = manual ? `${manual.poi ? `Punto di interesse «${manual.poi}»` : 'Punto scelto sulla mappa'} (${manual.lat.toFixed(5)}, ${manual.lng.toFixed(5)})`
         : p ? `GPS: ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · ± ${p.acc} m${tooVague ? ` — troppo impreciso per piazzare: aspetta o tocca il punto esatto sulla mappa. ${accuracyHint(p.acc)}` : ''}`
           : (F.geoError || 'Ricerca della posizione GPS…');
       posLine.className = `mono small ${p && (manual || p.acc <= 30) ? 'ok-text' : 'bad-text'}`;
@@ -283,7 +395,10 @@ export function createField(F, { rerender }) {
     const tick = setInterval(sync, 1000);
     sheetMap.ready.then(() => {
       sheetMap.onTap((ll) => { manual = { lat: ll.lat, lng: ll.lng, acc: null }; sync(); sheetMap.centerMe(); vibrate(30); });
-      if (goal) sheetMap.setItems([{ key: 'goal', kind: 'target', lat: goal.lat, lng: goal.lng, title: 'Punto indicato' }]);
+      sheetMap.setItems([
+        ...(goal ? [{ key: 'goal', kind: 'target', lat: goal.lat, lng: goal.lng, title: 'Punto indicato' }] : []),
+        ...pois.map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label, popup: `<strong>◆ ${esc(x.label)}</strong>` })),
+      ]);
       if (F.me) { sheetMap.setMe(F.me); }
       if (goal) sheetMap.fit(); else if (F.me) sheetMap.centerMe(17);
       sheetMap.refresh();
@@ -335,7 +450,7 @@ export function createField(F, { rerender }) {
       h('section', { class: 'place-step' },
         h('div', { class: 'step-title' }, h('span', { class: 'step-n' }, '1'), 'Posizione'),
         h('p', { class: 'muted small' }, goal ? 'Raggiungi il punto ⌖ indicato dalla regia e mettiti accanto al cartello. Se il GPS è impreciso, tocca il punto esatto sulla mappa.' : 'Mettiti accanto al cartello: l\'app usa il GPS di questo telefono. Se il GPS non c\'è o è impreciso, tocca il punto esatto sulla mappa.'),
-        goalLine, posLine, sheetMap.el),
+        goalLine, posLine, sheetMap.el, poiBtn, poiBox),
       h('section', { class: 'place-step' },
         h('div', { class: 'step-title' }, h('span', { class: 'step-n' }, '2'), photoOptional ? 'Foto (facoltativa)' : 'Foto del piazzamento'),
         h('label', { class: 'btn btn-block', for: 'place-photo' }, '📷 Scatta la foto'), fileInput, photoPreview),

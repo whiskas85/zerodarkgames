@@ -34,6 +34,7 @@ export function pinHtml(item) {
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
+  if (item.kind === 'poi') return '<span class="pin pin-poi"><span>◆</span></span>';
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
   // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
   // Coppie magenta, Eletti del colore della squadra; chi è, lo dice il popup.
