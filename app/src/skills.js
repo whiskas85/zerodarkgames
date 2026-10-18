@@ -134,6 +134,13 @@ function pickTarget(me, targetTeamId) {
   return t;
 }
 
+// Effetti che cambiano ciò che vedono gli altri (posizioni, Sigilli coperti): tutte le app si aggiornano subito.
+const EVERYONE = new Set(['ombra', 'taglia', 'scudo', 'custode']);
+function refreshAll(gameId) {
+  rt.toTeams(gameId, 'state', {});
+  rt.toStaff(gameId, 'skills');
+}
+
 function refreshTeams(gameId, ids) {
   for (const id of new Set(ids)) rt.toTeams(gameId, 'state', {}, id);
   rt.toStaff(gameId, 'skills');
@@ -185,7 +192,7 @@ function useSkill(me, skillId, params = {}) {
   const result = applySkill(g, me, s, params);
   q.run('UPDATE team_skills SET readyAt = ? WHERE id = ?', now + s.cooldownMin * MIN, own.id);
   G.log(g.id, `coppia:${me.id}`, 'skill_used', { teamId: me.id, skill: s.name, target: result.targetName || null });
-  refreshTeams(g.id, [me.id, ...(result.notifyTeams || [])]);
+  if (EVERYONE.has(s.id)) refreshAll(g.id); else refreshTeams(g.id, [me.id, ...(result.notifyTeams || [])]);
   delete result.notifyTeams;
   return { ok: true, skill: s.id, ...result };
 }
@@ -343,7 +350,7 @@ function useGift(me, gift, params = {}) {
   const result = applyGift(g, me, type, params);
   q.run('UPDATE gifts SET usedAt = ? WHERE id = ?', Date.now(), gift.id);
   G.log(g.id, `coppia:${me.id}`, 'gift_used', { teamId: me.id, label: gift.label, type: type.name, target: result.targetName || null });
-  refreshTeams(g.id, [me.id, ...(result.notifyTeams || [])]);
+  if (EVERYONE.has(type.id)) refreshAll(g.id); else refreshTeams(g.id, [me.id, ...(result.notifyTeams || [])]);
   rt.toStaff(g.id, 'gifts');
   delete result.notifyTeams;
   return { ok: true, gift: type.id, ...result };
@@ -661,7 +668,7 @@ function tickAll(now = Date.now()) {
     const ended = q.all('SELECT * FROM skill_effects WHERE gameId = ? AND endedAt IS NULL AND endsAt IS NOT NULL AND endsAt <= ?', g.id, now);
     for (const e of ended) q.run('UPDATE skill_effects SET endedAt = ? WHERE id = ?', e.endsAt, e.id);
     if (ended.length) {
-      if (ended.some((e) => e.code === 'taglia' || e.code === 'custode')) rt.toTeams(g.id, 'state', {});
+      if (ended.some((e) => EVERYONE.has(e.code))) rt.toTeams(g.id, 'state', {});
       else for (const id of new Set(ended.map((e) => e.teamId))) rt.toTeams(g.id, 'state', {}, id);
       rt.toStaff(g.id, 'skills');
     }

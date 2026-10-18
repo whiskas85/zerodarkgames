@@ -472,3 +472,8 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .btn-hold.holding .hold-bar { width: 100%; transition: width 1.2s linear; background: rgba(209, 173, 98, .35); }
 .btn-hold .hold-label { position: relative; }
 .hist-wide { grid-column: 1 / -1; }
+
+/* Barre di ricarica e di effetto delle Skill */
+.cd-bar { height: 8px; background: var(--paper-2); border: 1px solid var(--line); overflow: hidden; flex: 1 1 100%; }
+.cd-bar i { display: block; height: 100%; width: 0; background: var(--brass); transition: width 1s linear; }
+.cd-bar.fx i { background: var(--blood); }

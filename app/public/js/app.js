@@ -513,6 +513,13 @@ function updateClocks() {
   }
   // Una scansione è appena scaduta: ridisegna la pagina (sparisce il pulsante di sblocco).
   if (due && !updateClocks.redrawn) { updateClocks.redrawn = true; setTimeout(() => { updateClocks.redrawn = false; render(); }, 300); }
+  for (const el of document.querySelectorAll('.cd-bar[data-to]')) {
+    const from = Number(el.dataset.from);
+    const to = Number(el.dataset.to);
+    let f = to > from ? (clock.serverNow() - from) / (to - from) : 1;
+    f = Math.min(1, Math.max(0, f));
+    el.firstChild.style.width = `${(el.dataset.drain ? 1 - f : f) * 100}%`;
+  }
   for (const el of document.querySelectorAll('[data-timer]')) {
     const t = S.timers.find((x) => x.uid === el.dataset.timer);
     if (t) el.textContent = t.done ? '00:00' : fmtDuration(Math.max(0, t.endsAt - Date.now()), false);
@@ -1343,11 +1350,14 @@ function viewSkills() {
   }
   const playing = ACTIVE.includes(st.clock.status) && st.team.status === 'active';
   const left = (until) => h('span', { class: 'mono', 'data-abs': until }, '—');
+  // Barra della ricarica (si riempie fino a «pronta») e dell'effetto in corso (si svuota fino alla fine).
+  const cdBar = (s) => (s.readyAt ? h('div', { class: 'cd-bar', title: 'Ricarica', 'data-from': s.readyAt - s.cooldownMin * 60000, 'data-to': s.readyAt }, h('i')) : null);
+  const fxBar = (s) => (s.active && s.activeUntil && s.durationMin ? h('div', { class: 'cd-bar fx', title: 'Effetto in corso', 'data-from': s.activeUntil - s.durationMin * 60000, 'data-to': s.activeUntil, 'data-drain': '1' }, h('i')) : null);
   const card = (s) => {
     if (s.kind === 'passive') return skillCard(s, h('span', { class: 'chip chip-ok' }, 'Sempre attiva'));
-    if (s.auto) return skillCard(s, s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
-    if (s.where) return skillCard(s, s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('a', { class: 'btn btn-sm', href: `#/${s.where}` }, `Pronta: si usa da ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`));
-    return skillCard(s,
+    if (s.auto) return skillCard(s, fxBar(s), cdBar(s), s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
+    if (s.where) return skillCard(s, cdBar(s), s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('a', { class: 'btn btn-sm', href: `#/${s.where}` }, `Pronta: si usa da ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`));
+    return skillCard(s, fxBar(s), cdBar(s),
       s.active && s.activeUntil ? h('span', { class: 'chip chip-blood' }, `In corso${s.targetName ? ` su ${s.targetName}` : ''} · `, left(s.activeUntil)) : null,
       s.active && !s.activeUntil && s.targetName ? h('span', { class: 'chip chip-blood' }, `In ascolto su ${s.targetName}`) : null,
       s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt))
@@ -2142,6 +2152,10 @@ function traccarPrompt(st) {
     // Cosa riceve il server, per capire subito se Traccar manda (e con l'identificativo giusto).
     t.deviceId ? h('span', { class: 'tiny mono' }, `Identificativo: ${t.deviceId} · segnali ultima mezz'ora: ${t.pings || 0}${t.lastAt ? ` · ultimo alle ${fmtTime(t.lastAt)}` : ' · nessun segnale'}`) : null);
 }
+
+// Mentre una Skill o un Dono vi mostra altre coppie, le posizioni si aggiornano ogni 8 secondi (e spariscono subito
+// se il bersaglio entra nell'Ombra, anche se l'aggiornamento in tempo reale si fosse perso).
+setInterval(() => { const sk = S.state?.skills; if (!document.hidden && (sk?.sightings?.length || sk?.giftHints?.length)) refresh(); }, 8000);
 
 // Con l'avviso Traccar aperto l'app ricontrolla da sola ogni 20 secondi: sparisce appena arrivano i segnali.
 setInterval(() => { if (!document.hidden && S.state?.tracking?.prompt) refresh(); }, 20000);
