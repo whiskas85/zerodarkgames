@@ -513,6 +513,28 @@ function victoryOut(e) {
   return { id: e.id, resolvedAt: e.resolvedAt, against: teamLite(face), seals, skill: e.skill, skillBy: e.skillTeamId ? teamLite(e.skillTeamId) : null };
 }
 
+// Alleanza appena stretta (o un nuovo alleato entrato): il telefono mostra i Sigilli ricevuti, una volta.
+// Chi è entrato con Diplomatico non mostra il suo: resta sfocato, con il motivo.
+function allianceNews(me, a, now) {
+  if (!a) return null;
+  const rows = q.all('SELECT teamId, joinedAt, hideCode FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL', a.id);
+  const mine = rows.find((x) => x.teamId === me.id);
+  if (!mine) return null;
+  const fresh = rows.filter((x) => x.teamId !== me.id && Math.max(x.joinedAt, mine.joinedAt) > now - VICTORY_SHOW_MS);
+  if (!fresh.length) return null;
+  const at = Math.max(...fresh.map((x) => Math.max(x.joinedAt, mine.joinedAt)));
+  return {
+    key: `${a.id}@${at}`, at,
+    allies: fresh.map((x) => {
+      const t = team(x.teamId);
+      const sc = t?.sectorId ? q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', t.gameId, t.sectorId) : null;
+      const base = { teamId: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman };
+      if (!sc) return base;
+      return x.hideCode ? { ...base, code: null, hiddenBy: 'Diplomatico', length: sc.code.length } : { ...base, code: sc.code };
+    }),
+  };
+}
+
 function combatState(me) {
   if (me.kind !== 'couple') return null;
   expireOld(me.gameId);
@@ -529,6 +551,7 @@ function combatState(me) {
   return {
     maxAlliance: MAX_ALLIANCE,
     alliance: a ? { id: a.id, members: a.members.map(teamLite) } : null,
+    allianceNews: allianceNews(me, a, now),
     teams: G.teamsOf(me.gameId).filter((t) => t.id !== me.id && t.sectorId && t.status !== 'withdrawn')
       .map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, allied: allied.has(t.id), retryAt: blocks[t.id] || null })),
     incoming: q.all("SELECT * FROM alliance_requests WHERE toTeamId = ? AND status = 'pending' ORDER BY id", me.id)

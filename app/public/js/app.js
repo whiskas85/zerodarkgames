@@ -125,6 +125,7 @@ async function refresh() {
 // Le chiavi includono l'istante: dopo un azzeramento della giocata gli id ripartono e non vanno scambiati per già visti.
 const seenVictories = new Set(store.get('zdg_seen_victories2', []));
 const victoryKey = (v) => `${v.id}@${v.resolvedAt}`;
+const seenAlliances = new Set(store.get('zdg_seen_alliances', []));
 
 function setState(st, offset) {
   const prev = S.state;
@@ -156,6 +157,14 @@ function setState(st, offset) {
     const steal = (st.combat.steals || []).find((x) => victories.some((y) => y.id === x.engagementId));
     if (steal) setTimeout(() => showSteal(steal), 300);
     else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against, v.skill === 'maestria' && v.skillBy?.teamId === st.team.id), 300);
+  }
+  // Alleanza appena stretta: schermata con i Sigilli ricevuti, una volta (dopo un'eventuale Vittoria).
+  const news = st.combat?.allianceNews;
+  if (news && !seenAlliances.has(news.key)) {
+    seenAlliances.add(news.key);
+    store.set('zdg_seen_alliances', [...seenAlliances].slice(-50));
+    const later = () => (document.querySelector('.battle-overlay:not(.hound)') ? setTimeout(later, 1500) : showAlliance(news));
+    setTimeout(later, victories.length ? 1500 : 300);
   }
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Partita in preparazione (o rifatta ripartire): anche gli Altari visitati salvati sul telefono si azzerano.
@@ -1883,6 +1892,38 @@ function battleOverlay(cls, ...children) {
   return el;
 }
 
+// I Sigilli ricevuti (vittoria o alleanza): sfocati, poi svelati uno dopo l'altro; quelli protetti restano sfocati col motivo.
+function battleSeals(list, prefix) {
+  return h('div', { class: 'battle-seals' }, list.map((n, i) => {
+    if (!n.code) return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`),
+      h('div', { class: 'battle-code mono' }, ghost(`${prefix}-${n.sectorId}`, n.length || 6, 'ghost-strong')),
+      h('p', { class: 'small bad-text' }, n.hiddenBy === 'Diplomatico'
+        ? `Per via del Diplomatico il Sigillo del Settore ${n.sectorName} non vi verrà svelato.`
+        : `Il Sigillo è rimasto nascosto grazie a ${n.hiddenBy}.`));
+    const code = h('div', { class: 'battle-code mono' }, ghost(`${prefix}-${n.sectorId}`, n.code.length, 'ghost-strong'));
+    setTimeout(() => { code.replaceChildren(h('span', { class: 'unveil' }, n.code)); vibrate(60); }, 1100 + i * 900);
+    return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`), code);
+  }));
+}
+
+function showAlliance(news) {
+  vibrate([120, 60, 120, 60, 400]);
+  beep();
+  const shown = news.allies.filter((n) => n.code).length;
+  const el = battleOverlay('alliance',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'alliance-ico', 'aria-hidden': 'true' }, '⚑'),
+    h('div', { class: 'eyebrow' }, 'Alleanza stretta'),
+    h('h2', { class: 'battle-title' }, 'Alleati'),
+    h('p', null, `Ora siete alleati con ${news.allies.map((n) => `${n.roman} ${n.sectorName}`).join(', ')}.`),
+    h('p', { class: 'muted' }, shown ? (news.allies.length > 1 ? 'I Sigilli dei vostri alleati:' : 'Il Sigillo del vostro alleato:') : 'Nessun Sigillo vi viene svelato:'),
+    battleSeals(news.allies, 'ally'),
+    shown ? h('p', { class: 'small muted' }, 'Li trovate anche nel taccuino dei Codici.') : null,
+    h('div', { class: 'row' },
+      h('a', { class: 'btn btn-primary btn-block', href: shown ? '#/codici' : '#/alleanze', onclick: () => el.remove() }, shown ? 'Vai al taccuino' : 'Alleanze'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi')));
+}
+
 function showVictory(won, against, maestria = false) {
   vibrate([120, 60, 120, 60, 400]);
   beep();
@@ -1892,15 +1933,7 @@ function showVictory(won, against, maestria = false) {
     h('h2', { class: 'battle-title' }, 'Vittoria'),
     against ? h('p', null, maestria ? `Avevate perso contro il Settore ${against.sectorName}: la Maestria delle armi ha ribaltato lo scontro.` : `Avete battuto il Settore ${against.sectorName}.`) : null,
     h('p', { class: 'muted' }, won.length > 1 ? 'Il Consiglio vi consegna i Sigilli della parte sconfitta:' : 'Il Consiglio vi consegna il Sigillo dello sconfitto:'),
-    h('div', { class: 'battle-seals' }, won.map((n, i) => {
-      // Immunità o Reliquia Antica: il Sigillo resta sfocato, con il motivo sotto.
-      if (!n.code) return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`),
-        h('div', { class: 'battle-code mono' }, ghost(`won-${n.sectorId}`, n.length || 6, 'ghost-strong')), h('p', { class: 'small bad-text' }, `Il Sigillo è rimasto nascosto grazie a ${n.hiddenBy}.`));
-      const code = h('div', { class: 'battle-code mono' }, ghost(`won-${n.sectorId}`, n.code.length, 'ghost-strong'));
-      // Il simulacro sfocato si svela nel Sigillo vero, uno dopo l'altro.
-      setTimeout(() => { code.replaceChildren(h('span', { class: 'unveil' }, n.code)); vibrate(60); }, 1100 + i * 900);
-      return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`), code);
-    })),
+    battleSeals(won, 'won'),
     h('p', { class: 'small muted' }, 'Lo trovate anche nel taccuino dei Codici.'),
     h('div', { class: 'row' },
       h('a', { class: 'btn btn-primary btn-block', href: '#/codici', onclick: () => el.remove() }, 'Vai al taccuino'),

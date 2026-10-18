@@ -560,3 +560,8 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 .fx-ico, .perk-ico { position: relative; }
 .fx-conf { position: absolute; right: -6px; bottom: -4px; font-size: 10px; font-style: normal; line-height: 1; }
 .perk-ico .fx-conf { font-size: 16px; right: -2px; }
+
+/* Alleanza stretta */
+.alliance .battle-title { color: #5aa0e0; text-shadow: 0 0 24px rgba(90, 160, 224, .6); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
+.alliance-ico { font-size: 64px; line-height: 1; color: #5aa0e0; filter: drop-shadow(0 0 14px rgba(90, 160, 224, .8)); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
+.alliance .battle-burst { background: radial-gradient(circle, rgba(90, 160, 224, .45), rgba(90, 160, 224, 0) 65%); }
