@@ -903,7 +903,7 @@ test('piazzamento provvisorio: senza foto, segnato in mappa, confermato dal piaz
   st = F.fieldState(g.id).points.find((x) => x.id === p.id);
   assert.deepEqual([st.provisional, st.hasPhoto], [false, true]);
   // Dono «appena piazzato»: provvisorio non viene annunciato.
-  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'riscatto', count: 1, revealMode: 'onplace' }, 'test');
+  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'archivio', count: 1, revealMode: 'onplace' }, 'test');
   for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
   assert.equal(F.placeGift(gid, g.id, { lat: 45, lng: 9, provisional: true }, 'eletti:Uno').revealed, false);
   assert.equal(F.fieldState(g.id).gifts.find((x) => x.id === gid).provisional, true);
@@ -917,7 +917,7 @@ test('doni: incarico alla squadra e annuncio programmato a un orario', () => {
   const F = require('../src/field');
   const g = setupGame(2);
   const { id: nord } = F.createSquad(g.id, { name: 'Nord' }, 'test');
-  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'riscatto', count: 1, squadId: nord }, 'test');
+  const { ids: [gid] } = F.createGifts(g.id, { typeId: 'archivio', count: 1, squadId: nord }, 'test');
   assert.equal(q.get('SELECT squadId FROM gifts WHERE id = ?', gid).squadId, nord);
   // Programmato prima del piazzamento: compare solo dopo che è piazzato e a partita in corso.
   F.scheduleGiftReveal(gid, { mode: 'at', at: Date.now() + 1000 }, 'test');
@@ -928,7 +928,7 @@ test('doni: incarico alla squadra e annuncio programmato a un orario', () => {
   F.tickAll();
   assert.equal(q.get('SELECT status FROM gifts WHERE id = ?', gid).status, 'revealed');
   // "Ora" su un dono non piazzato: compare appena piazzato; annullare riporta all'annuncio manuale.
-  const { ids: [g2] } = F.createGifts(g.id, { typeId: 'spacca', count: 1 }, 'test');
+  const { ids: [g2] } = F.createGifts(g.id, { typeId: 'taglia', count: 1 }, 'test');
   F.scheduleGiftReveal(g2, { mode: 'now' }, 'test');
   assert.equal(q.get('SELECT revealMode FROM gifts WHERE id = ?', g2).revealMode, 'onplace');
   F.scheduleGiftReveal(g2, { mode: 'cancel' }, 'test');
@@ -1128,4 +1128,94 @@ test('esfiltrazione con il QR della Soglia e rottura delle alleanze per distanza
   assert.equal(q.get('SELECT status FROM teams WHERE id = ?', A.id).status, 'won');
   assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === A.sectorId));
   assert.equal(G.exfiltrate(A, token).already, true);
+});
+
+test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizioni viste solo durante l\'effetto', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const g = setupGame(4);
+  const [A, B, Cc, D] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  // Scelta: 1 attiva/Ultimate + 1 passiva (configurabile).
+  S.chooseSkill(A, 'tracker', true);
+  assert.throws(() => S.chooseSkill(A, 'rete', true), /attiva o Ultimate/);
+  assert.throws(() => S.chooseSkill(A, 'maestria', true), /non è ancora disponibile/);
+  S.chooseSkill(A, 'allarme', true);
+  G.updateGame(g.id, { maxActiveSkills: 2 }, 'test');
+  S.chooseSkill(A, 'rete', true);
+  S.chooseSkill(B, 'ombra', true);
+  S.chooseSkill(B, 'silenzio', true);
+  S.chooseSkill(Cc, 'confusione', true);
+  S.chooseSkill(Cc, 'memoria_nodo', true);
+  S.chooseSkill(D, 'intercettazione', true);
+  S.chooseSkill(D, 'presagio', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  assert.throws(() => S.chooseSkill(A, 'occhio', true), /prima del via/);
+  // Posizioni: nessuno vede nessuno senza effetti.
+  const now = Date.now();
+  const put = (t, lat, lng) => q.run('INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, at = excluded.at', `dev${t.id}`, g.id, t.id, lat, lng, now);
+  put(A, 45, 9); put(B, 45.001, 9); put(Cc, 45.002, 9); put(D, 45.003, 9);
+  assert.deepEqual(S.sightingsFor(A), []);
+  // Tracker su C: si vede C (Confusione aggiunge una posizione falsa e va in ricarica).
+  S.useSkill(A, 'tracker', { teamId: Cc.id });
+  assert.throws(() => S.useSkill(A, 'tracker', { teamId: Cc.id }), /ricarica/);
+  const seen = S.sightingsFor(A);
+  assert.equal(seen.filter((x) => x.teamId === Cc.id).length, 2);
+  assert.ok(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'confusione'", Cc.id).readyAt > now);
+  // Rete: tutte le coppie; B (Silenzio di Vetro) solo come area di 100 m. Ombra nasconde B.
+  S.useSkill(A, 'rete');
+  const all = S.sightingsFor(A);
+  assert.ok(all.some((x) => x.teamId === B.id && x.radius === 50));
+  assert.ok(all.some((x) => x.teamId === D.id && x.radius === null));
+  S.useSkill(B, 'ombra');
+  assert.ok(!S.sightingsFor(A).some((x) => x.teamId === B.id));
+  assert.deepEqual(S.sightingsFor(D).filter((x) => x.teamId === A.id), []);
+  // Intercettazione: i Settori di cui A conosce il Sigillo.
+  const r = S.useSkill(D, 'intercettazione', { teamId: A.id });
+  assert.deepEqual(r.intercept.sectors.map((x) => x.sectorId), [A.sectorId]);
+  // Doni: Taglia su D (tutti lo vedono), Immunità protegge.
+  const gift = (t, typeId) => {
+    const type = S.giftById(typeId);
+    const id = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, ?, ?, 'Dono', ?, 'claimed', ?, ?, ?)", g.id, typeId, type.name, `tok${typeId}${t.id}${Math.random()}`, t.id, now, now).lastInsertRowid);
+    return id;
+  };
+  F.useGift(Cc, gift(Cc, 'taglia'), { teamId: D.id });
+  assert.ok(S.sightingsFor(B).some((x) => x.teamId === D.id));
+  F.useGift(A, gift(A, 'scudo'));
+  assert.throws(() => F.useGift(B, gift(B, 'furto'), { teamId: A.id }), /Immunità/);
+  // Archivio Proibito e Grande Furto: Sigilli nel taccuino.
+  const arc = F.useGift(B, gift(B, 'archivio'));
+  assert.ok(G.teamState(B).notebook.find((n) => n.sectorId === arc.stolen.sectorId).code);
+  const furto = F.useGift(D, gift(D, 'furto'), { teamId: B.id });
+  assert.ok([B.sectorId, arc.stolen.sectorId].includes(furto.stolen.sectorId));
+  // Sovraccarico: tutte le Skill di A di nuovo pronte. Maestro: una Skill in più.
+  F.useGift(A, gift(A, 'sovraccarico'));
+  assert.ok(!q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt);
+  F.useGift(A, gift(A, 'maestro'), { skillId: 'veggenza' });
+  // Veggenza: il frammento di un Altare senza andarci.
+  const pB = pointOf(g.id, B.sectorId);
+  const v = S.useSkill(A, 'veggenza', { pointId: pB.id });
+  assert.ok(v.fragment.text);
+  // Custode: il Sigillo di B, che D conosce (rubato o no), resta coperto agli altri.
+  q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, 'custode', 'gift', ?)", B.id, now);
+  S.useSkill(B, 'custode', { sectorId: B.sectorId });
+  q.run("INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt) VALUES (?, ?, ?, 1, ?)", Cc.id, B.sectorId, codeOf(g.id, B.sectorId), now);
+  const nb = G.teamState(Cc).notebook.find((n) => n.sectorId === B.sectorId);
+  assert.equal(nb.code, null);
+  assert.ok(nb.guardedUntil > now);
+  assert.ok(G.teamState(B).notebook.find((n) => n.sectorId === B.sectorId).code);
+  // Memoria del Nodo: la scansione di C vale il doppio.
+  const pA = pointOf(g.id, A.sectorId);
+  const vis = G.visitPoint(Cc, pA.qrToken);
+  assert.equal(vis.expiresAt - vis.visitedAt, 2 * G.getGame(g.id).altarScanMin * 60000);
+  // Segugio: D segue C; quando C sblocca un Altare D viene avvisato e il Segugio finisce.
+  q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, 'segugio', 'gift', ?)", D.id, now);
+  S.useSkill(D, 'segugio', { teamId: Cc.id });
+  scanUnlock(Cc, pA.qrToken, codeOf(g.id, A.sectorId));
+  assert.ok(q.get("SELECT endedAt, data FROM skill_effects WHERE teamId = ? AND code = 'segugio'", D.id).endedAt);
+  // Tick: notifiche ritardate e fine degli effetti.
+  S.tickAll(now + 60 * 60000);
+  assert.deepEqual(S.sightingsFor(A, now + 60 * 60000), []);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM skill_effects WHERE gameId = ? AND endedAt IS NULL AND endsAt IS NOT NULL', g.id).n, 0);
 });

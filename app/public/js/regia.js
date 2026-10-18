@@ -563,6 +563,8 @@ const EVENT_LABELS = {
   engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
   point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
+  skill_chosen: 'Skill scelta', skill_removed: 'Skill tolta', skill_used: 'Skill usata', skill_auto: 'Skill automatica',
+  exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
 };
 
@@ -588,6 +590,11 @@ function eventText(e) {
     case 'supply_saved': return d.scheduledMin != null ? `a ${d.scheduledMin}′` : 'a mano';
     case 'revelation_postponed': return `${d.minutes > 0 ? '+' : ''}${d.minutes}′`;
     case 'team_sector_changed': return `→ ${d.sector}`;
+    case 'skill_chosen': case 'skill_removed': case 'skill_auto': return `${who}: ${d.skill}`;
+    case 'skill_used': return `${who}: ${d.skill}${d.target ? ` su ${d.target}` : ''}`;
+    case 'exfiltration': return `${d.settore} esce dalla Soglia (${d.position}°)`;
+    case 'exit_denied': return `${d.settore}: ${d.reason === 'alleanza' ? `ancora alleato con ${(d.allies || []).join(', ')}` : `mancano ${d.missing} frammenti`}`;
+    case 'alliance_broken_distance': return `${d.settore} a ${d.metri} m dagli alleati (${(d.teams || []).join(', ')})`;
     case 'demo_advance': return `+${d.minutes}′`;
     case 'registration_accepted': case 'registration_rejected': return (d.names || []).join(' e ');
     case 'elect_added': return `${d.count} ${d.count === 1 ? 'persona' : 'persone'}`;
@@ -602,7 +609,7 @@ function eventText(e) {
     case 'unlock_scan_expired': return `${who} a ${d.point}`;
     case 'point_placed': return `${d.label}${d.accuracy ? ` · ±${d.accuracy} m` : ''}${d.source === 'manual' ? ' · punto manuale' : ''}`;
     case 'gift_placed': case 'gift_revealed': case 'gift_expired': case 'gift_deleted': case 'gift_reset': return `${d.label}${d.type ? ` · ${d.type}` : ''}`;
-    case 'gift_claimed': case 'gift_used': return `${who}: ${d.label} · ${d.type}`;
+    case 'gift_claimed': case 'gift_used': return `${who}: ${d.label} · ${d.type}${d.target ? ` su ${d.target}` : ''}`;
     case 'gifts_created': return `${d.count} × ${d.type}`;
     case 'squad_created': case 'squad_updated': case 'squad_deleted': return d.name;
     case 'squad_member': return `${d.name} → ${d.squad || 'nessuna squadra'}`;
@@ -830,6 +837,7 @@ function teamCard(t, editable) {
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
     h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null, resetBtn(m),
       R.ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Sposta tra gli Eletti, da solo o in scambio', onclick: () => moveToElectDialog(m, t) }, '→ Eletti…') : null))),
+    teamSkills(t),
     h('div', { class: 'team-access' },
       h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso', width: 84, height: 84, loading: 'lazy' }),
       h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso'), h('div', { class: 'mono access' }, t.accessCode),
@@ -840,6 +848,18 @@ function teamCard(t, editable) {
       editable ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Sciogliere la coppia?', 'I giocatori tornano nella lista senza coppia.', 'DELETE', `/api/m/teams/${t.id}`, undefined, 'Coppia sciolta', true) }, 'Sciogli') : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare l\'accesso?', 'Il vecchio QR e il vecchio codice smettono di funzionare e i dispositivi collegati escono.', 'POST', `/api/m/teams/${t.id}/regen-token`, {}, 'Accesso rigenerato', true) }, 'Rigenera accesso'),
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
+}
+
+// Skill della coppia (scelte prima del via o vinte con i Doni) ed effetti in corso.
+function teamSkills(t) {
+  const sk = R.ms.skills;
+  const list = sk?.byTeam?.[t.id] || [];
+  const effects = (sk?.effects || []).filter((e) => e.teamId === t.id || e.targetTeamId === t.id);
+  if (!list.length && !effects.length) return h('div', { class: 'tiny muted' }, 'Nessuna Skill scelta');
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: 'row-actions' }, list.map((x) => h('span', { class: `chip ${x.kind === 'passive' ? 'chip-ok' : x.kind === 'ultimate' ? 'chip-brass' : ''}`, title: x.source === 'gift' ? 'Vinta con un dono' : 'Scelta prima del via' },
+      `${x.icon} ${x.name}${x.source === 'gift' ? ' ✦' : ''}`, x.readyAt ? h('span', { class: 'mono' }, ` · ${fmtTime(x.readyAt)}`) : null))),
+    effects.map((e) => h('div', { class: 'tiny' }, e.teamId === t.id ? `▶ ${e.name}${e.targetName ? ` su ${e.targetName}` : ''}` : `◀ ${e.name} di ${e.teamName}`, e.until ? ` fino alle ${fmtTime(e.until)}` : '')));
 }
 
 // ---------------------------------------------------------------- SETTORI E ALTARI (anagrafica)
@@ -1119,7 +1139,6 @@ function viewCodes() {
 const FIELD_TABS = ['mappa', 'doniqr', 'squadre', 'altari', 'live'];
 const fieldMap = createMapView({ className: 'regia-map' });
 let fieldData = null;
-let giftTypesDraft = null;
 
 async function loadField(doRender = true) {
   if (!R.gameId) return;
@@ -1905,19 +1924,12 @@ function giftRevealCell(g) {
 function viewGiftsQR() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento dei doni…'); }
-  const types = giftTypesDraft || d.giftTypes;
   const typeSel = h('select', { class: 'input', 'data-keep': 'gq-type' }, d.giftTypes.map((t) => h('option', { value: t.id }, `${t.icon} ${t.name}`)));
   const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1, 'data-keep': 'gq-count' });
   const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai', 'data-keep': 'gq-exp' });
   const squadSel = h('select', { class: 'input', 'data-keep': 'gq-squad' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
   const mode = h('select', { class: 'input', 'data-keep': 'gq-mode' }, h('option', { value: 'manual' }, 'Lo annuncio io (ora, tra X minuti o a un orario)'), h('option', { value: 'onplace' }, 'Appena viene piazzato'));
 
-  const typeRow = (t, i) => h('div', { class: 'gt-row' },
-    h('input', { class: 'input input-sm gt-icon', value: t.icon, maxlength: 2, 'aria-label': 'Icona', oninput: (e) => { types[i].icon = e.target.value; } }),
-    h('input', { class: 'input input-sm', value: t.name, 'aria-label': 'Nome', oninput: (e) => { types[i].name = e.target.value; } }),
-    h('input', { class: 'gt-color', type: 'color', value: t.color, 'aria-label': 'Colore', oninput: (e) => { types[i].color = e.target.value; } }),
-    h('textarea', { class: 'input input-sm gt-desc', rows: 2, value: t.description, 'aria-label': 'Effetto', oninput: (e) => { types[i].description = e.target.value; } }),
-    h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { types.splice(i, 1); render(); } }, '✕'));
 
   const live = d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
   const gone = d.gifts.filter((g) => ['claimed', 'expired'].includes(g.status));
@@ -1964,13 +1976,8 @@ function viewGiftsQR() {
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea')),
         h('p', { class: 'tiny muted' }, 'Per indicare il punto esatto sulla mappa usa "Assegna a una squadra" sul dono creato.')),
       section('Tipi di dono',
-        h('p', { class: 'muted tiny' }, 'Icona, nome, colore in mappa ed effetto (lo legge la coppia quando prende il dono). Le modifiche valgono per i doni creati dopo.'),
-        h('div', { class: 'gt-list' }, types.map(typeRow)),
-        h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { giftTypesDraft = [...types, { icon: '✦', name: 'Nuovo dono', color: '#d1ad62', description: '' }]; render(); } }, '+ Tipo'),
-          h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: async () => {
-            try { await api('PUT', '/api/m/gift-types', { types }); giftTypesDraft = null; toast('Tipi di dono salvati', 'ok'); loadField(); } catch (err) { toast(err.message, 'error', 6000); }
-          } }, 'Salva tipi')))),
+        h('p', { class: 'muted tiny' }, 'Ogni dono ha il suo effetto, applicato dall\'app quando la coppia lo usa (una volta sola).'),
+        h('ul', { class: 'gift-types' }, d.giftTypes.map((t) => h('li', null, h('strong', { style: { color: t.color } }, `${t.icon} ${t.name}`), h('div', { class: 'tiny muted' }, t.description)))))),
     sectionActions(`Doni in gioco (${live.length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
       live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco.')),
     gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null);
@@ -2402,6 +2409,8 @@ function gameForm(g, isNew) {
   f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
   f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
   f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
+  f('maxActiveSkills', 'Skill attive o Ultimate per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+  f('maxPassiveSkills', 'Skill passive per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
   h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, isNew ? 'Crea partita' : 'Salva parametri'),
     locked ? h('span', { class: 'tiny muted' }, 'Tempi e Sigilli non sono più modificabili dopo il via.') : null));
 }

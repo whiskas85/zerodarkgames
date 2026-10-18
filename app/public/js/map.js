@@ -50,6 +50,7 @@ export function createMapView({ className = '' } = {}) {
   el.className = `zdg-map ${className}`;
   const markers = new Map();
   const lines = new Map();
+  const circles = new Map();
   let map = null;
   let L = null;
   let fitted = false;
@@ -115,6 +116,21 @@ export function createMapView({ className = '' } = {}) {
       }
       for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
       if (!fitted && keep.size) { view.fit(); fitted = true; } else if (changed) autoFit();
+    },
+    // Aree circolari (posizioni sfocate, presagi): [{ key, lat, lng, radius, color, title }]
+    setCircles(list) {
+      if (!map) return;
+      const keep = new Set();
+      for (const c of list) {
+        keep.add(c.key);
+        let ci = circles.get(c.key);
+        if (!ci) {
+          ci = L.circle([c.lat, c.lng], { radius: c.radius, color: c.color || '#d1ad62', weight: 2, fillOpacity: 0.18, dashArray: '6 6' }).addTo(map);
+          if (c.title) ci.bindTooltip(c.title, { sticky: true });
+          circles.set(c.key, ci);
+        } else { ci.setLatLng([c.lat, c.lng]); ci.setRadius(c.radius); }
+      }
+      for (const [k, ci] of circles) if (!keep.has(k)) { ci.remove(); circles.delete(k); }
     },
     // Linee tratteggiate (es. tra coppie alleate): [{ key, points: [[lat, lng], …], color, title }]
     setLines(list) {

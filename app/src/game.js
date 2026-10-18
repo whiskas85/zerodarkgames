@@ -99,12 +99,12 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
-const LOCKED_AFTER_START = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength']);
+const LOCKED_AFTER_START = new Set(['maxActiveSkills', 'maxPassiveSkills', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength']);
 
 function createGame(data, actor) {
   if (!data.name?.trim()) throw err(400, 'Il nome della partita è obbligatorio');
@@ -985,6 +985,7 @@ function restartGame(g, actor) {
     // Doni: tornano piazzati (non ancora comparsi) o da piazzare.
     q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
            claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
+    require('./skills').resetGame(g.id);
     setStatus(g, 'ready', { startedAt: null, totalPausedMs: 0, pausedAt: null, pausedFrom: null, endedAt: null });
   });
   log(g.id, actor, 'game_restarted');
@@ -1302,9 +1303,10 @@ function fragmentOut(f, p, source, acquiredAt) {
 
 // Una scansione vale altarScanMin minuti (0 = senza limite); poi l'Altare va riscansionato.
 const scanWindowMs = (g) => (g.altarScanMin > 0 ? g.altarScanMin * 60000 : null);
-function scanExpiresAt(g, visitedAt) {
+function scanExpiresAt(g, visitedAt, team = null) {
   const w = scanWindowMs(g);
-  return w && visitedAt ? visitedAt + w : null;
+  // Memoria del Nodo (Skill passiva): la scansione vale il doppio.
+  return w && visitedAt ? visitedAt + w * require('./skills').scanFactor(team) : null;
 }
 
 // Fa fede l'ora in cui il QR è stato inquadrato (anche se arriva dopo dalla coda offline), mai nel futuro né troppo vecchia.
@@ -1329,7 +1331,7 @@ function visitPoint(team, qrToken, at) {
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
   const owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
   return {
-    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt),
+    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt, team),
     unlocked: !!owned, fragment: owned ? fragmentOut(f, p, owned.source, owned.acquiredAt) : null,
   };
 }
@@ -1345,7 +1347,7 @@ function unlock(team, qrToken, code) {
   if (owned) return { ok: true, already: true, label: p.label, fragment: fragmentOut(f, p, owned.source, owned.acquiredAt) };
   // Serve una scansione ancora valida dell'Altare.
   const v = q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id);
-  const exp = v ? scanExpiresAt(g, v.visitedAt) : null;
+  const exp = v ? scanExpiresAt(g, v.visitedAt, team) : null;
   if (!v) return { ok: false, label: p.label, expired: true, message: 'Prima inquadrate il QR dell\'Altare con l\'app' };
   if (exp && exp < Date.now()) {
     log(g.id, `coppia:${team.id}`, 'unlock_scan_expired', { teamId: team.id, point: p.label });
@@ -1360,6 +1362,7 @@ function unlock(team, qrToken, code) {
   const now = Date.now();
   q.run("INSERT INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'unlocked', ?)", team.id, f.id, now);
   log(g.id, `coppia:${team.id}`, 'unlock', { teamId: team.id, point: p.label });
+  require('./skills').onAltarUnlocked(team, p);
   rt.toTeams(g.id, 'state', {}, team.id);
   return { ok: true, label: p.label, fragment: fragmentOut(f, p, 'unlocked', now) };
 }
@@ -1794,29 +1797,32 @@ function teamStateCore(team, player = null) {
   const pointBySector = Object.fromEntries(points.map((p) => [p.sectorId, p]));
   const visitRows = Object.fromEntries(q.all('SELECT pointId, visitedAt FROM team_visits WHERE teamId = ?', team.id).map((v) => [v.pointId, v.visitedAt]));
   const visits = new Set(Object.keys(visitRows).map(Number));
-  const scanValid = (pid) => { const e = scanExpiresAt(g, visitRows[pid]); return !e || e >= Date.now(); };
+  const scanValid = (pid) => { const e = scanExpiresAt(g, visitRows[pid], team); return !e || e >= Date.now(); };
   const board = teamFragmentsBoard(team);
   const ownedPoints = new Set(board.filter((f) => f.source).map((f) => f.pointId));
 
   // Taccuino: un Sigillo per ogni Altare in gioco, anche di quelli senza coppia (questi solo dal via).
   const coupleSectors = new Set(gameTeams.map((t) => t.sectorId));
+  const guarded = require('./skills').protectedSeals(team);
   const notebook = (C.PRE_START.includes(g.status) ? [...coupleSectors] : gameSectorIds(g.id)).map((sid) => ({ sectorId: sid })).map((t) => {
     const sec = sectorById(t.sectorId);
     const p = pointBySector[t.sectorId];
     let entry = { sectorId: sec.id, sectorName: sec.name, roman: sec.roman, code: null, source: null };
     if (t.sectorId === team.sectorId && own) entry = { ...entry, code: own.code, source: 'own' };
     else if (revealed[t.sectorId]) entry = { ...entry, code: revealed[t.sectorId].code, source: 'revealed', at: revealed[t.sectorId].firedAt };
-    else if (lastNote[t.sectorId]?.correct) entry = { ...entry, code: lastNote[t.sectorId].code, source: ['won', 'alliance'].includes(lastNote[t.sectorId].source) ? lastNote[t.sectorId].source : 'note', at: lastNote[t.sectorId].addedAt };
+    else if (lastNote[t.sectorId]?.correct) entry = { ...entry, code: lastNote[t.sectorId].code, source: ['won', 'alliance', 'stolen', 'archive'].includes(lastNote[t.sectorId].source) ? lastNote[t.sectorId].source : 'note', at: lastNote[t.sectorId].addedAt };
     else if (lastNote[t.sectorId]) entry = { ...entry, wrongAttempt: lastNote[t.sectorId].code };
     entry.visitedToken = p && visits.has(p.id) && scanValid(p.id) ? p.qrToken : null;
     entry.unlocked = p ? ownedPoints.has(p.id) : false;
     if (!coupleSectors.has(t.sectorId)) entry.free = true;
+    // Custode di un'altra coppia: il Sigillo resta coperto fino allo scadere (il proprio si legge sempre).
+    if (guarded[t.sectorId] && entry.code && entry.source !== 'own') entry = { ...entry, code: null, guardedUntil: guarded[t.sectorId] };
     return entry;
   });
 
   const visited = points.filter((p) => visits.has(p.id)).map((p) => ({
-    qrToken: p.qrToken, label: p.label, sectorId: p.sectorId, sectorName: sectorById(p.sectorId).name, unlocked: ownedPoints.has(p.id),
-    visitedAt: visitRows[p.id], expiresAt: scanExpiresAt(g, visitRows[p.id]),
+    pointId: p.id, qrToken: p.qrToken, label: p.label, sectorId: p.sectorId, sectorName: sectorById(p.sectorId).name, unlocked: ownedPoints.has(p.id),
+    visitedAt: visitRows[p.id], expiresAt: scanExpiresAt(g, visitRows[p.id], team),
   }));
 
   return {
@@ -1959,6 +1965,7 @@ function masterState(gameId) {
       .map((p) => ({ ...p, sectorName: sectorById(p.sectorId).name, roman: sectorById(p.sectorId).roman, sectorOrd: sectorById(p.sectorId).ord, free: !coupleSectors.has(p.sectorId) }))
       .sort((a, b) => a.sectorOrd - b.sectorOrd),
     landmarks: landmarksOf(g.id),
+    skills: require('./skills').masterSkills(g.id),
     supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
     announcements: q.all('SELECT * FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 100', g.id),
     messages: q.all('SELECT * FROM messages WHERE gameId = ? ORDER BY id', g.id),
@@ -1990,7 +1997,7 @@ function boardState(gameId) {
 }
 
 module.exports = {
-  landmarksOf,
+  landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,

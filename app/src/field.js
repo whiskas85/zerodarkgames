@@ -2,7 +2,7 @@
 // Campo: piazzamento di Altari e Doni (foto + coordinate dal telefono di Eletti o Master), doni QR e mappe.
 const fs = require('fs');
 const path = require('path');
-const { q, tx, DATA_DIR, getSetting, setSetting } = require('./db');
+const { q, tx, DATA_DIR } = require('./db');
 const C = require('./constants');
 const { buildKmz } = require('./kmz');
 const G = require('./game');
@@ -15,33 +15,10 @@ const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'we
 
 // ---------------------------------------------------------------- catalogo dei tipi di dono
 
-const DEFAULT_GIFT_TYPES = [
-  { id: 'riscatto', name: 'Riscatto', icon: '↺', color: '#6fbf73', description: 'Cancella un ingaggio perso: invece del Sigillo mostrate questo dono. Vale una volta.' },
-  { id: 'spacca', name: 'Spacca alleanze', icon: '⚡', color: '#e0603f', description: 'Mostratelo a due coppie alleate: la loro alleanza è sciolta e non possono riallearsi per 15 minuti.' },
-  { id: 'tregua', name: 'Tregua', icon: '⛨', color: '#5aa0e0', description: 'Per 5 minuti nessuno può ingaggiarvi: mostratelo a chi vi attacca e fate partire il timer.' },
-  { id: 'occhio', name: 'Occhio del Consiglio', icon: '◉', color: '#d1ad62', description: 'Scrivete alla regia: il Consiglio vi darà un indizio sulla posizione di un Altare a vostra scelta.' },
-];
-
+// Tipi di dono: il catalogo fisso dei Doni con effetto (skills.js). Quelli non ancora disponibili non si creano.
 function giftTypes() {
-  const raw = getSetting('giftTypes');
-  return raw ? JSON.parse(raw) : DEFAULT_GIFT_TYPES;
-}
-
-function saveGiftTypes(list, actor) {
-  if (!Array.isArray(list) || !list.length) throw err(400, 'Serve almeno un tipo di dono');
-  const seen = new Set();
-  const clean = list.map((t, i) => {
-    const name = String(t.name || '').trim().slice(0, 40);
-    if (!name) throw err(400, 'Ogni tipo di dono deve avere un nome');
-    let id = String(t.id || '').trim() || name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `dono-${i + 1}`;
-    while (seen.has(id)) id += '-x';
-    seen.add(id);
-    const color = /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : '#d1ad62';
-    return { id, name, icon: String(t.icon || '✦').trim().slice(0, 2) || '✦', color, description: String(t.description || '').trim().slice(0, 300) };
-  });
-  setSetting('giftTypes', JSON.stringify(clean));
-  G.log(null, actor, 'gift_types_saved', { count: clean.length });
-  return clean;
+  return require('./skills').GIFTS.filter((t) => !t.phase || t.phase <= 1)
+    .map((t) => ({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description }));
 }
 
 // ---------------------------------------------------------------- doni
@@ -196,7 +173,8 @@ function revealGift(id, actor) {
   if (g.status !== 'placed') throw err(409, g.status === 'revealed' ? 'Il dono è già comparso' : g.status === 'expired' ? 'Il dono è svanito' : 'Dono già preso');
   q.run("UPDATE gifts SET status = 'revealed', revealedAt = ?, revealElapsedMs = ? WHERE id = ?", Date.now(), G.clockOf(G.getGame(g.gameId)).elapsedMs, g.id);
   G.log(g.gameId, actor, 'gift_revealed', { label: g.label, type: g.name });
-  G.announce(g.gameId, 'gift', {}, { giftId: g.id });
+  // Presagio del Dono: se una coppia ha la passiva, l'annuncio a tutti arriva 5 minuti dopo.
+  if (!require('./skills').onGiftRevealed(g)) G.announce(g.gameId, 'gift', {}, { giftId: g.id });
   rt.toTeams(g.gameId, 'state', {});
   rt.toStaff(g.gameId, 'gifts');
 }
@@ -760,14 +738,14 @@ function teamMap(team) {
                    WHERE p.gameId = ? AND p.lat IS NOT NULL ORDER BY s.ord`, team.gameId)
       .map((p) => ({ ...p, mine: p.sectorId === team.sectorId })),
     landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId),
-    gifts: q.all("SELECT id, label, lat, lng, revealedAt, expiresAfterMin, revealElapsedMs FROM gifts WHERE gameId = ? AND status = 'revealed' AND lat IS NOT NULL", team.gameId)
+    gifts: q.all("SELECT id, label, lat, lng, revealedAt, expiresAfterMin, revealElapsedMs FROM gifts WHERE gameId = ? AND status = 'revealed' AND lat IS NOT NULL AND (publicAt IS NULL OR publicAt <= ? OR ? = 'elect')", team.gameId, Date.now(), team.kind)
       .map((g) => ({ id: g.id, label: g.label, lat: g.lat, lng: g.lng, revealedAt: g.revealedAt, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null })),
   };
 }
 
 function teamGifts(team) {
   return q.all('SELECT * FROM gifts WHERE claimedByTeamId = ? ORDER BY claimedAt DESC', team.id)
-    .map((g) => ({ id: g.id, label: g.label, name: g.name, icon: g.icon, color: g.color, description: g.description, claimedAt: g.claimedAt, usedAt: g.usedAt }));
+    .map((g) => ({ id: g.id, label: g.label, typeId: g.typeId, name: g.name, icon: g.icon, color: g.color, description: g.description, claimedAt: g.claimedAt, usedAt: g.usedAt }));
 }
 
 // ---------------------------------------------------------------- azioni delle coppie
@@ -796,10 +774,13 @@ function claimGift(team, token) {
   return { ok: true, gift: teamGifts(team).find((x) => x.id === g.id) };
 }
 
-function useGift(team, giftId) {
+function useGift(team, giftId, params = {}) {
   const g = q.get('SELECT * FROM gifts WHERE id = ? AND claimedByTeamId = ?', Number(giftId), team.id);
   if (!g) throw err(404, 'Dono non trovato tra i vostri');
   if (g.usedAt) return { ok: true, already: true };
+  // Doni con effetto: lo applica il server. Gli altri (tipi vecchi) si segnano solo come usati.
+  const r = require('./skills').useGift(team, g, params);
+  if (r) return r;
   q.run('UPDATE gifts SET usedAt = ? WHERE id = ?', Date.now(), g.id);
   G.log(team.gameId, `coppia:${team.id}`, 'gift_used', { teamId: team.id, label: g.label, type: g.name });
   rt.toStaff(team.gameId, 'gifts');
@@ -808,6 +789,6 @@ function useGift(team, giftId) {
 
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
-  giftTypes, saveGiftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
+  giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
   createPoi, updatePoi, deletePoi, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

@@ -262,6 +262,26 @@ for (const t of ['points', 'gifts', 'landmarks']) addColumn(t, 'provisional', 'I
 addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
 // Codice di uscita della Soglia: il QR che le coppie inquadrano per esfiltrare con la Parola intera.
 addColumn('landmarks', 'exitToken', 'TEXT');
+// Skill delle coppie (scelte prima del via o vinte con i Doni) ed effetti in corso di Skill e Doni.
+db.exec(`
+CREATE TABLE IF NOT EXISTS team_skills (
+  id INTEGER PRIMARY KEY, teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  skillId TEXT NOT NULL, source TEXT NOT NULL, addedAt INTEGER NOT NULL, readyAt INTEGER, UNIQUE (teamId, skillId)
+);
+CREATE TABLE IF NOT EXISTS skill_effects (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, kind TEXT NOT NULL, code TEXT NOT NULL,
+  targetTeamId INTEGER, targetSectorId INTEGER, targetPointId INTEGER,
+  startedAt INTEGER NOT NULL, endsAt INTEGER, endedAt INTEGER, notifyAt INTEGER, notifiedAt INTEGER, data TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_effects_game ON skill_effects(gameId, endedAt);
+`);
+addColumn('games', 'maxActiveSkills', 'INTEGER NOT NULL DEFAULT 1');
+addColumn('games', 'maxPassiveSkills', 'INTEGER NOT NULL DEFAULT 1');
+// Presagio del Dono: chi ha la passiva vede subito un cerchio attorno al dono, gli altri lo vedono 5 minuti dopo.
+addColumn('gifts', 'publicAt', 'INTEGER');
+addColumn('gifts', 'hintLat', 'REAL');
+addColumn('gifts', 'hintLng', 'REAL');
 // Posti per l'iscrizione: coppie (vuoto = una per Settore) e temerari solitari (vuoto = senza limite a parte).
 addColumn('games', 'maxCouples', 'INTEGER');
 addColumn('games', 'maxSingles', 'INTEGER');

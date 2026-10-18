@@ -11,6 +11,7 @@ const print = require('./print');
 const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
+const S = require('./skills');
 const O = require('./ops');
 const St = require('./staff');
 
@@ -344,6 +345,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team);
+  st.skills = S.skillsState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
@@ -391,7 +393,10 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
 }));
 app.post('/api/team/exit', needTeam, teamRateLimit, wrap((req) => G.exfiltrate(req.team, req.body.token)));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
-app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));
+app.post('/api/team/gift/:id/use', needTeam, teamRateLimit, wrap((req) => F.useGift(req.team, req.params.id, req.body || {})));
+// Skill: scelta prima del via (tutta la coppia), uso a partita in corso.
+app.post('/api/team/skill/:id/choose', needTeam, wrap((req) => S.chooseSkill(req.team, req.params.id, req.body.on !== false)));
+app.post('/api/team/skill/:id/use', needTeam, teamRateLimit, wrap((req) => S.useSkill(req.team, req.params.id, req.body || {})));
 app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));
 app.post('/api/team/unlock', needTeam, teamRateLimit, wrap((req) => G.unlock(req.team, req.body.qrToken, req.body.code)));
 app.post('/api/team/fragment', needTeam, teamRateLimit, wrap((req) => G.addManualFragment(req.team, req.body.text)));
@@ -638,7 +643,6 @@ m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {
 m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));
 m.delete('/tasks/:tid', wrap((req) => { F.deleteTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.get('/gift-types', (_req, res) => res.json(F.giftTypes()));
-m.put('/gift-types', wrap((req) => F.saveGiftTypes(req.body.types, actor(req))));
 m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || {}, actor(req))));
 m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/gifts/:gid', wrap((req) => { F.deleteGift(req.params.gid, actor(req)); return { ok: true }; }));
@@ -771,6 +775,7 @@ rt.initPush();
 setInterval(G.tickAll, 1000).unref();
 setInterval(F.tickAll, 2000).unref();
 setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }, 20000).unref();
+setInterval(() => { try { S.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

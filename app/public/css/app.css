@@ -447,3 +447,20 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .campo-item.poi-item { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 6px 10px; }
 .poi-item .campo-thumb { width: 40px; height: 40px; font-size: 18px; }
 .poi-item .row-actions { grid-column: 1 / -1; }
+
+/* Skill e Doni con effetto */
+.skill-count { display: flex; flex-wrap: wrap; gap: 8px; }
+.skill-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 12px; background: var(--paper); border: 2px solid var(--line); border-left: 6px solid var(--line); }
+.skill-card.skill-active { border-left-color: var(--blood); }
+.skill-card.skill-ultimate { border-left-color: var(--brass); }
+.skill-card.skill-passive { border-left-color: var(--ok); }
+.skill-card.is-soon { opacity: .55; }
+.skill-ico { font-size: 30px; line-height: 44px; text-align: center; }
+.skill-body { display: grid; gap: 6px; min-width: 0; }
+.skill-body p { margin: 0; }
+.skill-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pick-list { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.pick-item { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 12px; border: 2px solid var(--line); background: var(--paper); cursor: pointer; }
+.pick-item:has(input:checked) { border-color: var(--brass); background: var(--paper-2); }
+.pick-item input { width: 20px; height: 20px; margin: 2px 0 0; }
+.pick-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }

@@ -1,7 +1,7 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { createField } from './field-ui.js';
-import { h, mount, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
+import { h, mount, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -183,6 +183,8 @@ function connect() {
     open: () => { S.connected = true; S.online = true; refresh(); flushQueue(); },
     error: () => { S.connected = false; render(); },
     state: () => refresh(),
+    // Allarme di Prossimità (Skill passiva): solo una vibrazione e un avviso, senza chi né dove.
+    proximity: () => { vibrate([80]); toast('Presenza rilevata nelle vicinanze', 'info', 6000); },
     announcement: (a) => {
       vibrate([220, 100, 220, 100, 220]);
       beep();
@@ -386,8 +388,8 @@ function render() {
   if (S.auth === 'none') return mount($app, viewLogin());
   if (S.auth === 'account') return mount($app, viewNoEnrollment());
   let { view, arg, query } = route();
-  if (isElect() && ['uscita', 'sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
-  if (isLobby() && ['uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
+  if (isElect() && ['skill', 'uscita', 'sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
+  if (isLobby() && ['skill', 'uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
   if (isElect() && ['scontri', 'alleanze'].includes(view)) view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
   if (view === 'mappa' && !isElect()) startMapGps(); else stopMapGps();
@@ -398,7 +400,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -732,12 +734,14 @@ function viewHome() {
       h('div', { class: 'progress-head' }, h('span', { class: 'eyebrow' }, 'La Parola'), h('strong', { class: 'mono' }, `Frammenti: ${owned} / ${total || '?'}`)),
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
     owned && owned === total ? wonBanner() : null,
+    privilegeCard(st),
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     h('nav', { class: 'grid' },
       h('button', { class: 'tile tile-scan', type: 'button', onclick: openScanner }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
       tile('#/mappa', 'Mappa', '⛰', (st.map?.gifts.length || null), st.map?.gifts.length),
       tile('#/altari', 'Altari visitati', '⛬', allVisited().length || null),
+      tile('#/skill', 'Skill', '✧', skillBadge(st), st.skills?.canChoose && skillBadge(st)),
       tile('#/doni', 'I vostri doni', '✦', (st.gifts || []).filter((g) => !g.usedAt).length || null),
       tile('#/alleanze', 'Alleanze', '⚑', alliancePending(st) || null, alliancePending(st)),
       tile('#/scontri', 'Scontri', '⚔', fightPending(st) || null, fightPending(st)),
@@ -1050,7 +1054,12 @@ function viewMap(focus = null) {
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
+    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: 'team', lat: x.lat, lng: x.lng, color: x.color, title: `${x.roman} ${x.sectorName}`, popup: `<strong>${x.roman} ${x.sectorName}</strong><br>${x.source} · posizione delle ${fmtTime(x.at)}` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
+  ]);
+  teamMapView.setCircles([
+    ...(S.state?.skills?.sightings || []).filter((x) => x.radius != null).map((x) => ({ key: `s${x.key}`, lat: x.lat, lng: x.lng, radius: x.radius, color: x.color || '#ff4fa3', title: `${x.roman} ${x.sectorName} · ${x.source} (area di 100 m)` })),
+    ...(S.state?.skills?.giftHints || []).map((x) => ({ key: `h${x.id}`, lat: x.lat, lng: x.lng, radius: x.radius, color: '#d1ad62', title: 'Presagio del Dono: il dono è qui dentro' })),
   ]);
   if (myPos) teamMapView.setMe(myPos);
   teamMapView.refresh();
@@ -1060,6 +1069,7 @@ function viewMap(focus = null) {
   if (focus !== 'soglia') S.focusedSoglia = null;
   return h('div', { class: 'stack map-page' },
     h('h2', null, 'Mappa'),
+    sightingsNote(),
     canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,
     focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera e, senza alleati, leggete il codice di uscita appeso lì.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
     h('p', { class: 'mono small', id: 'map-gps' }, myPos ? gpsLine(myPos) : gpsMsg || 'Ricerca della posizione…'),
@@ -1150,15 +1160,202 @@ function viewMyGifts() {
   const list = S.state?.gifts || [];
   return h('div', { class: 'stack' },
     h('h2', null, 'I vostri doni'),
-    h('p', { class: 'muted small' }, 'Doni presi scansionando i loro QR nel bosco. Mostrate la carta quando lo usate, poi segnatelo come usato.'),
+    h('p', { class: 'muted small' }, 'Doni presi scansionando i loro QR nel bosco (o ricevuti con una Skill). Ognuno si usa una volta sola: l\'effetto parte appena lo usate.'),
     list.length ? list.map((g) => h('div', { class: 'stack-sm' }, giftCard(g),
-      g.usedAt ? h('p', { class: 'muted small' }, `Usato alle ${fmtTime(g.usedAt)}`) : h('div', { class: 'row' },
+      g.usedAt ? h('p', { class: 'muted small' }, `Usato alle ${fmtTime(g.usedAt)}`) : giftType(g) ? h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', disabled: !ACTIVE.includes(S.state?.clock.status), onclick: () => useGiftFlow(g) }, 'Usa il dono')) : h('div', { class: 'row' },
         h('button', { class: 'btn btn-primary', onclick: () => showGift(g) }, 'Mostra'),
         h('button', { class: 'btn', onclick: async () => {
           if (!(await dialog({ title: `Usare ${g.name}?`, text: 'Il dono verrà segnato come usato.', okLabel: 'Usato' }))) return;
           try { await api('POST', `/api/team/gift/${g.id}/use`); toast('Dono segnato come usato', 'ok'); refresh(); } catch (e) { toast(e.message, 'error'); }
         } }, 'Segna come usato'))))
       : h('p', { class: 'empty' }, 'Nessun dono, per ora. Guardate la mappa: quando ne compare uno, correte.'));
+}
+
+// ---------------------------------------------------------------- Skill e Doni con effetto
+
+const SKILL_KIND = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
+const giftType = (g) => (S.state?.skills?.giftCatalog || []).find((t) => t.id === g.typeId && t.available);
+
+function skillBadge(st) {
+  const sk = st.skills;
+  if (!sk) return null;
+  if (sk.canChoose) {
+    const chosen = sk.mine.filter((s) => s.source === 'chosen');
+    const missing = Math.max(0, sk.limits.active - chosen.filter((s) => s.kind !== 'passive').length) + Math.max(0, sk.limits.passive - chosen.filter((s) => s.kind === 'passive').length);
+    return missing || null;
+  }
+  return sk.mine.filter((s) => s.kind !== 'passive' && !s.auto && !s.readyAt && !s.active).length || null;
+}
+
+function privilegeCard(st) {
+  const sp = st.skills?.supply;
+  if (!sp) return null;
+  return [
+    ...sp.early.map((x) => h('a', { class: 'supply-card', href: '#/skill' }, h('span', { class: 'eyebrow' }, 'Privilegio del Cuore'), h('strong', null, 'Armamenti già aperti per voi'), h('span', { class: 'small' }, 'Per gli altri aprono tra ', h('span', { class: 'mono', 'data-abs': x.opensAt }, '—')))),
+    ...sp.late.map((x) => h('a', { class: 'supply-card', href: '#/skill' }, h('span', { class: 'eyebrow' }, 'Privilegio del Cuore'), h('strong', null, 'Per voi gli armamenti restano aperti ancora ', h('span', { class: 'mono', 'data-abs': x.until }, '—')))),
+  ];
+}
+
+function sightingsNote() {
+  const list = S.state?.skills?.sightings || [];
+  const hints = S.state?.skills?.giftHints || [];
+  if (!list.length && !hints.length) return null;
+  const n = new Set(list.map((x) => x.teamId)).size;
+  const until = Math.max(0, ...list.map((x) => x.until || 0));
+  return h('div', { class: 'note' },
+    list.length ? h('div', null, `Vedete ${n === 1 ? '1 coppia' : `${n} coppie`} (${[...new Set(list.map((x) => x.source))].join(', ')})`, until ? [' ancora ', h('span', { class: 'mono', 'data-abs': until }, '—')] : null) : null,
+    hints.length ? h('div', null, 'Presagio del Dono: il cerchio dorato contiene un dono appena comparso.') : null);
+}
+
+function skillMeta(s) {
+  return [s.cooldownMin ? `ricarica ${s.cooldownMin}′` : null, s.durationMin ? `effetto ${s.durationMin}′` : null, s.auto ? 'automatica' : null].filter(Boolean).join(' · ');
+}
+
+function skillCard(s, ...actions) {
+  const acts = actions.filter(Boolean);
+  return h('div', { class: `skill-card skill-${s.kind} ${s.available === false ? 'is-soon' : ''}` },
+    h('div', { class: 'skill-ico', 'aria-hidden': 'true' }, s.icon),
+    h('div', { class: 'skill-body' },
+      h('div', { class: 'skill-head' }, h('strong', null, s.name), h('span', { class: 'chip' }, SKILL_KIND[s.kind]), s.available === false ? h('span', { class: 'chip chip-warn' }, 'in arrivo') : null),
+      h('p', { class: 'small' }, s.description),
+      skillMeta(s) ? h('div', { class: 'tiny muted mono' }, skillMeta(s)) : null,
+      acts.length ? h('div', { class: 'row-actions' }, ...acts) : null));
+}
+
+function viewSkills() {
+  const st = S.state;
+  const sk = st?.skills;
+  if (!sk) return h('p', { class: 'empty' }, 'Caricamento…');
+  const mineIds = new Set(sk.mine.map((s) => s.id));
+  if (sk.canChoose) {
+    const chosen = sk.mine.filter((s) => s.source === 'chosen');
+    const nAct = chosen.filter((s) => s.kind !== 'passive').length;
+    const nPas = chosen.filter((s) => s.kind === 'passive').length;
+    const toggle = async (s, on) => {
+      try { await api('POST', `/api/team/skill/${s.id}/choose`, { on }); refresh(); } catch (e) { toast(e.offline ? 'Serve la rete per scegliere le Skill' : e.message, 'error', 6000); }
+    };
+    const group = (title, list, full) => [h('h3', null, title), ...list.map((s) => skillCard(s,
+      mineIds.has(s.id) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => toggle(s, false) }, '✓ Scelta · togli')
+        : h('button', { class: 'btn btn-sm', disabled: !s.available || full, onclick: () => toggle(s, true) }, 'Scegli')))];
+    const many = (n, one, more) => (n === 1 ? one : `${n} ${more}`);
+    return h('div', { class: 'stack' },
+      h('h2', null, 'Le vostre Skill'),
+      h('p', { class: 'muted' }, `Scegliete insieme ${many(sk.limits.active, '1 Skill attiva o Ultimate', 'Skill attive o Ultimate')} e ${many(sk.limits.passive, '1 Skill passiva', 'Skill passive')}. I telefoni della coppia vedono e cambiano la stessa scelta, fino al via. Altre Skill si vincono con i Doni.`),
+      h('div', { class: 'skill-count' },
+        h('span', { class: `chip ${nAct >= sk.limits.active ? 'chip-ok' : 'chip-brass'}` }, `Attive/Ultimate ${nAct}/${sk.limits.active}`),
+        h('span', { class: `chip ${nPas >= sk.limits.passive ? 'chip-ok' : 'chip-brass'}` }, `Passive ${nPas}/${sk.limits.passive}`)),
+      group('Skill attive', sk.catalog.filter((s) => s.kind === 'active'), nAct >= sk.limits.active),
+      group('Ultimate · ricarica 90′', sk.catalog.filter((s) => s.kind === 'ultimate'), nAct >= sk.limits.active),
+      group('Passive · sempre attive', sk.catalog.filter((s) => s.kind === 'passive'), nPas >= sk.limits.passive));
+  }
+  const playing = ACTIVE.includes(st.clock.status) && st.team.status === 'active';
+  const left = (until) => h('span', { class: 'mono', 'data-abs': until }, '—');
+  const card = (s) => {
+    if (s.kind === 'passive') return skillCard(s, h('span', { class: 'chip chip-ok' }, 'Sempre attiva'));
+    if (s.auto) return skillCard(s, s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
+    return skillCard(s,
+      s.active && s.activeUntil ? h('span', { class: 'chip chip-blood' }, `In corso${s.targetName ? ` su ${s.targetName}` : ''} · `, left(s.activeUntil)) : null,
+      s.active && !s.activeUntil && s.targetName ? h('span', { class: 'chip chip-blood' }, `In ascolto su ${s.targetName}`) : null,
+      s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt))
+        : h('button', { class: 'btn btn-sm btn-primary', disabled: !playing || s.available === false, onclick: () => useSkillFlow(s) }, `Usa ${s.name}`));
+  };
+  const timed = sk.effects.filter((e) => e.until);
+  const others = sk.catalog.filter((s) => !mineIds.has(s.id));
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Le vostre Skill'),
+    timed.length ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until)))) : null,
+    sk.mine.length ? sk.mine.map(card) : h('p', { class: 'empty' }, 'Nessuna Skill: si scelgono prima del via o si vincono con i Doni.'),
+    sk.results.length ? [h('h3', null, 'Ultimi risultati'), ...sk.results.map(resultCard)] : null,
+    others.length ? h('details', { class: 'card' }, h('summary', null, 'Tutte le altre Skill'), h('div', { class: 'stack-sm' }, others.map((s) => skillCard(s)))) : null);
+}
+
+function resultCard(r) {
+  if (r.code === 'segugio') return h('div', { class: 'card small' }, `🦅 Segugio · ${r.targetName}: ${r.data.point ? `ha conquistato ${r.data.point} alle ${fmtTime(r.at)}` : 'in ascolto'}`);
+  if (r.code === 'intercettazione') return h('div', { class: 'card stack-sm' }, h('strong', null, `📡 Intercettazione · ${r.targetName} (${fmtTime(r.at)})`), sealTypes(r.data.sectors));
+  if (r.code === 'dossier') return h('div', { class: 'card stack-sm' }, h('strong', null, `🕵️ Dossier · ${r.targetName} (${fmtTime(r.at)})`), sealCodes(r.data.codes));
+  return null;
+}
+
+// Intercettazione: solo il tipo (Settore) dei Sigilli, il codice resta sfocato. Dossier e furti: il codice vero.
+const sealTypes = (list) => (list.length
+  ? h('div', { class: 'battle-seals' }, list.map((x) => h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${x.roman} · Settore ${x.sectorName}`), h('div', { class: 'battle-code mono' }, ghost(`int-${x.sectorId}`, S.state.game.codeLength, 'ghost-strong')))))
+  : h('p', { class: 'muted' }, 'Nessun Sigillo.'));
+const sealCodes = (list) => (list.length
+  ? h('div', { class: 'battle-seals' }, list.map((x) => h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${x.roman} · Settore ${x.sectorName}`), h('div', { class: 'battle-code mono' }, x.code))))
+  : h('p', { class: 'muted' }, 'Nessun Sigillo.'));
+
+// Scelta da un elenco (coppia, Altare, Sigillo, Skill) in una finestra.
+function pick(title, options, { text = null, okLabel = 'Conferma' } = {}) {
+  if (!options.length) { toast('Niente da scegliere, per ora', 'error'); return Promise.resolve(null); }
+  let val = null;
+  const list = h('div', { class: 'pick-list' }, options.map((o) => h('label', { class: 'pick-item' },
+    h('input', { type: 'radio', name: 'pick', onchange: () => { val = o.value; } }),
+    h('span', { class: 'pick-text' }, h('strong', null, o.label), o.sub ? h('span', { class: 'tiny muted' }, o.sub) : null))));
+  return modal({ title, body: h('div', { class: 'stack-sm' }, text ? h('p', { class: 'small muted' }, text) : null, list), okLabel,
+    onOk: () => { if (val == null) { toast('Scegliete prima un\'opzione', 'error'); return false; } return { val }; } })
+    .then((r) => (r && typeof r === 'object' ? r.val : null));
+}
+
+const teamOptions = () => (S.state?.combat?.teams || []).map((t) => ({ value: t.teamId, label: `${t.roman} · Settore ${t.sectorName}`, sub: t.allied ? 'alleati' : t.displayName || null }));
+const ownedLabels = () => new Set((S.state?.fragments || []).filter((f) => f.text).map((f) => f.pointLabel));
+const altarOptions = () => (S.state?.map?.points || []).filter((p) => !ownedLabels().has(p.label)).map((p) => ({ value: p.id, label: p.label, sub: `${p.roman} · Settore ${p.sectorName}` }));
+// Altari inquadrati: scaduti (Memoria) o ancora validi (Chiave Maestra). In ordine di nome, non di Sigillo posseduto.
+const visitedOptions = (expired) => (S.state?.visited || []).filter((v) => !v.unlocked && (expired ? v.expiresAt && v.expiresAt < clock.serverNow() : !v.expiresAt || v.expiresAt >= clock.serverNow()))
+  .sort((a, b) => a.label.localeCompare(b.label)).map((v) => ({ value: v.pointId, label: v.label, sub: `Settore ${v.sectorName}` }));
+const sealOptions = () => (S.state?.notebook || []).filter((n) => n.code).map((n) => ({ value: n.sectorId, label: `${n.roman} · Settore ${n.sectorName}`, sub: n.source === 'own' ? 'il vostro' : null }));
+const skillOptions = (list) => list.map((s) => ({ value: s.id, label: `${s.icon} ${s.name}`, sub: `${SKILL_KIND[s.kind]} · ${s.description}` }));
+
+async function askParams(target, name, text) {
+  const sk = S.state.skills;
+  const mine = new Set(sk.mine.map((s) => s.id));
+  const one = async (key, title, options, note) => { const v = await pick(`${name}: ${title}`, options, { text: note }); return v == null ? null : { [key]: v }; };
+  switch (target) {
+    case 'team': return one('teamId', 'scegliete una coppia', teamOptions(), text);
+    case 'altar': return one('pointId', 'scegliete un Altare', altarOptions(), text);
+    case 'expiredAltar': return one('pointId', 'Altare da riaprire', visitedOptions(true), 'Altari già inquadrati con la scansione scaduta.');
+    case 'scannedAltar': return one('pointId', 'Altare da aprire', visitedOptions(false), 'Solo gli Altari appena inquadrati (scansione ancora valida).');
+    case 'seal': return one('sectorId', 'Sigillo da proteggere', sealOptions(), text);
+    case 'newSkill': return one('skillId', 'nuova Skill', skillOptions(sk.catalog.filter((s) => s.available && !mine.has(s.id))), text);
+    case 'cooldownSkill': return one('skillId', 'Skill da ricaricare', skillOptions(sk.mine.filter((s) => s.readyAt)), text);
+    case 'swap': {
+      const from = await pick(`${name}: Skill da sostituire`, skillOptions(sk.mine));
+      if (from == null) return null;
+      const to = await pick(`${name}: nuova Skill`, skillOptions(sk.catalog.filter((s) => s.available && !mine.has(s.id))));
+      return to == null ? null : { fromSkillId: from, skillId: to };
+    }
+    default:
+      return (await dialog({ title: `Usare ${name}?`, text, okLabel: 'Usa' })) ? {} : null;
+  }
+}
+
+async function useSkillFlow(s) {
+  const params = await askParams(s.target, s.name, s.description);
+  if (!params) return;
+  try { showEffectResult(s.name, await api('POST', `/api/team/skill/${s.id}/use`, params)); } catch (e) { toast(e.offline ? 'Serve la rete per usare una Skill' : e.message, 'error', 7000); }
+  refresh();
+}
+
+async function useGiftFlow(g) {
+  const t = giftType(g);
+  const params = await askParams(t.target, t.name, t.description);
+  if (!params) return;
+  try { showEffectResult(t.name, await api('POST', `/api/team/gift/${g.id}/use`, params)); } catch (e) { toast(e.offline ? 'Serve la rete per usare un dono' : e.message, 'error', 7000); }
+  refresh();
+}
+
+function showEffectResult(name, r) {
+  vibrate([60, 40, 60]);
+  let el = null;
+  const close = () => el?.remove();
+  const head = (title) => [h('div', { class: 'eyebrow' }, name), h('h2', { class: 'battle-title' }, title)];
+  if (r.intercept) el = battleOverlay('victory', ...head(r.intercept.sectorName), h('p', { class: 'muted' }, 'Conosce i Sigilli di questi Settori:'), sealTypes(r.intercept.sectors), h('button', { class: 'btn btn-block', onclick: close }, 'Chiudi'));
+  else if (r.dossier) el = battleOverlay('victory', ...head(r.dossier.sectorName), h('p', { class: 'muted' }, 'I Sigilli che conosce:'), sealCodes(r.dossier.codes), h('p', { class: 'small muted' }, 'Annotateli nel taccuino se vi servono.'), h('button', { class: 'btn btn-block', onclick: close }, 'Chiudi'));
+  else if (r.stolen) el = battleOverlay('victory', ...head(`Settore ${r.stolen.sectorName}`), sealCodes([r.stolen]), h('p', { class: 'small muted' }, 'Lo trovate nel taccuino dei Codici.'), h('a', { class: 'btn btn-primary btn-block', href: '#/codici', onclick: close }, 'Vai al taccuino'));
+  else if (r.fragment) el = battleOverlay('victory', ...head(r.fragment.text), h('p', { class: 'muted' }, `Frammento di ${r.fragment.pointLabel}`), h('a', { class: 'btn btn-primary btn-block', href: '#/frammenti', onclick: close }, 'Vai alla Parola'));
+  else if (r.gift) el = battleOverlay('victory', h('div', { class: 'eyebrow' }, name), giftCard({ ...r.gift, label: 'Nuovo dono' }, true), h('a', { class: 'btn btn-primary btn-block', href: '#/doni', onclick: close }, 'I vostri doni'));
+  else if (r.message) toast(r.message, 'ok', 6000);
+  if (r.qrToken) location.hash = `#/altare/${r.qrToken}`;
 }
 
 // A tutto schermo, con l'orologio vivo (come il Sigillo): prova che non è uno screenshot.
@@ -1388,7 +1585,7 @@ function viewNotebook() {
     const res = await act('note', { sectorId: Number(sel.value), code: input.value.trim().toUpperCase() }, `Sigillo ${name}`);
     if (res) input.value = '';
   };
-  const srcLabel = { own: 'vostro', revealed: 'rivelato', note: 'annotato ✓', won: 'vinto', alliance: 'alleato' };
+  const srcLabel = { own: 'vostro', revealed: 'rivelato', note: 'annotato ✓', won: 'vinto', alliance: 'alleato', stolen: 'rubato', archive: 'archivio' };
   return h('div', { class: 'stack' },
     h('h2', null, 'Taccuino dei Sigilli'),
     h('p', { class: 'muted' }, 'Il vostro, quelli traditi dal Consiglio e quelli che vi hanno mostrato. Toccate un Sigillo per aprire il suo Altare.'),
@@ -1399,6 +1596,7 @@ function viewNotebook() {
         h('div', { class: 'nb-main' },
           h('div', { class: 'nb-name' }, n.sectorName),
           n.free && !n.code ? h('div', { class: 'small muted' }, 'Altare senza coppia: il Sigillo arriva solo dal tradimento') : null,
+          n.guardedUntil ? h('div', { class: 'small bad-text' }, '🛡️ Protetto da Custode · ancora ', h('span', { class: 'mono', 'data-abs': n.guardedUntil }, '—')) : null,
           n.wrongAttempt && !n.code ? h('div', { class: 'small bad-text' }, `«${n.wrongAttempt}» non è valido`) : null,
           n.unlocked ? h('div', { class: 'small ok-text' }, 'Altare sbloccato') : go ? h('div', { class: 'small' }, 'Altare visitato: tocca per sbloccare') : null),
         h('div', { class: 'nb-code mono' }, n.code ? h('span', { class: unveilOnce(`code:${n.sectorId}:${n.code}`) }, n.code) : ghost(`nb:${n.sectorId}`, st.game.codeLength)),

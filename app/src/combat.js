@@ -472,4 +472,4 @@ function masterCombat(gameId) {
   };
 }
 
-module.exports = { tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
