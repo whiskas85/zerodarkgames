@@ -626,7 +626,9 @@ function onAltarUnlocked(t, point) {
   const tt = team(t.id);
   for (const e of hounds) {
     q.run('UPDATE skill_effects SET endedAt = ?, data = ? WHERE id = ?', Date.now(), JSON.stringify({ point: point.label }), e.id);
-    rt.pushTeams(t.gameId, { title: 'Segugio', body: `Il Settore ${tt.sectorName} ha appena conquistato ${point.label}.`, tag: `segugio-${e.id}`, url: '/#/skill' }, e.teamId);
+    rt.pushTeams(t.gameId, { title: '🦅 Segugio', body: `Il Settore ${tt.sectorName} ha appena conquistato ${point.label}.`, tag: `segugio-${e.id}`, url: '/#/home' }, e.teamId);
+    // Con l'app aperta: avviso a tutto schermo.
+    rt.toTeams(t.gameId, 'hound', { id: e.id, sectorName: tt.sectorName, roman: tt.roman, point: point.label, at: Date.now() }, e.teamId);
     rt.toTeams(t.gameId, 'state', {}, e.teamId);
   }
 }
@@ -686,6 +688,10 @@ function skillsState(me, now = Date.now()) {
     results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),
     sightings: sightingsFor(me, now),
+    // Segugio: conquiste scoperte negli ultimi 30 minuti (scheda grande in home) e quelli ancora in ascolto.
+    hounds: q.all("SELECT * FROM skill_effects WHERE teamId = ? AND code = 'segugio' AND endedAt IS NOT NULL AND endedAt > ? AND data IS NOT NULL ORDER BY id DESC", me.id, now - 30 * MIN)
+      .map((e) => ({ id: e.id, at: e.endedAt, point: JSON.parse(e.data).point, sectorName: team(e.targetTeamId)?.sectorName, roman: team(e.targetTeamId)?.roman })).filter((x) => x.point),
+    houndWatching: q.all("SELECT targetTeamId FROM skill_effects WHERE teamId = ? AND code = 'segugio' AND endedAt IS NULL", me.id).map((e) => team(e.targetTeamId)?.sectorName).filter(Boolean),
     // Allarme di Prossimità: una coppia non alleata è entro 80 m (finché non si allontana oltre 120 m).
     nearby: hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`)),
     indicators: indicatorsFor(me, now),

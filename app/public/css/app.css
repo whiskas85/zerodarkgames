@@ -514,3 +514,15 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
   color: #fff; font: 900 24px/1 var(--f-display, sans-serif); letter-spacing: .06em; box-shadow: 0 0 0 8px rgba(208, 2, 27, .35), 0 10px 30px rgba(0, 0, 0, .6); cursor: pointer; }
 .sos-big:disabled { opacity: .7; }
 .sos-status { margin: 0; min-height: 1.4em; }
+
+/* Segugio */
+.hound-card { display: grid; grid-template-columns: 48px 1fr; align-items: center; gap: 12px; padding: 14px; text-decoration: none; color: inherit;
+  background: linear-gradient(135deg, rgba(209, 173, 98, .22), rgba(209, 173, 98, .06)); border: 2px solid var(--brass); }
+.hound-card strong { display: block; font-size: 18px; line-height: 1.2; }
+.hound-card.watching { background: var(--paper); border-style: dashed; }
+.hound-card.watching strong { font-size: 15px; }
+.hound-ico { font-size: 36px; line-height: 1; text-align: center; }
+.battle-overlay.hound .hound-ico { font-size: 72px; animation: hound-dive .9s ease-out; }
+.battle-overlay.hound .battle-box { border-color: var(--brass); }
+@keyframes hound-dive { 0% { transform: translateY(-60px) scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .battle-overlay.hound .hound-ico { animation: none; } }

@@ -189,6 +189,8 @@ function connect() {
     state: () => refresh(),
     // Allarme di Prossimità (Skill passiva): solo una vibrazione e un avviso, senza chi né dove.
     proximity: () => { vibrate([80]); toast('Presenza rilevata nelle vicinanze', 'info', 6000); refresh(); },
+    // Segugio: la coppia seguita ha conquistato un Altare. Avviso a tutto schermo.
+    hound: (x) => { showHound(x); refresh(); },
     announcement: (a) => {
       vibrate([220, 100, 220, 100, 220]);
       beep();
@@ -835,6 +837,7 @@ function viewHome() {
       h('div', { class: 'progress-head' }, h('span', { class: 'eyebrow' }, 'La Parola'), h('strong', { class: 'mono' }, `Frammenti: ${owned} / ${total || '?'}`)),
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
     owned && owned === total ? wonBanner() : null,
+    houndCards(st),
     privilegeCard(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
@@ -1363,6 +1366,36 @@ function sightingsNote() {
     list.length ? h('div', null, `Vedete ${n === 1 ? '1 coppia' : `${n} coppie`} (${[...new Set(list.map((x) => x.source))].join(', ')})`, until ? [' ancora ', h('span', { class: 'mono', 'data-abs': until }, '—')] : null) : null,
     hints.length ? h('div', null, 'Presagio del Dono: il cerchio dorato contiene un dono appena comparso.') : null,
     dirty ? dirtyLine(dirty) : null);
+}
+
+// Segugio: avviso a tutto schermo (una volta per conquista) e scheda grande in home per 30 minuti.
+const seenHounds = new Set(store.get('zdg_seen_hounds', []));
+function showHound(x) {
+  if (seenHounds.has(x.id)) return;
+  seenHounds.add(x.id);
+  store.set('zdg_seen_hounds', [...seenHounds].slice(-50));
+  vibrate([200, 80, 200, 80, 400]);
+  beep();
+  const el = battleOverlay('hound',
+    h('div', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
+    h('div', { class: 'eyebrow' }, 'Segugio'),
+    h('h2', { class: 'battle-title' }, `${x.roman ? `${x.roman} · ` : ''}Settore ${x.sectorName}`),
+    h('p', null, `Ha appena conquistato ${x.point}${x.at ? ` alle ${fmtTime(x.at)}` : ''}.`),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Ricevuto'));
+}
+function houndCards(st) {
+  const sk = st.skills;
+  if (!sk) return null;
+  // Arrivata mentre l'app era chiusa: l'avviso grande compare alla prima apertura.
+  for (const x of sk.hounds || []) if (!seenHounds.has(x.id)) setTimeout(() => showHound(x), 400);
+  return [
+    ...(sk.hounds || []).map((x) => h('a', { class: 'hound-card', href: '#/skill' },
+      h('span', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
+      h('span', null, h('span', { class: 'eyebrow' }, `Segugio · ${fmtTime(x.at)}`), h('strong', null, `${x.roman ? `${x.roman} ` : ''}${x.sectorName} ha conquistato ${x.point}`)))),
+    ...(sk.houndWatching || []).map((n) => h('a', { class: 'hound-card watching', href: '#/skill' },
+      h('span', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
+      h('span', null, h('span', { class: 'eyebrow' }, 'Segugio in ascolto'), h('strong', null, `Settore ${n}: vi avvisiamo alla prossima conquista`)))),
+  ];
 }
 
 // Alleanze sporche: la squadra di Eletti in arrivo, poi alleata per 30 minuti.
