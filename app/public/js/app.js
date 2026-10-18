@@ -122,7 +122,9 @@ async function refresh() {
   render();
 }
 
-const seenVictories = new Set(store.get('zdg_seen_victories', []));
+// Le chiavi includono l'istante: dopo un azzeramento della giocata gli id ripartono e non vanno scambiati per già visti.
+const seenVictories = new Set(store.get('zdg_seen_victories2', []));
+const victoryKey = (v) => `${v.id}@${v.resolvedAt}`;
 
 function setState(st, offset) {
   const prev = S.state;
@@ -141,14 +143,14 @@ function setState(st, offset) {
   if (prev?.combat && st.combat) {
     const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`)]);
     const fresh = [...st.combat.incoming.map((r) => [`r${r.id}`, r.kind === 'break' ? `${r.team.sectorName} vuole rompere l'alleanza` : `${r.team.sectorName} vi propone un'alleanza`]),
-      ...st.combat.toConfirm.map((e) => [`e${e.id}`, `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`])].filter(([k]) => !seen.has(k));
+      ...st.combat.toConfirm.map((e) => [`e${e.id}`, (e.result === 'lost' ? `${e.reporter.sectorName} dichiara di aver perso contro di voi: confermate?` : `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`)])].filter(([k]) => !seen.has(k));
     if (fresh.length) { vibrate([200, 100, 200, 100, 400]); beep(); for (const [, t] of fresh) toast(t, 'blood', 9000); }
   }
   // Scontro vinto (anche da un alleato): Vittoria con i Sigilli di tutta la parte sconfitta, una volta per scontro.
-  const victories = (st.combat?.victories || []).filter((v) => !seenVictories.has(v.id));
+  const victories = (st.combat?.victories || []).filter((v) => !seenVictories.has(victoryKey(v)));
   if (victories.length) {
-    for (const v of victories) seenVictories.add(v.id);
-    store.set('zdg_seen_victories', [...seenVictories].slice(-50));
+    for (const v of victories) seenVictories.add(victoryKey(v));
+    store.set('zdg_seen_victories2', [...seenVictories].slice(-50));
     const v = victories[victories.length - 1];
     // Nessun Sigillo nuovo: la Vittoria propone quale rubare.
     const steal = (st.combat.steals || []).find((x) => victories.some((y) => y.id === x.engagementId));
@@ -1377,11 +1379,14 @@ function guardedBox(sectorName, until, compact = false) {
 }
 
 // Segugio: avviso a tutto schermo (una volta per conquista) e scheda grande in home per 30 minuti.
-const seenHounds = new Set(store.get('zdg_seen_hounds', []));
+const seenHounds = new Set(store.get('zdg_seen_hounds2', []));
+const houndKey = (x) => `${x.id}@${x.at}`;
 function showHound(x) {
-  if (seenHounds.has(x.id)) return;
-  seenHounds.add(x.id);
-  store.set('zdg_seen_hounds', [...seenHounds].slice(-50));
+  if (seenHounds.has(houndKey(x))) return;
+  // Non copre una Vittoria o una Sconfitta ancora aperta: aspetta che venga chiusa.
+  if (document.querySelector('.battle-overlay:not(.hound)')) { setTimeout(() => showHound(x), 2000); return; }
+  seenHounds.add(houndKey(x));
+  store.set('zdg_seen_hounds2', [...seenHounds].slice(-50));
   vibrate([200, 80, 200, 80, 400]);
   beep();
   const el = battleOverlay('hound',
@@ -1395,7 +1400,7 @@ function houndCards(st) {
   const sk = st.skills;
   if (!sk) return null;
   // Arrivata mentre l'app era chiusa: l'avviso grande compare alla prima apertura.
-  for (const x of sk.hounds || []) if (!seenHounds.has(x.id)) setTimeout(() => showHound(x), 400);
+  for (const x of sk.hounds || []) if (!seenHounds.has(houndKey(x))) setTimeout(() => showHound(x), 400);
   return [
     ...(sk.hounds || []).map((x) => h('a', { class: 'hound-card', href: '#/skill' },
       h('span', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
@@ -1834,7 +1839,7 @@ function viewNotebook() {
 function saveTimers() { store.set('zdg_timers', S.timers); }
 
 // Timer avviati dal server (Veglia dopo una sconfitta, blocchi dopo pareggi o alleanze rotte): partono da soli.
-const syncedTimers = new Set(store.get('zdg_synced_timers', []));
+const syncedTimers = new Set(store.get('zdg_synced_timers2', []));
 // ---------------------------------------------------------------- esito degli scontri: vittoria e sconfitta
 
 function battleOverlay(cls, ...children) {
@@ -1941,7 +1946,7 @@ function showDefeat(timerUid, reason) {
 
 function syncServerTimers(st) {
   for (const t of st.serverTimers || []) {
-    const key = `srv-${t.id}`;
+    const key = `srv-${t.id}@${t.startedAt}`;
     if (syncedTimers.has(key)) continue;
     syncedTimers.add(key);
     const preset = (st.game.timers || []).find((x) => x.id === t.timerId);
@@ -1952,7 +1957,7 @@ function syncServerTimers(st) {
     if (t.timerId === 'veglia' && /^Sconfitta/.test(t.reason || '')) setTimeout(() => showDefeat(key, t.reason), 300);
     else toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
   }
-  store.set('zdg_synced_timers', [...syncedTimers].slice(-200));
+  store.set('zdg_synced_timers2', [...syncedTimers].slice(-200));
   saveTimers();
 }
 
