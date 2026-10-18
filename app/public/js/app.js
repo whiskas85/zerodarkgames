@@ -1014,10 +1014,11 @@ function viewCombat() {
   const immunita = skillReady('immunita');
   const lostWith = (skill) => {
     if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
-    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Maestria delle armi: lo scontro con ${opp.sectorName} è vostro` : `Sconfitta con Immunità: il vostro Sigillo resterà coperto. In attesa della conferma di ${opp.sectorName}`).then((r) => { if (r) combatOpp = null; });
+    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Perso con Maestria delle armi: quando ${opp.sectorName} conferma, lo scontro è vostro` : `Sconfitta con Immunità: il vostro Sigillo resterà coperto. In attesa della conferma di ${opp.sectorName}`).then((r) => { if (r) combatOpp = null; });
   };
   const outcome = (e) => {
     const vs = other(e).map((x) => x.sectorName).join(', ');
+    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id && e.status === 'pending') return `Perso con Maestria delle armi contro ${vs}: quando confermano, vincete voi`;
     if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id) return `Perso contro ${vs} → vinto con Maestria delle armi`;
     if (e.skill === 'maestria' && e.mine === 'lost') return `Perso contro ${vs}: vittoria ribaltata dalla Maestria delle armi`;
     return `${e.mine === 'draw' ? 'Pareggio con' : e.mine === 'won' ? 'Vinto contro' : 'Perso contro'} ${vs}${e.hidden?.[st.team.id] ? ` · Sigillo coperto (${e.hidden[st.team.id] === 'reliquia' ? 'Reliquia Antica' : 'Immunità'})` : ''}`;
@@ -1038,7 +1039,7 @@ function viewCombat() {
       h('strong', null, `${teamName(e.reporter)} dichiara di aver perso contro di voi`),
       h('p', { class: 'small muted' }, 'Confermando ricevete i Sigilli della parte sconfitta e per loro parte la Veglia. Se non è vero, contestate: decide la regia.'),
       h('div', { class: 'row' },
-        h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }, 'Vittoria confermata') }, 'Confermo, abbiamo vinto'),
+        h('button', { class: 'btn btn-primary', onclick: async () => { const r = await combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }); if (r && !r.flipped) toast('Vittoria confermata', 'ok', 6000); } }, 'Confermo, abbiamo vinto'),
         h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto')))
       : h('div', { class: 'combat-card ask' },
       h('div', { class: 'eyebrow' }, 'Esito da confermare'),
@@ -2006,9 +2007,16 @@ function showDefeat(timerUid, reason) {
     h('h2', { class: 'battle-title' }, 'Sconfitta'),
     // «Sconfitta contro X · Veglia 2 minuti + 2 minuti per la Veglia Forzata del Settore Y»: la durata in chiaro.
     ...(() => {
-      const [who, extra] = String(reason || '').split(' · ');
+      const [head, extra] = String(reason || '').split(' · ');
+      const mastery = head.includes('⚔ Maestria delle armi');
+      const who = head.replace(' ⚔ Maestria delle armi', '');
       const t = S.timers.find((x) => x.uid === timerUid);
       return [
+        // Maestria delle armi dell'avversario: lo scontro che credevate vinto si è ribaltato.
+        mastery ? h('div', { class: 'battle-mastery' },
+          h('span', { class: 'battle-mastery-ico', 'aria-hidden': 'true' }, '⚔️'),
+          h('strong', null, 'Maestria delle armi'),
+          h('p', { class: 'small' }, `${who.replace('Sconfitta contro', 'Il Settore')} ha usato la Maestria delle armi: lo scontro si è ribaltato e la vittoria è sua.`)) : null,
         h('p', { class: 'muted' }, `${who}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
         extra ? h('p', { class: 'battle-forced' }, `⛓️ ${extra}${t?.minutes ? ` — in tutto ${t.minutes} minuti` : ''}.`) : null,
       ];

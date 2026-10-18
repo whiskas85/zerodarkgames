@@ -1237,7 +1237,16 @@ test('Skill negli scontri e nelle alleanze (fase 2): Maestria, Immunità, Reliqu
   const known = (t, s) => G.teamState(t).notebook.find((n) => n.sectorId === s.sectorId)?.code;
   const timer = (t, id) => q.get('SELECT * FROM team_timers WHERE teamId = ? AND timerId = ? ORDER BY id DESC LIMIT 1', t.id, id);
   // Maestria: A dichiara PERSO contro C ma usa la Skill → vince A; C fa la Veglia Forzata (4 minuti).
-  K.reportEngagement(A, Cc.id, 'lost', { skill: 'maestria' });
+  // C vede un normale «perso» da confermare, senza sapere della Maestria; confermando, lo scontro si ribalta.
+  const m = K.reportEngagement(A, Cc.id, 'lost', { skill: 'maestria' });
+  assert.equal(m.status, 'pending');
+  const ask = K.combatState(Cc).toConfirm.find((x) => x.id === m.id);
+  assert.equal(ask.result, 'lost');
+  assert.equal(ask.skill, null);
+  assert.ok(!known(A, Cc));
+  assert.equal(K.respondEngagement(Cc, m.id, true).flipped, true);
+  assert.match(timer(Cc, 'veglia').reason, /Maestria delle armi/);
+  assert.equal(K.combatState(A).victories.find((x) => x.id === m.id).skill, 'maestria');
   assert.equal(known(A, Cc), codeOf(g.id, Cc.sectorId));
   assert.ok(!known(Cc, A));
   assert.equal(timer(Cc, 'veglia').minutes, 4);

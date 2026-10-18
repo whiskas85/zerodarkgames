@@ -361,7 +361,8 @@ function applyEngagement(e, by) {
       }
     }
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
-    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
+    const mastery = e.skill === 'maestria' ? ' ⚔ Maestria delle armi' : '';
+    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${mastery}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
   if (e.result === 'draw') {
@@ -386,14 +387,14 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   const mine = sideOf(me.id);
   if (mine.includes(opp.id)) throw err(409, 'Non si combatte contro un alleato');
   const theirs = sideOf(opp.id);
-  const flip = skill === 'maestria';
-  const winners = result === 'lost' && !flip ? theirs : mine;
-  const losers = result === 'lost' && !flip ? mine : theirs;
-  // "Vinto" va confermato dallo sconfitto, "perso" dal vincitore; il pareggio vale subito (e la Maestria delle armi:
-  // l'esito dichiarato dall'avversario non conta).
-  const status = flip || result === 'draw' ? 'confirmed' : 'pending';
+  const winners = result === 'lost' ? theirs : mine;
+  const losers = result === 'lost' ? mine : theirs;
+  // "Vinto" va confermato dallo sconfitto, "perso" dal vincitore; il pareggio vale subito.
+  // Perso con Maestria delle armi: l'avversario vede un normale «perso» da confermare (crede di aver vinto);
+  // alla conferma lo scontro si ribalta e a lui compare la Sconfitta, con la Maestria ben in vista.
+  const status = result === 'draw' ? 'confirmed' : 'pending';
   const id = Number(q.run('INSERT INTO engagements (gameId, reporterTeamId, opponentTeamId, result, status, winners, losers, createdAt, skill, skillTeamId, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    me.gameId, me.id, opp.id, flip ? 'won' : result, 'pending', JSON.stringify(winners), JSON.stringify(losers), Date.now(), skill, skill ? me.id : null,
+    me.gameId, me.id, opp.id, result, 'pending', JSON.stringify(winners), JSON.stringify(losers), Date.now(), skill, skill ? me.id : null,
     skill === 'immunita' ? JSON.stringify({ [me.id]: 'immunita' }) : null).lastInsertRowid);
   const e = q.get('SELECT * FROM engagements WHERE id = ?', id);
   if (skill) SK().consumeSkill(me, skill, opp.sectorName);
@@ -429,9 +430,12 @@ function respondEngagement(me, engagementId, confirm, opts = {}) {
     }
     SK().consumeSkill(me, skill, team(e.reporterTeamId)?.sectorName);
   }
+  // Chi ha dichiarato «perso» aveva usato la Maestria delle armi: confermando, lo scontro si ribalta.
+  const flipped = confirm && !skill && e.skill === 'maestria' && e.skillTeamId === e.reporterTeamId;
+  if (flipped) q.run("UPDATE engagements SET winners = ?, losers = ?, result = 'won' WHERE id = ?", e.losers, e.winners, e.id);
   if (confirm) {
     applyEngagement(q.get('SELECT * FROM engagements WHERE id = ?', e.id), `coppia:${me.id}`);
-    return { ok: true, status: 'confirmed', skill };
+    return { ok: true, status: 'confirmed', skill, flipped };
   }
   q.run("UPDATE engagements SET status = 'contested', resolvedAt = ? WHERE id = ?", Date.now(), e.id);
   G.log(e.gameId, `coppia:${me.id}`, 'engagement_contested', { by: me.sectorName, reporter: team(e.reporterTeamId).sectorName });
@@ -503,7 +507,9 @@ function engagementOut(e, meId) {
     reporter: teamLite(e.reporterTeamId), opponent: teamLite(e.opponentTeamId),
     winners: winners.map(teamLite), losers: losers.map(teamLite),
     mine: meId ? (e.result === 'draw' ? 'draw' : winners.includes(meId) ? 'won' : losers.includes(meId) ? 'lost' : null) : null,
-    skill: e.skill || null, skillBy: e.skillTeamId ? teamLite(e.skillTeamId) : null,
+    // La Maestria dichiarata con il «perso» resta segreta all'avversario finché non conferma.
+    ...(e.status === 'pending' && e.skill === 'maestria' && meId && !sideOf(e.skillTeamId).includes(meId) ? { skill: null, skillBy: null }
+      : { skill: e.skill || null, skillBy: e.skillTeamId ? teamLite(e.skillTeamId) : null }),
     hidden: JSON.parse(e.hidden || '{}'), poisonBy: e.poisonBy ? teamLite(e.poisonBy) : null,
     // Velenoso si può usare: scontro registrato da poco e parte avversaria in alleanza (lo vede solo chi ha la Skill).
     canPoison: !!(meId && e.status === 'confirmed' && e.result !== 'draw' && !e.poisonBy && Date.now() - (e.resolvedAt || e.createdAt) < VICTORY_SHOW_MS

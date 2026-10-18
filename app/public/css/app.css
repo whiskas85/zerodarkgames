@@ -574,3 +574,10 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 @keyframes heart-glow { 0%, 100% { box-shadow: 0 0 0 rgba(229, 72, 77, 0); } 50% { box-shadow: 0 0 18px rgba(229, 72, 77, .45); } }
 @keyframes heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.18); } 30% { transform: scale(1); } 45% { transform: scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .track-card.heart, .track-card.heart .track-ico { animation: none; } }
+
+/* Sconfitta per Maestria delle armi */
+.battle-mastery { display: grid; justify-items: center; gap: 4px; margin: 6px auto; padding: 14px 16px; max-width: 340px; border: 2px solid var(--brass);
+  background: linear-gradient(135deg, rgba(209, 173, 98, .28), rgba(209, 173, 98, .06)); box-shadow: 0 0 24px rgba(209, 173, 98, .35); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
+.battle-mastery strong { font-family: var(--f-display); font-size: 26px; text-transform: uppercase; color: var(--brass); letter-spacing: .04em; }
+.battle-mastery p { margin: 0; }
+.battle-mastery-ico { font-size: 48px; line-height: 1; filter: drop-shadow(0 0 12px rgba(209, 173, 98, .9)); }
