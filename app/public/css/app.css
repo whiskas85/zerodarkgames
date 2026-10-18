@@ -594,3 +594,13 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
 /* Chiave Maestra dentro l'Altare */
 .btn-key { background: linear-gradient(135deg, #e0b04f, #b07d1f); color: #1a1206; border: 0; font-weight: 800; box-shadow: 0 0 16px rgba(224, 176, 79, .45); }
+/* Alleanza rotta da Velenoso */
+.alliance.poisoned .battle-title { color: #7ee05a; text-shadow: 0 0 24px rgba(126, 224, 90, .6); font-size: clamp(48px, 15vw, 84px); }
+.alliance.poisoned .alliance-ico { color: #7ee05a; filter: drop-shadow(0 0 14px rgba(126, 224, 90, .8)); }
+.alliance.poisoned .battle-burst { background: radial-gradient(circle, rgba(126, 224, 90, .4), rgba(126, 224, 90, 0) 65%); }
+.poison-by { font-size: 18px; }
+.poison-by strong { color: #7ee05a; }
+.alliance.broken:not(.poisoned) .battle-title { color: #e0603f; text-shadow: 0 0 24px rgba(224, 96, 63, .55); font-size: clamp(48px, 15vw, 84px); }
+.alliance.broken:not(.poisoned) .alliance-ico { color: #e0603f; filter: drop-shadow(0 0 14px rgba(224, 96, 63, .8)); transform: rotate(-20deg); }
+.alliance.broken:not(.poisoned) .battle-burst { background: radial-gradient(circle, rgba(224, 96, 63, .35), rgba(224, 96, 63, 0) 65%); }
+.alliance.broken:not(.poisoned) .poison-by strong { color: #e0603f; }

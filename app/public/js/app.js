@@ -1083,7 +1083,7 @@ function viewCombat() {
         h('span', { class: `chip ${e.status === 'confirmed' ? (e.mine === 'won' ? 'chip-ok' : e.mine === 'lost' ? 'chip-blood' : '') : 'chip-brass'}` },
           { pending: 'da confermare', confirmed: 'registrato', contested: 'contestato', cancelled: 'annullato' }[e.status]),
         e.poisonBy ? h('span', { class: 'tiny muted hist-wide' }, `☠️ Alleanza avversaria rotta dal Velenoso del Settore ${e.poisonBy.sectorName}`) : null,
-        e.canPoison && skillReady('velenoso') ? h('div', { class: 'hist-wide' }, holdButton('☠️ Velenoso: rompi la loro alleanza', () => combatCall(`/api/team/engagement/${e.id}/poison`, {}, 'Velenoso: la loro alleanza è rotta'))) : null)))) : null);
+        e.canPoison && skillReady('velenoso') ? h('div', { class: 'hist-wide' }, holdButton('☠️ Velenoso: rompi la loro alleanza', async () => { const r = await combatCall(`/api/team/engagement/${e.id}/poison`, {}); if (r?.broken) showPoisonCast(r.broken); })) : null)))) : null);
 }
 
 // ---------------------------------------------------------------- Posizione condivisa con il Consiglio
@@ -1942,6 +1942,44 @@ function battleSeals(list, prefix) {
   }));
 }
 
+// Alleanza rotta (richiesta accettata, a distanza, Velenoso): la schermata come quella dell'alleanza stretta.
+// Il motivo del blocco dice come: «Alleanza rotta (X) · ex alleati», «… per distanza (X) · …», «… dal Velenoso del Settore X · …».
+function showBroken(timerUid, reason) {
+  vibrate([300, 100, 300, 100, 600]);
+  beep();
+  const [head, allies] = String(reason || '').split(' · ');
+  const poison = /dal Velenoso/.test(head);
+  const far = /per distanza/.test(head);
+  const who = poison ? head.replace('Alleanza rotta dal Velenoso del Settore ', '') : (/\(([^)]+)\)/.exec(head) || [])[1] || '';
+  const me = S.state?.team.sector?.name;
+  const why = poison ? ['Il Settore ', h('strong', null, who), ' ha usato ', h('strong', null, 'Velenoso'), ' e ha rotto la vostra alleanza.']
+    : far ? [who === me ? 'Siete rimasti' : ['Il Settore ', h('strong', null, who), ' è rimasto'], ` per più di 5 minuti a più di 50 m dagli alleati: l'alleanza si è rotta.`]
+    : who === me ? ['Avete lasciato l\'alleanza.'] : ['Il Settore ', h('strong', null, who), ' ha lasciato l\'alleanza.'];
+  const el = battleOverlay(`alliance broken ${poison ? 'poisoned' : ''}`,
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'alliance-ico', 'aria-hidden': 'true' }, poison ? '☠️' : '⚑'),
+    h('div', { class: 'eyebrow' }, poison ? 'Velenoso' : far ? 'Troppo lontani' : 'Fine dell\'alleanza'),
+    h('h2', { class: 'battle-title' }, 'Alleanza rotta'),
+    h('p', { class: 'poison-by' }, ...why),
+    allies ? h('p', { class: 'muted' }, `Non siete più alleati con ${allies}.`) : null,
+    h('p', { class: 'battle-note' }, 'Blocco ingaggio tra voi per'),
+    h('div', { class: 'battle-count mono', 'data-timer': timerUid }, '—'),
+    h('button', { class: 'btn btn-block', type: 'button', onclick: () => el.remove() }, 'Ho capito'));
+  updateClocks();
+}
+
+// Chi usa Velenoso: conferma a tutto schermo dell'alleanza rotta.
+function showPoisonCast(broken) {
+  vibrate([120, 60, 120, 60, 400]);
+  const el = battleOverlay('alliance poisoned',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'alliance-ico', 'aria-hidden': 'true' }, '☠️'),
+    h('div', { class: 'eyebrow' }, 'Velenoso'),
+    h('h2', { class: 'battle-title' }, 'Alleanza rotta'),
+    h('p', null, `Avete rotto l'alleanza di ${broken.join(', ')}. Sanno che è stato il vostro Settore.`),
+    h('button', { class: 'btn btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi'));
+}
+
 function showAlliance(news) {
   vibrate([120, 60, 120, 60, 400]);
   beep();
@@ -2067,6 +2105,7 @@ function syncServerTimers(st) {
     if (endsAt <= Date.now()) continue;
     S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason, minutes: t.minutes || preset.minutes });
     if (t.timerId === 'veglia' && /^Sconfitta/.test(t.reason || '')) setTimeout(() => showDefeat(key, t.reason), 300);
+    else if (t.timerId === 'blocco' && /^Alleanza rotta/.test(t.reason || '')) setTimeout(() => showBroken(key, t.reason), 300);
     else toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
   }
   store.set('zdg_synced_timers2', [...syncedTimers].slice(-200));

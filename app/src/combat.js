@@ -208,7 +208,7 @@ function respondRequest(me, requestId, accept, opts = {}) {
         q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
       }
       // Alleanza rotta: blocco ingaggio tra chi esce e chi resta.
-      for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${from.sectorName})`);
+      for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${from.sectorName}) · ${names(members.filter((x) => x !== id)).join(', ')}`);
     }
   });
   G.log(me.gameId, `coppia:${me.id}`, r.kind === 'join' ? 'alliance_formed' : 'alliance_broken', { teams: names(members), diplomats: names([...diplomats]) });
@@ -238,7 +238,7 @@ function breakForDistance(a, t, meters) {
       q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
       q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
     }
-    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta per distanza (${t.sectorName})`);
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta per distanza (${t.sectorName}) · ${names(members.filter((x) => x !== id)).join(', ')}`);
   });
   G.log(t.gameId, 'sistema', 'alliance_broken_distance', { teams: names(members), settore: t.sectorName, metri: Math.round(meters) });
   notify(members, t.gameId, {
@@ -268,7 +268,7 @@ function breakApart(a, t, ally, meters) {
       q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
       q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
     }
-    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${t.sectorName})`);
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${t.sectorName}) · ${names(members.filter((x) => x !== id)).join(', ')}`);
   });
   G.log(t.gameId, `coppia:${t.id}`, 'alliance_broken', { teams: names(members), lontani: Math.round(meters) });
   notify(members, t.gameId, {
@@ -467,7 +467,8 @@ function poison(me, engagementId) {
     q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
     q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
     q.run('UPDATE engagements SET poisonBy = ? WHERE id = ?', me.id, e.id);
-    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta dal Velenoso del Settore ${me.sectorName}`);
+    // Il motivo porta anche gli ex alleati: il telefono mostra la schermata «Alleanza rotta» con chi l'ha avvelenata.
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta dal Velenoso del Settore ${me.sectorName} · ${names(members.filter((x) => x !== id)).join(', ')}`);
   });
   SK().consumeSkill(me, 'velenoso', names(members).join(', '));
   G.log(me.gameId, `coppia:${me.id}`, 'alliance_poisoned', { by: me.sectorName, teams: names(members) });
