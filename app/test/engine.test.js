@@ -1381,3 +1381,23 @@ test('caccia degli Eletti: il bersaglio lo sa 1 minuto dopo l\'assegnazione', ()
   assert.deepEqual(codes(B), ['caccia']);
   assert.deepEqual(codes(A), []);
 });
+
+test('avanzamento del tempo: ricariche ed effetti delle Skill seguono il tempo di gioco', () => {
+  process.env.ZDG_ENV = 'test';
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.chooseSkill(A, 'ombra', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  S.useSkill(A, 'ombra');
+  const ready = () => q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'ombra'", A.id).readyAt;
+  const before = ready();
+  G.advanceDemo(g.id, 30, 'test');
+  assert.ok(Math.abs(before - ready() - 30 * 60000) < 1000);
+  // Ombra durava 15 minuti: dopo 30 è finita.
+  assert.ok(!S.skillsState(A).indicators.some((x) => x.code === 'ombra'));
+  delete process.env.ZDG_ENV;
+});

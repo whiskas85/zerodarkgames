@@ -1668,13 +1668,17 @@ function createDemo(teamsCount, actor) {
 // minuto di gioco e si muove solo «adesso». Il registro resta in ora reale, le posizioni GPS restano attuali.
 const GAME_TIMES = {
   revelations: ['firedAt'], supply_drops: ['firedAt', 'scheduledAt', 'closesAt', 'closedAt'], announcements: ['createdAt'],
-  messages: ['createdAt'], validations: ['at'], gifts: ['revealedAt', 'claimedAt', 'usedAt', 'expiredAt', 'revealAt'],
-  squad_tasks: ['doneAt'], alliances: ['createdAt', 'endedAt'], alliance_requests: ['createdAt', 'respondedAt'],
+  messages: ['createdAt'], validations: ['at'], gifts: ['revealedAt', 'claimedAt', 'usedAt', 'expiredAt', 'revealAt', 'publicAt'],
+  squad_tasks: ['doneAt', 'assignedAt', 'cancelledAt', 'startedAt', 'endsAt', 'notifiedAt'],
+  // Skill: effetti in corso e avvisi ritardati seguono il tempo di gioco.
+  skill_effects: ['startedAt', 'endsAt', 'endedAt', 'notifyAt', 'notifiedAt'], alliances: ['createdAt', 'endedAt'], alliance_requests: ['createdAt', 'respondedAt'],
   engagements: ['createdAt', 'resolvedAt'], notices: ['createdAt'], teams: ['wonAt'],
 };
 const TEAM_TIMES = {
   team_fragments: ['acquiredAt'], team_code_notes: ['addedAt'], team_visits: ['visitedAt'], alliance_members: ['joinedAt', 'leftAt'],
   engagement_steals: ['createdAt', 'chosenAt'], team_timers: ['startedAt'],
+  // Ricariche delle Skill: portando avanti il tempo di 30 minuti, mancano 30 minuti in meno.
+  team_skills: ['readyAt'],
 };
 function shiftGameTimes(gameId, ms) {
   for (const [t, cols] of Object.entries(GAME_TIMES)) q.run(`UPDATE ${t} SET ${cols.map((c) => `${c} = ${c} - ?`).join(', ')} WHERE gameId = ?`, ...cols.map(() => ms), gameId);
