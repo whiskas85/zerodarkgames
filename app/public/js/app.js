@@ -871,7 +871,6 @@ function viewHome() {
     owned && owned === total ? wonBanner() : null,
     houndCards(st),
     trackingCards(st),
-    privilegeCard(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
@@ -896,11 +895,10 @@ function viewHome() {
 
 function supplyCard(st) {
   const open = (st.supplyOpen || []).filter((x) => x.closesAt > clock.serverNow());
-  if (!open.length) return null;
-  return open.map((x) => h('a', { class: 'supply-card', href: '#/annunci' },
+  return [privilegeCard(st), ...open.map((x) => h('a', { class: 'supply-card', href: '#/annunci' },
     h('span', { class: 'eyebrow' }, 'Armamenti al Cuore · aperti'),
     h('strong', null, 'Chiude tra ', h('span', { class: 'mono', 'data-abs': x.closesAt }, '—')),
-    x.text ? h('span', { class: 'small muted' }, x.text) : null));
+    x.text ? h('span', { class: 'small muted' }, x.text) : null))];
 }
 
 function tile(href, label, icon, badge, alert) {
@@ -1382,12 +1380,24 @@ function skillBadge(st) {
   return sk.mine.filter((s) => s.kind !== 'passive' && !s.auto && !s.where && !s.readyAt && !s.active).length || null;
 }
 
+// Privilegio del Cuore: scheda luminosa (come il Tracker) al posto della finestra degli armamenti,
+// con la barra dei 5 minuti in cui siete i primi a entrare o gli ultimi a restare.
 function privilegeCard(st) {
   const sp = st.skills?.supply;
   if (!sp) return null;
+  const card = (cls, tag, title, sub, from, to) => h('a', { class: `track-card heart ${cls}`, href: '#/annunci' },
+    h('span', { class: 'track-ico', 'aria-hidden': 'true' }, '❤️'),
+    h('span', { class: 'track-body' },
+      h('span', { class: 'eyebrow' }, `Privilegio del Cuore · ${tag}`),
+      h('strong', null, title),
+      h('span', { class: 'small' }, ...sub),
+      h('div', { class: 'cd-bar fx', 'data-from': from, 'data-to': to, 'data-drain': '1' }, h('i'))),
+    h('span', { class: 'track-go', 'aria-hidden': 'true' }, '›'));
   return [
-    ...sp.early.map((x) => h('a', { class: 'supply-card', href: '#/skill' }, h('span', { class: 'eyebrow' }, 'Privilegio del Cuore'), h('strong', null, 'Armamenti già aperti per voi'), h('span', { class: 'small' }, 'Per gli altri aprono tra ', h('span', { class: 'mono', 'data-abs': x.opensAt }, '—')))),
-    ...sp.late.map((x) => h('a', { class: 'supply-card', href: '#/skill' }, h('span', { class: 'eyebrow' }, 'Privilegio del Cuore'), h('strong', null, 'Per voi gli armamenti restano aperti ancora ', h('span', { class: 'mono', 'data-abs': x.until }, '—')))),
+    ...sp.early.map((x) => card('first', 'i primi', 'Entrate per primi: gli armamenti sono già aperti per voi',
+      ['Per gli altri aprono tra ', h('span', { class: 'mono', 'data-abs': x.opensAt }, '—')], x.opensAt - 5 * 60000, x.opensAt)),
+    ...sp.late.map((x) => card('last', 'gli ultimi', 'Siete gli ultimi: per voi gli armamenti sono ancora aperti',
+      ['Chiusi per tutti gli altri · per voi ancora ', h('span', { class: 'mono', 'data-abs': x.until }, '—')], x.until - 5 * 60000, x.until)),
   ];
 }
 

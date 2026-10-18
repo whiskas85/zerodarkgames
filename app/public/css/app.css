@@ -565,3 +565,12 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 .alliance .battle-title { color: #5aa0e0; text-shadow: 0 0 24px rgba(90, 160, 224, .6); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
 .alliance-ico { font-size: 64px; line-height: 1; color: #5aa0e0; filter: drop-shadow(0 0 14px rgba(90, 160, 224, .8)); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
 .alliance .battle-burst { background: radial-gradient(circle, rgba(90, 160, 224, .45), rgba(90, 160, 224, 0) 65%); }
+
+/* Privilegio del Cuore: primi o ultimi agli armamenti */
+.track-card.heart { border-color: #e5484d; background: linear-gradient(135deg, rgba(229, 72, 77, .24), rgba(229, 72, 77, .05)); animation: heart-glow 2.4s ease-in-out infinite; }
+.track-card.heart .track-ico { filter: drop-shadow(0 0 10px rgba(229, 72, 77, .9)); animation: heart-beat 1.2s ease-in-out infinite; }
+.track-card.heart .cd-bar.fx i { background: #e5484d; }
+.track-card.heart.last { border-style: dashed; }
+@keyframes heart-glow { 0%, 100% { box-shadow: 0 0 0 rgba(229, 72, 77, 0); } 50% { box-shadow: 0 0 18px rgba(229, 72, 77, .45); } }
+@keyframes heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.18); } 30% { transform: scale(1); } 45% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .track-card.heart, .track-card.heart .track-ico { animation: none; } }
