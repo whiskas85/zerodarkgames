@@ -2002,22 +2002,24 @@ function showDefeat(timerUid, reason) {
   beep();
   const left = h('div', { class: 'battle-count mono', 'data-timer': timerUid }, '—');
   const note = h('p', { class: 'battle-note' }, 'Tornate in battaglia tra');
-  const el = battleOverlay('defeat',
+  // «Sconfitta contro X ⚔ Maestria delle armi · Veglia 2 minuti + 2 minuti …»: chi, se con la Maestria, la durata in chiaro.
+  const [head, extra] = String(reason || '').split(' · ');
+  const mastery = head.includes('⚔ Maestria delle armi');
+  const who = head.replace(' ⚔ Maestria delle armi', '');
+  const foe = who.replace('Sconfitta contro ', '');
+  const el = battleOverlay(`defeat ${mastery ? 'mastery' : ''}`,
+    // Maestria delle armi dell'avversario: lo scontro che credevate vinto si è ribaltato. Deve saltare all'occhio.
+    mastery ? h('div', { class: 'mastery-banner' },
+      h('div', { class: 'mastery-swords', 'aria-hidden': 'true' }, h('span', null, '🗡️'), h('span', null, '🗡️')),
+      h('div', { class: 'mastery-kicker' }, 'Scontro ribaltato'),
+      h('div', { class: 'mastery-name' }, 'Maestria delle armi'),
+      h('p', { class: 'mastery-text' }, 'Credevate di aver vinto, ma il Settore ', h('strong', null, foe), ' ha usato la ', h('strong', null, 'Maestria delle armi'), ': la vittoria è sua, i vostri Sigilli vanno a loro.')) : null,
     h('div', { class: 'eyebrow' }, 'Scontro perso'),
     h('h2', { class: 'battle-title' }, 'Sconfitta'),
-    // «Sconfitta contro X · Veglia 2 minuti + 2 minuti per la Veglia Forzata del Settore Y»: la durata in chiaro.
     ...(() => {
-      const [head, extra] = String(reason || '').split(' · ');
-      const mastery = head.includes('⚔ Maestria delle armi');
-      const who = head.replace(' ⚔ Maestria delle armi', '');
       const t = S.timers.find((x) => x.uid === timerUid);
       return [
-        // Maestria delle armi dell'avversario: lo scontro che credevate vinto si è ribaltato.
-        mastery ? h('div', { class: 'battle-mastery' },
-          h('span', { class: 'battle-mastery-ico', 'aria-hidden': 'true' }, '⚔️'),
-          h('strong', null, 'Maestria delle armi'),
-          h('p', { class: 'small' }, `${who.replace('Sconfitta contro', 'Il Settore')} ha usato la Maestria delle armi: lo scontro si è ribaltato e la vittoria è sua.`)) : null,
-        h('p', { class: 'muted' }, `${who}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
+        h('p', { class: 'muted' }, `${who}${mastery ? ' (Maestria delle armi)' : ''}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
         extra ? h('p', { class: 'battle-forced' }, `⛓️ ${extra}${t?.minutes ? ` — in tutto ${t.minutes} minuti` : ''}.`) : null,
       ];
     })(),

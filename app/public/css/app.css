@@ -575,9 +575,19 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 @keyframes heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.18); } 30% { transform: scale(1); } 45% { transform: scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .track-card.heart, .track-card.heart .track-ico { animation: none; } }
 
-/* Sconfitta per Maestria delle armi */
-.battle-mastery { display: grid; justify-items: center; gap: 4px; margin: 6px auto; padding: 14px 16px; max-width: 340px; border: 2px solid var(--brass);
-  background: linear-gradient(135deg, rgba(209, 173, 98, .28), rgba(209, 173, 98, .06)); box-shadow: 0 0 24px rgba(209, 173, 98, .35); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
-.battle-mastery strong { font-family: var(--f-display); font-size: 26px; text-transform: uppercase; color: var(--brass); letter-spacing: .04em; }
-.battle-mastery p { margin: 0; }
-.battle-mastery-ico { font-size: 48px; line-height: 1; filter: drop-shadow(0 0 12px rgba(209, 173, 98, .9)); }
+/* Sconfitta per Maestria delle armi: tutta la schermata cambia colore, impossibile non capirlo */
+.battle-overlay.mastery { background: radial-gradient(ellipse at 50% 18%, rgba(168, 85, 247, .55), rgba(20, 8, 32, .96) 60%), #12081c; }
+.battle-overlay.mastery .battle-title { color: #c084fc; text-shadow: 0 0 22px rgba(192, 132, 252, .7); }
+.mastery-banner { display: grid; justify-items: center; gap: 6px; margin: 0 auto 10px; padding: 16px 16px 18px; max-width: 360px; border-radius: 6px;
+  background: linear-gradient(135deg, #f5c84b, #e8833a 45%, #a855f7); color: #1a0d24; box-shadow: 0 0 34px rgba(245, 200, 75, .55), 0 0 60px rgba(168, 85, 247, .45);
+  animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both, mastery-glow 2.2s ease-in-out .9s infinite; }
+.mastery-swords { display: flex; gap: 0; font-size: 52px; line-height: 1; }
+.mastery-swords span:first-child { transform: scaleX(-1); animation: sword-l .7s ease-out both; }
+.mastery-swords span:last-child { animation: sword-r .7s ease-out both; }
+.mastery-kicker { font-family: var(--f-mono, monospace); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; font-weight: 700; }
+.mastery-name { font-family: var(--f-display); font-size: clamp(30px, 10vw, 44px); font-weight: 900; line-height: 1; text-transform: uppercase; text-align: center; }
+.mastery-text { margin: 4px 0 0; font-size: 15px; line-height: 1.35; text-align: center; }
+@keyframes mastery-glow { 0%, 100% { box-shadow: 0 0 26px rgba(245, 200, 75, .45), 0 0 50px rgba(168, 85, 247, .35); } 50% { box-shadow: 0 0 44px rgba(245, 200, 75, .8), 0 0 80px rgba(168, 85, 247, .6); } }
+@keyframes sword-l { from { transform: scaleX(-1) translateX(40px) rotate(-30deg); opacity: 0; } to { transform: scaleX(-1); opacity: 1; } }
+@keyframes sword-r { from { transform: translateX(40px) rotate(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mastery-banner, .mastery-swords span { animation: none; } }
