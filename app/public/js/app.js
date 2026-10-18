@@ -1023,15 +1023,16 @@ function viewElectTasks() {
 
 function viewElectField() {
   const d = FE.data;
-  const which = route().query?.get?.('v') === 'doni' || S.fieldTab === 'doni' ? 'doni' : 'altari';
+  const v = route().query?.get?.('v') || S.fieldTab;
+  const which = ['doni', 'punti'].includes(v) ? v : 'altari';
   const placedA = d ? d.points.filter((p) => p.lat != null).length : 0;
   const placedG = d ? d.gifts.filter((g) => g.status !== 'draft').length : 0;
   const seg = (id, label) => h('button', { type: 'button', class: which === id ? 'on' : '', onclick: () => { S.fieldTab = id; render(); } }, label);
   return h('div', { class: 'stack campo' },
     h('h2', null, 'Piazza Altari e Doni'),
     electFieldHead(),
-    h('nav', { class: 'seg-tabs' }, seg('altari', `Altari ${placedA}/${d?.points.length ?? '…'}`), seg('doni', `Doni ${placedG}/${d?.gifts.length ?? '…'}`)),
-    which === 'doni' ? field.viewGifts() : field.viewAltars());
+    h('nav', { class: 'seg-tabs' }, seg('altari', `Altari ${placedA}/${d?.points.length ?? '…'}`), seg('doni', `Doni ${placedG}/${d?.gifts.length ?? '…'}`), seg('punti', `Punti ${d?.pois?.length ?? '…'}`)),
+    which === 'doni' ? field.viewGifts() : which === 'punti' ? field.viewPois() : field.viewAltars());
 }
 
 function viewElectMap() {

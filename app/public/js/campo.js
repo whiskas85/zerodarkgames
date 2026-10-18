@@ -59,8 +59,9 @@ function render() {
         h('nav', { class: 'seg-tabs' },
           tabLink('altari', `Altari ${placedA}/${d.points.length}`),
           tabLink('doni', `Doni ${placedG}/${d.gifts.length}`),
-          tabLink('mappa', 'Mappa')),
-        F.tab === 'doni' ? field.viewGifts() : F.tab === 'mappa' ? field.viewMap() : field.viewAltars(),
+          tabLink('mappa', 'Mappa'),
+          tabLink('punti', `Punti ${(d.pois || []).length}`)),
+        F.tab === 'doni' ? field.viewGifts() : F.tab === 'mappa' ? field.viewMap() : F.tab === 'punti' ? field.viewPois() : field.viewAltars(),
       ]));
 }
 

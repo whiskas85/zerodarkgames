@@ -444,3 +444,6 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .poi-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
 .poi-result { display: grid; gap: 2px; width: 100%; text-align: left; padding: 8px 10px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; }
 .poi-result:hover, .poi-result:focus-visible { border-color: #b07ad9; }
+.campo-item.poi-item { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 6px 10px; }
+.poi-item .campo-thumb { width: 40px; height: 40px; font-size: 18px; }
+.poi-item .row-actions { grid-column: 1 / -1; }

@@ -214,29 +214,44 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse'),
         h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Altri Eletti (colore della squadra)'),
         h('span', null, h('span', { class: 'pin pin-me' }), ' Tu')),
-      d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null,
-      poiList());
+      d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null);
   }
 
   // ------------------------------------------------------------ punti di interesse
   // Coordinate con un nome e una descrizione (es. «Radura dei castagni»): restano sulla mappa di regia ed Eletti
   // e si possono usare come posizione quando si piazza un Altare, un Dono o un luogo.
   const byDistance = (list) => (F.me ? [...list].sort((a, b) => meters(F.me, a) - meters(F.me, b)) : list);
-  function poiList() {
-    const list = byDistance(F.data?.pois || []);
-    return h('div', { class: 'card stack-sm' },
-      h('div', { class: 'row-actions' }, h('strong', { class: 'grow' }, `Punti di interesse (${list.length})`),
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openPoi() }, '＋ Aggiungi')),
-      list.length ? h('ul', { class: 'campo-list' }, list.map((x) => h('li', { class: 'campo-item' },
+  // Scheda «Punti»: aggiungi un punto, cerca, modifica, elimina, mostra in mappa.
+  let poiFilter = '';
+  function viewPois() {
+    const all = F.data?.pois || [];
+    const t = poiFilter.trim().toLowerCase();
+    const list = byDistance(all.filter((x) => !t || `${x.label} ${x.description || ''}`.toLowerCase().includes(t)));
+    const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca per nome o descrizione…', value: poiFilter, 'data-keep': 'poi-filter', oninput: (e) => {
+      poiFilter = e.target.value;
+      const pos = e.target.selectionStart;
+      rerender();
+      const el = document.querySelector('[data-keep="poi-filter"]');
+      if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+    } });
+    return h('div', { class: 'stack-sm' },
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => openPoi() }, '＋ Aggiungi punto di interesse'),
+      h('p', { class: 'muted small' }, 'Segna radure, sentieri, ingressi, posti per gli Altari: li vedi sulla mappa (rombo viola) e li puoi usare come posizione quando piazzi.'),
+      all.length > 3 ? search : null,
+      list.length ? h('ul', { class: 'campo-list' }, list.map((x) => h('li', { class: 'campo-item poi-item' },
         h('div', { class: 'campo-thumb empty-thumb poi-thumb' }, '◆'),
         h('div', { class: 'campo-info' },
           h('strong', null, x.label),
           x.description ? h('div', { class: 'small' }, x.description) : null,
           h('div', { class: 'tiny muted' }, `${F.me ? `a ${fmtDist(meters(F.me, x))} · ` : ''}${String(x.createdBy || '').replace('eletti:', '')} · ${fmtTime(x.createdAt)}`)),
         h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { mapView.map?.setView([x.lat, x.lng], 18); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, 'Mappa'),
-          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => openPoi(x) }, 'Modifica')))))
-        : h('p', { class: 'muted small' }, 'Nessun punto: segna radure, sentieri, ingressi, posti per gli Altari… Li ritrovi qui e quando piazzi.'));
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => showOnMap({ lat: x.lat, lng: x.lng }) }, 'Mappa'),
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openPoi(x) }, 'Modifica'),
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => {
+            if (!(await dialog({ title: 'Eliminare il punto?', text: `«${x.label}» sparisce dalla mappa di tutti.`, okLabel: 'Elimina', danger: true }))) return;
+            try { await api('DELETE', `/api/field/pois/${x.id}?gameId=${F.gameId}`); toast('Punto eliminato', 'ok'); load(); } catch (e) { toast(e.message, 'error'); }
+          } }, 'Elimina')))))
+        : h('p', { class: 'empty' }, all.length ? 'Nessun punto trovato.' : 'Nessun punto di interesse: aggiungi il primo.'));
   }
 
   // Scheda per aggiungere o modificare un punto: posizione (GPS o tocco sulla mappa), nome, descrizione.
@@ -472,5 +487,5 @@ export function createField(F, { rerender }) {
       + sq.tasks.filter((t) => !t.doneAt).length;
   }
 
-  return { load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
+  return { load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, viewPois, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
 }
