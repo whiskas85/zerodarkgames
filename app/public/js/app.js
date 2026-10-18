@@ -1570,7 +1570,10 @@ function pick(title, options, { text = null, okLabel = 'Conferma' } = {}) {
 
 const teamOptions = () => (S.state?.combat?.teams || []).map((t) => ({ value: t.teamId, label: `${t.roman} · Settore ${t.sectorName}`, sub: t.allied ? 'alleati' : t.displayName || null }));
 const ownedLabels = () => new Set((S.state?.fragments || []).filter((f) => f.text).map((f) => f.pointLabel));
-const altarOptions = () => (S.state?.map?.points || []).filter((p) => !ownedLabels().has(p.label)).map((p) => ({ value: p.id, label: p.label, sub: `${p.roman} · Settore ${p.sectorName}` }));
+// Altari di cui non avete ancora il frammento (Veggenza: solo quelli che ne custodiscono uno).
+const altarOptions = (withFragment = false) => (S.state?.skills?.altars || S.state?.map?.points || [])
+  .filter((p) => (p.owned ?? ownedLabels().has(p.label)) === false && (!withFragment || p.fragment))
+  .map((p) => ({ value: p.id, label: p.label, sub: `${p.roman} · Settore ${p.sectorName}` }));
 // Altari inquadrati: scaduti (Memoria) o ancora validi (Chiave Maestra). In ordine di nome, non di Sigillo posseduto.
 const visitedOptions = (expired) => (S.state?.visited || []).filter((v) => !v.unlocked && (expired ? v.expiresAt && v.expiresAt < clock.serverNow() : !v.expiresAt || v.expiresAt >= clock.serverNow()))
   .sort((a, b) => a.label.localeCompare(b.label)).map((v) => ({ value: v.pointId, label: v.label, sub: `Settore ${v.sectorName}` }));
@@ -1584,6 +1587,7 @@ async function askParams(target, name, text) {
   switch (target) {
     case 'team': return one('teamId', 'scegliete una coppia', teamOptions(), text);
     case 'altar': return one('pointId', 'scegliete un Altare', altarOptions(), text);
+    case 'fragmentAltar': return one('pointId', 'scegliete un Altare', altarOptions(true), text);
     case 'expiredAltar': return one('pointId', 'Altare da riaprire', visitedOptions(true), 'Altari già inquadrati con la scansione scaduta.');
     case 'scannedAltar': return one('pointId', 'Altare da aprire', visitedOptions(false), 'Solo gli Altari appena inquadrati (scansione ancora valida).');
     case 'seal': return one('sectorId', 'Sigillo da proteggere', sealOptions(), text);

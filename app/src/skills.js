@@ -30,7 +30,7 @@ const SKILLS = [
   { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, where: 'scontri', description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
   { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio lo scopre 1 minuto dopo.' },
   { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per 3 minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
-  { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Scegliete un Altare e prendete subito il suo frammento, senza Sigillo e senza andarci.' },
+  { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'fragmentAltar', description: 'Scegliete un Altare e prendete subito il suo frammento, senza Sigillo e senza andarci.' },
   { id: 'intuizione', name: 'Intuizione', icon: '🧠', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Aprite un Altare a scelta da lontano, come se l\'aveste appena inquadrato: poi serve il suo Sigillo.' },
   { id: 'autorita', name: 'Autorità', icon: '👑', kind: 'ultimate', cooldownMin: 90, target: null, description: 'Ricevete subito un Dono a caso.' },
   { id: 'silenzio', name: 'Silenzio di Vetro', icon: '🔇', kind: 'passive', description: 'Quando una coppia vi scopre con Occhio o Rete del Consiglio, vede solo un\'area di 100 m, non il punto esatto.' },
@@ -713,6 +713,11 @@ function skillsState(me, now = Date.now()) {
     })(),
     giftHints: giftHints(me, now),
     supply: C.ACTIVE.includes(g.status) ? supplyFor(me, g, now) : null,
+    // Altari da scegliere (Veggenza, Intuizione): tutti, anche non ancora sulla mappa, con il frammento e se è già vostro.
+    altars: q.all(`SELECT p.id, p.label, s.name AS sectorName, s.roman, f.id AS fragmentId, tf.teamId AS owned FROM points p
+                   JOIN sectors s ON s.id = p.sectorId LEFT JOIN fragments f ON f.pointId = p.id
+                   LEFT JOIN team_fragments tf ON tf.fragmentId = f.id AND tf.teamId = ? WHERE p.gameId = ? ORDER BY s.ord, p.label`, me.id, g.id)
+      .map((p) => ({ id: p.id, label: p.label, sectorName: p.sectorName, roman: p.roman, fragment: !!p.fragmentId, owned: !!p.owned })),
   };
 }
 
