@@ -1363,3 +1363,21 @@ test('effetti nell\'orologio: chi vi osserva (dopo 1 minuto), i vostri effetti, 
   S.useSkill(B, 'ombra');
   assert.deepEqual(codes(B, Date.now() + 62000), ['ombra']);
 });
+
+test('caccia degli Eletti: il bersaglio lo sa 1 minuto dopo l\'assegnazione', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  F.createSquad(g.id, { name: 'Sud' }, 'test');
+  const sq = q.get('SELECT id FROM elect_squads WHERE gameId = ?', g.id).id;
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  F.createTask(g.id, { squadId: sq, kind: 'hunt', target: `team:${B.id}` }, 'test');
+  const codes = (t) => S.skillsState(t).indicators.map((x) => x.code);
+  assert.deepEqual(codes(B), []);
+  S.tickAll(Date.now() + 61000);
+  assert.deepEqual(codes(B), ['caccia']);
+  assert.deepEqual(codes(A), []);
+});

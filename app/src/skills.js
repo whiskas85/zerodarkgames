@@ -16,7 +16,7 @@ const POS_FRESH_MS = 3 * MIN;
 // kind: active | ultimate | passive. target: team | altar | seal | expiredAltar | null.
 // phase > 1: non ancora disponibile (compare nel catalogo come «in arrivo»).
 const SKILLS = [
-  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 2, target: null, description: 'Mostra sulla mappa tutte le coppie entro 500 m da voi per 2 minuti. Nessuno lo sa.' },
+  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 2, target: null, description: 'Mostra sulla mappa tutte le coppie entro 500 m da voi per 2 minuti. Le coppie viste lo scoprono dopo 1 minuto.' },
   { id: 'ombra', name: 'Ombra', icon: '🥷', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, description: 'Per 15 minuti la vostra posizione non compare a nessuna coppia, qualunque Skill o Dono usino.' },
   { id: 'intercettazione', name: 'Intercettazione', icon: '📡', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: scoprite di quali Settori conosce il Sigillo (il codice resta sfocato).' },
   { id: 'segugio', name: 'Segugio', icon: '🦅', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: vi arriva una notifica alla prossima volta che conquista un Altare.' },
@@ -28,7 +28,7 @@ const SKILLS = [
   { id: 'velenoso', name: 'Velenoso', icon: '☠️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Subito dopo uno scontro (vinto o perso), rompete l\'alleanza della parte avversaria.' },
   { id: 'maestria', name: 'Maestria delle armi', icon: '⚔️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Trasformate uno scontro perso in una vittoria, qualunque esito dichiari l\'avversario.' },
   { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, where: 'scontri', description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
-  { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio non lo sa.' },
+  { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio lo scopre 1 minuto dopo.' },
   { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per 3 minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
   { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Scegliete un Altare e prendete subito il suo frammento, senza Sigillo e senza andarci.' },
   { id: 'intuizione', name: 'Intuizione', icon: '🧠', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Aprite un Altare a scelta da lontano, come se l\'aveste appena inquadrato: poi serve il suo Sigillo.' },
@@ -48,7 +48,7 @@ const GIFTS = [
   { id: 'maestro', name: 'Maestro', icon: '🎓', color: '#d1ad62', target: 'newSkill', description: 'Aggiungete alle vostre Skill una Skill a scelta, pronta da usare.' },
   { id: 'chiave', name: 'Chiave Maestra', icon: '🗝️', color: '#e0b04f', target: 'scannedAltar', description: 'Aprite un Altare senza il suo Sigillo. Dovete averlo appena inquadrato (scansione valida).' },
   { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde.' },
-  { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per 20 minuti.' },
+  { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per 20 minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'archivio', name: 'Archivio Proibito', icon: '📚', color: '#9b6cf0', target: null, description: 'Ricevete un Sigillo che non conoscete ancora.' },
   { id: 'scudo', name: 'Immunità', icon: '🛡️', color: '#6fbf73', target: null, durationMin: 15, description: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce (tracciamenti, taglie, furti, scansioni).' },
   { id: 'seconda', name: 'Seconda Possibilità', icon: '🔄', color: '#4fc1c1', target: 'cooldownSkill', description: 'Ricaricate subito una Skill in ricarica.' },
@@ -552,6 +552,7 @@ const WATCH = {
   tracciamento: { icon: '📍', color: '#5aa0e0', label: 'Tracciamento: una coppia vi segue' },
   taglia: { icon: '🚨', color: '#e5484d', label: 'Taglia: tutti vedono la vostra posizione' },
 };
+const ELECT_WATCH = { icon: '🎯', color: '#e0603f', label: 'Gli Eletti vi vedono sulla loro mappa' };
 // I vostri effetti in corso.
 const OWN = {
   ombra: { icon: '🥷', color: '#9b6cf0', label: 'Ombra: nessuno vede la vostra posizione' },
@@ -579,6 +580,9 @@ function indicatorsFor(me, now = Date.now()) {
     if (WATCH[e.code] && e.teamId !== me.id && e.notifiedAt && watchedBy(e, now).includes(me.id)) out.push({ code: e.code, ...WATCH[e.code], until: e.endsAt });
     if (OWN[e.code] && e.teamId === me.id) out.push({ code: e.code, ...OWN[e.code], until: e.endsAt });
   }
+  // Eletti che vi vedono (caccia o incarico verso di voi): anche questo si sa 1 minuto dopo.
+  if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto') AND squadId IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
+    AND notifiedAt IS NOT NULL`, me.id)) out.push({ code: 'caccia', ...ELECT_WATCH, until: null });
   const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
   if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', until: dirty.endsAt });
   if (hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', until: null });
@@ -724,6 +728,14 @@ function tickAll(now = Date.now()) {
       if (ended.some((e) => EVERYONE.has(e.code) || WATCH[e.code])) rt.toTeams(g.id, 'state', {});
       else for (const id of new Set(ended.map((e) => e.teamId))) rt.toTeams(g.id, 'state', {}, id);
       rt.toStaff(g.id, 'skills');
+    }
+    // Chi viene rivelato lo sa sempre 1 minuto dopo: anche quando una squadra di Eletti lo vede (caccia, incarico).
+    for (const t of q.all(`SELECT * FROM squad_tasks WHERE gameId = ? AND targetTeamId IS NOT NULL AND kind IN ('hunt', 'goto') AND squadId IS NOT NULL
+                           AND notifiedAt IS NULL AND doneAt IS NULL AND cancelledAt IS NULL AND assignedAt <= ?`, g.id, now - MIN)) {
+      q.run('UPDATE squad_tasks SET notifiedAt = ? WHERE id = ?', now, t.id);
+      if (hidden({ gameId: g.id, id: t.targetTeamId }, now)) continue;
+      rt.pushTeams(g.id, { title: 'Gli Eletti vi vedono', body: 'Una squadra di Eletti segue la vostra posizione sulla mappa.', tag: `elect-watch-${t.id}`, url: '/#/home' }, t.targetTeamId);
+      rt.toTeams(g.id, 'state', {}, t.targetTeamId);
     }
     // Presagio: allo scadere dei 5 minuti il dono compare a tutti.
     for (const gift of q.all("SELECT * FROM gifts WHERE gameId = ? AND status = 'revealed' AND publicAt IS NOT NULL AND publicAt <= ? AND hintLat IS NOT NULL", g.id, now)) {

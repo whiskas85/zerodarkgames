@@ -1446,7 +1446,7 @@ function viewSquads() {
 
     openTasks.length ? h('div', { class: 'panel pending-panel' },
       h('div', { class: 'panel-head' }, h('h2', null, `Incarichi da assegnare (${openTasks.length})`)),
-      h('p', { class: 'muted tiny' }, 'Generati dalle Skill e dai Doni delle coppie (Maestro della caccia, Alleanze sporche) o creati senza squadra. La squadra scelta vede il bersaglio sulla sua mappa finché l\'incarico è aperto; la coppia bersaglio della caccia non lo sa.'),
+      h('p', { class: 'muted tiny' }, 'Generati dalle Skill e dai Doni delle coppie (Maestro della caccia, Alleanze sporche) o creati senza squadra. La squadra scelta vede il bersaglio sulla sua mappa finché l\'incarico è aperto; la coppia bersaglio lo scopre 1 minuto dopo l\'assegnazione.'),
       d.squads.length ? h('ul', { class: 'squad-tasks' }, openTasks.map((t) => taskLine(t, { assign: true }))) : h('p', { class: 'empty' }, 'Crea prima una squadra di Eletti.')) : null,
 
     sectionActions(`Squadre degli Eletti (${d.squads.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newSquadDialog }, '+ Nuova squadra')],

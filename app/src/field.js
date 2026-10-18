@@ -609,7 +609,7 @@ function cancelTask(taskId, actor, why = null) {
   q.run('UPDATE squad_tasks SET cancelledAt = ? WHERE id = ?', Date.now(), t.id);
   G.log(t.gameId, actor, 'squad_task_cancelled', { text: t.text, why });
   if (t.squadId) notifySquad(t.squadId, { title: why ? 'Abortite l\'incarico' : 'Incarico annullato', body: why || t.text, tag: `task-${t.id}` });
-  if (t.kind === 'meet' && t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
+  if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
   return true;
 }
@@ -620,7 +620,7 @@ function setTaskDone(taskId, done, who, gameId = null) {
   q.run('UPDATE squad_tasks SET doneAt = ?, doneBy = ? WHERE id = ?', done ? Date.now() : null, done ? who : null, t.id);
   G.log(t.gameId, who, done ? 'squad_task_done' : 'squad_task_reopened', { text: t.text });
   if (t.squadId) notifySquad(t.squadId, null);
-  if (t.kind === 'meet' && t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
+  if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
 }
 

@@ -447,5 +447,7 @@ addColumn('squad_tasks', 'assignedAt', 'INTEGER');
 addColumn('squad_tasks', 'cancelledAt', 'INTEGER');
 addColumn('squad_tasks', 'startedAt', 'INTEGER');
 addColumn('squad_tasks', 'endsAt', 'INTEGER');
+// Avviso alla coppia bersaglio (1 minuto dopo che la squadra la vede).
+addColumn('squad_tasks', 'notifiedAt', 'INTEGER');
 
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };
