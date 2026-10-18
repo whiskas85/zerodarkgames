@@ -622,6 +622,8 @@ function skillsState(me, now = Date.now()) {
     results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),
     sightings: sightingsFor(me, now),
+    // Allarme di Prossimità: una coppia non alleata è entro 80 m (finché non si allontana oltre 120 m).
+    nearby: hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`)),
     dirty: (() => {
       const t = q.get("SELECT t.*, s.name AS squadName FROM squad_tasks t LEFT JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id);
       return t ? { squadName: t.squadName, startedAt: t.startedAt, endsAt: t.endsAt } : null;
@@ -722,7 +724,12 @@ function proximity(g, now) {
         near.set(key, now);
         rt.pushTeams(g.id, { title: 'Presenza rilevata nelle vicinanze', body: '', tag: `allarme-${h}`, url: '/#/home', silent: true }, h);
         rt.toTeams(g.id, 'proximity', {}, h);
-      } else if (d > 120) near.delete(key);
+        rt.toTeams(g.id, 'state', {}, h);
+      } else if (d > 120 && near.has(key)) {
+        // Allontanati: l'icona accanto all'orologio si spegne.
+        near.delete(key);
+        rt.toTeams(g.id, 'state', {}, h);
+      }
     }
   }
 }

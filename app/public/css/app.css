@@ -477,3 +477,16 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .cd-bar { height: 8px; background: var(--paper-2); border: 1px solid var(--line); overflow: hidden; flex: 1 1 100%; }
 .cd-bar i { display: block; height: 100%; width: 0; background: var(--brass); transition: width 1s linear; }
 .cd-bar.fx i { background: var(--blood); }
+
+/* Allarme di Prossimità: icona accanto all'orologio e alone colorato (neon e vetro) che pulsa */
+.top-clock.alarm-on { position: relative; isolation: isolate; padding: 4px 8px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 79, 163, .18), rgba(34, 195, 230, .18)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, .18); box-shadow: 0 0 10px rgba(255, 79, 163, .55), 0 0 22px rgba(34, 195, 230, .35), inset 0 0 12px rgba(255, 255, 255, .08);
+  animation: alarm-glow 2.4s ease-in-out infinite; }
+.top-clock.alarm-on::before { content: ""; position: absolute; inset: -8px; z-index: -1; border-radius: 16px; filter: blur(14px); opacity: .75;
+  background: conic-gradient(from 0deg, #ff4fa3, #9b6cf0, #22c3e6, #46c46a, #ff4fa3); animation: alarm-smoke 6s linear infinite; }
+.alarm-ico { font-size: 18px; margin-right: 6px; display: inline-block; animation: alarm-buzz 1.2s ease-in-out infinite; filter: drop-shadow(0 0 6px #ff4fa3); }
+@keyframes alarm-glow { 0%, 100% { box-shadow: 0 0 8px rgba(255, 79, 163, .45), 0 0 18px rgba(34, 195, 230, .3); } 50% { box-shadow: 0 0 16px rgba(255, 79, 163, .8), 0 0 32px rgba(34, 195, 230, .55); } }
+@keyframes alarm-smoke { to { transform: rotate(360deg); } }
+@keyframes alarm-buzz { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } }
+@media (prefers-reduced-motion: reduce) { .top-clock.alarm-on, .top-clock.alarm-on::before, .alarm-ico { animation: none; } }
