@@ -547,18 +547,18 @@ function confusionFor(t, couples, now) {
 
 // Effetti che vi osservano (dopo 1 minuto lo sapete) e le loro icone nell'orologio.
 const WATCH = {
-  occhio: { icon: '👁️', color: '#d1ad62', label: 'Occhio del Consiglio: una coppia vicina vi vede' },
-  rete: { icon: '🌐', color: '#22c3e6', label: 'Rete del Consiglio: una coppia vede tutte le posizioni' },
-  tracker: { icon: '⚡', color: '#facc15', label: 'Tracker: una coppia vi segue' },
-  tracciamento: { icon: '📍', color: '#5aa0e0', label: 'Tracciamento: una coppia vi segue' },
-  taglia: { icon: '🚨', color: '#e5484d', label: 'Taglia: tutti vedono la vostra posizione' },
+  occhio: { icon: '👁️', color: '#d1ad62', label: 'Occhio del Consiglio: una coppia vicina vi vede', desc: 'Una coppia nel raggio dell\'Occhio vede la vostra posizione sulla mappa finché dura l\'effetto. Allontanatevi per uscire dal raggio.' },
+  rete: { icon: '🌐', color: '#22c3e6', label: 'Rete del Consiglio: una coppia vede tutte le posizioni', desc: 'Una coppia vede la posizione di tutti, anche la vostra, finché dura l\'effetto.' },
+  tracker: { icon: '⚡', color: '#facc15', label: 'Tracker: una coppia vi segue', desc: 'Una coppia vede la vostra posizione sulla mappa, aggiornata, finché dura il Tracker. Ombra o Immunità vi nascondono.' },
+  tracciamento: { icon: '📍', color: '#5aa0e0', label: 'Tracciamento: una coppia vi segue', desc: 'Una coppia vede la vostra posizione sulla mappa finché dura il Tracciamento. Ombra o Immunità vi nascondono.' },
+  taglia: { icon: '🚨', color: '#e5484d', label: 'Taglia: tutti vedono la vostra posizione', desc: 'C\'è una taglia su di voi: tutte le coppie vedono dove siete finché dura.' },
 };
-const ELECT_WATCH = { icon: '🎯', color: '#e0603f', label: 'Gli Eletti vi vedono sulla loro mappa' };
+const ELECT_WATCH = { icon: '🎯', color: '#e0603f', label: 'Gli Eletti vi vedono sulla loro mappa', desc: 'Una squadra di Eletti ha un incarico su di voi e vede la vostra posizione: vi stanno venendo a cercare.' };
 // I vostri effetti in corso.
 const OWN = {
-  ombra: { icon: '🥷', color: '#9b6cf0', label: 'Ombra: nessuno vede la vostra posizione' },
-  scudo: { icon: '🛡️', color: '#46c46a', label: 'Immunità: Skill e Doni avversari non vi colpiscono' },
-  reliquia: { icon: '💎', color: '#14b8a6', label: 'Reliquia Antica: i vostri Sigilli non si perdono' },
+  ombra: { icon: '🥷', color: '#9b6cf0', label: 'Ombra: nessuno vede la vostra posizione', desc: 'Siete invisibili a Skill e Doni che mostrano le posizioni (Tracker, Occhio, Rete…) finché dura Ombra.' },
+  scudo: { icon: '🛡️', color: '#46c46a', label: 'Immunità: Skill e Doni avversari non vi colpiscono', desc: 'Le Skill e i Doni delle altre coppie non hanno effetto su di voi finché dura l\'Immunità.' },
+  reliquia: { icon: '💎', color: '#14b8a6', label: 'Reliquia Antica: i vostri Sigilli non si perdono', desc: 'Se perdete uno scontro, il vostro Sigillo resta coperto: chi vince non lo legge.' },
 };
 
 // Le coppie che un effetto di osservazione sta vedendo adesso.
@@ -586,8 +586,16 @@ function indicatorsFor(me, now = Date.now()) {
   if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto') AND squadId IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
     AND notifiedAt IS NOT NULL`, me.id)) out.push({ code: 'caccia', ...ELECT_WATCH, until: null });
   const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
-  if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', until: dirty.endsAt });
-  if (hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', until: null });
+  if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', desc: 'Siete alleati con una squadra di Eletti: non vi attaccano e potete muovervi insieme finché dura.', until: dirty.endsAt });
+  if (hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', desc: 'Una coppia non alleata è a meno di 80 metri da voi. L\'avviso resta finché non si allontana oltre 120 metri.', until: null });
+  // Confusione attiva: chi vi osserva vede anche una posizione falsa. Le icone restano (sapete di essere visti),
+  // ma senza l'alone d'allarme, e con il segno di Confusione.
+  const conf = effectOn(me.gameId, me.id, 'confusione', now);
+  if (conf) {
+    for (const x of out) if (WATCH[x.code] || x.code === 'caccia') Object.assign(x, { covered: true, label: `${x.label} — ma Confusione mostra anche una posizione falsa` });
+    out.push({ code: 'confusione', icon: '🌀', color: '#8b8bf5', quiet: true, label: 'Confusione: chi vi guarda vede anche una posizione falsa',
+      desc: 'Chi vede la vostra posizione (Tracker, Tracciamento, Occhio, Rete…) vede anche un punto falso sulla mappa: non sa quale siete voi.', until: conf.endsAt });
+  }
   // Lo stesso effetto da più coppie: una sola icona (con la fine più lontana).
   const seen = new Map();
   for (const x of out) { const p = seen.get(x.code); if (!p || (x.until || Infinity) > (p.until || Infinity)) seen.set(x.code, x); }
@@ -683,7 +691,7 @@ function skillsState(me, now = Date.now()) {
       return s ? { ...forGame(s, g), source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null, activeUntil: eff ? eff.endsAt : null, active: !!eff, targetName: eff ? name(eff.targetTeamId) : null } : null;
     }).filter(Boolean),
     // Effetti in corso sulla coppia (Immunità del Dono, tracciamenti in corso…).
-    effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, until: e.endsAt, targetName: name(e.targetTeamId), name: (e.kind === 'gift' ? giftById(e.code) : skillById(e.code))?.name })),
+    effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, from: e.startedAt, until: e.endsAt, targetName: name(e.targetTeamId), targetRoman: e.targetTeamId ? team(e.targetTeamId)?.roman : null, name: (e.kind === 'gift' ? giftById(e.code) : skillById(e.code))?.name })),
     // Ultimi risultati (Intercettazione, Dossier, Segugio).
     results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),

@@ -162,7 +162,7 @@ export function dialog({ title, text, okLabel = 'Conferma', cancelLabel = 'Annul
         text && h('p', null, text),
         field,
         h('div', { class: 'dlg-actions' },
-          h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel),
+          cancelLabel ? h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel) : null,
           h('button', { type: 'submit', class: `btn ${danger ? 'btn-danger' : 'btn-primary'}` }, okLabel))));
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(null); });
     document.body.append(dlg);
@@ -189,7 +189,7 @@ export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annull
       title && h('h3', null, title),
       body,
       h('div', { class: 'dlg-actions' },
-        h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel),
+        cancelLabel ? h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel) : null,
         ok)));
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(null); });
     document.body.append(dlg);

@@ -538,3 +538,25 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .guarded-box.compact .guarded-ico { font-size: 24px; }
 .guarded-box.compact .guarded-time { font-size: 15px; }
 .nb-guarded { grid-template-columns: auto 1fr; }
+
+/* Tracker in corso (home) */
+.track-card { display: grid; grid-template-columns: 44px 1fr 18px; align-items: center; gap: 12px; padding: 14px; text-decoration: none; color: inherit;
+  background: linear-gradient(135deg, rgba(250, 204, 21, .2), rgba(90, 160, 224, .08)); border: 2px solid #facc15; }
+.track-ico { font-size: 32px; line-height: 1; text-align: center; filter: drop-shadow(0 0 8px rgba(250, 204, 21, .7)); }
+.track-body { display: grid; gap: 6px; min-width: 0; }
+.track-body strong { font-size: 18px; line-height: 1.2; }
+.track-body .cd-bar { flex: none; }
+.track-body .cd-bar.fx i { background: #facc15; }
+.track-go { font-size: 28px; opacity: .7; }
+
+/* Icone degli effetti nell'orologio: un tocco apre la spiegazione */
+button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; color: inherit; font: inherit; cursor: pointer; }
+.perk-list { display: grid; gap: 12px; }
+.perk-row { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: start; padding: 10px; border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.perk-row p { margin: 4px 0 0; }
+.perk-ico { font-size: 28px; line-height: 1; text-align: center; filter: drop-shadow(0 0 6px var(--c)); }
+/* Confusione: l'icona di chi vi osserva resta, ferma e con il segno 🌀 */
+.fx-ico.covered, .fx-ico.quiet { animation: none; filter: none; opacity: .85; }
+.fx-ico, .perk-ico { position: relative; }
+.fx-conf { position: absolute; right: -6px; bottom: -4px; font-size: 10px; font-style: normal; line-height: 1; }
+.perk-ico .fx-conf { font-size: 16px; right: -2px; }

@@ -1017,6 +1017,8 @@ function control(gameId, action, actor) {
     }
     case 'draft':
       need('ready', 'circle');
+      // Di nuovo in preparazione: gli Altari visitati (anche le prove) si azzerano.
+      q.run('DELETE FROM team_visits WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', g.id);
       setStatus(g, 'draft');
       break;
     case 'circle':

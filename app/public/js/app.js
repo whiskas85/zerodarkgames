@@ -158,6 +158,11 @@ function setState(st, offset) {
     else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against, v.skill === 'maestria' && v.skillBy?.teamId === st.team.id), 300);
   }
   store.set('zdg_state', { state: st, offset: clock.offset });
+  // Partita in preparazione (o rifatta ripartire): anche gli Altari visitati salvati sul telefono si azzerano.
+  if (Object.keys(S.visits).length && (st.clock.status === 'draft' || (prev?.clock.status === 'ended' && st.clock.status !== 'ended'))) {
+    S.visits = {};
+    store.set('zdg_visits', S.visits);
+  }
   // Allinea gli Altari visitati del server con quelli locali.
   for (const v of st.visited) rememberVisit(v.qrToken, { label: v.label, sectorName: v.sectorName });
   if (prev && prev.clock.status !== st.clock.status && st.clock.status === 'paused') vibrate([600, 200, 600]);
@@ -461,12 +466,26 @@ async function clearNotifications(view) {
 
 const fxGradient = (fx) => `linear-gradient(120deg, ${[...fx.map((x) => x.color), fx[0].color, ...(fx.length === 1 ? ['transparent', fx[0].color] : [])].join(', ')})`;
 
+// Tocco sulle icone accanto all'orologio: cosa significa ogni effetto attivo e quanto dura ancora.
+function perksModal(fx) {
+  return modal({ title: 'Effetti attivi', okLabel: 'Ho capito', cancelLabel: null,
+    body: h('div', { class: 'perk-list' }, fx.map((x) => h('div', { class: 'perk-row', style: { '--c': x.color } },
+      h('span', { class: 'perk-ico', 'aria-hidden': 'true' }, x.icon, x.covered ? h('i', { class: 'fx-conf' }, '🌀') : null),
+      h('div', null,
+        h('strong', null, x.label),
+        x.desc ? h('p', { class: 'small' }, x.desc) : null,
+        x.until ? h('p', { class: 'tiny muted' }, 'Ancora ', h('span', { class: 'mono', 'data-abs': x.until }, '—'), ` (fino alle ${fmtTime(x.until)})`) : null)))),
+    onOpen: () => updateClocks() });
+}
+
 function header(view) {
   const st = S.state;
   const sec = st?.team.sector;
   const net = !S.online ? ['off', 'Senza rete'] : !S.connected ? ['wait', 'Riconnessione…'] : ['on', 'Collegati'];
   // Effetti su di voi (chi vi osserva, i vostri effetti, l'Allarme di Prossimità): icone e alone dei loro colori, sommati.
   const fx = st?.skills?.indicators || [];
+  // Con Confusione attiva chi vi osserva resta tra le icone, ma senza alone: l'alone è solo per i pericoli scoperti.
+  const glow = fx.filter((x) => !x.covered && !x.quiet);
   // Veglia dopo una sconfitta: piccolo conto alla rovescia nella barra in alto, al posto della fase.
   const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
@@ -475,8 +494,10 @@ function header(view) {
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? `Settore ${sec.name}` : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
         : st?.team.displayName || st?.team.members.map((m) => m.nickname || m.name).join(' · ') || '')),
-    h('div', { class: `top-clock ${fx.length ? 'fx-on' : ''}`, style: fx.length ? { '--fx-grad': fxGradient(fx), '--fx-a': fx[0].color, '--fx-b': (fx[1] || fx[0]).color } : null },
-      fx.length ? h('div', { class: 'fx-icons' }, fx.map((x) => h('span', { class: 'fx-ico', role: 'img', 'aria-label': x.label, title: x.label, style: { '--c': x.color } }, x.icon))) : null,
+    h('div', { class: `top-clock ${glow.length ? 'fx-on' : ''}`, style: glow.length ? { '--fx-grad': fxGradient(glow), '--fx-a': glow[0].color, '--fx-b': (glow[1] || glow[0]).color } : null },
+      fx.length ? h('button', { type: 'button', class: 'fx-icons', 'aria-label': 'Effetti attivi: cosa significano', onclick: () => perksModal(fx) },
+        fx.map((x) => h('span', { class: `fx-ico ${x.covered ? 'covered' : ''} ${x.quiet ? 'quiet' : ''}`, 'aria-hidden': 'true', title: x.label, style: { '--c': x.color } }, x.icon,
+          x.covered ? h('i', { class: 'fx-conf' }, '🌀') : null))) : null,
       h('div', { class: 'top-time' },
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
         h('span', { class: 'mono big', 'data-clock': 'remaining' }, '—')),
@@ -840,6 +861,7 @@ function viewHome() {
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
     owned && owned === total ? wonBanner() : null,
     houndCards(st),
+    trackingCards(st),
     privilegeCard(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
@@ -1409,6 +1431,18 @@ function houndCards(st) {
       h('span', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
       h('span', null, h('span', { class: 'eyebrow' }, 'Segugio in ascolto'), h('strong', null, `Settore ${n}: vi avvisiamo alla prossima conquista`)))),
   ];
+}
+
+// Tracker e Tracciamento lanciati da voi: chi state seguendo, quanto manca, e un tocco porta alla mappa.
+function trackingCards(st) {
+  return (st.skills?.effects || []).filter((e) => ['tracker', 'tracciamento'].includes(e.code) && e.targetName && e.until)
+    .map((e) => h('a', { class: 'track-card', href: '#/mappa' },
+      h('span', { class: 'track-ico', 'aria-hidden': 'true' }, e.code === 'tracker' ? '⚡' : '📍'),
+      h('span', { class: 'track-body' },
+        h('span', { class: 'eyebrow' }, `${e.name || 'Tracker'} · ancora `, h('span', { class: 'mono', 'data-abs': e.until }, '—')),
+        h('strong', null, `Stai tracciando ${e.targetRoman ? `${e.targetRoman} ` : ''}${e.targetName}`),
+        e.from ? h('div', { class: 'cd-bar fx', 'data-from': e.from, 'data-to': e.until, 'data-drain': '1' }, h('i')) : null),
+      h('span', { class: 'track-go', 'aria-hidden': 'true' }, '›')));
 }
 
 // Alleanze sporche: la squadra di Eletti in arrivo, poi alleata per 30 minuti.
