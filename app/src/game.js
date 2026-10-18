@@ -99,8 +99,8 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
@@ -1312,8 +1312,9 @@ function fragmentOut(f, p, source, acquiredAt) {
 const scanWindowMs = (g) => (g.altarScanMin > 0 ? g.altarScanMin * 60000 : null);
 function scanExpiresAt(g, visitedAt, team = null) {
   const w = scanWindowMs(g);
-  // Memoria del Nodo (Skill passiva): la scansione vale il doppio.
-  return w && visitedAt ? visitedAt + w * require('./skills').scanFactor(team) : null;
+  // Memoria del Nodo (Skill passiva): la scansione vale quanto deciso nei parametri della partita (mai meno del normale).
+  const node = team && require('./skills').hasSkill(team.id, 'memoria_nodo') && g.nodeScanMin > 0 ? Math.max(w || 0, g.nodeScanMin * 60000) : null;
+  return w && visitedAt ? visitedAt + (node || w) : null;
 }
 
 // Fa fede l'ora in cui il QR è stato inquadrato (anche se arriva dopo dalla coda offline), mai nel futuro né troppo vecchia.

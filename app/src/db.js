@@ -460,4 +460,11 @@ CREATE TABLE IF NOT EXISTS emergencies (
 CREATE INDEX IF NOT EXISTS ix_emergencies_game ON emergencies(gameId, closedAt);
 `);
 
+// Memoria del Nodo: validità della scansione di un Altare per chi ha la Skill (minuti, configurabile per partita).
+addColumn('games', 'nodeScanMin', 'INTEGER NOT NULL DEFAULT 30');
+
+// Occhio del Consiglio: durata (minuti) e raggio (metri) configurabili per partita.
+addColumn('games', 'eyeMin', 'INTEGER NOT NULL DEFAULT 10');
+addColumn('games', 'eyeRadiusM', 'INTEGER NOT NULL DEFAULT 500');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

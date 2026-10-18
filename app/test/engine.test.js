@@ -1449,3 +1449,41 @@ test('emergenze reali: pulsante dell\'app e SOS di Traccar arrivano alla regia c
   assert.equal(list.find((e) => !e.closedAt).source, 'traccar');
   assert.equal(list.find((e) => !e.closedAt).lat, 45.3);
 });
+
+test('Memoria del Nodo: minuti della scansione configurabili per partita', () => {
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.updateGame(g.id, { altarScanMin: 10, nodeScanMin: 25 }, 'test');
+  S.chooseSkill(A, 'memoria_nodo', true);
+  assert.match(S.skillsState(A).catalog.find((x) => x.id === 'memoria_nodo').description, /25 minuti invece di 10/);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const pB = pointOf(g.id, B.sectorId);
+  const v = G.visitPoint(A, pB.qrToken);
+  assert.equal(v.expiresAt - v.visitedAt, 25 * 60000);
+  const w = G.visitPoint(B, pointOf(g.id, A.sectorId).qrToken);
+  assert.equal(w.expiresAt - w.visitedAt, 10 * 60000);
+});
+
+test('Occhio del Consiglio: durata e raggio dai parametri della partita (predefinito 10 minuti, 500 m)', () => {
+  const S = require('../src/skills');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  assert.equal(G.getGame(g.id).eyeMin, 10);
+  G.updateGame(g.id, { eyeMin: 7, eyeRadiusM: 200 }, 'test');
+  S.chooseSkill(A, 'occhio', true);
+  assert.match(S.skillsState(A).catalog.find((x) => x.id === 'occhio').description, /entro 200 m da voi per 7 minuti/);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const put = (t, lat) => q.run('INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES (?, ?, ?, ?, 9, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, at = excluded.at', `eye${g.id}-${t.id}`, g.id, t.id, lat, Date.now());
+  put(A, 45); put(B, 45.0015); put(Cc, 45.003); // B a ~170 m, C a ~330 m
+  S.useSkill(A, 'occhio');
+  const seen = S.sightingsFor(A).map((x) => x.teamId);
+  assert.ok(seen.includes(B.id));
+  assert.ok(!seen.includes(Cc.id));
+  const e = q.get("SELECT * FROM skill_effects WHERE teamId = ? AND code = 'occhio'", A.id);
+  assert.ok(Math.abs(e.endsAt - e.startedAt - 7 * 60000) < 1000);
+});

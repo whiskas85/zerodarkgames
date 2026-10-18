@@ -16,7 +16,7 @@ const POS_FRESH_MS = 3 * MIN;
 // kind: active | ultimate | passive. target: team | altar | seal | expiredAltar | null.
 // phase > 1: non ancora disponibile (compare nel catalogo come «in arrivo»).
 const SKILLS = [
-  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 2, target: null, description: 'Mostra sulla mappa tutte le coppie entro 500 m da voi per 2 minuti. Le coppie viste lo scoprono dopo 1 minuto.' },
+  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 10, target: null, description: 'Mostra sulla mappa tutte le coppie vicine a voi per qualche minuto. Le coppie viste lo scoprono dopo 1 minuto.' },
   { id: 'ombra', name: 'Ombra', icon: '🥷', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, description: 'Per 15 minuti la vostra posizione non compare a nessuna coppia, qualunque Skill o Dono usino.' },
   { id: 'intercettazione', name: 'Intercettazione', icon: '📡', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: scoprite di quali Settori conosce il Sigillo (il codice resta sfocato).' },
   { id: 'segugio', name: 'Segugio', icon: '🦅', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: vi arriva una notifica alla prossima volta che conquista un Altare.' },
@@ -37,7 +37,7 @@ const SKILLS = [
   { id: 'velo', name: 'Velo di Ceneri', icon: '🌫️', kind: 'passive', description: 'Tracciamenti e taglie contro di voi durano la metà.' },
   { id: 'allarme', name: 'Allarme di Prossimità', icon: '📳', kind: 'passive', description: 'Una vibrazione silenziosa vi avvisa quando una coppia non alleata arriva entro 80 m.' },
   { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo.' },
-  { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale il doppio del tempo.' },
+  { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale più a lungo.' },
   { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura e 5 minuti dopo la chiusura.' },
   { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
   { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
@@ -201,8 +201,9 @@ function applySkill(g, me, s, p) {
   switch (s.id) {
     case 'occhio': {
       if (!latestPos(me.id)) throw err(409, 'Serve la vostra posizione: accendete il GPS (o Traccar) e riprovate');
-      startEffect(me, 'skill', s.id, { durationMin: s.durationMin, notifyAfterMin: 1 });
-      return { message: 'Per 2 minuti vedete le coppie entro 500 m.' };
+      const eye = eyeOf(g);
+      startEffect(me, 'skill', s.id, { durationMin: eye.min, notifyAfterMin: 1, data: { radius: eye.radius } });
+      return { message: `Per ${eye.min} minuti vedete le coppie entro ${eye.radius} m.` };
     }
     case 'ombra': {
       startEffect(me, 'skill', s.id, { durationMin: s.durationMin });
@@ -491,7 +492,8 @@ function sightingsFor(me, now = Date.now()) {
     if (e.code === 'rete') for (const t of couples) add(t, 'Rete del Consiglio', e.endsAt, true);
     if (e.code === 'occhio') {
       const here = latestPos(me.id, now);
-      if (here) for (const t of couples) { const p = latestPos(t.id, now); if (p && distM(here, p) <= 500) add(t, 'Occhio del Consiglio', e.endsAt, true); }
+      const radius = JSON.parse(e.data || '{}').radius || eyeOf(g).radius;
+      if (here) for (const t of couples) { const p = latestPos(t.id, now); if (p && distM(here, p) <= radius) add(t, 'Occhio del Consiglio', e.endsAt, true); }
     }
     if (['tracker', 'tracciamento'].includes(e.code)) { const t = couples.find((x) => x.id === e.targetTeamId); if (t) add(t, e.code === 'tracker' ? 'Tracker' : 'Tracciamento', e.endsAt, false); }
   }
@@ -567,7 +569,8 @@ function watchedBy(e, now = Date.now()) {
   if (e.code === 'occhio') {
     const here = latestPos(e.teamId, now);
     if (!here) return [];
-    return others.filter((t) => { if (immune(t, now)) return false; const p = latestPos(t.id, now); return p && distM(here, p) <= 500; }).map((t) => t.id);
+    const radius = JSON.parse(e.data || '{}').radius || eyeOf(G.getGame(e.gameId)).radius;
+    return others.filter((t) => { if (immune(t, now)) return false; const p = latestPos(t.id, now); return p && distM(here, p) <= radius; }).map((t) => t.id);
   }
   return e.targetTeamId && others.some((t) => t.id === e.targetTeamId) ? [e.targetTeamId] : [];
 }
@@ -628,8 +631,6 @@ function onAltarUnlocked(t, point) {
   }
 }
 
-// Memoria del Nodo: la scansione di un Altare vale il doppio.
-const scanFactor = (t) => (t && hasSkill(t.id, 'memoria_nodo') ? 2 : 1);
 
 // Privilegio del Cuore: finestre degli armamenti allargate di 5 minuti prima e dopo.
 function supplyFor(me, g, now = Date.now()) {
@@ -644,6 +645,22 @@ function supplyFor(me, g, now = Date.now()) {
   return soon.length || late.length ? { early: soon, late } : null;
 }
 
+// Occhio del Consiglio: durata e raggio dai parametri della partita.
+const eyeOf = (g) => ({ min: g.eyeMin > 0 ? g.eyeMin : 10, radius: g.eyeRadiusM > 0 ? g.eyeRadiusM : 500 });
+
+// Skill con valori che dipendono dai parametri della partita (Occhio del Consiglio, Memoria del Nodo).
+function forGame(s, g) {
+  if (s.id === 'occhio') { const eye = eyeOf(g); return { ...s, durationMin: eye.min, description: `Mostra sulla mappa tutte le coppie entro ${eye.radius} m da voi per ${eye.min} minuti. Le coppie viste lo scoprono dopo 1 minuto.` }; }
+  return { ...s, description: describe(s, g) };
+}
+
+// Descrizioni che dipendono dai parametri della partita (Memoria del Nodo: minuti configurabili).
+function describe(s, g) {
+  if (s.id !== 'memoria_nodo') return s.description;
+  if (!g.altarScanMin) return 'In questa partita le scansioni degli Altari non scadono: questa Skill non serve.';
+  return `Una scansione di Altare vi vale ${Math.max(g.nodeScanMin || 0, g.altarScanMin)} minuti invece di ${g.altarScanMin}: potete allontanarvi prima di pronunciare il Sigillo.`;
+}
+
 // ---------------------------------------------------------------- stato per l'app
 
 function skillsState(me, now = Date.now()) {
@@ -656,12 +673,12 @@ function skillsState(me, now = Date.now()) {
   return {
     limits: limitsOf(g),
     canChoose: C.PRE_START.includes(g.status),
-    catalog: SKILLS.map((s) => ({ ...s, available: available(s) })),
+    catalog: SKILLS.map((s) => ({ ...forGame(s, g), available: available(s) })),
     giftCatalog: GIFTS.map((x) => ({ ...x, available: available(x) })),
     mine: own.map((r) => {
       const s = skillById(r.skillId);
       const eff = live.find((e) => e.code === r.skillId);
-      return s ? { ...s, source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null, activeUntil: eff ? eff.endsAt : null, active: !!eff, targetName: eff ? name(eff.targetTeamId) : null } : null;
+      return s ? { ...forGame(s, g), source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null, activeUntil: eff ? eff.endsAt : null, active: !!eff, targetName: eff ? name(eff.targetTeamId) : null } : null;
     }).filter(Boolean),
     // Effetti in corso sulla coppia (Immunità del Dono, tracciamenti in corso…).
     effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, until: e.endsAt, targetName: name(e.targetTeamId), name: (e.kind === 'gift' ? giftById(e.code) : skillById(e.code))?.name })),
@@ -706,7 +723,7 @@ function tickAll(now = Date.now()) {
       q.run('UPDATE skill_effects SET notifiedAt = ? WHERE id = ?', now, e.id);
       if (e.endedAt) continue;
       if (e.code === 'rete' || e.code === 'occhio') {
-        // Chi è stato visto (Rete: tutti; Occhio: chi era entro 500 m) lo scopre dopo 1 minuto.
+        // Chi è stato visto (Rete: tutti; Occhio: chi è nel raggio) lo scopre dopo 1 minuto.
         for (const id of watchedBy(e, now)) {
           rt.pushTeams(g.id, e.code === 'rete'
             ? { title: 'Rete del Consiglio', body: 'Una coppia vede le posizioni di tutti, anche la vostra.', tag: `rete-${e.id}`, url: '/#/home' }
@@ -805,5 +822,5 @@ function resetGame(gameId) {
 
 module.exports = {
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
-  onGiftRevealed, onAltarUnlocked, scanFactor, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
+  onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
 };
