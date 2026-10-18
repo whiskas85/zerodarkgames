@@ -101,6 +101,12 @@ function newSession(kind, refId) {
   return token;
 }
 
+// La coppia della sessione con il nome del suo Settore (serve nei messaggi: «Il Settore X ha…»).
+function teamRow(id, noElect = false) {
+  return q.get(`SELECT t.*, s.name AS sectorName, s.roman, s.color AS sectorColor FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId
+                WHERE t.id = ?${noElect ? " AND t.kind != 'elect'" : ''}`, id);
+}
+
 function loadAuth(req, _res, next) {
   const c = cookies(req);
   if (c[COOKIE_USER]) {
@@ -113,14 +119,14 @@ function loadAuth(req, _res, next) {
       // Account del giocatore: segue la sua iscrizione attuale (anteprima, coppia o Eletti).
       req.account = q.get('SELECT * FROM accounts WHERE id = ?', s.refId);
       req.player = req.account ? A.currentPlayer(req.account) : null;
-      if (req.player?.teamId) req.team = q.get('SELECT * FROM teams WHERE id = ?', req.player.teamId);
+      if (req.player?.teamId) req.team = teamRow(req.player.teamId);
     }
     // Gli Eletti entrano solo con l'accesso personale: le vecchie sessioni col codice comune non valgono più.
-    if (s?.kind === 'team') req.team = q.get("SELECT * FROM teams WHERE id = ? AND kind != 'elect'", s.refId);
+    if (s?.kind === 'team') req.team = teamRow(s.refId, true);
     if (s?.kind === 'player') {
       // Accesso personale: segue il giocatore; quando entra in una coppia o tra gli Eletti ne diventa un dispositivo.
       req.player = q.get('SELECT * FROM players WHERE id = ?', s.refId);
-      if (req.player?.teamId) req.team = q.get('SELECT * FROM teams WHERE id = ?', req.player.teamId);
+      if (req.player?.teamId) req.team = teamRow(req.player.teamId);
     }
   }
   // Account entrato con un invito del Consiglio: è anche master o validatore.

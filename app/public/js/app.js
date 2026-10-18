@@ -15,7 +15,7 @@ const S = {
   visits: store.get('zdg_visits', {}), // qrToken -> { label, sectorName, at }
   altarResults: store.get('zdg_altar_results', {}), // qrToken -> { ok, message, fragment }
   settings: store.get('zdg_settings', { sound: false, sun: false }),
-  timers: store.get('zdg_timers', []),
+  timers: store.get('zdg_timers', []).filter((t) => !t.done),
   seenAnn: store.get('zdg_seen_ann', 0),
   seenMsg: store.get('zdg_seen_msg', 0),
   seenNotice: store.get('zdg_seen_notice', 0),
@@ -618,7 +618,7 @@ function updateClocks() {
   }
   for (const el of document.querySelectorAll('[data-timer]')) {
     const t = S.timers.find((x) => x.uid === el.dataset.timer);
-    if (t) el.textContent = t.done ? '00:00' : fmtDuration(Math.max(0, t.endsAt - Date.now()), false);
+    el.textContent = !t || t.done ? '00:00' : fmtDuration(Math.max(0, t.endsAt - Date.now()), false);
   }
 }
 
@@ -2090,7 +2090,7 @@ function showDefeat(timerUid, reason) {
   const watch = setInterval(() => {
     if (!document.body.contains(el)) return clearInterval(watch);
     const t = S.timers.find((x) => x.uid === timerUid);
-    if (t?.done || (t && Date.now() >= t.endsAt)) { note.textContent = 'La Veglia è finita'; left.textContent = 'Potete tornare in battaglia'; left.classList.add('battle-free'); left.removeAttribute('data-timer'); clearInterval(watch); }
+    if (!t || t.done || Date.now() >= t.endsAt) { note.textContent = 'La Veglia è finita'; left.textContent = 'Potete tornare in battaglia'; left.classList.add('battle-free'); left.removeAttribute('data-timer'); clearInterval(watch); }
   }, 500);
 }
 
@@ -2131,8 +2131,8 @@ function checkTimers() {
       localNotify(`Timer ${t.label}`, t.endText, `timer-${t.uid}`);
     }
   }
-  // Timer finito: ridisegna (sparisce anche la Veglia dalla barra in alto).
-  if (changed) { saveTimers(); render(); }
+  // Timer arrivati a zero: avvisato, si cancellano da soli (sparisce anche la Veglia dalla barra in alto).
+  if (changed) { S.timers = S.timers.filter((t) => !t.done); saveTimers(); render(); }
 }
 
 function viewTimers() {
