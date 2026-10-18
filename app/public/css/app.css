@@ -486,12 +486,14 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgba(255, 255, 255, .18);
   box-shadow: 0 0 10px color-mix(in srgb, var(--fx-a) 60%, transparent), 0 0 22px color-mix(in srgb, var(--fx-b) 40%, transparent), inset 0 0 12px rgba(255, 255, 255, .08);
   animation: fx-glow 2.4s ease-in-out infinite; }
-.top-clock.fx-on::before { content: ""; position: absolute; inset: -8px; z-index: -1; border-radius: 16px; filter: blur(14px); opacity: .75;
-  background: var(--fx-grad); animation: fx-smoke 6s linear infinite; }
+.top-clock.fx-on { overflow: hidden; }
+/* Fumo colorato che scorre dentro il riquadro: niente rotazioni né parti che escono (nessuna barra di scorrimento). */
+.top-clock.fx-on::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; filter: blur(10px); opacity: .7;
+  background: var(--fx-grad); background-size: 300% 300%; animation: fx-smoke 6s ease-in-out infinite alternate; pointer-events: none; }
 .fx-icons { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px; }
 .fx-ico { font-size: 16px; line-height: 1; display: inline-block; animation: fx-buzz 1.4s ease-in-out infinite; filter: drop-shadow(0 0 6px var(--c)); }
 .fx-ico:nth-child(2) { animation-delay: .3s; } .fx-ico:nth-child(3) { animation-delay: .6s; }
 @keyframes fx-glow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
-@keyframes fx-smoke { to { transform: rotate(360deg); } }
+@keyframes fx-smoke { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
 @keyframes fx-buzz { 0%, 100% { transform: rotate(0) scale(1); } 20% { transform: rotate(-12deg) scale(1.1); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } }
 @media (prefers-reduced-motion: reduce) { .top-clock.fx-on, .top-clock.fx-on::before, .fx-ico { animation: none; } }

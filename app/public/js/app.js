@@ -455,7 +455,7 @@ async function clearNotifications(view) {
   } catch { /* notifiche non disponibili */ }
 }
 
-const fxGradient = (fx) => `conic-gradient(from 0deg, ${[...fx.map((x) => x.color), fx[0].color].join(', ')})`;
+const fxGradient = (fx) => `linear-gradient(120deg, ${[...fx.map((x) => x.color), fx[0].color, ...(fx.length === 1 ? ['transparent', fx[0].color] : [])].join(', ')})`;
 
 function header(view) {
   const st = S.state;
