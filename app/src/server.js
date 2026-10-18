@@ -389,6 +389,7 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
   if (!req.player) throw new HttpError(409, 'Entra con il tuo account o con il tuo codice personale');
   return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.verifyTracking(req.player, req.body?.since) };
 }));
+app.post('/api/team/exit', needTeam, teamRateLimit, wrap((req) => G.exfiltrate(req.team, req.body.token)));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, wrap((req) => F.useGift(req.team, req.params.id)));
 app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));
@@ -727,6 +728,9 @@ app.get('/regia/stampa/altari/:id', needMaster, wrap(async (req, res) => {
 app.get('/regia/stampa/doni/:id', needMaster, wrap(async (req, res) => {
   res.type('html').send(await print.giftsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
 }));
+app.get('/regia/stampa/uscita/:id', needMaster, wrap(async (req, res) => {
+  res.type('html').send(await print.exitPage(G.getGame(Number(req.params.id)), baseUrl(req)));
+}));
 app.get('/regia/stampa/credenziali/:id', needMaster, wrap(async (req, res) => {
   res.type('html').send(await print.credentialsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
 }));
@@ -739,6 +743,7 @@ app.get('/vendor/jsQR.js', (_req, res) => res.sendFile(require.resolve('jsqr/dis
 app.get('/', sendPage('index.html'));
 app.get('/a/:token', sendPage('index.html'));
 app.get('/d/:token', sendPage('index.html'));
+app.get('/u/:token', sendPage('index.html'));
 app.get('/campo', sendPage('campo.html'));
 // Leaflet per le mappe OpenTopoMap (servito localmente: funziona anche con poca rete).
 app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve('leaflet/package.json')), 'dist'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
@@ -765,6 +770,7 @@ G.ensurePlayerCredentials();
 rt.initPush();
 setInterval(G.tickAll, 1000).unref();
 setInterval(F.tickAll, 2000).unref();
+setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }, 20000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

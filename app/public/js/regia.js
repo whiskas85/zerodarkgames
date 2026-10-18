@@ -1022,7 +1022,9 @@ function viewAltars() {
           l.lat != null ? h('div', { class: 'tiny muted mono' }, `${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}${l.accuracy ? ` · ±${l.accuracy} m` : ''}`) : null,
           h('div', { class: 'row-actions' }, ...placementButtons('landmark', l, l.lat != null),
             l.photoFile ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/landmark/${l.id}?v=${l.placedAt}`, target: '_blank' }, 'Foto') : null,
-            h('a', { class: 'btn btn-sm btn-ghost', href: '/campo', target: '_blank' }, 'Piazzalo io'))))))),
+            h('a', { class: 'btn btn-sm btn-ghost', href: '/campo', target: '_blank' }, 'Piazzalo io'),
+            l.kind === 'soglia' ? h('a', { class: 'btn btn-sm btn-primary', href: `/regia/stampa/uscita/${R.gameId}`, target: '_blank' }, 'Stampa QR di uscita') : null),
+          l.kind === 'soglia' ? h('p', { class: 'tiny muted' }, 'Il QR di uscita va appeso alla Soglia: una coppia con la Parola intera e senza alleati lo inquadra ed esfiltra da sola (il suo Sigillo viene rivelato a tutti). Resta valida anche la verifica dell\'Ufficiale.') : null))))),
 
     sectionActions(`Altari (${ms.points.length}) · piazzati ${placed}/${ms.points.length}`, [
       h('button', { class: 'btn btn-sm', disabled: !pre, onclick: () => call('POST', G('/points'), {}, 'Altari allineati alle coppie') }, 'Allinea alle coppie'),

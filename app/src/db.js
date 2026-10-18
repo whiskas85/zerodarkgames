@@ -260,6 +260,8 @@ CREATE INDEX IF NOT EXISTS ix_identities_account ON account_identities(accountId
 for (const t of ['points', 'gifts', 'landmarks']) addColumn(t, 'provisional', 'INTEGER NOT NULL DEFAULT 0');
 // Altare aggiunto dalla regia (anche senza coppia): resta anche se nessuna coppia ha quel Settore.
 addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
+// Codice di uscita della Soglia: il QR che le coppie inquadrano per esfiltrare con la Parola intera.
+addColumn('landmarks', 'exitToken', 'TEXT');
 // Posti per l'iscrizione: coppie (vuoto = una per Settore) e temerari solitari (vuoto = senza limite a parte).
 addColumn('games', 'maxCouples', 'INTEGER');
 addColumn('games', 'maxSingles', 'INTEGER');

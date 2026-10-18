@@ -452,6 +452,7 @@ function movePlayer(playerId, { toTeamId, swapWithId } = {}, actor) {
 const LANDMARKS = [{ kind: 'cerchio', label: 'Cerchio di inizio' }, { kind: 'soglia', label: 'La Soglia' }];
 function landmarksOf(gameId) {
   for (const l of LANDMARKS) q.run('INSERT OR IGNORE INTO landmarks (gameId, kind, label) VALUES (?, ?, ?)', gameId, l.kind, l.label);
+  q.run("UPDATE landmarks SET exitToken = ? WHERE gameId = ? AND kind = 'soglia' AND exitToken IS NULL", randomToken(18), gameId);
   return q.all("SELECT * FROM landmarks WHERE gameId = ? ORDER BY kind = 'soglia', id", gameId);
 }
 
@@ -1563,6 +1564,51 @@ function validate(teamId, { mode, typed, notes }, user) {
   return { result, position, missing };
 }
 
+// Esfiltrazione: la coppia inquadra il QR di uscita della Soglia. Con la Parola intera e senza alleati esce
+// (come una validazione) e il suo Sigillo viene rivelato a tutti, come in un tradimento.
+function exfiltrate(team, token) {
+  requireCouple(team);
+  const g = getGame(team.gameId);
+  landmarksOf(g.id);
+  const soglia = q.get("SELECT * FROM landmarks WHERE gameId = ? AND kind = 'soglia'", g.id);
+  if (!token || !soglia?.exitToken || String(token) !== soglia.exitToken) throw err(404, 'Questo non è il codice di uscita della Soglia di questa partita');
+  if (g.status === 'paused') throw err(409, 'Partita sospesa: non si esce adesso');
+  if (!C.ACTIVE.includes(g.status)) throw err(409, 'Si esfiltra solo a partita in corso');
+  const t = q.get('SELECT * FROM teams WHERE id = ?', team.id);
+  if (t.status === 'won') return { exfiltrated: true, already: true, position: t.finishPosition };
+  if (t.status !== 'active') throw err(409, 'Coppia ritirata');
+  const s = sectorById(t.sectorId);
+  const ally = q.get('SELECT allianceId FROM alliance_members WHERE teamId = ? AND leftAt IS NULL', t.id);
+  if (ally) {
+    const allies = q.all(`SELECT s.name FROM alliance_members m JOIN teams t ON t.id = m.teamId JOIN sectors s ON s.id = t.sectorId
+                          WHERE m.allianceId = ? AND m.leftAt IS NULL AND m.teamId <> ?`, ally.allianceId, t.id).map((r) => r.name);
+    log(g.id, `coppia:${t.id}`, 'exit_denied', { settore: s.name, reason: 'alleanza', allies });
+    return { exfiltrated: false, reason: 'alliance', allies };
+  }
+  const board = teamFragmentsBoard(t);
+  const missing = board.filter((f) => !f.source).length;
+  if (!board.length || missing) {
+    log(g.id, `coppia:${t.id}`, 'exit_denied', { settore: s.name, reason: 'frammenti', missing });
+    return { exfiltrated: false, reason: 'missing', missing, total: board.length };
+  }
+  const now = Date.now();
+  let position;
+  tx(() => {
+    q.run('INSERT INTO validations (gameId, teamId, validatorId, at, result, missing, notes) VALUES (?, ?, NULL, ?, ?, ?, ?)',
+      g.id, t.id, now, 'valid', '[]', 'Esfiltrazione con il QR di uscita della Soglia');
+    position = (q.get("SELECT MAX(finishPosition) AS m FROM teams WHERE gameId = ? AND status = 'won'", g.id).m || 0) + 1;
+    q.run("UPDATE teams SET status = 'won', finishPosition = ?, wonAt = ? WHERE id = ?", position, now, t.id);
+  });
+  log(g.id, `coppia:${t.id}`, 'exfiltration', { teamId: t.id, settore: s.name, position });
+  if (position === 1) announce(g.id, 'victory', { settore: s.name }, { teamId: t.id, position });
+  else announce(g.id, 'podium', { settore: s.name, posizione: ordinal(position) }, { teamId: t.id, position });
+  // Il Sigillo di chi esce arriva a tutti, come un tradimento (se non era già stato rivelato).
+  let revealed = false;
+  try { revealSector(g.id, t.sectorId, 'esfiltrazione'); revealed = true; } catch { /* già rivelato */ }
+  notifyState(g.id);
+  return { exfiltrated: true, position, revealed };
+}
+
 // ---------------------------------------------------------------- classifica (7.2)
 
 function standings(gameId) {
@@ -1952,6 +1998,6 @@ module.exports = {
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
-  movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
+  movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, exfiltrate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };

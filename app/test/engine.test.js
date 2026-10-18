@@ -1079,3 +1079,53 @@ test('account: restano dopo aver eliminato la partita; la regia li elimina uno a
   assert.equal(A.authenticate('attivo3', 'password3'), null);
   assert.equal(q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g2.id).n, 0);
 });
+
+test('esfiltrazione con il QR della Soglia e rottura delle alleanze per distanza', () => {
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const token = G.landmarksOf(g.id).find((l) => l.kind === 'soglia').exitToken;
+  assert.ok(token);
+  assert.throws(() => G.exfiltrate(A, 'sbagliato'), /codice di uscita/);
+  // Parola intera ad A.
+  for (const f of q.all('SELECT id FROM fragments WHERE gameId = ?', g.id)) {
+    q.run("INSERT OR IGNORE INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'altar', ?)", A.id, f.id, Date.now());
+  }
+  // In alleanza non si esce.
+  K.respondRequest(B, K.requestAlliance(A, B.id).id, true);
+  const denied = G.exfiltrate(A, token);
+  assert.equal(denied.exfiltrated, false);
+  assert.equal(denied.reason, 'alliance');
+  assert.deepEqual(denied.allies, [q.get('SELECT name FROM sectors WHERE id = ?', B.sectorId).name]);
+  // A e B a ~110 m: dopo più di 5 minuti l'alleanza si rompe da sola.
+  const now = Date.now();
+  q.run("INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES ('dA', ?, ?, 45.0, 9.0, ?)", g.id, A.id, now);
+  q.run("INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES ('dB', ?, ?, 45.001, 9.0, ?)", g.id, B.id, now);
+  K.tickAlliances(now);
+  assert.ok(K.allianceOf(A.id));
+  q.run('UPDATE positions SET at = ? WHERE gameId = ?', now + 3 * 60000, g.id);
+  K.tickAlliances(now + 4 * 60000);
+  assert.ok(K.allianceOf(A.id));
+  q.run('UPDATE positions SET at = ? WHERE gameId = ?', now + 5 * 60000, g.id);
+  K.tickAlliances(now + 5 * 60000 + 1000);
+  assert.equal(K.allianceOf(A.id), null);
+  assert.equal(K.allianceOf(B.id), null);
+  assert.ok(q.get("SELECT 1 FROM event_log WHERE gameId = ? AND type = 'alliance_broken_distance'", g.id));
+  assert.ok(K.serverTimers(A.id).some((t) => t.timerId === 'blocco'));
+  // B senza la Parola intera: uscita negata.
+  const missing = G.exfiltrate(B, token);
+  assert.equal(missing.exfiltrated, false);
+  assert.equal(missing.reason, 'missing');
+  assert.equal(missing.missing, 3);
+  // A esce: vittoria e Sigillo rivelato a tutti.
+  const out = G.exfiltrate(A, token);
+  assert.equal(out.exfiltrated, true);
+  assert.equal(out.position, 1);
+  assert.equal(out.revealed, true);
+  assert.equal(q.get('SELECT status FROM teams WHERE id = ?', A.id).status, 'won');
+  assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === A.sectorId));
+  assert.equal(G.exfiltrate(A, token).already, true);
+});

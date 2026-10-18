@@ -57,6 +57,32 @@ ${sheets.join('\n') || '<p style="padding:40px">Nessun Altare: forma le coppie o
 </body></html>`;
 }
 
+async function exitPage(g, base) {
+  const soglia = G.landmarksOf(g.id).find((l) => l.kind === 'soglia');
+  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codice di uscita — ${esc(g.name)}</title><style>${BASE_CSS}
+.exit .frame{position:absolute;inset:12mm;border:3mm solid #1C211E;padding:14mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:7mm}
+.exit .frame::after{content:"";position:absolute;inset:3mm;border:.6mm solid #8E2A1F;pointer-events:none}
+.top{font-size:10pt;letter-spacing:.14em;text-transform:uppercase;color:#5B615A}
+h1{font-size:28mm;line-height:.85;margin:0;font-weight:900}
+.sub{font-size:13pt;color:#8E2A1F;font-weight:600}
+.qr{width:120mm;height:120mm;background:#fff;padding:5mm;border:1mm solid #1C211E}
+.qr svg{width:100%;height:100%;display:block}
+.how{font-size:13pt;max-width:150mm;margin:0}
+.warn{font-size:9pt;color:#5B615A;margin-top:auto}
+</style></head><body>
+<div class="toolbar"><span>Codice di uscita · ${esc(g.name)}</span><button onclick="print()">Stampa / Salva PDF</button><span>Da appendere alla Soglia.</span></div>
+<section class="sheet exit"><div class="frame">
+  <div class="top mono">Consiglio Zero · ${esc(g.name)}</div>
+  <h1 class="display">La Soglia</h1>
+  <div class="sub mono">Codice di uscita</div>
+  <div class="qr">${await qr(`${base}/u/${soglia.exitToken}`)}</div>
+  <p class="how">Con la Parola intera, inquadrate questo segno con l'app dei Giochi («Leggi il codice di uscita»). Chi è ancora in alleanza non esce: rompete prima l'alleanza. Uscendo, il vostro Sigillo viene rivelato a tutti.</p>
+  <div class="warn mono">Non staccate questo avviso.</div>
+</div></section>
+</body></html>`;
+}
+
 async function credentialsPage(g, base) {
   const teams = G.teamsOf(g.id).filter((t) => t.sectorId);
   const cards = await Promise.all(teams.map(async (t) => {
@@ -137,4 +163,4 @@ ${pages.join('\n') || '<p style="padding:40px">Nessun dono: creali nella sezione
 </body></html>`;
 }
 
-module.exports = { altarsPage, credentialsPage, giftsPage };
+module.exports = { exitPage, altarsPage, credentialsPage, giftsPage };

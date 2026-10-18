@@ -51,6 +51,8 @@ function boot() {
   }
   const dm = location.pathname.match(/^\/d\/([\w-]+)/);
   if (dm) history.replaceState(null, '', `/#/dono/${dm[1]}`);
+  const um = location.pathname.match(/^\/u\/([\w-]+)/);
+  if (um) history.replaceState(null, '', `/#/uscita/${um[1]}`);
   if (new URLSearchParams(location.search).get('login') === 'invalid') {
     toast('Link di accesso non valido o rigenerato dalla regia', 'error', 7000);
     history.replaceState(null, '', '/' + location.hash);
@@ -384,8 +386,8 @@ function render() {
   if (S.auth === 'none') return mount($app, viewLogin());
   if (S.auth === 'account') return mount($app, viewNoEnrollment());
   let { view, arg, query } = route();
-  if (isElect() && ['sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
-  if (isLobby() && ['altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
+  if (isElect() && ['uscita', 'sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
+  if (isLobby() && ['uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
   if (isElect() && ['scontri', 'alleanze'].includes(view)) view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
   if (view === 'mappa' && !isElect()) startMapGps(); else stopMapGps();
@@ -396,7 +398,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -972,7 +974,75 @@ function stopMapGps() { stopGps?.(); stopGps = null; }
 
 // Parola intera: il riquadro porta alla mappa inquadrata sulla Soglia.
 function wonBanner() {
-  return h('a', { class: 'won', href: '#/mappa/soglia' }, h('strong', null, 'Avete la Parola intera.'), h('span', null, 'Portatela alla Soglia →'));
+  if (S.state?.team?.status === 'won') return null;
+  return h('a', { class: 'won', href: '#/mappa/soglia' }, h('strong', null, 'Avete la Parola intera.'), h('span', null, 'Esfiltrate: alla Soglia leggete il codice di uscita →'));
+}
+
+// Parola intera a partita in corso: si può tentare l'uscita alla Soglia.
+function canExit(st = S.state) {
+  if (!st || isElect() || isLobby() || st.team?.status !== 'active' || !ACTIVE.includes(st.clock?.status)) return false;
+  const frs = st.fragments || [];
+  return frs.length > 0 && frs.every((f) => f.text);
+}
+
+async function scanExit() {
+  const text = await scanQR({
+    title: 'Codice di uscita',
+    hint: 'Inquadrate il QR di uscita appeso alla Soglia.',
+    accept: (t) => (/\/u\/[\w-]+/.test(t) ? true : /\/(a|d)\//.test(t) ? 'Questo è un Altare o un Dono, non il codice di uscita' : 'Questo non è il codice di uscita della Soglia'),
+  });
+  if (text) tryExit(text.match(/\/u\/([\w-]+)/)[1]);
+}
+
+const exitTried = new Set();
+function viewExit(token) {
+  if (token && !exitTried.has(token)) { exitTried.add(token); setTimeout(() => tryExit(token)); }
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Uscita dalla Soglia'),
+    h('p', { class: 'muted' }, 'Verifica del codice di uscita…'),
+    h('a', { class: 'btn', href: '#/mappa/soglia' }, 'Torna alla mappa'));
+}
+
+async function tryExit(token) {
+  let r;
+  try { r = await api('POST', '/api/team/exit', { token }); } catch (e) {
+    toast(e.offline ? 'Serve la rete per esfiltrare: riprovate dove c\'è segnale' : e.message, 'error', 8000);
+    if (location.hash.startsWith('#/uscita/')) location.hash = '#/mappa/soglia';
+    return;
+  }
+  if (location.hash.startsWith('#/uscita/')) location.hash = r.exfiltrated ? '#/home' : '#/mappa/soglia';
+  refresh();
+  const close = () => el.remove();
+  let el;
+  if (r.exfiltrated) {
+    vibrate([120, 60, 120, 60, 400]);
+    beep();
+    el = battleOverlay('victory',
+      h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+      h('div', { class: 'eyebrow' }, 'La Soglia'),
+      h('h2', { class: 'battle-title' }, 'Esfiltrati'),
+      h('p', null, `Avete portato la Parola oltre la Soglia${r.position ? `: ${r.position}° posto` : ''}. Il vostro Settore è libero.`),
+      r.already ? null : h('p', { class: 'muted' }, 'Il vostro Sigillo ora è rivelato a tutte le coppie, come in un tradimento.'),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: close }, 'Chiudi'));
+    return;
+  }
+  vibrate([600, 200, 600]);
+  beep();
+  el = r.reason === 'alliance'
+    ? battleOverlay('defeat',
+      h('div', { class: 'eyebrow' }, 'La Soglia'),
+      h('h2', { class: 'battle-title' }, 'Uscita negata'),
+      h('p', null, `Siete ancora alleati${r.allies?.length ? ` con ${r.allies.map((n) => `il Settore ${n}`).join(', ')}` : ''}: alla Soglia non si presenta un'alleanza.`),
+      h('p', { class: 'muted' }, 'Rompete l\'alleanza e riprovate. Il Consiglio è stato avvisato.'),
+      h('a', { class: 'btn btn-primary btn-block', href: '#/alleanze', onclick: close }, 'Vai alle alleanze'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'))
+    : battleOverlay('defeat',
+      h('div', { class: 'eyebrow' }, 'La Soglia'),
+      h('h2', { class: 'battle-title' }, 'Uscita negata'),
+      h('p', null, `Non è possibile esfiltrare: mancano ${r.missing === 1 ? '1 frammento' : `${r.missing} frammenti`} della Parola${r.total ? ` (${r.total - r.missing} / ${r.total})` : ''}.`),
+      h('p', { class: 'muted' }, 'Tornate agli Altari e completate la Parola.'),
+      h('a', { class: 'btn btn-primary btn-block', href: '#/frammenti', onclick: close }, 'Vai alla Parola'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'));
 }
 
 function viewMap(focus = null) {
@@ -990,7 +1060,8 @@ function viewMap(focus = null) {
   if (focus !== 'soglia') S.focusedSoglia = null;
   return h('div', { class: 'stack map-page' },
     h('h2', null, 'Mappa'),
-    focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera: un Ufficiale del Consiglio la verifica.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
+    canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,
+    focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera e, senza alleati, leggete il codice di uscita appeso lì.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
     h('p', { class: 'mono small', id: 'map-gps' }, myPos ? gpsLine(myPos) : gpsMsg || 'Ricerca della posizione…'),
     teamMapView.el,
     h('div', { class: 'row-actions' },
@@ -1173,12 +1244,14 @@ function viewAltars() {
 async function openScanner() {
   const text = await scanQR({
     title: 'Scansiona',
-    hint: 'Inquadrate il QR di un Altare o di un Dono del Consiglio.',
-    accept: (t) => (/\/(a|d)\/[\w-]+/.test(t) ? true : /\/login\//.test(t) ? 'Questo è un QR di accesso, non un Altare' : 'Questo QR non è dei Giochi'),
+    hint: 'Inquadrate il QR di un Altare, di un Dono del Consiglio o il codice di uscita della Soglia.',
+    accept: (t) => (/\/(a|d|u)\/[\w-]+/.test(t) ? true : /\/login\//.test(t) ? 'Questo è un QR di accesso, non un Altare' : 'Questo QR non è dei Giochi'),
   });
   if (!text) return;
   const gift = text.match(/\/d\/([\w-]+)/);
   if (gift) { location.hash = `#/dono/${gift[1]}`; return; }
+  const exit = text.match(/\/u\/([\w-]+)/);
+  if (exit) { tryExit(exit[1]); return; }
   const token = text.match(/\/a\/([\w-]+)/)[1];
   registerScan(token);
   location.hash = `#/altare/${token}`;

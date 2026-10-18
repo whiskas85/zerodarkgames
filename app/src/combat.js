@@ -190,6 +190,67 @@ function respondRequest(me, requestId, accept) {
   return { ok: true, accepted: true };
 }
 
+// Rottura per distanza: un alleato che resta per più di 5 minuti a più di 50 m da tutti gli altri esce dall'alleanza.
+const FAR_M = 50;
+const FAR_MS = 5 * 60000;
+const POS_FRESH_MS = 3 * 60000;
+const farSince = new Map(); // teamId → da quando è lontano dagli alleati
+function distM(a, b) {
+  const R = 6371000; const r = Math.PI / 180;
+  const x = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lng - a.lng) * r) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+function breakForDistance(a, t, meters) {
+  const members = [...a.members];
+  tx(() => {
+    q.run('UPDATE alliance_members SET leftAt = ? WHERE teamId = ? AND leftAt IS NULL', Date.now(), t.id);
+    const rest = q.all('SELECT teamId FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL', a.id);
+    if (rest.length < 2) {
+      q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
+      q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
+    }
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta per distanza (${t.sectorName})`);
+  });
+  G.log(t.gameId, 'sistema', 'alliance_broken_distance', { teams: names(members), settore: t.sectorName, metri: Math.round(meters) });
+  notify(members, t.gameId, {
+    title: 'Alleanza rotta per distanza',
+    body: `Il Settore ${t.sectorName} è rimasto per più di 5 minuti a più di ${FAR_M} m dagli alleati: l'alleanza si è rotta. Blocco ingaggio 5 minuti.`,
+    tag: `ally-far-${a.id}-${t.id}`, url: '/#/alleanze',
+  });
+}
+
+function tickAlliances(now = Date.now()) {
+  const seen = new Set();
+  const games = q.all(`SELECT id FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(', ')}) AND status <> 'paused'`, ...C.ACTIVE);
+  for (const g of games) {
+    for (const al of q.all('SELECT id FROM alliances WHERE gameId = ? AND endedAt IS NULL', g.id)) {
+      const ids = q.all('SELECT teamId FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL', al.id).map((r) => r.teamId);
+      // Ultima posizione recente di ogni coppia (il telefono più aggiornato).
+      const pos = {};
+      for (const id of ids) {
+        const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', id, now - POS_FRESH_MS);
+        if (p) pos[id] = p;
+      }
+      for (const id of ids) {
+        seen.add(id);
+        const others = ids.filter((x) => x !== id && pos[x]);
+        if (!pos[id] || !others.length) { farSince.delete(id); continue; }
+        const near = Math.min(...others.map((x) => distM(pos[id], pos[x])));
+        if (near <= FAR_M) { farSince.delete(id); continue; }
+        if (!farSince.has(id)) farSince.set(id, now);
+        if (now - farSince.get(id) > FAR_MS) {
+          farSince.delete(id);
+          const a = allianceOf(id);
+          if (a) breakForDistance(a, team(id), near);
+          break; // l'alleanza è cambiata: le altre coppie si ricontrollano al prossimo giro
+        }
+      }
+    }
+  }
+  for (const id of farSince.keys()) if (!seen.has(id)) farSince.delete(id);
+}
+
 function cancelRequest(me, requestId) {
   const r = q.get('SELECT * FROM alliance_requests WHERE id = ?', Number(requestId));
   if (!r || r.fromTeamId !== me.id || r.status !== 'pending') throw err(404, 'Proposta non trovata');
@@ -411,4 +472,4 @@ function masterCombat(gameId) {
   };
 }
 
-module.exports = { stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
