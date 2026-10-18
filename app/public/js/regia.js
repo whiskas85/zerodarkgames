@@ -2125,6 +2125,7 @@ async function createGiftDialog() {
   const d = fieldData;
   let type = null;
   const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1 });
+  const title = h('input', { class: 'input', maxlength: 36, placeholder: 'es. Cassa del bosco (vuoto: Dono N)' });
   const squadSel = h('select', { class: 'input' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
   const mode = h('select', { class: 'input' },
     h('option', { value: 'manual' }, 'Lo annuncio io (dalla tabella: ora, tra X minuti o a un orario)'),
@@ -2135,6 +2136,7 @@ async function createGiftDialog() {
     h('option', { value: '1' }, 'Cartello da rimuovere (dopo la scansione)'),
     h('option', { value: '0' }, 'Non rimuovere il cartello'));
   const opts = h('div', { class: 'form-grid gift-opts', hidden: true },
+    h('label', { class: 'field' }, h('span', null, 'Titolo (sul cartello)'), title),
     h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
     h('label', { class: 'field' }, h('span', null, 'Squadra che li piazza'), squadSel),
     h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
@@ -2159,7 +2161,7 @@ async function createGiftDialog() {
     body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), cards, chosen, opts),
     onOk: async () => {
       if (!type) { toast('Scegli prima il dono', 'error'); return false; }
-      const r = await api('POST', G('/gifts'), { typeId: type.id, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
+      const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
         squadId: Number(squadSel.value) || null, removeSign: sign.value === '1' });
       toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
       loadField();
@@ -2180,7 +2182,13 @@ function viewGiftsQR() {
   };
   const row = (g) => h('tr', { class: `gift-row-${g.status}` },
     h('td', null, giftQr(g)),
-    h('td', null, h('strong', null, g.label), h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
+    h('td', null, h('div', { class: 'gift-title' }, h('strong', null, g.label),
+      !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-xs btn-ghost', title: 'Cambia titolo', 'aria-label': `Cambia il titolo di ${g.label}`, onclick: async () => {
+        const v = await dialog({ title: 'Titolo del dono', text: 'È il nome stampato sul cartello (il tipo resta segreto). Se il cartello è già stampato, ristampalo.', input: { value: g.label }, okLabel: 'Salva' });
+        if (v == null || !v.trim() || v.trim() === g.label) return;
+        try { await api('PATCH', `/api/m/gifts/${g.id}`, { label: v.trim() }); toast('Titolo cambiato', 'ok'); loadField(); } catch (e) { toast(e.message, 'error', 6000); }
+      } }, '✎') : null),
+      h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
       h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello')),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)

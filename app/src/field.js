@@ -67,6 +67,8 @@ function createGifts(gameId, data, actor) {
     if (!Number.isFinite(expiresAfterMin) || expiresAfterMin <= 0 || expiresAfterMin > 600) throw err(400, 'Scadenza non valida (minuti dopo la comparsa)');
   }
   const revealDelayMin = readDelay(data.revealDelayMin);
+  // Titolo scelto dalla regia (facoltativo): con più doni si numera («Cassa 1», «Cassa 2»…); altrimenti «Dono N».
+  const title = String(data.label || '').trim().slice(0, 36);
   const removeSign = data.removeSign === false || data.removeSign === 0 || data.removeSign === '0' ? 0 : 1;
   const squad = data.squadId ? getSquad(data.squadId) : null;
   if (squad && squad.gameId !== game.id) throw err(400, 'Squadra di un\'altra partita');
@@ -79,7 +81,7 @@ function createGifts(gameId, data, actor) {
       n += 1;
       out.push(Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, revealMode, revealAtMin, expiresAfterMin, squadId, targetLat, targetLng, taskNote, createdAt, revealDelayMin, removeSign)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        game.id, type.id, type.name, type.icon, type.color, type.description, `Dono ${n}`, randomToken(18), revealMode, revealAtMin, expiresAfterMin,
+        game.id, type.id, type.name, type.icon, type.color, type.description, title ? (count > 1 ? `${title} ${i + 1}` : title) : `Dono ${n}`, randomToken(18), revealMode, revealAtMin, expiresAfterMin,
         squad?.id ?? null, target.lat, target.lng, note, Date.now(), revealDelayMin, removeSign).lastInsertRowid));
     }
     return out;
