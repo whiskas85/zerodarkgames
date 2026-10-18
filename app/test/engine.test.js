@@ -39,6 +39,8 @@ const codeOf = (gameId, sectorId) => q.get('SELECT code FROM sector_codes WHERE 
 // Sblocco come nell'app: prima si inquadra il QR dell'Altare, poi si pronuncia il Sigillo.
 const scanUnlock = (t, token, code) => { G.visitPoint(t, token); return G.unlock(t, token, code); };
 const pointOf = (gameId, sectorId) => q.get('SELECT * FROM points WHERE gameId = ? AND sectorId = ?', gameId, sectorId);
+// «Perso» va confermato da chi ha vinto: lo dichiara lo sconfitto, il vincitore conferma.
+const lose = (K, loser, winner, opts) => { const r = K.reportEngagement(loser, winner.id, 'lost', opts); if (r.status === 'pending') K.respondEngagement(winner, r.id, true); return r; };
 
 test('1. calendario con 8 coppie: 6 rivelazioni a 35..210, 2 mai rivelati', () => {
   const g = setupGame(8);
@@ -486,7 +488,7 @@ test('alleanze e scontri: Sigilli condivisi, vinti dalla parte vincente, timer d
   assert.throws(() => K.reportEngagement(Cc, A.id, 'won'), /Tregua/);
   advanceTo(g.id, 6);
   // C perde contro A: l'alleanza A+B riceve il Sigillo di C, C fa la Veglia.
-  K.reportEngagement(Cc, A.id, 'lost');
+  lose(K, Cc, A);
   assert.equal(known(A, Cc).source, 'won');
   assert.equal(known(B, Cc).code, codeOf(g.id, Cc.sectorId));
   assert.ok(K.serverTimers(Cc.id).some((t) => t.timerId === 'veglia'));
@@ -533,13 +535,13 @@ test('vittoria senza Sigilli nuovi: si ruba un Sigillo dal taccuino della parte 
   advanceTo(g.id, 6);
   const known = (t, s) => G.teamState(t).notebook.find((n) => n.sectorId === s.sectorId);
   // Prima vittoria di D su C: Sigillo nuovo, niente furto.
-  const e1 = K.reportEngagement(Cc, D.id, 'lost');
+  const e1 = lose(K, Cc, D);
   assert.equal(known(D, Cc).source, 'won');
   assert.equal(K.combatState(D).steals.length, 0);
   // C intanto ha scoperto il Sigillo di B (e D no).
   q.run('INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, ?)', Cc.id, B.sectorId, codeOf(g.id, B.sectorId), Date.now(), 'note');
   // Seconda vittoria su C: D non ottiene niente di nuovo, gli si propone solo il Sigillo di B.
-  const e2 = K.reportEngagement(Cc, D.id, 'lost');
+  const e2 = lose(K, Cc, D);
   assert.notEqual(e1.id, e2.id);
   const st = K.combatState(D).steals;
   assert.equal(st.length, 1);
@@ -551,18 +553,18 @@ test('vittoria senza Sigilli nuovi: si ruba un Sigillo dal taccuino della parte 
   assert.equal(K.combatState(D).steals.length, 0);
   assert.throws(() => K.stealCode(D, e2.id, B.sectorId), /già scelto/);
   // Niente da rubare (C non conosce altro che D non sappia): nessuna proposta.
-  K.reportEngagement(Cc, D.id, 'lost');
+  lose(K, Cc, D);
   assert.equal(K.combatState(D).steals.length, 0);
   // Alleanza sconfitta: si sommano i taccuini di tutta l'alleanza.
   q.run('INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, ?)', A.id, E.sectorId, codeOf(g.id, E.sectorId), Date.now(), 'note');
   K.respondRequest(A, K.requestAlliance(Cc, A.id).id, true);
   // D conosce già C; A è nuovo, quindi vince il Sigillo di A senza furto.
-  K.reportEngagement(Cc, D.id, 'lost');
+  lose(K, Cc, D);
   assert.equal(known(D, A).source, 'won');
   assert.equal(K.combatState(D).steals.length, 0);
   // Ora D li conosce tutti e due: si propone E (dal taccuino di A, alleato di C).
   advanceTo(g.id, 7);
-  K.reportEngagement(Cc, D.id, 'lost');
+  lose(K, Cc, D);
   assert.deepEqual(K.combatState(D).steals[0].candidates.map((c) => c.sectorId), [E.sectorId]);
 });
 
@@ -1250,7 +1252,7 @@ test('Skill negli scontri e nelle alleanze (fase 2): Maestria, Immunità, Reliqu
   // Reliquia Antica: E perde contro C, il suo Sigillo resta coperto.
   const id = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, 'reliquia', 'Reliquia Antica', 'Dono', 'tokrel', 'claimed', ?, ?, ?)", g.id, E.id, Date.now(), Date.now()).lastInsertRowid);
   F.useGift(E, id);
-  K.reportEngagement(E, Cc.id, 'lost');
+  lose(K, E, Cc);
   assert.ok(!known(Cc, E));
   // Diplomatico: B propone a E usando la Skill → E non riceve il Sigillo di B, B riceve quello di E. Ritirata: 8 minuti.
   const r1 = K.requestAlliance(B, Cc.id);
@@ -1263,7 +1265,7 @@ test('Skill negli scontri e nelle alleanze (fase 2): Maestria, Immunità, Reliqu
   // Velenoso: A vince contro E (alleata di B) e rompe l'alleanza B+E.
   q.run('DELETE FROM team_timers WHERE teamId IN (?, ?)', A.id, E.id);
   q.run("UPDATE team_skills SET readyAt = NULL WHERE teamId = ?", A.id);
-  K.reportEngagement(E, A.id, 'lost');
+  lose(K, E, A);
   const eng = K.combatState(A).history[0];
   assert.equal(eng.canPoison, true);
   K.poison(A, eng.id);
@@ -1400,4 +1402,24 @@ test('avanzamento del tempo: ricariche ed effetti delle Skill seguono il tempo d
   // Ombra durava 15 minuti: dopo 30 è finita.
   assert.ok(!S.skillsState(A).indicators.some((x) => x.code === 'ombra'));
   delete process.env.ZDG_ENV;
+});
+
+test('«Perso» aspetta la conferma di chi ha vinto: niente Veglia né Sigilli prima', () => {
+  const K = require('../src/combat');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const r = K.reportEngagement(A, B.id, 'lost');
+  assert.equal(r.status, 'pending');
+  assert.ok(!K.serverTimers(A.id).some((t) => t.timerId === 'veglia'));
+  assert.ok(!G.teamState(B).notebook.find((n) => n.sectorId === A.sectorId).code);
+  assert.equal(K.combatState(B).toConfirm.length, 1);
+  assert.equal(K.combatState(B).toConfirm[0].result, 'lost');
+  assert.throws(() => K.respondEngagement(A, r.id, true), /non trovato/);
+  K.respondEngagement(B, r.id, true);
+  assert.ok(K.serverTimers(A.id).some((t) => t.timerId === 'veglia'));
+  assert.equal(G.teamState(B).notebook.find((n) => n.sectorId === A.sectorId).code, codeOf(g.id, A.sectorId));
 });

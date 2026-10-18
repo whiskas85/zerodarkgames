@@ -344,8 +344,9 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   const flip = skill === 'maestria';
   const winners = result === 'lost' && !flip ? theirs : mine;
   const losers = result === 'lost' && !flip ? mine : theirs;
-  // "Vinto" va confermato dallo sconfitto; "perso" e "pareggio" valgono subito (anche la Maestria delle armi).
-  const status = result === 'won' ? 'pending' : 'confirmed';
+  // "Vinto" va confermato dallo sconfitto, "perso" dal vincitore; il pareggio vale subito (e la Maestria delle armi:
+  // l'esito dichiarato dall'avversario non conta).
+  const status = flip || result === 'draw' ? 'confirmed' : 'pending';
   const id = Number(q.run('INSERT INTO engagements (gameId, reporterTeamId, opponentTeamId, result, status, winners, losers, createdAt, skill, skillTeamId, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     me.gameId, me.id, opp.id, flip ? 'won' : result, 'pending', JSON.stringify(winners), JSON.stringify(losers), Date.now(), skill, skill ? me.id : null,
     skill === 'immunita' ? JSON.stringify({ [me.id]: 'immunita' }) : null).lastInsertRowid);
@@ -355,9 +356,11 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   if (status === 'confirmed') {
     applyEngagement(e, `coppia:${me.id}`);
   } else {
-    notify([...losers, me.id], me.gameId, null);
-    rt.pushTeams(me.gameId, { title: 'Confermate la sconfitta', body: `Il Settore ${me.sectorName} dichiara di avervi sconfitto. Confermate o contestate nell'app.`, tag: `eng-${id}`, url: '/#/scontri' }, opp.id);
-    for (const l of losers) if (l !== opp.id) rt.toTeams(me.gameId, 'state', {}, l);
+    // Conferma dalla parte avversaria (la vede la coppia con cui si è combattuto e i suoi alleati).
+    notify([...theirs, me.id], me.gameId, null);
+    rt.pushTeams(me.gameId, result === 'won'
+      ? { title: 'Confermate la sconfitta', body: `Il Settore ${me.sectorName} dichiara di avervi sconfitto. Confermate o contestate nell'app.`, tag: `eng-${id}`, url: '/#/scontri' }
+      : { title: 'Confermate la vittoria', body: `Il Settore ${me.sectorName} dichiara di aver perso contro di voi. Confermate o contestate nell'app.`, tag: `eng-${id}`, url: '/#/scontri' }, opp.id);
   }
   return { ok: true, id, status };
 }
@@ -365,9 +368,12 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
 function respondEngagement(me, engagementId, confirm, opts = {}) {
   requireCouple(me);
   const e = q.get('SELECT * FROM engagements WHERE id = ?', Number(engagementId));
-  if (!e || !JSON.parse(e.losers).includes(me.id)) throw err(404, 'Scontro non trovato');
+  // Risponde la parte avversaria di chi ha dichiarato (sconfitti per un «vinto», vincitori per un «perso»).
+  const other = e ? (JSON.parse(e.winners).includes(e.reporterTeamId) ? JSON.parse(e.losers) : JSON.parse(e.winners)) : [];
+  if (!e || !other.includes(me.id)) throw err(404, 'Scontro non trovato');
+  const iLost = JSON.parse(e.losers).includes(me.id);
   if (e.status !== 'pending') throw err(409, 'Scontro già registrato');
-  const skill = confirm && ['maestria', 'immunita'].includes(opts.skill) ? opts.skill : null;
+  const skill = confirm && iLost && ['maestria', 'immunita'].includes(opts.skill) ? opts.skill : null;
   if (skill) {
     SK().checkSkill(me, skill);
     if (skill === 'maestria') {
@@ -528,7 +534,8 @@ function combatState(me) {
     incoming: q.all("SELECT * FROM alliance_requests WHERE toTeamId = ? AND status = 'pending' ORDER BY id", me.id)
       .map((r) => ({ ...reqOut(r), team: teamLite(r.fromTeamId) })),
     outgoing: q.all("SELECT * FROM alliance_requests WHERE fromTeamId = ? AND status = 'pending' ORDER BY id", me.id).map((r) => ({ ...reqOut(r), team: teamLite(r.toTeamId) })),
-    toConfirm: recent.filter((e) => e.status === 'pending' && JSON.parse(e.losers).includes(me.id)).map((e) => engagementOut(e, me.id)),
+    toConfirm: recent.filter((e) => e.status === 'pending' && (JSON.parse(e.winners).includes(e.reporterTeamId) ? JSON.parse(e.losers) : JSON.parse(e.winners)).includes(me.id))
+      .map((e) => engagementOut(e, me.id)),
     // Vittorie appena confermate (anche degli alleati): il telefono mostra la Vittoria con i Sigilli di tutta
     // la parte sconfitta, anche quelli che si conoscevano già (rivelati, annotati, da un'alleanza).
     steals: pendingSteals(me),

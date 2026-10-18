@@ -918,12 +918,12 @@ function viewCombat() {
     if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
     const allies = c.alliance ? c.alliance.members.filter((m) => m.teamId !== st.team.id).map(teamName) : [];
     const text = {
-      lost: `Confermate di aver perso contro ${teamName(opp)}? Il vostro Sigillo${allies.length ? ' e quelli dei vostri alleati' : ''} andranno a ${opp.sectorName} (e ai suoi alleati, se ne ha). Parte la Veglia: cappellino per 2 minuti.`,
+      lost: `Dichiarate di aver perso contro ${teamName(opp)}? ${opp.sectorName} dovrà confermare la vittoria: poi il vostro Sigillo${allies.length ? ' e quelli dei vostri alleati' : ''} andranno a ${opp.sectorName} (e ai suoi alleati, se ne ha) e parte la Veglia.`,
       won: `Dichiarate di aver vinto contro ${teamName(opp)}? ${opp.sectorName} dovrà confermare: poi riceverete i Sigilli della parte sconfitta${allies.length ? ' (anche i vostri alleati)' : ''}.`,
       draw: `Pareggio con ${teamName(opp)}? Blocco ingaggio di 5 minuti per tutti.`,
     }[result];
     if (!(await dialog({ title: { lost: 'Scontro perso', won: 'Scontro vinto', draw: 'Pareggio' }[result], text, okLabel: 'Registra', danger: result === 'lost' }))) return;
-    const r = await combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result }, result === 'won' ? `In attesa della conferma di ${opp.sectorName}` : 'Scontro registrato');
+    const r = await combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result }, result === 'draw' ? 'Scontro registrato' : `In attesa della conferma di ${opp.sectorName}`);
     if (r) combatOpp = null;
   };
   const other = (e) => (e.mine === 'won' ? e.losers : e.mine === 'lost' ? e.winners : [...e.winners, ...e.losers].filter((x) => !c.alliance?.members.some((m) => m.teamId === x.teamId) && x.teamId !== st.team.id));
@@ -932,7 +932,7 @@ function viewCombat() {
   const immunita = skillReady('immunita');
   const lostWith = (skill) => {
     if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
-    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Maestria delle armi: lo scontro con ${opp.sectorName} è vostro` : 'Sconfitta con Immunità: il vostro Sigillo resta coperto').then((r) => { if (r) combatOpp = null; });
+    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Maestria delle armi: lo scontro con ${opp.sectorName} è vostro` : `Sconfitta con Immunità: il vostro Sigillo resterà coperto. In attesa della conferma di ${opp.sectorName}`).then((r) => { if (r) combatOpp = null; });
   };
   const outcome = (e) => {
     const vs = other(e).map((x) => x.sectorName).join(', ');
@@ -950,7 +950,15 @@ function viewCombat() {
       h('p', { class: 'small muted' }, 'I loro Sigilli li conoscete già: scegliete quale rubare dal loro taccuino.'),
       h('button', { class: 'btn btn-primary', onclick: () => showSteal(x) }, 'Scegli il Sigillo'))),
 
-    c.toConfirm.length ? h('div', { class: 'stack-sm' }, c.toConfirm.map((e) => h('div', { class: 'combat-card ask' },
+    c.toConfirm.length ? h('div', { class: 'stack-sm' }, c.toConfirm.map((e) => (e.result === 'lost' ? h('div', { class: 'combat-card ask' },
+      // Chi ha perso lo ha dichiarato: la vittoria va confermata da chi ha vinto.
+      h('div', { class: 'eyebrow' }, 'Vittoria da confermare'),
+      h('strong', null, `${teamName(e.reporter)} dichiara di aver perso contro di voi`),
+      h('p', { class: 'small muted' }, 'Confermando ricevete i Sigilli della parte sconfitta e per loro parte la Veglia. Se non è vero, contestate: decide la regia.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }, 'Vittoria confermata') }, 'Confermo, abbiamo vinto'),
+        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto')))
+      : h('div', { class: 'combat-card ask' },
       h('div', { class: 'eyebrow' }, 'Esito da confermare'),
       h('strong', null, `${teamName(e.reporter)} dichiara di avervi sconfitto`),
       h('p', { class: 'small muted' }, `Confermando, i Sigilli di ${e.losers.map((x) => x.sectorName).join(', ')} vanno a ${e.winners.map((x) => x.sectorName).join(', ')} (e ai suoi alleati, se ne ha). Se non è vero, contestate: decide la regia.`),
@@ -960,7 +968,7 @@ function viewCombat() {
       maestria || immunita ? h('div', { class: 'skill-holds' },
         maestria ? holdButton('⚔️ Maestria delle armi: vinciamo noi', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'maestria' }, 'Maestria delle armi: lo scontro è vostro')) : null,
         immunita ? holdButton('🧿 Confermo con Immunità', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'immunita' }, 'Sconfitta con Immunità: il vostro Sigillo resta coperto')) : null,
-        h('p', { class: 'tiny muted' }, 'Tenete premuto finché la barra si riempie.')) : null))) : null,
+        h('p', { class: 'tiny muted' }, 'Tenete premuto finché la barra si riempie.')) : null)))) : null,
 
     h('section', { class: 'card stack-sm' },
       h('div', { class: 'eyebrow' }, 'Esito di uno scontro'),
@@ -976,7 +984,7 @@ function viewCombat() {
           maestria ? holdButton('⚔️ Perso, ma Maestria delle armi', () => lostWith('maestria'), !opp) : null,
           immunita ? holdButton('🧿 Perso con Immunità', () => lostWith('immunita'), !opp) : null,
           h('p', { class: 'tiny muted' }, 'Skill: tenete premuto finché la barra si riempie.')) : null,
-        h('p', { class: 'tiny muted' }, 'Niente scambio di Sigilli a mano: chi vince li riceve nel taccuino (anche i suoi alleati), chi perde fa la Veglia.'),
+        h('p', { class: 'tiny muted' }, 'Niente scambio di Sigilli a mano: l\'esito vale quando l\'altra coppia lo conferma, poi chi vince riceve i Sigilli nel taccuino (anche i suoi alleati) e chi perde fa la Veglia.'),
       ]),
 
     c.history.length ? h('section', { class: 'stack-sm' },
