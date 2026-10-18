@@ -345,7 +345,7 @@ function viewLive() {
       h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'Rimanente'), h('div', { class: 'mono huge', 'data-clock': 'remaining' }, '—')),
       h('div', { class: 'control-actions' }, controlButtons())),
 
-    ms.game.isDemo ? demoPanel() : null,
+    ms.game.isDemo || ms.canWarp ? demoPanel() : null,
 
     PRE.includes(st) ? readinessPanel() : null,
 
@@ -397,7 +397,7 @@ function demoPanel() {
   const active = ACTIVE.includes(st);
   const adv = (m) => h('button', { class: `btn btn-sm ${m < 0 ? 'btn-ghost' : ''}`, disabled: !active, onclick: () => call('POST', G('/advance'), { minutes: m }, m > 0 ? `Tempo avanzato di ${m} minuti` : `Tempo riportato indietro di ${-m} minuti`) }, `${m > 0 ? '+' : '−'}${Math.abs(m)} min`);
   return h('div', { class: 'panel demo' },
-    h('div', { class: 'panel-head' }, h('h2', null, 'Partita di prova'), h('span', { class: 'chip chip-brass' }, 'solo test')),
+    h('div', { class: 'panel-head' }, h('h2', null, R.ms.game.isDemo ? 'Partita di prova' : 'Tempo di gioco'), h('span', { class: 'chip chip-brass' }, 'solo test')),
     h('p', { class: 'muted tiny' }, active
       ? "Fai passare il tempo di gioco per vedere subito tregua → caccia, tradimenti, doni, ultima mezz'ora e fine. Le coppie ricevono tutto come in una partita vera."
       : "I pulsanti si attivano dopo il VIA (non in pausa). Per entrare come coppia usa \"Apri app\" nella scheda Iscrizioni e coppie, oppure il codice d'accesso da un altro telefono o da una finestra in incognito."),

@@ -1685,7 +1685,7 @@ function shiftGameTimes(gameId, ms) {
 // del salto (tradimenti, armamenti, doni a minuto o a orario); un armamento già finito risulta chiuso alla sua ora.
 function settleDemoJump(gameId, since) {
   const g = getGame(gameId);
-  if (!g.isDemo || !g.startedAt) return;
+  if (!canWarp(g) || !g.startedAt) return;
   const at = (min) => g.startedAt + Math.round(min * 60000);
   q.run("UPDATE revelations SET firedAt = ? + scheduledMin * 60000 WHERE gameId = ? AND status = 'fired' AND firedAt >= ? AND scheduledMin IS NOT NULL", g.startedAt, g.id, since);
   for (const s of q.all("SELECT * FROM supply_drops WHERE gameId = ? AND status = 'fired' AND firedAt >= ? AND (scheduledMin IS NOT NULL OR scheduledAt IS NOT NULL)", g.id, since)) {
@@ -1703,9 +1703,12 @@ function settleDemoJump(gameId, since) {
   }
 }
 
+// Avanzamento del tempo: nelle partite di prova e, nell'ambiente di test, in tutte le partite.
+const canWarp = (g) => !!g.isDemo || isTestEnv();
+
 function advanceDemo(gameId, minutes, actor) {
   const g = getGame(gameId);
-  if (!g.isDemo) throw err(403, 'Il tempo si può far avanzare solo nelle partite di prova');
+  if (!canWarp(g)) throw err(403, 'Il tempo si può far avanzare solo nelle partite di prova o nell\'ambiente di test');
   if (!C.ACTIVE.includes(g.status)) throw err(409, 'Il tempo avanza solo a partita in corso (non in pausa)');
   let m = parseFloat(minutes);
   if (!Number.isFinite(m) || m === 0 || Math.abs(m) > 240) throw err(400, 'Minuti non validi');
@@ -1942,6 +1945,7 @@ function masterState(gameId) {
     readiness: readiness(g),
     spots: spotsOf(g.id),
     env: process.env.ZDG_ENV || 'production',
+    canWarp: canWarp(g),
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
     pushOff: pushReport(g.id).people.filter((p) => (p.state === 'off' || p.traccar !== 'ok') && ['couple', 'elect'].includes(p.group)).length,
     next: nextEvents(g),
