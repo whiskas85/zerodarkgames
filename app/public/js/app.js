@@ -129,6 +129,8 @@ const seenAlliances = new Set(store.get('zdg_seen_alliances', []));
 
 function setState(st, offset) {
   const prev = S.state;
+  // La versione con cui l'app è stata aperta (dal primo stato arrivato dal server, non da quello salvato).
+  if (!S.bootVersion && st.appVersion && offset !== undefined) S.bootVersion = st.appVersion;
   S.state = st;
   clock.set(st.clock, offset);
   syncServerTimers(st);
@@ -522,6 +524,9 @@ function banners() {
   if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + st.game.emergencyRadioChannel : ''}`)));
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
+  // Il server è stato aggiornato mentre l'app era aperta: questa versione può non capire le novità.
+  if (S.bootVersion && st.appVersion && st.appVersion !== S.bootVersion) out.push(h('button', { type: 'button', class: 'banner banner-action banner-update', onclick: () => location.reload() },
+    h('strong', null, 'Nuova versione dell\'app'), h('span', null, 'Tocca qui per aggiornare')));
   const trkOn = traccarPrompt(st);
   if (trkOn) out.push(trkOn);
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
@@ -1570,9 +1575,9 @@ function pick(title, options, { text = null, okLabel = 'Conferma' } = {}) {
 
 const teamOptions = () => (S.state?.combat?.teams || []).map((t) => ({ value: t.teamId, label: `${t.roman} · Settore ${t.sectorName}`, sub: t.allied ? 'alleati' : t.displayName || null }));
 const ownedLabels = () => new Set((S.state?.fragments || []).filter((f) => f.text).map((f) => f.pointLabel));
-// Altari di cui non avete ancora il frammento (Veggenza: solo quelli che ne custodiscono uno).
-const altarOptions = (withFragment = false) => (S.state?.skills?.altars || S.state?.map?.points || [])
-  .filter((p) => (p.owned ?? ownedLabels().has(p.label)) === false && (!withFragment || p.fragment))
+// Altari di cui non avete ancora il frammento (Veggenza: solo quelli conosciuti, già inquadrati, che ne custodiscono uno).
+const altarOptions = (known = false) => (S.state?.skills?.altars || S.state?.map?.points || [])
+  .filter((p) => (p.owned ?? ownedLabels().has(p.label)) === false && (!known || (p.fragment && p.known)))
   .map((p) => ({ value: p.id, label: p.label, sub: `${p.roman} · Settore ${p.sectorName}` }));
 // Altari inquadrati: scaduti (Memoria) o ancora validi (Chiave Maestra). In ordine di nome, non di Sigillo posseduto.
 const visitedOptions = (expired) => (S.state?.visited || []).filter((v) => !v.unlocked && (expired ? v.expiresAt && v.expiresAt < clock.serverNow() : !v.expiresAt || v.expiresAt >= clock.serverNow()))
@@ -1580,14 +1585,16 @@ const visitedOptions = (expired) => (S.state?.visited || []).filter((v) => !v.un
 const sealOptions = () => (S.state?.notebook || []).filter((n) => n.code).map((n) => ({ value: n.sectorId, label: `${n.roman} · Settore ${n.sectorName}`, sub: n.source === 'own' ? 'il vostro' : null }));
 const skillOptions = (list) => list.map((s) => ({ value: s.id, label: `${s.icon} ${s.name}`, sub: `${SKILL_KIND[s.kind]} · ${s.description}` }));
 
-async function askParams(target, name, text) {
+async function askParams(target, name, text, id = null) {
   const sk = S.state.skills;
   const mine = new Set(sk.mine.map((s) => s.id));
   const one = async (key, title, options, note) => { const v = await pick(`${name}: ${title}`, options, { text: note }); return v == null ? null : { [key]: v }; };
   switch (target) {
     case 'team': return one('teamId', 'scegliete una coppia', teamOptions(), text);
-    case 'altar': return one('pointId', 'scegliete un Altare', altarOptions(), text);
-    case 'fragmentAltar': return one('pointId', 'scegliete un Altare', altarOptions(true), text);
+    // Veggenza: solo gli Altari conosciuti (già inquadrati) con un frammento che non avete.
+    case 'altar': return id === 'veggenza'
+      ? one('pointId', 'scegliete un Altare che conoscete', altarOptions(true), 'Solo gli Altari che avete già inquadrato e di cui non avete il frammento.')
+      : one('pointId', 'scegliete un Altare', altarOptions(), text);
     case 'expiredAltar': return one('pointId', 'Altare da riaprire', visitedOptions(true), 'Altari già inquadrati con la scansione scaduta.');
     case 'scannedAltar': return one('pointId', 'Altare da aprire', visitedOptions(false), 'Solo gli Altari appena inquadrati (scansione ancora valida).');
     case 'seal': return one('sectorId', 'Sigillo da proteggere', sealOptions(), text);
@@ -1600,12 +1607,14 @@ async function askParams(target, name, text) {
       return to == null ? null : { fromSkillId: from, skillId: to };
     }
     default:
+      // Una scelta che questa versione dell'app non conosce: meglio aggiornare che mandare una richiesta vuota.
+      if (target) { toast('Aggiornate l\'app (chiudetela e riapritela) per usare questa Skill', 'error', 8000); return null; }
       return (await dialog({ title: `Usare ${name}?`, text, okLabel: 'Usa' })) ? {} : null;
   }
 }
 
 async function useSkillFlow(s) {
-  const params = await askParams(s.target, s.name, s.description);
+  const params = await askParams(s.target, s.name, s.description, s.id);
   if (!params) return;
   try { showEffectResult(s.name, await api('POST', `/api/team/skill/${s.id}/use`, params)); } catch (e) { toast(e.offline ? 'Serve la rete per usare una Skill' : e.message, 'error', 7000); }
   refresh();

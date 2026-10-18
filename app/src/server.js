@@ -1,5 +1,7 @@
 'use strict';
 const path = require('path');
+// Versione dell'app (quella del service worker): se cambia mentre un telefono ha l'app aperta, gli si chiede di aggiornarla.
+const APP_VERSION = (/VERSION = '([^']+)'/.exec(require('fs').readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8')) || [])[1] || null;
 const express = require('express');
 const QRCode = require('qrcode');
 const { q, getSetting, setSetting } = require('./db');
@@ -350,6 +352,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
+  st.appVersion = APP_VERSION;
   st.openNew = !!openNew;
   return st;
 }));

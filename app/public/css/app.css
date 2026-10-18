@@ -591,3 +591,4 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 @keyframes sword-l { from { transform: scaleX(-1) translateX(40px) rotate(-30deg); opacity: 0; } to { transform: scaleX(-1); opacity: 1; } }
 @keyframes sword-r { from { transform: translateX(40px) rotate(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mastery-banner, .mastery-swords span { animation: none; } }
+button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }

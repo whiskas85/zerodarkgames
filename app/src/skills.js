@@ -30,7 +30,7 @@ const SKILLS = [
   { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, where: 'scontri', description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
   { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio lo scopre 1 minuto dopo.' },
   { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per 3 minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
-  { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'fragmentAltar', description: 'Scegliete un Altare e prendete subito il suo frammento, senza Sigillo e senza andarci.' },
+  { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Scegliete uno degli Altari che conoscete (già inquadrati) e prendete subito il suo frammento, senza Sigillo e senza tornarci.' },
   { id: 'intuizione', name: 'Intuizione', icon: '🧠', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Aprite un Altare a scelta da lontano, come se l\'aveste appena inquadrato: poi serve il suo Sigillo.' },
   { id: 'autorita', name: 'Autorità', icon: '👑', kind: 'ultimate', cooldownMin: 90, target: null, description: 'Ricevete subito un Dono a caso.' },
   { id: 'silenzio', name: 'Silenzio di Vetro', icon: '🔇', kind: 'passive', description: 'Quando una coppia vi scopre con Occhio o Rete del Consiglio, vede solo un\'area di 100 m, non il punto esatto.' },
@@ -272,6 +272,7 @@ function applySkill(g, me, s, p) {
       const pt = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(p.pointId), g.id);
       const f = pt && q.get('SELECT * FROM fragments WHERE pointId = ?', pt.id);
       if (!f) throw err(400, 'Scegliete un Altare che custodisce un frammento');
+      if (!q.get('SELECT 1 FROM team_visits WHERE teamId = ? AND pointId = ?', me.id, pt.id)) throw err(409, 'La Veggenza vale solo per gli Altari che conoscete: inquadratene prima il QR');
       if (q.get('SELECT 1 FROM team_fragments WHERE teamId = ? AND fragmentId = ?', me.id, f.id)) throw err(409, 'Avete già il frammento di questo Altare');
       q.run("INSERT INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'skill', ?)", me.id, f.id, Date.now());
       startEffect(me, 'skill', s.id, { pointId: pt.id });
@@ -717,7 +718,8 @@ function skillsState(me, now = Date.now()) {
     altars: q.all(`SELECT p.id, p.label, s.name AS sectorName, s.roman, f.id AS fragmentId, tf.teamId AS owned FROM points p
                    JOIN sectors s ON s.id = p.sectorId LEFT JOIN fragments f ON f.pointId = p.id
                    LEFT JOIN team_fragments tf ON tf.fragmentId = f.id AND tf.teamId = ? WHERE p.gameId = ? ORDER BY s.ord, p.label`, me.id, g.id)
-      .map((p) => ({ id: p.id, label: p.label, sectorName: p.sectorName, roman: p.roman, fragment: !!p.fragmentId, owned: !!p.owned })),
+      .map((p) => ({ id: p.id, label: p.label, sectorName: p.sectorName, roman: p.roman, fragment: !!p.fragmentId, owned: !!p.owned,
+        known: !!q.get('SELECT 1 FROM team_visits WHERE teamId = ? AND pointId = ?', me.id, p.id) })),
   };
 }
 

@@ -1194,8 +1194,10 @@ test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizion
   F.useGift(A, gift(A, 'sovraccarico'));
   assert.ok(!q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt);
   F.useGift(A, gift(A, 'maestro'), { skillId: 'veggenza' });
-  // Veggenza: il frammento di un Altare senza andarci.
+  // Veggenza: il frammento di un Altare conosciuto (già inquadrato), senza Sigillo e senza tornarci.
   const pB = pointOf(g.id, B.sectorId);
+  assert.throws(() => S.useSkill(A, 'veggenza', { pointId: pB.id }), /Altari che conoscete/);
+  q.run('INSERT INTO team_visits (teamId, pointId, visitedAt) VALUES (?, ?, ?)', A.id, pB.id, now - 3600000);
   const v = S.useSkill(A, 'veggenza', { pointId: pB.id });
   assert.ok(v.fragment.text);
   // Custode: il Sigillo di B, che D conosce (rubato o no), resta coperto agli altri.
