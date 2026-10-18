@@ -557,3 +557,4 @@ tr.gift-row-claimed td { opacity: .6; }
 .task-banner { display: block; padding: 10px 16px; background: #5b2a0c; color: #fff; text-decoration: none; border-bottom: 2px solid #e0603f; animation: task-pulse 1.6s ease-in-out infinite; }
 @keyframes task-pulse { 0%, 100% { background: #5b2a0c; } 50% { background: #8a3d12; } }
 @media (prefers-reduced-motion: reduce) { .task-banner { animation: none; } }
+.gift-qr { display: block; background: #fff; padding: 4px; border-radius: 4px; }

@@ -2131,7 +2131,14 @@ function viewGiftsQR() {
 
   const live = d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
   const gone = d.gifts.filter((g) => ['claimed', 'expired'].includes(g.status));
+  const giftQr = (g) => {
+    if (!g.qrToken) return null;
+    const url = `${R.baseUrl}/d/${g.qrToken}`;
+    return h('a', { href: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, target: '_blank', title: url },
+      h('img', { class: 'gift-qr', src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: `QR ${g.label}`, width: 84, height: 84, loading: 'lazy' }));
+  };
   const row = (g) => h('tr', { class: `gift-row-${g.status}` },
+    h('td', null, giftQr(g)),
     h('td', null, h('strong', null, g.label), h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`)),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
@@ -2146,7 +2153,7 @@ function viewGiftsQR() {
       ['placed', 'revealed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Riportare da piazzare?', 'Posizione e foto vengono cancellate e il dono sparisce dalle mappe.', 'POST', `/api/m/gifts/${g.id}/reset`, {}, 'Dono da ripiazzare', true).then(() => loadField()) }, 'Da ripiazzare') : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il dono?', g.label, 'DELETE', `/api/m/gifts/${g.id}`, undefined, 'Dono eliminato', true).then(() => loadField()) }, 'Elimina')));
   const table = (list) => h('div', { class: 'table-wrap' }, h('table', null,
-    h('thead', null, h('tr', null, ['Dono', 'Stato e incarico', 'Annuncio', 'Scadenza', ''].map((x) => h('th', null, x)))),
+    h('thead', null, h('tr', null, ['QR', 'Dono', 'Stato e incarico', 'Annuncio', 'Scadenza', ''].map((x) => h('th', null, x)))),
     h('tbody', null, list.map(row))));
 
   return h('div', { class: 'stack' },

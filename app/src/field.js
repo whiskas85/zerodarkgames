@@ -332,7 +332,8 @@ function fieldState(gameId) {
     game: { id: game.id, name: game.name, status: game.status },
     clock: G.clockOf(game),
     points,
-    gifts: q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', game.id).map(giftOut),
+    // Alla regia anche il token del QR: il cartello si vede (e si stampa) dalla tabella.
+    gifts: q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', game.id).map((g) => ({ ...giftOut(g), qrToken: g.qrToken })),
     giftTypes: giftTypes(),
     squads: squadsOf(game.id),
     // Incarichi generati da Skill e Doni (o creati senza squadra): da assegnare.
