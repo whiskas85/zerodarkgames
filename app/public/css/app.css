@@ -526,3 +526,15 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .battle-overlay.hound .battle-box { border-color: var(--brass); }
 @keyframes hound-dive { 0% { transform: translateY(-60px) scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .battle-overlay.hound .hound-ico { animation: none; } }
+
+/* Custode: Sigillo protetto da un'altra coppia */
+.guarded-box { display: grid; gap: 6px; padding: 14px; border: 2px solid #22c3e6; background: linear-gradient(135deg, rgba(34, 195, 230, .22), rgba(155, 108, 240, .14)); box-shadow: 0 0 14px rgba(34, 195, 230, .25); }
+.guarded-box p { margin: 0; }
+.guarded-head { display: flex; align-items: center; gap: 10px; font-size: 20px; }
+.guarded-ico { font-size: 30px; line-height: 1; }
+.guarded-time { font-size: 18px; font-weight: 700; color: #7fe3f7; }
+.guarded-box.compact { padding: 10px; }
+.guarded-box.compact .guarded-head { font-size: 16px; }
+.guarded-box.compact .guarded-ico { font-size: 24px; }
+.guarded-box.compact .guarded-time { font-size: 15px; }
+.nb-guarded { grid-template-columns: auto 1fr; }

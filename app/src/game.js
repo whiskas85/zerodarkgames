@@ -1363,6 +1363,11 @@ function unlock(team, qrToken, code) {
   }
   const sc = q.get('SELECT * FROM sector_codes WHERE gameId = ? AND sectorId = ?', g.id, p.sectorId);
   const s = sectorById(p.sectorId);
+  // Custode di un'altra coppia: finché il Sigillo è protetto, quell'Altare non si apre (nemmeno scrivendolo).
+  const guardedUntil = p.sectorId !== team.sectorId && require('./skills').protectedSeals(team)[p.sectorId];
+  if (guardedUntil) {
+    return { ok: false, label: p.label, guarded: true, guardedUntil, message: `Sigillo del Settore ${s.name} custodito da un'altra coppia (Skill Custode): l'Altare non si apre fino alle ${new Date(guardedUntil).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' })}.` };
+  }
   if (!sc || normCode(code) !== sc.code) {
     log(g.id, `coppia:${team.id}`, 'unlock_failed', { teamId: team.id, point: p.label, attempt: normCode(code).slice(0, 12) });
     return { ok: false, label: p.label, message: `Sigillo non valido per questo Altare (${s.name})` };
@@ -1836,7 +1841,7 @@ function teamStateCore(team, player = null) {
   });
 
   const visited = points.filter((p) => visits.has(p.id)).map((p) => ({
-    pointId: p.id, qrToken: p.qrToken, label: p.label, sectorId: p.sectorId, sectorName: sectorById(p.sectorId).name, unlocked: ownedPoints.has(p.id),
+    pointId: p.id, qrToken: p.qrToken, label: p.label, sectorId: p.sectorId, sectorName: sectorById(p.sectorId).name, unlocked: ownedPoints.has(p.id), guardedUntil: p.sectorId !== team.sectorId ? guarded[p.sectorId] || null : null,
     visitedAt: visitRows[p.id], expiresAt: scanExpiresAt(g, visitRows[p.id], team),
   }));
 

@@ -1487,3 +1487,22 @@ test('Occhio del Consiglio: durata e raggio dai parametri della partita (predefi
   const e = q.get("SELECT * FROM skill_effects WHERE teamId = ? AND code = 'occhio'", A.id);
   assert.ok(Math.abs(e.endsAt - e.startedAt - 7 * 60000) < 1000);
 });
+
+test('Custode: finché il Sigillo è protetto il suo Altare non si apre, nemmeno scrivendolo', () => {
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.chooseSkill(B, 'custode', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  S.useSkill(B, 'custode', { sectorId: B.sectorId });
+  const pB = pointOf(g.id, B.sectorId);
+  const r = scanUnlock(A, pB.qrToken, codeOf(g.id, B.sectorId));
+  assert.equal(r.ok, false);
+  assert.equal(r.guarded, true);
+  assert.ok(G.teamState(A).visited.find((v) => v.qrToken === pB.qrToken).guardedUntil);
+  // Finita la protezione si apre.
+  q.run("UPDATE skill_effects SET endsAt = ? WHERE code = 'custode' AND teamId = ?", Date.now() - 1000, B.id);
+  assert.equal(scanUnlock(A, pB.qrToken, codeOf(g.id, B.sectorId)).ok, true);
+});

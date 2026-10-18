@@ -1368,6 +1368,14 @@ function sightingsNote() {
     dirty ? dirtyLine(dirty) : null);
 }
 
+// Custode: Sigillo protetto da un'altra coppia. Riquadro grande e colorato con il perché e il conto alla rovescia.
+function guardedBox(sectorName, until, compact = false) {
+  return h('div', { class: `guarded-box ${compact ? 'compact' : ''}` },
+    h('div', { class: 'guarded-head' }, h('span', { class: 'guarded-ico', 'aria-hidden': 'true' }, '🛡️'), h('strong', null, `Sigillo custodito${sectorName ? ` · Settore ${sectorName}` : ''}`)),
+    h('div', { class: 'guarded-time' }, 'Ancora ', h('span', { class: 'mono', 'data-abs': until }, '—'), ` (fino alle ${fmtTime(until)})`),
+    h('p', { class: 'small' }, 'Un\'altra coppia ha protetto questo Sigillo con la Skill Custode: finché dura non potete leggerlo né usarlo per aprire il suo Altare. Tornate quando la protezione finisce.'));
+}
+
 // Segugio: avviso a tutto schermo (una volta per conquista) e scheda grande in home per 30 minuti.
 const seenHounds = new Set(store.get('zdg_seen_hounds', []));
 function showHound(x) {
@@ -1685,6 +1693,9 @@ function viewAltar(token, query) {
   const expired = scanExpired(v) || (last?.expired && !pending);
   const status = st?.clock.status;
   const closed = status && !ACTIVE.includes(status);
+  // Sigillo protetto da Custode di un'altra coppia: l'Altare non si apre finché dura.
+  const guardedUntil = (st?.visited || []).find((x) => x.qrToken === token)?.guardedUntil || (sectorId ? st?.notebook.find((n) => n.sectorId === sectorId)?.guardedUntil : null);
+  const guarded = guardedUntil && guardedUntil > clock.serverNow() ? guardedUntil : null;
 
   const unlockWith = async (code) => {
     const res = await act('unlock', { qrToken: token, code }, `Sigillo per ${v.label || 'Altare'}`);
@@ -1703,6 +1714,7 @@ function viewAltar(token, query) {
 
   let action;
   if (fragment) action = null;
+  else if (guarded) action = guardedBox(v.sectorName, guarded);
   else if (expired) {
     action = h('div', { class: 'scan-expired' },
       h('strong', null, 'Scansione scaduta'),
@@ -1729,11 +1741,11 @@ function viewAltar(token, query) {
         h('div', { class: 'eyebrow' }, `Frammento n. ${fragment.position} della Parola`),
         h('div', { class: `fragment-text ${unveilOnce(`frag:${fragment.position}`)}` }, fragment.text),
         h('p', { class: 'muted small' }, fragment.source === 'manual' ? 'Ricevuto da altri e verificato.' : 'Sbloccato con il Sigillo.'))
-      : h('div', { class: 'fragment-reveal locked' }, h('div', { class: 'eyebrow' }, 'Frammento custodito'), h('div', { class: 'fragment-text' }, ghostWord(`altar:${token}`, 'ghost-strong'))),
+      : h('div', { class: 'fragment-reveal locked' }, h('div', { class: 'eyebrow' }, 'Frammento ancora sigillato'), h('div', { class: 'fragment-text' }, ghostWord(`altar:${token}`, 'ghost-strong'))),
     action,
     !fragment && closed ? h('p', { class: 'muted small' }, status === 'ended' ? 'I Giochi sono finiti: gli Altari sono chiusi.' : status === 'paused' ? 'Partita sospesa.' : 'Gli Altari si aprono al via.') : null,
     pending ? h('div', { class: 'banner banner-queue' }, h('strong', null, 'In attesa di rete'), h('span', null, `Sigillo «${pending.payload.code}» verrà inviato appena c'è segnale.`)) : null,
-    last && !last.ok && !fragment && !last.expired ? h('div', { class: 'result result-bad' }, last.message) : null,
+    last && !last.ok && !fragment && !last.expired && !guarded ? h('div', { class: 'result result-bad' }, last.message) : null,
     h('a', { class: 'btn btn-block', href: '#/altari' }, 'Tutti gli Altari'));
 }
 
@@ -1791,13 +1803,18 @@ function viewNotebook() {
     h('h2', null, 'Taccuino dei Sigilli'),
     h('p', { class: 'muted' }, 'Il vostro, quelli traditi dal Consiglio e quelli che vi hanno mostrato. Toccate un Sigillo per aprire il suo Altare.'),
     h('ul', { class: 'notebook' }, nb.map((n) => {
+      if (n.guardedUntil && n.guardedUntil > clock.serverNow()) {
+        return h('li', null, h('div', { class: 'nb-row nb-guarded' },
+          h('span', { class: 'nb-roman mono' }, n.roman),
+          h('div', { class: 'nb-main' }, h('div', { class: 'nb-name' }, n.sectorName), guardedBox(null, n.guardedUntil, true))));
+      }
       const go = n.code && n.visitedToken && !n.unlocked;
       const content = [
         h('span', { class: 'nb-roman mono' }, n.roman),
         h('div', { class: 'nb-main' },
           h('div', { class: 'nb-name' }, n.sectorName),
           n.free && !n.code ? h('div', { class: 'small muted' }, 'Altare senza coppia: il Sigillo arriva solo dal tradimento') : null,
-          n.guardedUntil ? h('div', { class: 'small bad-text' }, '🛡️ Protetto da Custode · ancora ', h('span', { class: 'mono', 'data-abs': n.guardedUntil }, '—')) : null,
+
           n.wrongAttempt && !n.code ? h('div', { class: 'small bad-text' }, `«${n.wrongAttempt}» non è valido`) : null,
           n.unlocked ? h('div', { class: 'small ok-text' }, 'Altare sbloccato') : go ? h('div', { class: 'small' }, 'Altare visitato: tocca per sbloccare') : null),
         h('div', { class: 'nb-code mono' }, n.code ? h('span', { class: unveilOnce(`code:${n.sectorId}:${n.code}`) }, n.code) : ghost(`nb:${n.sectorId}`, st.game.codeLength)),
