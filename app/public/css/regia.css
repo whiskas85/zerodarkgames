@@ -572,3 +572,4 @@ tr.gift-row-claimed td { opacity: .6; }
 .gift-opts-note { grid-column: 1 / -1; margin: 0; }
 .gift-title { display: flex; align-items: center; gap: 6px; }
 .btn-xs { padding: 2px 8px; min-height: 0; font-size: 13px; line-height: 1.4; }
+.gift-multi { color: #22c3e6; }

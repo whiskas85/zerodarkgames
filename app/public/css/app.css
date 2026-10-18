@@ -610,3 +610,7 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .track-card.presage .cd-bar.fx i { background: #d1ad62; }
 @keyframes presage-glow { 0%, 100% { box-shadow: 0 0 0 rgba(209, 173, 98, 0); } 50% { box-shadow: 0 0 18px rgba(209, 173, 98, .5); } }
 @media (prefers-reduced-motion: reduce) { .track-card.presage { animation: none; } }
+/* Dono riletto: scaduto */
+.gift-expired { display: grid; gap: 6px; padding: 18px; text-align: center; border: 2px dashed var(--line); background: var(--paper-2); }
+.gift-expired strong { font-family: var(--f-display); font-size: 34px; text-transform: uppercase; color: var(--blood); }
+.gift-expired p { margin: 0; }

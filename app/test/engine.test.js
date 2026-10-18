@@ -1584,3 +1584,28 @@ test('doni: ritardo all\'annuncio (compare N minuti dopo l\'annuncio) e cartello
   assert.ok(row(a).revealAt >= before + 7 * 60000 && row(a).revealAt <= Date.now() + 7 * 60000);
   assert.throws(() => F.createGifts(g.id, { typeId: 'archivio', revealDelayMin: -1 }, 'test'), /Ritardo/);
 });
+
+test('doni: «resta attivo» lo prende ogni coppia una volta; chi rilegge un dono lo trova scaduto', () => {
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const type = F.giftTypes()[0];
+  const { ids: [multi, single] } = F.createGifts(g.id, { typeId: type.id, count: 2, revealMode: 'onplace' }, 'test');
+  q.run('UPDATE gifts SET multi = 1 WHERE id = ?', multi);
+  const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), mime: 'image/jpeg', lat: 45.1, lng: 9.2, acc: 8 };
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  F.placeGift(multi, g.id, photo, 'eletto');
+  F.placeGift(single, g.id, photo, 'eletto');
+  const tok = (id) => q.get('SELECT qrToken FROM gifts WHERE id = ?', id).qrToken;
+  assert.equal(F.claimGift(A, tok(multi)).gift.name, type.name);
+  assert.throws(() => F.claimGift(A, tok(multi)), /Dono scaduto: l'avete già preso/);
+  assert.equal(F.claimGift(B, tok(multi)).gift.name, type.name);
+  assert.equal(q.get('SELECT status FROM gifts WHERE id = ?', multi).status, 'revealed');
+  assert.equal(F.teamMap(A).gifts.some((x) => x.id === multi), true);
+  F.claimGift(A, tok(single));
+  assert.throws(() => F.claimGift(A, tok(single)), /Dono scaduto/);
+  assert.throws(() => F.claimGift(B, tok(single)), /Dono scaduto: l'ha già preso/);
+});

@@ -37,7 +37,10 @@ function giftOut(g) {
     provisional: !!g.provisional,
     ...taskFields(g),
     revealedAt: g.revealedAt, claimedAt: g.claimedAt, usedAt: g.usedAt, expiredAt: g.expiredAt,
-    revealDelayMin: g.revealDelayMin || null, removeSign: g.removeSign !== 0,
+    revealDelayMin: g.revealDelayMin || null, removeSign: g.removeSign !== 0, multi: !!g.multi,
+    // Resta attivo dopo la lettura: le coppie che l'hanno già preso.
+    takenBy: g.multi ? q.all('SELECT s.name, s.roman, c.claimedAt FROM gifts c JOIN teams t ON t.id = c.claimedByTeamId LEFT JOIN sectors s ON s.id = t.sectorId WHERE c.parentGiftId = ? ORDER BY c.claimedAt', g.id)
+      .map((x) => `${x.roman || ''} ${x.name || ''}`.trim()) : [],
     expiresAfterMin: g.expiresAfterMin, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null,
     claimedBy: t ? `${t.roman || ''} ${t.sectorName || ''}`.trim() : null,
   };
@@ -69,20 +72,21 @@ function createGifts(gameId, data, actor) {
   const revealDelayMin = readDelay(data.revealDelayMin);
   // Titolo scelto dalla regia (facoltativo): con più doni si numera («Cassa 1», «Cassa 2»…); altrimenti «Dono N».
   const title = String(data.label || '').trim().slice(0, 36);
+  const multi = data.multi === true || data.multi === 1 || data.multi === '1' ? 1 : 0;
   const removeSign = data.removeSign === false || data.removeSign === 0 || data.removeSign === '0' ? 0 : 1;
   const squad = data.squadId ? getSquad(data.squadId) : null;
   if (squad && squad.gameId !== game.id) throw err(400, 'Squadra di un\'altra partita');
   const target = readTarget(data);
   const note = String(data.note || '').trim().slice(0, 300) || null;
   const ids = tx(() => {
-    let n = q.get('SELECT COUNT(*) AS n FROM gifts WHERE gameId = ?', game.id).n;
+    let n = q.get('SELECT COUNT(*) AS n FROM gifts WHERE gameId = ? AND parentGiftId IS NULL', game.id).n;
     const out = [];
     for (let i = 0; i < count; i++) {
       n += 1;
-      out.push(Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, revealMode, revealAtMin, expiresAfterMin, squadId, targetLat, targetLng, taskNote, createdAt, revealDelayMin, removeSign)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      out.push(Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, revealMode, revealAtMin, expiresAfterMin, squadId, targetLat, targetLng, taskNote, createdAt, revealDelayMin, removeSign, multi)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         game.id, type.id, type.name, type.icon, type.color, type.description, title ? (count > 1 ? `${title} ${i + 1}` : title) : `Dono ${n}`, randomToken(18), revealMode, revealAtMin, expiresAfterMin,
-        squad?.id ?? null, target.lat, target.lng, note, Date.now(), revealDelayMin, removeSign).lastInsertRowid));
+        squad?.id ?? null, target.lat, target.lng, note, Date.now(), revealDelayMin, removeSign, multi).lastInsertRowid));
     }
     return out;
   });
@@ -152,6 +156,7 @@ function updateGift(id, data, actor) {
   }
   if (data.revealDelayMin !== undefined) { sets.push('revealDelayMin = ?'); vals.push(readDelay(data.revealDelayMin)); }
   if (data.removeSign !== undefined) { sets.push('removeSign = ?'); vals.push(data.removeSign ? 1 : 0); }
+  if (data.multi !== undefined) { sets.push('multi = ?'); vals.push(data.multi ? 1 : 0); }
   if (data.expiresAfterMin !== undefined) {
     const m = data.expiresAfterMin === '' || data.expiresAfterMin === null ? null : parseFloat(data.expiresAfterMin);
     if (m !== null && (!Number.isFinite(m) || m <= 0)) throw err(400, 'Scadenza non valida');
@@ -353,7 +358,7 @@ function fieldState(gameId) {
     clock: G.clockOf(game),
     points,
     // Alla regia anche il token del QR: il cartello si vede (e si stampa) dalla tabella.
-    gifts: q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', game.id).map((g) => ({ ...giftOut(g), qrToken: g.qrToken })),
+    gifts: q.all('SELECT * FROM gifts WHERE gameId = ? AND parentGiftId IS NULL ORDER BY id', game.id).map((g) => ({ ...giftOut(g), qrToken: g.qrToken })),
     giftTypes: giftTypes(),
     squads: squadsOf(game.id),
     // Incarichi generati da Skill e Doni (o creati senza squadra): da assegnare.
@@ -874,13 +879,26 @@ function claimGift(team, token) {
   if (!C.ACTIVE.includes(game.status)) throw err(409, game.status === 'paused' ? 'Partita sospesa' : 'I doni si prendono a partita in corso');
   const g = q.get('SELECT * FROM gifts WHERE gameId = ? AND qrToken = ?', game.id, String(token || ''));
   if (!g) throw err(404, 'Dono non riconosciuto per questa partita');
+  // Un dono letto non si riprende: a chi lo rilegge risulta scaduto.
+  const mine = g.claimedByTeamId === team.id || (g.multi && q.get('SELECT 1 FROM gifts WHERE parentGiftId = ? AND claimedByTeamId = ?', g.id, team.id));
+  if (mine) throw err(409, 'Dono scaduto: l\'avete già preso. Lo trovate tra i vostri doni.');
   if (g.status === 'claimed') {
-    if (g.claimedByTeamId === team.id) return { ok: true, already: true, gift: teamGifts(team).find((x) => x.id === g.id) };
     const t = q.get('SELECT s.name FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', g.claimedByTeamId);
-    throw err(409, `Troppo tardi: questo dono l'ha già preso il Settore ${t?.name || '?'}`);
+    throw err(409, `Dono scaduto: l'ha già preso il Settore ${t?.name || '?'}`);
   }
-  if (g.status === 'expired') throw err(409, 'Troppo tardi: il dono è svanito');
+  if (g.status === 'expired') throw err(409, 'Dono scaduto: è svanito');
   if (g.status !== 'revealed') throw err(409, 'Questo dono non è ancora comparso: il Consiglio lo farà comparire più tardi');
+  if (g.multi) {
+    // Resta attivo per le altre coppie: questa ne prende una copia sua, il dono resta sulla mappa.
+    const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt, parentGiftId, removeSign)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 'manual', ?, ?, ?, ?, ?)`,
+    game.id, g.typeId, g.name, g.icon, g.color, g.description, g.label, randomToken(18), team.id, Date.now(), Date.now(), g.id, g.removeSign).lastInsertRowid);
+    G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name, multi: true });
+    rt.toStaff(game.id, 'gifts');
+    const s = q.get('SELECT name FROM sectors WHERE id = ?', team.sectorId);
+    rt.pushMasters({ title: 'Dono preso', body: `${g.label} (${g.name}) preso dal Settore ${s?.name || '?'} · resta attivo per le altre coppie`, url: '/regia#doniqr' });
+    return { ok: true, gift: teamGifts(team).find((x) => x.id === id) };
+  }
   const r = q.run("UPDATE gifts SET status = 'claimed', claimedByTeamId = ?, claimedAt = ? WHERE id = ? AND status = 'revealed'", team.id, Date.now(), g.id);
   if (!r.changes) throw err(409, 'Troppo tardi: un\'altra coppia è stata più veloce');
   G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name });

@@ -2132,6 +2132,10 @@ async function createGiftDialog() {
     h('option', { value: 'onplace' }, 'Appena viene piazzato'));
   const delay = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'nessuno' });
   const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai' });
+  // Dopo la lettura: scade (una sola coppia) o resta attivo per le altre (ognuna lo prende una volta).
+  const after = h('select', { class: 'input', onchange: () => { if (after.value === '1') sign.value = '0'; } },
+    h('option', { value: '0' }, 'Scade: lo prende una sola coppia'),
+    h('option', { value: '1' }, 'Resta attivo per le altre coppie'));
   const sign = h('select', { class: 'input' },
     h('option', { value: '1' }, 'Cartello da rimuovere (dopo la scansione)'),
     h('option', { value: '0' }, 'Non rimuovere il cartello'));
@@ -2142,8 +2146,9 @@ async function createGiftDialog() {
     h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
     h('label', { class: 'field' }, h('span', null, 'Ritardo all\'annuncio (min)'), delay),
     h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
+    h('label', { class: 'field' }, h('span', null, 'Dopo la lettura'), after),
     h('label', { class: 'field' }, h('span', null, 'Cartello stampato'), sign),
-    h('p', { class: 'tiny muted gift-opts-note' }, 'Ritardo all\'annuncio: quando annunci il dono, compare sulla mappa delle coppie N minuti dopo il tuo annuncio (non al piazzamento).'));
+    h('p', { class: 'tiny muted gift-opts-note' }, 'Ritardo all\'annuncio: quando annunci il dono, compare sulla mappa delle coppie N minuti dopo il tuo annuncio (non al piazzamento). Resta attivo: ogni coppia lo prende una volta sola, e chi lo rilegge lo trova scaduto.'));
   const chosen = h('p', { class: 'gift-chosen', hidden: true });
   const cards = h('div', { class: 'gift-cards' }, d.giftTypes.map((t) => {
     const card = h('button', { type: 'button', class: 'gift-card', style: { '--c': t.color }, onclick: () => {
@@ -2162,7 +2167,7 @@ async function createGiftDialog() {
     onOk: async () => {
       if (!type) { toast('Scegli prima il dono', 'error'); return false; }
       const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
-        squadId: Number(squadSel.value) || null, removeSign: sign.value === '1' });
+        squadId: Number(squadSel.value) || null, removeSign: sign.value === '1', multi: after.value === '1' });
       toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
       loadField();
       return true;
@@ -2189,7 +2194,8 @@ function viewGiftsQR() {
         try { await api('PATCH', `/api/m/gifts/${g.id}`, { label: v.trim() }); toast('Titolo cambiato', 'ok'); loadField(); } catch (e) { toast(e.message, 'error', 6000); }
       } }, '✎') : null),
       h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
-      h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello')),
+      h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello'),
+      g.multi ? h('div', { class: 'tiny gift-multi' }, `♾ Resta attivo${g.takenBy?.length ? ` · preso da ${g.takenBy.join(', ')}` : ''}`) : null),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
         : g.status === 'revealed' ? h('span', { class: 'chip chip-blood' }, 'In mappa alle coppie') : placementChips(g, g.status !== 'draft')),

@@ -50,7 +50,7 @@ function boot() {
     setTimeout(() => registerScan(m[1]));
   }
   const dm = location.pathname.match(/^\/d\/([\w-]+)/);
-  if (dm) history.replaceState(null, '', `/#/dono/${dm[1]}`);
+  if (dm) { giftRescan(dm[1]); history.replaceState(null, '', `/#/dono/${dm[1]}`); }
   const um = location.pathname.match(/^\/u\/([\w-]+)/);
   if (um) history.replaceState(null, '', `/#/uscita/${um[1]}`);
   if (new URLSearchParams(location.search).get('login') === 'invalid') {
@@ -1324,6 +1324,11 @@ function giftCard(g, big = false) {
 }
 
 const claimRequested = new Set();
+// Dono già preso su questo telefono e inquadrato di nuovo: non si riprende, risulta scaduto.
+function giftRescan(token) {
+  if (S.giftResults?.[token]?.ok) S.giftResults[token] = { ok: false, message: 'Dono scaduto: l\'avete già preso. Lo trovate tra i vostri doni.' };
+}
+
 function viewGift(token) {
   const res = S.giftResults[token];
   const owned = (S.state?.gifts || []).find((g) => res?.gift && g.id === res.gift.id);
@@ -1340,6 +1345,10 @@ function viewGift(token) {
     h('h2', null, 'Dono del Consiglio'),
     g ? [giftCard(g, true), h('p', { class: 'muted small' }, 'Il dono è vostro: lo trovate in «I vostri doni». Mostratelo quando lo usate.'), h('a', { class: 'btn btn-primary btn-block', href: '#/doni' }, 'I vostri doni')]
       : pending ? h('div', { class: 'banner banner-queue' }, h('strong', null, 'In attesa di rete'), h('span', null, 'Il dono verrà preso appena torna il segnale (se nessuno arriva prima).'))
+        : res && !res.ok && /^Dono scaduto/.test(res.message || '') ? [
+          // Un dono letto non si riprende: chi lo rilegge lo trova scaduto.
+          h('div', { class: 'gift-expired' }, h('div', { class: 'eyebrow' }, 'Dono del Consiglio'), h('strong', null, 'Dono scaduto'), h('p', null, res.message.replace(/^Dono scaduto: ?/, ''))),
+          h('a', { class: 'btn btn-block', href: '#/doni' }, 'I vostri doni')]
         : res && !res.ok ? [h('div', { class: 'result result-bad' }, res.message || 'Dono non disponibile'), h('button', { class: 'btn btn-block', onclick: () => { delete S.giftResults[token]; claimRequested.delete(token); claim(); } }, 'Riprova')]
           : h('p', { class: 'empty' }, 'Il Consiglio sta verificando il dono…'));
 }
@@ -1747,7 +1756,7 @@ async function openScanner() {
   });
   if (!text) return;
   const gift = text.match(/\/d\/([\w-]+)/);
-  if (gift) { location.hash = `#/dono/${gift[1]}`; return; }
+  if (gift) { giftRescan(gift[1]); location.hash = `#/dono/${gift[1]}`; return; }
   const exit = text.match(/\/u\/([\w-]+)/);
   if (exit) { tryExit(exit[1]); return; }
   const token = text.match(/\/a\/([\w-]+)/)[1];

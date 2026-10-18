@@ -479,4 +479,8 @@ CREATE TABLE IF NOT EXISTS privilege_notices (
 addColumn('gifts', 'revealDelayMin', 'REAL');
 addColumn('gifts', 'removeSign', 'INTEGER NOT NULL DEFAULT 1');
 
+// Doni che restano attivi dopo la lettura: ogni coppia ne prende una copia (una volta sola); la copia ricorda l'originale.
+addColumn('gifts', 'multi', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('gifts', 'parentGiftId', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

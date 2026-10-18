@@ -137,7 +137,8 @@ ${pages.join('\n') || '<p style="padding:40px">Nessuna coppia con Settore.</p>'}
 
 // Cartelli dei doni QR: 4 per foglio. Il tipo non è stampato: si scopre solo prendendo il dono.
 async function giftsPage(g, base) {
-  const gifts = q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', g.id);
+  // Solo i doni con un cartello: niente copie prese dalle coppie, niente doni dati dalle Skill.
+  const gifts = q.all("SELECT * FROM gifts WHERE gameId = ? AND parentGiftId IS NULL AND NOT (status = 'claimed' AND lat IS NULL AND placedAt IS NULL) ORDER BY id", g.id);
   const cards = await Promise.all(gifts.map(async (d) => `<div class="gift">
       <div class="mono top">Consiglio Zero · ${esc(g.name)}</div>
       <div class="display title">Dono del Consiglio</div>

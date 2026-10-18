@@ -920,7 +920,7 @@ function readiness(g) {
   const frags = q.all('SELECT * FROM fragments WHERE gameId = ?', g.id);
   const revs = q.all("SELECT * FROM revelations WHERE gameId = ? AND status = 'scheduled'", g.id);
   const placedAltars = points.filter((p) => p.lat != null).length;
-  const gifts = q.get("SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN status != 'draft' THEN 1 ELSE 0 END), 0) AS placed FROM gifts WHERE gameId = ?", g.id);
+  const gifts = q.get("SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN status != 'draft' THEN 1 ELSE 0 END), 0) AS placed FROM gifts WHERE gameId = ? AND parentGiftId IS NULL", g.id);
   const freePlayers = q.get("SELECT COUNT(*) AS n FROM players WHERE gameId = ? AND teamId IS NULL AND status = 'accepted'", g.id).n;
   const pending = q.get("SELECT COUNT(*) AS n FROM players WHERE gameId = ? AND status = 'pending'", g.id).n;
   const E = (part, text) => issues.push({ level: 'error', part, text });
