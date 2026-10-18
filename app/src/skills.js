@@ -47,7 +47,7 @@ const SKILLS = [
 const GIFTS = [
   { id: 'maestro', name: 'Maestro', icon: '🎓', color: '#d1ad62', target: 'newSkill', description: 'Aggiungete alle vostre Skill una Skill a scelta, pronta da usare.' },
   { id: 'chiave', name: 'Chiave Maestra', icon: '🗝️', color: '#e0b04f', target: 'scannedAltar', description: 'Aprite un Altare senza il suo Sigillo. Dovete averlo appena inquadrato (scansione valida).' },
-  { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde.' },
+  { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde. Nessuno viene avvisato.' },
   { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per 20 minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'archivio', name: 'Archivio Proibito', icon: '📚', color: '#9b6cf0', target: null, description: 'Ricevete un Sigillo che non conoscete ancora.' },
   { id: 'scudo', name: 'Immunità', icon: '🛡️', color: '#6fbf73', target: null, durationMin: 15, description: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce (tracciamenti, taglie, furti, scansioni).' },
@@ -414,7 +414,6 @@ function applyGift(g, me, type, p) {
         q.run('DELETE FROM team_code_notes WHERE teamId = ? AND sectorId = ?', t.id, sid);
       });
       const sec = G.sectorById(sid);
-      rt.pushTeams(g.id, { title: 'Grande Furto', body: 'Una coppia vi ha rubato un Sigillo dal taccuino.', tag: `furto-${now}`, url: '/#/codici' }, t.id);
       return { targetName: t.sectorName, notifyTeams: [t.id], stolen: { sectorId: sid, sectorName: sec.name, roman: sec.roman, code: sc.code }, message: `Rubato il Sigillo del Settore ${sec.name}.` };
     }
     case 'archivio': {
