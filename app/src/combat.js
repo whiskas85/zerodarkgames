@@ -136,6 +136,12 @@ function requestBreak(me, allyTeamId) {
   const a = allianceOf(me.id);
   if (!a || !a.members.includes(ally?.id) || ally.id === me.id) throw err(409, 'Non siete alleati con questa coppia');
   if (q.get("SELECT 1 FROM alliance_requests WHERE kind = 'break' AND status = 'pending' AND fromTeamId = ?", me.id)) throw err(409, 'Avete già chiesto di rompere l\'alleanza: attendete la risposta');
+  // Già lontani più di 50 m: l'alleanza si rompe subito, senza chiedere conferma.
+  const far = apartM(me.id, ally.id);
+  if (far != null && far > FAR_M) {
+    breakApart(a, me, ally, far);
+    return { ok: true, broken: true };
+  }
   const id = Number(q.run("INSERT INTO alliance_requests (gameId, kind, fromTeamId, toTeamId, status, createdAt) VALUES (?, 'break', ?, ?, 'pending', ?)", me.gameId, me.id, ally.id, Date.now()).lastInsertRowid);
   G.log(me.gameId, `coppia:${me.id}`, 'alliance_break_proposed', { from: me.sectorName, to: ally.sectorName });
   notify([ally.id, me.id], me.gameId, null);
@@ -242,16 +248,55 @@ function breakForDistance(a, t, meters) {
   });
 }
 
+// Ultima posizione recente di una coppia (il telefono più aggiornato).
+const freshPos = (teamId, now = Date.now()) => q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, now - POS_FRESH_MS);
+// Distanza tra due coppie, se di entrambe c'è una posizione recente.
+function apartM(a, b, now = Date.now()) {
+  const pa = freshPos(a, now);
+  const pb = freshPos(b, now);
+  return pa && pb ? distM(pa, pb) : null;
+}
+
+// Chi ha chiesto di rompere l'alleanza ed è a più di 50 m dall'alleato: esce subito, senza conferma.
+function breakApart(a, t, ally, meters) {
+  const members = [...a.members];
+  tx(() => {
+    q.run("UPDATE alliance_requests SET status = 'accepted', respondedAt = ? WHERE kind = 'break' AND status = 'pending' AND fromTeamId = ?", Date.now(), t.id);
+    q.run('UPDATE alliance_members SET leftAt = ? WHERE teamId = ? AND leftAt IS NULL', Date.now(), t.id);
+    const rest = q.all('SELECT teamId FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL', a.id);
+    if (rest.length < 2) {
+      q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
+      q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
+    }
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${t.sectorName})`);
+  });
+  G.log(t.gameId, `coppia:${t.id}`, 'alliance_broken', { teams: names(members), lontani: Math.round(meters) });
+  notify(members, t.gameId, {
+    title: 'Alleanza rotta',
+    body: `Il Settore ${t.sectorName} ha rotto l'alleanza a più di ${FAR_M} m da ${ally.sectorName}: non serviva conferma. Blocco ingaggio 5 minuti.`,
+    tag: `ally-apart-${a.id}-${t.id}`, url: '/#/alleanze',
+  });
+}
+
 function tickAlliances(now = Date.now()) {
   const seen = new Set();
   const games = q.all(`SELECT id FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(', ')}) AND status <> 'paused'`, ...C.ACTIVE);
+  // Richiesta di rottura in attesa e chi l'ha chiesta si è allontanato oltre 50 m: si rompe senza aspettare la risposta.
+  for (const r of q.all(`SELECT * FROM alliance_requests WHERE kind = 'break' AND status = 'pending' AND gameId IN (${games.map(() => '?').join(', ') || 'NULL'})`, ...games.map((g) => g.id))) {
+    const t = team(r.fromTeamId);
+    const ally = team(r.toTeamId);
+    const a = allianceOf(r.fromTeamId);
+    if (!t || !ally || !a || !a.members.includes(ally.id)) continue;
+    const far = apartM(t.id, ally.id, now);
+    if (far != null && far > FAR_M) breakApart(a, t, ally, far);
+  }
   for (const g of games) {
     for (const al of q.all('SELECT id FROM alliances WHERE gameId = ? AND endedAt IS NULL', g.id)) {
       const ids = q.all('SELECT teamId FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL', al.id).map((r) => r.teamId);
       // Ultima posizione recente di ogni coppia (il telefono più aggiornato).
       const pos = {};
       for (const id of ids) {
-        const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', id, now - POS_FRESH_MS);
+        const p = freshPos(id, now);
         if (p) pos[id] = p;
       }
       for (const id of ids) {

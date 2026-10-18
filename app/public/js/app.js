@@ -958,7 +958,10 @@ function viewAlliances() {
         return h('li', null, h('strong', null, teamName(m)),
           asked ? h('span', { class: 'chip chip-brass' }, 'rottura proposta')
             : h('button', { class: 'btn btn-sm btn-danger', disabled: !playing, onclick: async () => {
-              if (await dialog({ title: 'Rompere l\'alleanza?', text: `${m.sectorName} dovrà accettare. Poi blocco ingaggio di 5 minuti.`, okLabel: 'Proponi la rottura', danger: true })) combatCall('/api/team/alliance/break', { teamId: m.teamId }, `Rottura proposta a ${m.sectorName}`);
+              if (await dialog({ title: 'Rompere l\'alleanza?', text: `${m.sectorName} dovrà accettare, ma se siete a più di 50 m l'alleanza si rompe subito (anche se vi allontanate dopo). Poi blocco ingaggio di 5 minuti.`, okLabel: 'Rompi l\'alleanza', danger: true })) {
+                const r = await combatCall('/api/team/alliance/break', { teamId: m.teamId });
+                if (r) toast(r.broken ? `Alleanza rotta: siete a più di 50 m da ${m.sectorName}` : `Rottura proposta a ${m.sectorName}`, 'ok', 6000);
+              }
             } }, 'Rompi'));
       })) : h('p', { class: 'small muted' }, 'Proponete un\'alleanza a un\'altra coppia: dovrà accettarla dal suo telefono.'),
       c.outgoing.filter((r) => r.kind === 'join').map((r) => h('div', { class: 'pending-row' },

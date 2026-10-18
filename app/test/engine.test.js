@@ -1506,3 +1506,31 @@ test('Custode: finché il Sigillo è protetto il suo Altare non si apre, nemmeno
   q.run("UPDATE skill_effects SET endsAt = ? WHERE code = 'custode' AND teamId = ?", Date.now() - 1000, B.id);
   assert.equal(scanUnlock(A, pB.qrToken, codeOf(g.id, B.sectorId)).ok, true);
 });
+
+test('rompere un\'alleanza a più di 50 m non chiede conferma, anche allontanandosi dopo la richiesta', () => {
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B, C] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  q.run("UPDATE games SET status = 'hunt' WHERE id = ?", g.id);
+  const put = (t, lat) => q.run('INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES (?, ?, ?, ?, 9, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, at = excluded.at', `brk${g.id}-${t.id}`, g.id, t.id, lat, Date.now());
+  // Già lontani (~110 m): rotta subito.
+  K.respondRequest(B, K.requestAlliance(A, B.id).id, true);
+  put(A, 45.0); put(B, 45.001);
+  assert.equal(K.requestBreak(A, B.id).broken, true);
+  assert.equal(K.allianceOf(A.id), null);
+  assert.ok(K.serverTimers(B.id).some((t) => t.timerId === 'blocco'));
+  // Vicini (~10 m): serve la conferma; poi chi l'ha chiesta si allontana e si rompe da sola.
+  put(C, 45.0001);
+  K.respondRequest(C, K.requestAlliance(A, C.id).id, true);
+  const r = K.requestBreak(A, C.id);
+  assert.ok(!r.broken && r.id);
+  K.tickAlliances();
+  assert.ok(K.allianceOf(A.id));
+  put(A, 45.0008);
+  K.tickAlliances();
+  assert.equal(K.allianceOf(A.id), null);
+  assert.equal(q.get('SELECT status FROM alliance_requests WHERE id = ?', r.id).status, 'accepted');
+});
