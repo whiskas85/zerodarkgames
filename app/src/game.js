@@ -173,10 +173,11 @@ function deleteGame(id, actor) {
 /**
  * Traccar Client di una persona, nello stato della sua partita:
  * - «soon» = partita pronta o cerchio aperto (si parte a breve), «live» = partita in corso;
- * - in quei momenti serve un segnale recente (3 minuti prima del via, 10 durante): altrimenti «prompt» = chiedi di accenderlo;
+ * - in quei momenti servono almeno 2 segnali, l'ultimo negli ultimi 10 minuti: altrimenti «prompt» = chiedi di accenderlo;
  * - state: 'ok' (acceso/verificato) · 'off' (verificato ma spento) · 'stale' (tace durante la partita) · 'none' (mai verificato).
  */
-const TRACK_SOON_MS = 3 * 60000;
+// Traccar Client di default manda un segnale ogni 5 minuti (o a ogni spostamento): finestra di 10 minuti anche prima del via.
+const TRACK_SOON_MS = 10 * 60000;
 const TRACK_LIVE_MS = 10 * 60000;
 const TRACK_ON_PINGS = 2;
 const TRACK_PINGS_WINDOW_MS = 30 * 60000;

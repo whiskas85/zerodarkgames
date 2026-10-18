@@ -723,7 +723,7 @@ function trackingStatus(player) {
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
   const st = G.trackStateOf(player, G.getGame(player.gameId), team);
   const pings = q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, Date.now() - G.TRACK_PINGS_WINDOW_MS).n;
-  return { ...st, everSeen: !!player.trackSeenAt, pings, verifiedAt: player.trackVerifiedAt || null };
+  return { ...st, everSeen: !!player.trackSeenAt, pings, lastAt: player.trackSeenAt || null, deviceId: player.trackToken || null, verifiedAt: player.trackVerifiedAt || null };
 }
 
 // Fine della prova: almeno 2 segnali da Traccar dopo l'inizio, su almeno 45 secondi (il telefono era in tasca).

@@ -2101,8 +2101,13 @@ function traccarPrompt(st) {
     h('span', { class: 'trk-actions' },
       setup ? h('a', { class: 'btn btn-sm btn-primary', href: '#/traccar' }, 'Configura Traccar →')
         : h('a', { class: 'btn btn-sm btn-primary', href: traccarOpenUrl(), rel: 'noopener' }, PLATFORM === 'android' ? 'Apri Traccar' : 'Apri Traccar (App Store)'),
-      setup ? null : h('a', { class: 'btn btn-sm btn-ghost', href: '#/traccar' }, 'Aiuto')));
+      setup ? null : h('a', { class: 'btn btn-sm btn-ghost', href: '#/traccar' }, 'Aiuto')),
+    // Cosa riceve il server, per capire subito se Traccar manda (e con l'identificativo giusto).
+    t.deviceId ? h('span', { class: 'tiny mono' }, `Identificativo: ${t.deviceId} · segnali ultima mezz'ora: ${t.pings || 0}${t.lastAt ? ` · ultimo alle ${fmtTime(t.lastAt)}` : ' · nessun segnale'}`) : null);
 }
+
+// Con l'avviso Traccar aperto l'app ricontrolla da sola ogni 20 secondi: sparisce appena arrivano i segnali.
+setInterval(() => { if (!document.hidden && S.state?.tracking?.prompt) refresh(); }, 20000);
 
 // L'avviso nelle schermate principali: resta finché Traccar non è verificato (o se smette di mandare durante la partita).
 function trackFlag(st) {

@@ -825,7 +825,7 @@ test('Traccar: segnali anche prima del via, verifica con la prova a schermo spen
   // Partita pronta (si parte a breve): senza un segnale negli ultimi 3 minuti compare «accendi Traccar»;
   // il primo segnale lo toglie.
   G.control(g.id, 'ready', 'test');
-  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now() - 4 * 60000, pl.id);
+  q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', Date.now() - 11 * 60000, pl.id);
   const fresh = () => F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', pl.id));
   assert.deepEqual([fresh().prompt, fresh().state, fresh().soon], [true, 'off', true]);
   F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1' }, {});
