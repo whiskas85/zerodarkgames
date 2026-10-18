@@ -592,3 +592,5 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 @keyframes sword-r { from { transform: translateX(40px) rotate(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mastery-banner, .mastery-swords span { animation: none; } }
 button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
+/* Chiave Maestra dentro l'Altare */
+.btn-key { background: linear-gradient(135deg, #e0b04f, #b07d1f); color: #1a1206; border: 0; font-weight: 800; box-shadow: 0 0 16px rgba(224, 176, 79, .45); }

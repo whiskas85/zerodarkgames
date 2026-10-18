@@ -1804,6 +1804,14 @@ function viewAltar(token, query) {
       h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: () => unlockWith(known.code) }, 'Usa questo Sigillo'),
       h('button', { class: 'btn btn-ghost btn-sm', onclick: () => { manualAltar.add(token); render(); } }, 'Inserisci un altro Sigillo'));
   } else action = manualForm;
+  // Chiave Maestra nei doni: si apre l'Altare appena inquadrato anche senza Sigillo.
+  const key = (st?.gifts || []).find((g) => g.typeId === 'chiave' && !g.usedAt);
+  const pointId = v.pointId || (st?.visited || []).find((x) => x.qrToken === token)?.pointId;
+  const keyBtn = key && pointId && !fragment && !guarded && !expired && !closed ? h('button', { class: 'btn btn-key btn-xl btn-block', type: 'button', onclick: async () => {
+    if (!(await dialog({ title: 'Usare la Chiave Maestra?', text: `Aprite ${v.label || 'questo Altare'} senza il Sigillo. La Chiave si consuma.`, okLabel: 'Usa la Chiave' }))) return;
+    try { showEffectResult('Chiave Maestra', await api('POST', `/api/team/gift/${key.id}/use`, { pointId })); } catch (e) { toast(e.offline ? 'Serve la rete per usare un dono' : e.message, 'error', 7000); }
+    refresh();
+  } }, '🗝️ Usa Chiave Maestra') : null;
 
   return h('div', { class: 'stack' },
     h('div', { class: 'altar-head' },
@@ -1818,6 +1826,7 @@ function viewAltar(token, query) {
         h('p', { class: 'muted small' }, fragment.source === 'manual' ? 'Ricevuto da altri e verificato.' : 'Sbloccato con il Sigillo.'))
       : h('div', { class: 'fragment-reveal locked' }, h('div', { class: 'eyebrow' }, 'Frammento ancora sigillato'), h('div', { class: 'fragment-text' }, ghostWord(`altar:${token}`, 'ghost-strong'))),
     action,
+    keyBtn,
     !fragment && closed ? h('p', { class: 'muted small' }, status === 'ended' ? 'I Giochi sono finiti: gli Altari sono chiusi.' : status === 'paused' ? 'Partita sospesa.' : 'Gli Altari si aprono al via.') : null,
     pending ? h('div', { class: 'banner banner-queue' }, h('strong', null, 'In attesa di rete'), h('span', null, `Sigillo «${pending.payload.code}» verrà inviato appena c'è segnale.`)) : null,
     last && !last.ok && !fragment && !last.expired && !guarded ? h('div', { class: 'result result-bad' }, last.message) : null,
