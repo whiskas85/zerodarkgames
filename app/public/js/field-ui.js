@@ -193,7 +193,7 @@ export function createField(F, { rerender }) {
         state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
         popup: `<strong>${g.label} · ${g.name}</strong><br>${g.provisional ? '⚠ Provvisorio · ' : ''}${GIFT_STATE[g.status]}${g.claimedBy ? ` da ${g.claimedBy}` : ''}${g.hasPhoto ? `<img src="/api/media/gift/${g.id}?v=${g.placedAt}" alt="">` : ''}` })),
       // Punti di interesse segnati da regia ed Eletti.
-      ...(d.pois || []).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
+      ...(d.pois || []).filter((x) => !x.occupied).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
         popup: `<strong>◆ ${esc(x.label)}</strong>${x.description ? `<br>${esc(x.description)}` : ''}<br><small>${esc(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>` })),
       // Punti indicati dalla regia per gli incarichi ancora da fare (della propria squadra; la regia li vede tutti).
       ...[...d.points.map((p) => ['point', p]), ...d.gifts.map((g) => ['gift', g]), ...(d.landmarks || []).map((l) => ['landmark', l])]
@@ -386,7 +386,7 @@ export function createField(F, { rerender }) {
     const provBtn = h('button', { class: 'btn btn-warn btn-block', type: 'button', disabled: true }, '⚠ Piazza provvisorio (senza foto)');
     const position = () => manual || F.me;
     // Ricerca tra i punti di interesse: il punto scelto diventa la posizione del piazzamento.
-    const pois = F.data?.pois || [];
+    const pois = (F.data?.pois || []).filter((x) => !x.occupied);
     const poiBox = h('div', { class: 'poi-search', hidden: true });
     const poiQuery = h('input', { class: 'input', type: 'search', placeholder: 'Cerca per nome o descrizione…', autocomplete: 'off' });
     const poiResults = h('ul', { class: 'poi-results' });

@@ -1141,7 +1141,7 @@ async function assignDialog(kind, item, move) {
   note.value = move ? '' : item.taskNote || '';
   const pickMap = createMapView({ className: 'pick-map' });
   // Punti di interesse: si può scegliere uno di questi invece di toccare la mappa.
-  const pois = (fieldData?.pois || []).filter((x) => x.lat != null);
+  const pois = (fieldData?.pois || []).filter((x) => x.lat != null && !x.occupied);
   const poiSel = pois.length ? h('select', { class: 'input', onchange: () => {
     const x = pois.find((p) => String(p.id) === poiSel.value);
     if (!x) return;
@@ -1371,7 +1371,7 @@ function fieldMapItems(d) {
       <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
     ...targetItems(d),
     // Punti di interesse segnati dal campo (regia ed Eletti).
-    ...(d.pois || []).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
+    ...(d.pois || []).filter((x) => !x.occupied).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
       popup: `<strong>◆ ${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>${escHtml(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>` })),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
@@ -1426,7 +1426,16 @@ function startPick(x, kind = 'landmark') {
   R.mapPick = { id: x.id, kind, label: kind === 'gift' ? `${x.label} · ${x.name}` : x.label };
   render();
 }
-fieldMap.onTap(async (ll) => {
+// Spostando un oggetto si può toccare un punto di interesse: l'oggetto prende il suo posto (e il punto non si vede più).
+fieldMap.onMarkerTap((key) => {
+  if (!R.mapPick || !key.startsWith('poi')) return false;
+  const x = (fieldData?.pois || []).find((p) => `poi${p.id}` === key);
+  if (!x) return false;
+  placePicked({ lat: x.lat, lng: x.lng }, x.label);
+  return true;
+});
+fieldMap.onTap((ll) => placePicked(ll));
+async function placePicked(ll, poiLabel = null) {
   const pick = R.mapPick;
   if (!pick) return;
   R.mapPick = null;
@@ -1436,10 +1445,10 @@ fieldMap.onTap(async (ll) => {
     const res = await fetch(`/api/field/${path}/${pick.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, credentials: 'same-origin' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
-    toast(`${pick.label} segnato sulla mappa`, 'ok');
+    toast(poiLabel ? `${pick.label} messo al posto di «${poiLabel}»` : `${pick.label} segnato sulla mappa`, 'ok');
   } catch (err) { toast(err.message, 'error', 6000); }
   await loadField();
-});
+}
 
 function campoPhoneDialog() {
   const campoUrl = `${R.baseUrl}/campo`;
@@ -1493,7 +1502,7 @@ function viewFieldMap() {
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
-    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa dove si trova: ${R.mapPick.label}`),
+    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
     R.mapSide === false || !toPlace.length ? null : h('aside', { class: 'map-side' },
       h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),

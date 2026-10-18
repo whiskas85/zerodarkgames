@@ -69,6 +69,7 @@ export function createMapView({ className = '' } = {}) {
   let me = null;
   let meCircle = null;
   let onTap = null;
+  let onMarkerTap = null;
   let pending = null;
   let meAcc = null;
   // Centratura automatica: attiva finché chi guarda non sposta o ingrandisce la mappa;
@@ -117,6 +118,9 @@ export function createMapView({ className = '' } = {}) {
         if (!m) {
           m = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }), title: it.title || '', zIndexOffset: zOf(it) }).addTo(map);
           m._zdgHtml = html;
+          m._zdgKey = it.key;
+          // Tocco su un segnaposto: se chi usa la mappa lo gestisce (true), niente popup.
+          m.on('click', (e) => { if (onMarkerTap?.(m._zdgKey, m.getLatLng())) { L.DomEvent.stop(e); setTimeout(() => m.closePopup(), 0); } });
           markers.set(it.key, m);
           changed = true;
         } else {
@@ -183,6 +187,7 @@ export function createMapView({ className = '' } = {}) {
     // "Dove siamo": scelta esplicita, la centratura automatica si ferma fino alla prossima apertura.
     centerMe(zoom = 17) { if (map && me) { auto = false; map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
     onTap(fn) { onTap = fn; },
+    onMarkerTap(fn) { onMarkerTap = fn; },
     // Da chiamare dopo che l'elemento è stato riagganciato alla pagina.
     refresh() { if (map) setTimeout(() => { map.invalidateSize(); autoFit(); }, 30); },
     // Inquadra alcuni segnaposto (per chiave) insieme alla mia posizione; la centratura automatica si ferma.

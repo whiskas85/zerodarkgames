@@ -371,7 +371,18 @@ function fieldState(gameId) {
 // ---------------------------------------------------------------- punti di interesse
 
 const poiOut = (x) => ({ id: x.id, label: x.label, description: x.description, lat: x.lat, lng: x.lng, accuracy: x.accuracy, createdAt: x.createdAt, createdBy: x.createdBy });
-const poisOf = (gameId) => q.all('SELECT * FROM pois WHERE gameId = ? ORDER BY label COLLATE NOCASE, id', gameId).map(poiOut);
+// Un punto di interesse è un segnaposto: se un Altare, un luogo o un Dono ci viene messo sopra, il punto è «occupato»
+// e non si mostra più sulle mappe (torna visibile se l'oggetto si sposta altrove).
+function poisOf(gameId) {
+  const taken = [
+    ...q.all('SELECT lat, lng FROM points WHERE gameId = ? AND lat IS NOT NULL', gameId),
+    ...q.all('SELECT lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', gameId),
+    ...q.all("SELECT lat, lng FROM gifts WHERE gameId = ? AND lat IS NOT NULL AND status NOT IN ('claimed', 'expired')", gameId),
+  ];
+  const near = (a, b) => Math.abs(a.lat - b.lat) < 0.00002 && Math.abs(a.lng - b.lng) < 0.00003; // ~2 m
+  return q.all('SELECT * FROM pois WHERE gameId = ? ORDER BY label COLLATE NOCASE, id', gameId)
+    .map((x) => ({ ...poiOut(x), occupied: x.lat != null && taken.some((t) => near(t, x)) }));
+}
 
 function readPoi(body, old = null) {
   const label = body.label !== undefined ? String(body.label || '').trim().slice(0, 60) : old?.label;
