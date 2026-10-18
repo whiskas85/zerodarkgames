@@ -277,6 +277,20 @@ function tick() {
     }
     if (el.textContent !== t) el.textContent = t;
   }
+  // «x min fa» che avanza da solo (ultimo ping di Traccar…).
+  for (const el of document.querySelectorAll('[data-ago]')) {
+    const t = agoText(Number(el.dataset.ago));
+    if (el.textContent !== t) el.textContent = t;
+  }
+}
+
+function agoText(at) {
+  const s = Math.max(0, Math.round((clock.serverNow() - at) / 1000));
+  if (s < 60) return `${s} s fa`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min fa`;
+  const hh = Math.floor(m / 60);
+  return hh < 24 ? `${hh} h ${m % 60} min fa` : `${Math.floor(hh / 24)} g fa`;
 }
 
 // ---------------------------------------------------------------- login
@@ -2337,7 +2351,7 @@ function viewPushReport() {
     navigator.clipboard?.writeText(text).then(() => toast('Elenco copiato: incollalo nel gruppo WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
   };
   const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
-    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar']).map((x) => h('th', null, x)))),
+    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar', 'Ultimo ping']).map((x) => h('th', null, x)))),
     h('tbody', null, list.map((p) => (staff
       ? h('tr', null, h('td', null, h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
       : h('tr', null,
@@ -2345,7 +2359,10 @@ function viewPushReport() {
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
         h('td', null, PUSH_STATE[p.state](p)),
-        h('td', null, TRACCAR_STATE[p.traccar](p))))))));
+        h('td', null, TRACCAR_STATE[p.traccar](p)),
+        h('td', { class: 'mono tiny' }, p.trackSeenAt
+          ? [h('span', { 'data-ago': p.trackSeenAt, class: clock.serverNow() - p.trackSeenAt > 10 * 60000 ? 'bad' : '' }, agoText(p.trackSeenAt)), h('div', { class: 'muted' }, fmtTime(p.trackSeenAt))]
+          : h('span', { class: 'muted' }, 'mai'))))))));
   return h('div', { class: 'stack' },
     sectionActions('Notifiche e Traccar da sistemare', [
       h('button', { class: `btn btn-sm ${onlyMissing ? 'on' : ''}`, onclick: () => { R.pushOnlyMissing = !onlyMissing; render(); } }, onlyMissing ? 'Mostra tutti' : 'Solo chi non le ha'),
