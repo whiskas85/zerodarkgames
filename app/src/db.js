@@ -450,4 +450,14 @@ addColumn('squad_tasks', 'endsAt', 'INTEGER');
 // Avviso alla coppia bersaglio (1 minuto dopo che la squadra la vede).
 addColumn('squad_tasks', 'notifiedAt', 'INTEGER');
 
+// Emergenze reali (OFF GAME): dal pulsante dell'app o dall'SOS di Traccar, con la posizione di chi chiama.
+db.exec(`
+CREATE TABLE IF NOT EXISTS emergencies (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER, playerId INTEGER, who TEXT NOT NULL, phone TEXT, source TEXT NOT NULL,
+  lat REAL, lng REAL, acc REAL, createdAt INTEGER NOT NULL, ackAt INTEGER, ackBy TEXT, closedAt INTEGER, closedBy TEXT, note TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_emergencies_game ON emergencies(gameId, closedAt);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

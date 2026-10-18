@@ -1983,6 +1983,7 @@ function masterState(gameId) {
       .map((p) => ({ ...p, sectorName: sectorById(p.sectorId).name, roman: sectorById(p.sectorId).roman, sectorOrd: sectorById(p.sectorId).ord, free: !coupleSectors.has(p.sectorId) }))
       .sort((a, b) => a.sectorOrd - b.sectorOrd),
     landmarks: landmarksOf(g.id),
+    emergencies: require('./emergency').list(g.id),
     skills: require('./skills').masterSkills(g.id),
     supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
     announcements: q.all('SELECT * FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 100', g.id),

@@ -18,6 +18,7 @@ const R = {
 
 const TABS = [
   ['live', 'Regia'],
+  ['emergenze', '🚨 Emergenze'],
   ['coppie', 'Iscrizioni e coppie'],
   ['squadre', 'Squadre Eletti'],
   ['settori', 'Settori e Altari'],
@@ -63,6 +64,13 @@ async function start() {
   stream('/api/stream?as=staff', {
     open: () => load(),
     refresh: (d) => { if (d.gameId === R.gameId || d.gameId == null) load(); },
+    // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
+    emergency: async (d) => {
+      if (d.gameId && d.gameId !== R.gameId) { R.gameId = d.gameId; store.set('zdg_regia_game', R.gameId); R.ms = null; }
+      location.hash = 'emergenze';
+      await load();
+      emergencyAlarm();
+    },
     // Con la regia aperta l'avviso arriva anche qui (iscrizioni, messaggi, scontri contestati…).
     notify: (n) => {
       toast(h('a', { href: n.url?.startsWith('/regia') ? n.url.replace('/regia', '') || '#' : '#' }, h('strong', null, n.title), n.body ? h('div', { class: 'small' }, n.body) : null), 'info', 9000);
@@ -205,9 +213,9 @@ function render() {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
-    mount($root, topbar(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    mount($root, topbar(), emergencyBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
   labelTables($root);
   tick();
@@ -219,6 +227,84 @@ function labelTables(root) {
     const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
     for (const tr of t.querySelectorAll('tbody tr')) [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || ''; });
   }
+}
+
+// ---------------------------------------------------------------- EMERGENZE (reali, OFF GAME)
+
+const openEmergencies = () => (R.ms?.emergencies || []).filter((e) => !e.closedAt);
+
+// Allarme: sirena breve e vibrazione (ripetuta finché c'è un'emergenza non presa in carico e la pagina è aperta).
+let alarmTimer = null;
+function emergencyAlarm() {
+  const beepOnce = () => {
+    try {
+      const ctx = emergencyAlarm.ctx || (emergencyAlarm.ctx = new (window.AudioContext || window.webkitAudioContext)());
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'square'; o.connect(g); g.connect(ctx.destination); g.gain.value = 0.08;
+      o.frequency.setValueAtTime(880, ctx.currentTime); o.frequency.setValueAtTime(660, ctx.currentTime + 0.25); o.frequency.setValueAtTime(880, ctx.currentTime + 0.5);
+      o.start(); o.stop(ctx.currentTime + 0.75);
+    } catch { /* audio non disponibile */ }
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400]);
+  };
+  beepOnce();
+  clearInterval(alarmTimer);
+  alarmTimer = setInterval(() => { if (openEmergencies().some((e) => !e.ackAt)) beepOnce(); else clearInterval(alarmTimer); }, 4000);
+}
+
+// Fascia rossa in cima a ogni pagina finché ci sono emergenze aperte.
+function emergencyBanner() {
+  const open = openEmergencies();
+  if (!open.length) return null;
+  const waiting = open.filter((e) => !e.ackAt).length;
+  return h('a', { class: `sos-banner ${waiting ? 'waiting' : ''}`, href: '#emergenze' },
+    h('strong', null, `🚨 ${open.length === 1 ? 'Emergenza aperta' : `${open.length} emergenze aperte`}`),
+    h('span', null, waiting ? ` · ${waiting} da prendere in carico` : ' · in carico', ' — ', open.map((e) => e.who).join(', ')));
+}
+
+const sosMap = createMapView({ className: 'regia-map sos-map' });
+function emergencyItems() {
+  return (R.ms?.emergencies || []).flatMap((e) => {
+    const open = !e.closedAt;
+    const label = `<strong>🚨 ${escHtml(e.who)}</strong><br>${fmtTime(e.createdAt)} · ${e.source === 'traccar' ? 'SOS da Traccar' : 'pulsante dell\'app'}${e.phone ? `<br>☎ ${escHtml(e.phone)}` : ''}`;
+    const out = [];
+    if (e.lat != null) out.push({ key: `sos${e.id}`, kind: 'emergency', lat: e.lat, lng: e.lng, text: '!', state: open ? '' : 'closed', title: e.who, popup: `${label}<br><small>Posizione della chiamata${e.acc ? ` · ±${e.acc} m` : ''}</small>` });
+    if (open && e.live) out.push({ key: `sosl${e.id}`, kind: 'emergency', lat: e.live.lat, lng: e.live.lng, text: '◉', state: 'live', title: `${e.who} adesso`, popup: `${label}<br><small>Ultima posizione ${fmtTime(e.live.at)}</small>` });
+    return out;
+  });
+}
+
+function viewEmergencies() {
+  const list = R.ms.emergencies || [];
+  if (!fieldData) loadField(false);
+  startPositions();
+  sosMap.setItems([...(fieldData ? fieldMapItems(fieldData) : []), ...emergencyItems()]);
+  sosMap.refresh();
+  const open = list.filter((e) => !e.closedAt);
+  const focus = open.filter((e) => e.lat != null || e.live).map((e) => (e.live ? `sosl${e.id}` : `sos${e.id}`));
+  if (focus.length && R.sosFocused !== focus.join()) { R.sosFocused = focus.join(); setTimeout(() => sosMap.focus?.(focus), 200); }
+  const gmaps = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  const card = (e) => h('div', { class: `sos-card ${e.closedAt ? 'closed' : e.ackAt ? 'ack' : 'new'}` },
+    h('div', { class: 'sos-card-head' },
+      h('strong', null, `🚨 ${e.who}`),
+      h('span', { class: 'chip' }, e.source === 'traccar' ? 'SOS Traccar' : 'pulsante app'),
+      h('span', { class: `chip ${e.closedAt ? '' : e.ackAt ? 'chip-warn' : 'chip-blood'}` }, e.closedAt ? `chiusa ${fmtTime(e.closedAt)}` : e.ackAt ? `in carico (${e.ackBy})` : 'DA PRENDERE IN CARICO')),
+    h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ☎ ', h('a', { href: `tel:${e.phone.replace(/\s/g, '')}` }, e.phone)] : null),
+    e.lat != null ? h('div', { class: 'small mono' }, `Posizione: ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${e.acc ? ` (±${e.acc} m)` : ''} · `, h('a', { href: gmaps(e.lat, e.lng), target: '_blank', rel: 'noopener' }, 'Apri in Google Maps'))
+      : h('div', { class: 'small bad' }, 'Posizione sconosciuta: chiedetela via radio.'),
+    e.live && !e.closedAt ? h('div', { class: 'small mono' }, `Ultima posizione ${fmtTime(e.live.at)}: ${e.live.lat.toFixed(5)}, ${e.live.lng.toFixed(5)} · `, h('a', { href: gmaps(e.live.lat, e.live.lng), target: '_blank', rel: 'noopener' }, 'Maps')) : null,
+    e.note ? h('div', { class: 'small' }, `Nota: ${e.note}`) : null,
+    e.closedAt ? null : h('div', { class: 'row-actions' },
+      e.ackAt ? null : h('button', { class: 'btn btn-primary', onclick: () => call('POST', `/api/m/emergencies/${e.id}/ack`, {}, 'Presa in carico: chi ha chiamato è stato avvisato') }, 'Prendo in carico'),
+      h('button', { class: 'btn', onclick: async () => {
+        const note = await dialog({ title: 'Chiudere l\'emergenza?', text: `${e.who}: scrivi com'è finita (facoltativo).`, input: { placeholder: 'es. raggiunto, tutto a posto' }, okLabel: 'Chiudi emergenza' });
+        if (note === null) return;
+        call('POST', `/api/m/emergencies/${e.id}/close`, { note }, 'Emergenza chiusa');
+      } }, 'Chiudi')));
+  return h('div', { class: 'stack' },
+    section(`Emergenze (${open.length} aperte)`,
+      h('p', { class: 'muted tiny' }, 'Emergenze reali (OFF GAME), non di gioco: arrivano dal pulsante EMERGENZA dell\'app o dal pulsante SOS di Traccar Client, con la posizione di chi chiama. Quando ne arriva una la regia salta qui con un allarme sonoro. Il segnaposto rosso è dove ha chiamato, quello arancione la sua ultima posizione.'),
+      list.length ? h('div', { class: 'stack-sm' }, list.map(card)) : h('p', { class: 'empty' }, 'Nessuna emergenza.')),
+    section('Mappa', sosMap.el));
 }
 
 function topbar() {
@@ -252,6 +338,7 @@ function sidebar() {
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
+    id === 'emergenze' && openEmergencies().length ? h('span', { class: 'badge badge-alert' }, openEmergencies().length) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,

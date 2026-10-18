@@ -500,7 +500,49 @@ function banners() {
 
 function radioBar() {
   const ch = S.state?.game.emergencyRadioChannel;
-  return h('footer', { class: 'radio' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'));
+  return h('footer', { class: 'radio' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
+    S.state ? h('button', { class: 'btn-sos', type: 'button', onclick: emergencyModal }, 'EMERGENZA') : null);
+}
+
+// EMERGENZA reale (OFF GAME): manda alla Direzione (DE) chi siete e dove siete. Non è un'emergenza di gioco.
+function emergencyModal() {
+  const ch = S.state?.game.emergencyRadioChannel;
+  const ov = h('div', { class: 'sos-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
+  const close = () => ov.remove();
+  const status = h('p', { class: 'sos-status', 'aria-live': 'polite' });
+  const send = async () => {
+    if (!(await dialog({ title: 'Confermi l\'EMERGENZA?', text: 'La Direzione riceve subito la tua posizione e chi sei. Usalo solo per un\'emergenza reale.', okLabel: 'Sì, invia', danger: true }))) return;
+    status.textContent = 'Invio…';
+    big.disabled = true;
+    // Parte subito (con l'ultima posizione nota); appena il GPS dà la posizione del momento, la si manda di nuovo
+    // (la regia aggiorna la stessa emergenza).
+    const gpsLine = h('span');
+    navigator.geolocation?.getCurrentPosition((p) => {
+      api('POST', '/api/team/emergency', { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy })
+        .then(() => { gpsLine.textContent = ` Posizione GPS inviata (±${Math.round(p.coords.accuracy)} m).`; }).catch(() => {});
+    }, () => { gpsLine.textContent = ' GPS non disponibile: comunica la posizione via radio.'; }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    try {
+      const r = await api('POST', '/api/team/emergency', myPos || {});
+      vibrate([300, 100, 300]);
+      status.replaceChildren(h('strong', null, 'Emergenza inviata alla Direzione.'), h('br'),
+        `Resta dove sei${ch ? ` e chiama sul canale ${ch}` : ' e tieni la radio accesa'}.`,
+        r.located ? ' L\'ultima posizione nota è arrivata.' : ' Ricerca della posizione GPS…', gpsLine);
+      big.textContent = 'INVIATA';
+    } catch (e) {
+      status.textContent = e.offline ? 'Senza rete: chiama subito via radio' + (ch ? ` sul canale ${ch}` : '') + ' o al telefono.' : e.message;
+      big.disabled = false;
+    }
+  };
+  const big = h('button', { class: 'sos-big', type: 'button', onclick: send }, 'EMERGENZA');
+  ov.append(h('div', { class: 'sos-box' },
+    h('div', { class: 'eyebrow' }, 'Evento OFF GAME'),
+    h('h2', null, 'Emergenza reale'),
+    h('p', null, 'Questo pulsante manda la tua posizione in DE (Direzione). È un evento ', h('strong', null, 'OFF GAME'), ': non è un\'emergenza di gioco, ma una cosa seria — infortunio, malore, pericolo reale.'),
+    big,
+    status,
+    ch ? h('p', { class: 'small' }, 'Se puoi, chiama anche via radio: ', h('strong', { class: 'mono' }, ch)) : null,
+    h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi')));
+  document.body.append(ov);
 }
 
 const dueDone = new Set();

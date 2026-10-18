@@ -668,6 +668,8 @@ function parseTraccar(query, body) {
   return {
     id: String(pick(query.id, query.deviceid, b.id, b.deviceid, b.device_id) || ''),
     lat: parseFloat(lat), lng: parseFloat(lng), acc: parseFloat(pick(query.accuracy, b.accuracy, c.accuracy)), at: Number.isFinite(at) ? at : null,
+    // SOS: «alarm=sos» (protocollo OsmAnd) o l'evento/allarme nel JSON delle versioni recenti.
+    sos: /sos/i.test(String(pick(query.alarm, b.alarm, loc.alarm, loc.event, loc.extras?.alarm, b.event) || '')),
   };
 }
 
@@ -675,6 +677,8 @@ function recordTraccar(query, body) {
   const p = parseTraccar(query, body);
   const player = p.id ? q.get('SELECT * FROM players WHERE trackToken = ?', p.id) : null;
   if (!player) return { ok: false, reason: 'unknown' };
+  // Pulsante SOS di Traccar Client: emergenza reale (OFF GAME) alla regia, con la posizione.
+  if (p.sos) { try { require('./emergency').fromTraccar(player, p); } catch (e) { console.error('sos', e.message); } }
   // Punti rimasti in memoria nel telefono (senza rete): conta solo la posizione attuale.
   if (p.at && Date.now() - p.at > 2 * 60000) return { ok: true, ignored: 'vecchia' };
   // Segnale ricevuto (anche prima del via o prima della coppia): serve alla verifica, senza salvare la posizione.

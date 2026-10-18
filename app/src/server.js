@@ -12,6 +12,7 @@ const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
 const S = require('./skills');
+const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
 
@@ -392,6 +393,11 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
   if (!req.player) throw new HttpError(409, 'Entra con il tuo account o con il tuo codice personale');
   return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.verifyTracking(req.player, req.body?.since) };
 }));
+// EMERGENZA reale (OFF GAME): da qualunque telefono della partita, anche prima della coppia.
+app.post('/api/team/emergency', needMember, wrap((req) => {
+  if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
+  return EM.fromApp(req.team, req.player, req.body || {});
+}));
 app.post('/api/team/exit', needTeam, teamRateLimit, wrap((req) => G.exfiltrate(req.team, req.body.token)));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, teamRateLimit, wrap((req) => F.useGift(req.team, req.params.id, req.body || {})));
@@ -643,6 +649,9 @@ m.post('/squads/:sid/read', wrap((req) => {
   return { ok: true };
 }));
 m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {}, actor(req))));
+m.get('/games/:id/emergencies', wrap((req) => EM.list(gameId(req))));
+m.post('/emergencies/:eid/ack', wrap((req) => { EM.ack(req.params.eid, actor(req)); return { ok: true }; }));
+m.post('/emergencies/:eid/close', wrap((req) => { EM.close(req.params.eid, actor(req), req.body?.note); return { ok: true }; }));
 m.post('/tasks/:tid/assign', wrap((req) => { F.assignTask(req.params.tid, req.body.squadId, actor(req)); return { ok: true }; }));
 m.post('/tasks/:tid/cancel', wrap((req) => { F.cancelTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));

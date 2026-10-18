@@ -1423,3 +1423,29 @@ test('«Perso» aspetta la conferma di chi ha vinto: niente Veglia né Sigilli p
   assert.ok(K.serverTimers(A.id).some((t) => t.timerId === 'veglia'));
   assert.equal(G.teamState(B).notebook.find((n) => n.sectorId === A.sectorId).code, codeOf(g.id, A.sectorId));
 });
+
+test('emergenze reali: pulsante dell\'app e SOS di Traccar arrivano alla regia con la posizione', () => {
+  const EM = require('../src/emergency');
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const p = q.get('SELECT * FROM players WHERE teamId = ? LIMIT 1', A.id);
+  const r = EM.fromApp(A, p, { lat: 45.1, lng: 9.2, acc: 12 });
+  assert.equal(r.located, true);
+  // Premuto di nuovo: stessa emergenza, posizione aggiornata.
+  assert.equal(EM.fromApp(A, p, { lat: 45.2, lng: 9.2 }).id, r.id);
+  let list = EM.list(g.id);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].lat, 45.2);
+  assert.match(list[0].who, /Settore/);
+  EM.ack(r.id, 'master');
+  EM.close(r.id, 'master', 'tutto a posto');
+  assert.ok(EM.list(g.id)[0].closedAt);
+  // SOS di Traccar (alarm=sos).
+  const info = F.trackingInfo(p);
+  F.recordTraccar({ id: info.deviceId, lat: '45.3', lon: '9.3', alarm: 'sos' }, {});
+  list = EM.list(g.id);
+  assert.equal(list.filter((e) => !e.closedAt).length, 1);
+  assert.equal(list.find((e) => !e.closedAt).source, 'traccar');
+  assert.equal(list.find((e) => !e.closedAt).lat, 45.3);
+});

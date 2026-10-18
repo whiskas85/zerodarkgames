@@ -540,3 +540,15 @@ tr.gift-row-claimed td { opacity: .6; }
   .phase-steps li { grid-template-columns: 28px 1fr auto; justify-items: start; text-align: left; align-items: center; gap: 10px; }
   .phase-steps li::before { top: -6px; left: 13px; width: 3px; height: 6px; }
 }
+
+/* Emergenze reali */
+.sos-banner { display: block; padding: 10px 16px; background: #8e0014; color: #fff; text-decoration: none; border-bottom: 2px solid #ff5a4a; }
+.sos-banner.waiting { animation: sos-flash 1s steps(2, start) infinite; }
+@keyframes sos-flash { 50% { background: #d0021b; } }
+.sos-card { display: grid; gap: 6px; padding: 12px; border: 2px solid var(--line); background: var(--paper); }
+.sos-card.new { border-color: #d0021b; box-shadow: 0 0 0 3px rgba(208, 2, 27, .25); }
+.sos-card.ack { border-color: var(--warn); }
+.sos-card.closed { opacity: .65; }
+.sos-card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sos-map { height: 60vh; min-height: 320px; }
+@media (prefers-reduced-motion: reduce) { .sos-banner.waiting { animation: none; } }

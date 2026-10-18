@@ -103,6 +103,11 @@ function pushTeams(gameId, payload, teamId = null) {
 }
 
 // Avvisi alla regia: push sui dispositivi dei master e, a chi ha la regia aperta, un avviso nella pagina.
+// Evento immediato alla regia (senza attesa): l'emergenza fa saltare la regia alla sua pagina.
+function toStaffEvent(event, data) {
+  for (const c of clients) if (c.kind === 'user') write(c, event, data);
+}
+
 function pushMasters(payload) {
   const subs = q.all("SELECT p.* FROM push_subs p JOIN users u ON u.id = p.userId WHERE u.role = 'master'");
   sendPush(subs, payload).catch(() => {});
@@ -120,4 +125,4 @@ function pushSubs(subs, payload) {
   sendPush(subs, payload).catch(() => {});
 }
 
-module.exports = { addClient, toTeams, toTeamsWhere, toStaff, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };
+module.exports = { addClient, toTeams, toTeamsWhere, toStaff, toStaffEvent, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };

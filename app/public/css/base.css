@@ -173,3 +173,11 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 /* Ambiente di test */
 .env-ribbon { position: sticky; top: 0; z-index: 9999; background: repeating-linear-gradient(45deg, #f2c94c 0 14px, #1a1a1a 14px 28px); color: #111; text-align: center; font: 700 12px var(--f-mono, monospace); letter-spacing: .12em; text-transform: uppercase; padding: 4px 8px; }
 .env-ribbon span { background: #f2c94c; padding: 1px 10px; }
+
+/* Emergenza reale sulle mappe */
+.pin-sos { display: grid; place-items: center; width: 30px; height: 30px; margin: 2px; border-radius: 50%; background: #d0021b; color: #fff; font: 900 14px/1 sans-serif;
+  border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(208, 2, 27, .7); animation: sos-pulse 1.4s ease-out infinite; }
+.pin-sos.closed { background: #6b6b6b; animation: none; }
+.pin-sos.live { background: #ff7a00; }
+@keyframes sos-pulse { 0% { box-shadow: 0 0 0 0 rgba(208, 2, 27, .7); } 100% { box-shadow: 0 0 0 18px rgba(208, 2, 27, 0); } }
+@media (prefers-reduced-motion: reduce) { .pin-sos { animation: none; } }

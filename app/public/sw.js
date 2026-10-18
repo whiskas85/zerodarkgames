@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v73';
+const VERSION = 'zdg-v75';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/field-ui.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
@@ -99,6 +99,8 @@ self.addEventListener('push', (e) => {
       icon: '/icons/icon-192.png',
       badge: '/icons/badge.png',
       data: { url: data.url || '/' },
+      // Emergenza: la notifica resta finché non la si tocca.
+      requireInteraction: !!data.requireInteraction,
     });
     const wins = await self.clients.matchAll({ type: 'window' });
     wins.forEach((w) => w.postMessage({ type: 'refresh' }));

@@ -42,6 +42,8 @@ export function pinHtml(item) {
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
+  // Emergenza reale: segnaposto rosso che pulsa (grigio se chiusa).
+  if (item.kind === 'emergency') return `<span class="pin-sos ${item.state || ''}">${esc(item.text || '!')}</span>`;
   if (item.kind === 'poi') return '<span class="pin pin-poi"><span>◆</span></span>';
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
   // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
@@ -53,7 +55,7 @@ export function pinHtml(item) {
 }
 
 // Le persone (coppie ed Eletti) stanno sopra a tutti gli altri segnaposto; "io" sta sopra a tutto.
-const zOf = (it) => (it.kind === 'team' || it.kind === 'elect' ? 5000 : it.kind === 'target' ? 200 : 0);
+const zOf = (it) => (it.kind === 'emergency' ? 9000 : it.kind === 'team' || it.kind === 'elect' ? 5000 : it.kind === 'target' ? 200 : 0);
 
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
