@@ -1816,7 +1816,15 @@ function showDefeat(timerUid, reason) {
   const el = battleOverlay('defeat',
     h('div', { class: 'eyebrow' }, 'Scontro perso'),
     h('h2', { class: 'battle-title' }, 'Sconfitta'),
-    h('p', { class: 'muted' }, `${reason}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
+    // «Sconfitta contro X · Veglia 2 minuti + 2 minuti per la Veglia Forzata del Settore Y»: la durata in chiaro.
+    ...(() => {
+      const [who, extra] = String(reason || '').split(' · ');
+      const t = S.timers.find((x) => x.uid === timerUid);
+      return [
+        h('p', { class: 'muted' }, `${who}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
+        extra ? h('p', { class: 'battle-forced' }, `⛓️ ${extra}${t?.minutes ? ` — in tutto ${t.minutes} minuti` : ''}.`) : null,
+      ];
+    })(),
     note, left,
     h('button', { class: 'btn btn-block', type: 'button', onclick: () => { clearInterval(watch); el.remove(); } }, 'Ho capito'),
     h('a', { class: 'small', href: '#/timer', onclick: () => { clearInterval(watch); el.remove(); } }, 'Il timer resta nella pagina Timer'));
@@ -1837,7 +1845,7 @@ function syncServerTimers(st) {
     if (!preset) continue;
     const endsAt = t.startedAt + (t.minutes || preset.minutes) * 60000 - clock.offset;
     if (endsAt <= Date.now()) continue;
-    S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason });
+    S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason, minutes: t.minutes || preset.minutes });
     if (t.timerId === 'veglia' && /^Sconfitta/.test(t.reason || '')) setTimeout(() => showDefeat(key, t.reason), 300);
     else toast(`Timer ${preset.label} avviato: ${t.reason}`, 'blood', 7000);
   }

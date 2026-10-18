@@ -497,3 +497,5 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 @keyframes fx-smoke { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
 @keyframes fx-buzz { 0%, 100% { transform: rotate(0) scale(1); } 20% { transform: rotate(-12deg) scale(1.1); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } }
 @media (prefers-reduced-motion: reduce) { .top-clock.fx-on, .top-clock.fx-on::before, .fx-ico { animation: none; } }
+
+.battle-forced { margin: 0; padding: 8px 12px; border: 1px solid var(--blood); background: var(--blood-soft); font-weight: 600; }

@@ -293,8 +293,12 @@ function applyEngagement(e, by) {
   for (const l of losers) if (!hidden[l] && SK().reliquiaOn(team(l))) hidden[l] = 'reliquia';
   if (Object.keys(hidden).length) { q.run('UPDATE engagements SET hidden = ? WHERE id = ?', JSON.stringify(hidden), e.id); e.hidden = JSON.stringify(hidden); }
   // Veglia Forzata: chi perde contro chi ce l'ha resta fermo il doppio.
-  const forced = winners.some((w) => SK().hasSkill(w, 'veglia_forzata'));
-  const vegliaMin = forced ? 2 * (presetMin(e.gameId, 'veglia') || 2) : null;
+  // Veglia Forzata: chi la ha tra i vincitori raddoppia la Veglia degli sconfitti (es. 2 + 2 minuti).
+  const forcer = winners.find((w) => SK().hasSkill(w, 'veglia_forzata'));
+  const forced = !!forcer;
+  const baseMin = presetMin(e.gameId, 'veglia') || 2;
+  const vegliaMin = forced ? 2 * baseMin : null;
+  const forcedText = forced ? `Veglia ${baseMin} minuti + ${baseMin} minuti per la Veglia Forzata del Settore ${team(forcer)?.sectorName}` : '';
   tx(() => {
     q.run("UPDATE engagements SET status = 'confirmed', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), by, e.id);
     if (e.result === 'draw') {
@@ -312,7 +316,7 @@ function applyEngagement(e, by) {
       }
     }
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
-    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${forced ? ' (Veglia Forzata)' : ''}`, vegliaMin);
+    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
   if (e.result === 'draw') {
@@ -321,7 +325,7 @@ function applyEngagement(e, by) {
   }
   notify(winners.filter((w) => !stealers.includes(w)), e.gameId, { title: 'Scontro vinto', body: `Sigilli conquistati: ${names(losers).join(', ')}. Li trovate nel taccuino.`, tag: `eng-${e.id}`, url: '/#/codici' });
   notify(stealers, e.gameId, { title: 'Scontro vinto', body: 'I loro Sigilli li conoscete già: scegliete quale rubare.', tag: `eng-${e.id}`, url: '/#/scontri' });
-  notify(losers, e.gameId, { title: 'Scontro perso', body: `${e.skill === 'maestria' ? `Il Settore ${team(e.skillTeamId)?.sectorName} ha ribaltato lo scontro con Maestria delle armi. ` : ''}Cappellino: Veglia di ${vegliaMin || presetMin(e.gameId, 'veglia') || 2} minuti, poi tornate in gioco.`, tag: `eng-${e.id}`, url: '/#/timer' });
+  notify(losers, e.gameId, { title: 'Scontro perso', body: `${e.skill === 'maestria' ? `Il Settore ${team(e.skillTeamId)?.sectorName} ha ribaltato lo scontro con Maestria delle armi. ` : ''}Cappellino: ${forced ? `${forcedText} (in tutto ${vegliaMin} minuti)` : `Veglia di ${baseMin} minuti`}, poi tornate in gioco.`, tag: `eng-${e.id}`, url: '/#/timer' });
 }
 
 function reportEngagement(me, opponentTeamId, result, opts = {}) {
