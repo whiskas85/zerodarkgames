@@ -266,7 +266,7 @@ function taskBanner() {
   if (!list.length || tab() === 'squadre') return null;
   return h('a', { class: 'task-banner', href: '#squadre' },
     h('strong', null, `🎯 ${list.length === 1 ? 'Incarico da assegnare' : `${list.length} incarichi da assegnare`}`),
-    h('span', null, ' — ', list.map((t) => t.text || t.targetLabel || 'Incarico').join(' · ')));
+    h('span', null, ' — ', list.map((t) => `${t.text || t.targetLabel || 'Incarico'} (chiesto alle ${fmtTime(t.createdAt)})`).join(' · ')));
 }
 
 function emergencyBanner() {
@@ -346,7 +346,9 @@ function topbar() {
 function sidebar() {
   const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0) + (R.ms?.squads?.reduce((a, s) => a + s.unread, 0) || 0);
   const pending = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect').length || 0;
-  const pendingElect = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length || 0;
+  // Candidature agli Eletti: contano solo prima del via (a partita iniziata non si aggiungono più Eletti).
+  const pendingElect = PRE.includes(R.ms?.clock.status) ? R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length || 0 : 0;
+  const pendingTasks = R.ms?.pendingTasks?.length || 0;
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
@@ -357,6 +359,7 @@ function sidebar() {
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
     id === 'emergenze' && openEmergencies().length ? h('span', { class: 'badge badge-alert' }, openEmergencies().length) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
+    id === 'squadre' && pendingTasks ? h('span', { class: 'badge badge-alert badge-task', title: 'Incarichi da assegnare (Maestro della caccia…)' }, `🎯 ${pendingTasks}`) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,
     id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Persone senza notifiche o senza Traccar verificato' }, R.ms.pushOff) : null))));
@@ -1540,6 +1543,9 @@ function taskLine(t, { assign = false } = {}) {
   const sel = assign ? h('select', { class: 'input input-sm', 'aria-label': 'Squadra' }, squadOptions(t.squadId, 'Scegli la squadra…')) : null;
   return h('li', { class: closed ? 'done' : '' },
     assign ? h('span', null, `${TASK_KIND[t.kind] || ''}${t.text}`) : h('label', null, h('input', { type: 'checkbox', checked: !!t.doneAt, disabled: !!t.cancelledAt, onchange: (e) => squadCall('POST', `/api/m/tasks/${t.id}/done`, { done: e.target.checked }) }), h('span', null, `${TASK_KIND[t.kind] || ''}${t.text}`)),
+    // Da assegnare: quando è stato chiesto (e da chi), così si vede da quanto aspetta.
+    assign ? h('span', { class: 'tiny task-asked' }, `Chiesto alle ${fmtTime(t.createdAt)}${t.sourceTeamId ? ` dal Settore ${R.ms?.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'}` : ''} · `,
+      h('span', { 'data-ago': t.createdAt }, agoText(t.createdAt))) : null,
     h('span', { class: 'tiny muted' }, [t.source !== 'regia' ? TASK_SOURCE[t.source] : null, t.kind === 'meet' && t.endsAt ? `alleanza fino alle ${fmtTime(t.endsAt)}` : null,
       t.cancelledAt ? `annullato ${fmtTime(t.cancelledAt)}` : t.doneAt ? `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}` : null].filter(Boolean).join(' · ')),
     sel, assign ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => { if (!Number(sel.value)) return toast('Scegli la squadra', 'error'); squadCall('POST', `/api/m/tasks/${t.id}/assign`, { squadId: Number(sel.value) }, 'Incarico assegnato'); } }, 'Assegna') : null,
@@ -1574,7 +1580,8 @@ function viewSquads() {
   const ms = R.ms;
   const members = ms.elect.members;
   const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
-  const candidates = ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect');
+  // A partita iniziata non si aggiungono più Eletti: le candidature in sospeso non si mostrano.
+  const candidates = PRE.includes(ms.clock.status) ? ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect') : [];
   const progress = (sq) => {
     const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id);
     const gifts = d.gifts.filter((g) => g.squadId === sq.id && !['claimed', 'expired'].includes(g.status));
