@@ -1250,6 +1250,7 @@ function tickGame(g) {
   const lastStart = g.durationMin - C.LAST_PHASE_MIN;
   if (g.status === 'truce' && e >= g.truceMin) {
     setStatus(g, 'hunt');
+    log(g.id, 'sistema', 'phase_hunt');
     announce(g.id, 'hunt_open');
     notifyState(g.id);
   }
@@ -1266,6 +1267,7 @@ function tickGame(g) {
   for (const s of closing) closeSupply(s.id, 'sistema');
   if (g.status === 'hunt' && e >= lastStart) {
     setStatus(g, 'last_half_hour');
+    log(g.id, 'sistema', 'phase_last_half_hour');
     const skipped = q.run("UPDATE revelations SET status = 'skipped' WHERE gameId = ? AND status = 'scheduled'", g.id).changes;
     if (skipped) log(g.id, 'sistema', 'revelations_skipped_last_phase', { count: skipped });
     announce(g.id, 'last_half_hour');
@@ -1949,6 +1951,9 @@ function masterState(gameId) {
     readiness: readiness(g),
     spots: spotsOf(g.id),
     env: process.env.ZDG_ENV || 'production',
+    // Passaggi di fase (per la timeline degli stati in regia), dall'ultima ripartenza della partita.
+    phaseLog: q.all(`SELECT type, at FROM event_log WHERE gameId = ? AND id > COALESCE((SELECT MAX(id) FROM event_log WHERE gameId = ? AND type = 'game_restarted'), 0)
+                     AND type IN ('status_draft', 'status_ready', 'status_circle', 'game_started', 'phase_hunt', 'phase_last_half_hour', 'game_paused', 'game_resumed', 'game_ended') ORDER BY id`, g.id, g.id),
     canWarp: canWarp(g),
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
     pushOff: pushReport(g.id).people.filter((p) => (p.state === 'off' || p.traccar !== 'ok') && ['couple', 'elect'].includes(p.group)).length,

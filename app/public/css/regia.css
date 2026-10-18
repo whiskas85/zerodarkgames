@@ -520,3 +520,23 @@ tr.gift-row-claimed td { opacity: .6; }
   .elect-access { flex-wrap: wrap; }
   .elect-access img { width: 96px; height: 96px; }
 }
+
+/* Timeline degli stati della gara (nel pannello dello stato) */
+.phase-steps { grid-column: 1 / -1; list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; counter-reset: none; }
+.phase-steps li { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; padding: 0 2px; min-width: 0; }
+.phase-steps li::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 3px; background: var(--line); z-index: 0; }
+.phase-steps li:first-child::before { display: none; }
+.phase-steps li.done::before, .phase-steps li.now::before { background: var(--ok); }
+.ps-dot { position: relative; z-index: 1; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 700 13px/1 var(--f-mono, monospace); background: var(--paper-2); border: 2px solid var(--line); color: var(--muted); }
+.phase-steps li.done .ps-dot { background: var(--ok); border-color: var(--ok); color: #0f1310; }
+.phase-steps li.now .ps-dot { background: var(--blood); border-color: var(--blood); color: #fff; box-shadow: 0 0 0 4px var(--blood-soft); }
+.phase-steps li.now.paused .ps-dot { background: var(--warn); border-color: var(--warn); color: #111; }
+.ps-label { font-size: 12px; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+.phase-steps li.next .ps-label { color: var(--muted); }
+.ps-time { font-size: 11px; color: var(--muted); }
+.phase-steps li.now .ps-time { color: var(--ink); font-weight: 700; }
+@media (max-width: 620px) {
+  .phase-steps { grid-template-columns: 1fr; gap: 6px; }
+  .phase-steps li { grid-template-columns: 28px 1fr auto; justify-items: start; text-align: left; align-items: center; gap: 10px; }
+  .phase-steps li::before { top: -6px; left: 13px; width: 3px; height: 6px; }
+}

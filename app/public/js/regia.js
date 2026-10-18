@@ -329,6 +329,44 @@ function controlButtons() {
   return b;
 }
 
+// Timeline degli stati della gara: fatti (con l'ora), quello attuale, i prossimi (con l'ora prevista).
+const PHASES = [
+  ['draft', 'In preparazione', 'status_draft'], ['ready', 'Pronta', 'status_ready'], ['circle', 'Cerchio', 'status_circle'],
+  ['truce', 'Tregua', 'game_started'], ['hunt', 'Caccia', 'phase_hunt'], ['last_half_hour', 'Ultima mezz\'ora', 'phase_last_half_hour'], ['ended', 'Fine', 'game_ended'],
+];
+function phaseSteps() {
+  const ms = R.ms;
+  const c = ms.clock;
+  const cur = c.status === 'paused' ? c.pausedFrom : c.status;
+  const idx = PHASES.findIndex((p) => p[0] === cur);
+  const log = ms.phaseLog || [];
+  const lastAt = (type) => [...log].reverse().find((e) => e.type === type)?.at;
+  // Minuti di gioco in cui partono le fasi dopo il via.
+  const atMs = { truce: 0, hunt: c.huntAtMs, last_half_hour: c.lastPhaseAtMs, ended: c.durationMs };
+  const pauses = log.filter((e) => e.type === 'game_paused').length;
+  const when = (p, i) => {
+    if (i <= idx) {
+      // Ora del passaggio dal registro; per le fasi di gioco, se manca, dal tempo di gioco trascorso.
+      let at = lastAt(p[2]) || (p[0] === 'truce' ? c.startedAt : null);
+      if (!at && atMs[p[0]] != null && c.startedAt && clock.snap) at = clock.serverNow() - (clock.elapsed() - atMs[p[0]]);
+      if (!at) return i === idx ? 'ora' : '';
+      return i === idx ? `dalle ${fmtTime(at)}` : fmtTime(at);
+    }
+    if (atMs[p[0]] != null && c.startedAt) {
+      const left = atMs[p[0]] - (clock.snap ? clock.elapsed() : 0);
+      return `~${fmtTime(clock.serverNow() + left)}${c.status === 'paused' ? ' (in pausa)' : ''}`;
+    }
+    if (p[0] === 'truce' && ms.game.scheduledStart) return `prev. ${fmtTime(new Date(ms.game.scheduledStart).getTime())}`;
+    if (atMs[p[0]] != null) return `+${Math.round(atMs[p[0]] / 60000)}′`;
+    return '';
+  };
+  return h('ol', { class: 'phase-steps', 'aria-label': 'Stati della gara' }, PHASES.map((p, i) => h('li', { class: `${i < idx ? 'done' : i === idx ? 'now' : 'next'} ${i === idx && c.status === 'paused' ? 'paused' : ''}` },
+    h('span', { class: 'ps-dot', 'aria-hidden': 'true' }, i < idx ? '✓' : i + 1),
+    h('span', { class: 'ps-label' }, p[1]),
+    h('span', { class: 'ps-time mono' }, i === idx && c.status === 'paused' ? 'SOSPESA' : when(p, i)),
+    i === idx && pauses && c.status !== 'paused' ? h('span', { class: 'ps-time mono' }, `${pauses} ${pauses === 1 ? 'pausa' : 'pause'}`) : null)));
+}
+
 function viewLive() {
   const ms = R.ms;
   const c = ms.clock;
@@ -343,7 +381,8 @@ function viewLive() {
       h('div', null, h('div', { class: 'eyebrow' }, ms.game.name), h('div', { class: 'control-status' }, STATUS_LABELS[st]),
         c.startedAt ? h('div', { class: 'muted mono' }, ms.game.isDemo ? `Tempo simulato · durata ${ms.game.durationMin} min` : `Via alle ${fmtTime(c.startedAt)} · durata ${ms.game.durationMin} min`) : h('div', { class: 'muted mono' }, `Durata ${ms.game.durationMin} min · ${ms.teams.length} coppie`)),
       h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'Rimanente'), h('div', { class: 'mono huge', 'data-clock': 'remaining' }, '—')),
-      h('div', { class: 'control-actions' }, controlButtons())),
+      h('div', { class: 'control-actions' }, controlButtons()),
+      phaseSteps()),
 
     ms.game.isDemo || ms.canWarp ? demoPanel() : null,
 
