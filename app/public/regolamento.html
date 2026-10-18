@@ -69,6 +69,8 @@ p{margin:0 0 1em;max-width:65ch}
 .quick li{padding-left:4px}
 .quick li::marker{font-family:var(--f-mono);font-weight:600;color:var(--blood)}
 .quick b{font-weight:600}
+.quick.news{border-color:var(--blood)}
+.quick.news ul{margin:0;padding-left:1.2em;display:grid;gap:8px}
 
 /* TOC */
 .toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:0;list-style:none}
@@ -183,11 +185,26 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
   </div>
 </section>
 
+<section id="novita">
+  <div class="sec-head"><span class="eyebrow">What's new</span><h2>Novità di questa edizione</h2></div>
+  <div class="quick news">
+    <ul>
+      <li><b>Skill:</b> prima del via ogni coppia sceglie le sue abilità nell'app. Altre si vincono con i Doni (regola 13).</li>
+      <li><b>Esito degli scontri nell'app:</b> chi vince o chi perde lo dichiara, l'altra parte conferma. Poi compare a tutto schermo la Vittoria, con i Sigilli conquistati, o la Sconfitta, con la Veglia da fare (regola 6).</li>
+      <li><b>Alleanze nell'app:</b> stringendo un'alleanza compare la schermata con i Sigilli degli alleati. Chi usa il Diplomatico tiene coperto il suo. Si vede a tutto schermo anche quando un'alleanza si rompe, e perché (regola 9).</li>
+      <li><b>Rompere a distanza:</b> se siete a più di 50 m dall'alleato, o vi allontanate oltre 50 m dopo averlo chiesto, l'alleanza si rompe subito, senza conferma (regola 9).</li>
+      <li><b>Doni che restano:</b> alcuni Doni restano attivi dopo la lettura e ogni coppia li può prendere una volta. Il cartello dice se va rimosso o lasciato. Un Dono già letto, riletto, risulta scaduto (regola 13).</li>
+      <li><b>Chi vi guarda:</b> quando una Skill o un Dono rivela la vostra posizione, lo sapete 1 minuto dopo. Le icone accanto all'orologio dicono chi vi osserva: toccatele per la spiegazione (regola 13).</li>
+      <li><b>Emergenza reale:</b> il pulsante EMERGENZA nell'app (e l'SOS di Traccar Client) avvisa subito la Direzione, con la vostra posizione. È un evento OFF GAME (regola 12).</li>
+    </ul>
+  </div>
+</section>
+
 <section id="regolamento">
   <div class="sec-head"><span class="eyebrow">Regolamento</span><h2>Le leggi del bosco</h2></div>
   <p>Questo è il regolamento completo. Non ci sono arbitri: il gioco funziona solo se ognuno rispetta le regole da solo.</p>
   <ul class="toc">
-    <li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li><li><a href="#r13">13 Doni e Skill</a></li><li><a href="#r14">14 Gli Eletti</a></li>
+    <li><a href="#novita">Novità</a></li><li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li><li><a href="#r13">13 Doni e Skill</a></li><li><a href="#r14">14 Gli Eletti</a></li>
   </ul>
 
   <article class="rule" id="r1">
@@ -284,6 +301,14 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li>Può allontanarsi mentre gli sconfitti sono fermi.</li>
         <li>Non può ingaggiare di nuovo la stessa coppia per 5 minuti da quando questa torna in gioco.</li>
       </ul>
+      <h4>L'esito nell'app</h4>
+      <ul>
+        <li>Finito l'ingaggio, una delle due coppie dichiara l'esito nella pagina Scontri: <b>VINTO</b>, <b>PERSO</b> o Pareggio.</li>
+        <li>Vinto e perso vanno confermati dalla parte avversaria. Il pareggio vale subito. Se l'esito viene contestato decide la regia.</li>
+        <li>Confermato l'esito, chi vince vede la schermata di Vittoria con i Sigilli conquistati. Chi perde vede la Sconfitta, con il conto alla rovescia della Veglia.</li>
+        <li>Contro una coppia che ha la Veglia Forzata la Veglia raddoppia: 2 minuti più 2 minuti.</li>
+        <li>Con la Maestria delle armi chi perde ribalta lo scontro: l'avversario, credendo di aver vinto, conferma e si ritrova la schermata di Sconfitta con la Maestria in evidenza.</li>
+      </ul>
       <div class="callout"><p><b>Il cappellino rende intoccabili.</b> Chi lo indossa non può essere colpito né costretto a mostrare altro. Una coppia che vuole aspettarlo deve restare ad almeno 20 metri.</p></div>
     </div>
   </article>
@@ -350,6 +375,11 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li>Non si può riproporre l'alleanza alla stessa coppia prima di 15 minuti.</li>
         <li>Una terza coppia entra nell'alleanza solo se tutti gli alleati accettano.</li>
       </ul>
+      <h4>Nell'app</h4>
+      <ul>
+        <li>L'alleanza si propone e si accetta anche nell'app, nella pagina Alleanze. Stretta l'alleanza, compare a tutto schermo la schermata con i Sigilli degli alleati.</li>
+        <li>Chi usa il <b>Diplomatico</b> entra nell'alleanza senza mostrare il proprio Sigillo: agli altri resta sfocato, con la scritta che non verrà svelato.</li>
+      </ul>
       <h4>Da alleati</h4>
       <ul>
         <li>L'alleanza diventa una coppia allargata e la regola d'oro vale per tutti: nessuno si separa, tutti a vista o a portata di voce.</li>
@@ -367,6 +397,9 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li>Per 5 minuti gli ex alleati non possono ingaggiarsi.</li>
       </ol>
       <ul>
+        <li>Nell'app la rottura si chiede dalla pagina Alleanze: gli alleati la confermano.</li>
+        <li><b>A più di 50 m</b> dall'alleato la rottura vale subito, senza conferma. Lo stesso se, dopo averla chiesta, vi allontanate oltre 50 m.</li>
+        <li>Ogni rottura compare a tutto schermo agli ex alleati: chi l'ha rotta e perché, con il conto alla rovescia del blocco.</li>
         <li>Non si rompe durante un ingaggio.</li>
         <li>Si rompe solo di persona, mai via radio.</li>
         <li>In un'alleanza a tre, chi esce rompe con entrambe le coppie. Le altre due restano alleate, se vogliono.</li>
@@ -375,6 +408,11 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
       <ul>
         <li>Gli alleati restano insieme. Se una coppia resta per più di 5 minuti a più di 50 m da tutti i suoi alleati, l'app rompe l'alleanza da sola e lo segnala a tutti.</li>
         <li>Vale come una rottura normale: per 5 minuti gli ex alleati non possono ingaggiarsi.</li>
+      </ul>
+      <h4>Velenoso</h4>
+      <ul>
+        <li>Subito dopo uno scontro, chi ha la Skill Velenoso può rompere l'alleanza della parte avversaria.</li>
+        <li>Gli avvelenati lo vedono a tutto schermo, con il nome del Settore che ha usato il Velenoso. Per 5 minuti gli ex alleati non possono ingaggiarsi.</li>
       </ul>
       <div class="callout"><p><b>Tradire all'ultimo è permesso.</b> Rompere l'alleanza a un passo dalla vittoria fa parte del gioco.</p></div>
     </div>
@@ -436,6 +474,9 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
       <p>Il Consiglio non gioca, ma a volte lascia cadere qualcosa nel bosco. Un Dono compare sulla mappa dell'app senza preavviso, in un punto che nessuno si aspetta. Non sapete cosa sia finché non lo avete preso.</p>
       <ul>
         <li>Un Dono è di chi arriva per primo e ne inquadra il QR con l'app. Dopo, per gli altri, non c'è più.</li>
+        <li>Alcuni Doni invece <b>restano attivi</b> dopo la lettura: ogni coppia li può prendere, una volta sola.</li>
+        <li>Un Dono già letto non si riprende: chi lo rilegge lo trova <b>scaduto</b>.</li>
+        <li>Il cartello dice cosa fare: <b>«Cartello da rimuovere»</b> lo porta via chi prende il Dono, <b>«Non rimuovere il cartello»</b> va lasciato dov'è per le altre coppie.</li>
         <li>Alcuni Doni non aspettano: se nessuno li raggiunge in tempo, svaniscono.</li>
         <li>Ciò che contengono lo scopre solo chi li prende. Alcuni aiutano voi, altri ostacolano qualcun altro, altri ancora piegano per un momento le leggi del bosco.</li>
         <li>Un Dono preso si conserva nell'app e si usa quando lo decidete voi. Scegliete bene il momento: si usa una volta sola.</li>
@@ -448,6 +489,12 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li>Le Skill attive e le Ultimate si usano dall'app quante volte volete, ma dopo ogni uso vanno in ricarica (le Ultimate 90 minuti). Le passive sono sempre attive.</li>
         <li>Altre Skill si vincono con i Doni.</li>
         <li>Nessuna coppia vede la posizione delle altre, tranne mentre una Skill o un Dono la mostra: finito l'effetto, i segni spariscono dalla mappa. Chi viene rivelato lo scopre sempre 1 minuto dopo: notifica e icona accanto all'orologio.</li>
+        <li>Le icone accanto all'orologio mostrano gli effetti attivi: chi vi osserva (Tracker, Tracciamento, Occhio, Rete, Taglia, Eletti) e i vostri (Ombra, Immunità, Confusione…). Toccatele per sapere cosa significano e quanto durano. Con la <b>Confusione</b> attiva chi vi osserva vede anche una posizione falsa: l'icona resta, ma senza alone d'allarme.</li>
+        <li>Quando seguite una coppia con Tracker o Tracciamento, in home c'è la scheda «Stai tracciando…» con il tempo che resta. Toccandola si apre la mappa.</li>
+        <li><b>Presagio del Dono:</b> quando compare un Dono lo sapete 5 minuti prima degli altri, con una notifica e una scheda in home che porta al cerchio sulla mappa.</li>
+        <li><b>Privilegio del Cuore:</b> gli armamenti sono vostri 5 minuti prima dell'apertura e 5 minuti dopo la chiusura, con notifica e scheda in home.</li>
+        <li><b>Chiave Maestra:</b> dentro un Altare appena inquadrato c'è il pulsante «Usa Chiave Maestra», che apre l'Altare senza il Sigillo.</li>
+        <li><b>Veggenza:</b> dà il frammento di uno degli Altari che conoscete, cioè già inquadrati, senza Sigillo e senza tornarci.</li>
         <li>Alcune Skill si usano negli scontri (Maestria delle armi, Immunità, Velenoso) o nelle alleanze (Diplomatico): si attivano dalla pagina Scontri o Alleanze tenendo premuto il pulsante finché la barra si riempie.</li>
         <li>Maestria delle armi trasforma uno scontro perso in vittoria, qualunque esito dichiari l'avversario. Immunità e Reliquia Antica lasciano coperto il Sigillo di chi perde.</li>
         <li>Con Maestro della caccia o Alleanze sporche entrano in gioco gli Eletti: il Consiglio manda una squadra, che vede la coppia indicata finché dura l'incarico (e la coppia lo scopre 1 minuto dopo). Chi entra nell'Ombra fa perdere le sue tracce: la caccia si interrompe.</li>
