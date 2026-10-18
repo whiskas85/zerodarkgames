@@ -1138,7 +1138,6 @@ test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizion
   // Scelta: 1 attiva/Ultimate + 1 passiva (configurabile).
   S.chooseSkill(A, 'tracker', true);
   assert.throws(() => S.chooseSkill(A, 'rete', true), /attiva o Ultimate/);
-  assert.throws(() => S.chooseSkill(A, 'maestria', true), /non è ancora disponibile/);
   S.chooseSkill(A, 'allarme', true);
   G.updateGame(g.id, { maxActiveSkills: 2 }, 'test');
   S.chooseSkill(A, 'rete', true);
@@ -1218,4 +1217,105 @@ test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizion
   S.tickAll(now + 60 * 60000);
   assert.deepEqual(S.sightingsFor(A, now + 60 * 60000), []);
   assert.equal(q.get('SELECT COUNT(*) AS n FROM skill_effects WHERE gameId = ? AND endedAt IS NULL AND endsAt IS NOT NULL', g.id).n, 0);
+});
+
+test('Skill negli scontri e nelle alleanze (fase 2): Maestria, Immunità, Reliquia, Velenoso, Diplomatico, Veglia Forzata, Ritirata', () => {
+  const S = require('../src/skills');
+  const K = require('../src/combat');
+  const F = require('../src/field');
+  const g = setupGame(5);
+  const [A, B, Cc, D, E] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.updateGame(g.id, { maxActiveSkills: 2 }, 'test');
+  S.chooseSkill(A, 'maestria', true); S.chooseSkill(A, 'velenoso', true); S.chooseSkill(A, 'veglia_forzata', true);
+  S.chooseSkill(B, 'immunita', true); S.chooseSkill(B, 'diplomatico', true); S.chooseSkill(B, 'ritirata', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const known = (t, s) => G.teamState(t).notebook.find((n) => n.sectorId === s.sectorId)?.code;
+  const timer = (t, id) => q.get('SELECT * FROM team_timers WHERE teamId = ? AND timerId = ? ORDER BY id DESC LIMIT 1', t.id, id);
+  // Maestria: A dichiara PERSO contro C ma usa la Skill → vince A; C fa la Veglia Forzata (4 minuti).
+  K.reportEngagement(A, Cc.id, 'lost', { skill: 'maestria' });
+  assert.equal(known(A, Cc), codeOf(g.id, Cc.sectorId));
+  assert.ok(!known(Cc, A));
+  assert.equal(timer(Cc, 'veglia').minutes, 4);
+  assert.throws(() => K.reportEngagement(A, D.id, 'lost', { skill: 'maestria' }), /ricarica/);
+  // Immunità: D dichiara di aver vinto contro B, B conferma con Immunità → D non riceve il Sigillo di B.
+  const e = K.reportEngagement(D, B.id, 'won');
+  K.respondEngagement(B, e.id, true, { skill: 'immunita' });
+  assert.ok(!known(D, B));
+  const vic = K.combatState(D).victories[0];
+  assert.equal(vic.seals[0].code, null);
+  assert.equal(vic.seals[0].hiddenBy, 'Immunità');
+  // Reliquia Antica: E perde contro C, il suo Sigillo resta coperto.
+  const id = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, 'reliquia', 'Reliquia Antica', 'Dono', 'tokrel', 'claimed', ?, ?, ?)", g.id, E.id, Date.now(), Date.now()).lastInsertRowid);
+  F.useGift(E, id);
+  K.reportEngagement(E, Cc.id, 'lost');
+  assert.ok(!known(Cc, E));
+  // Diplomatico: B propone a E usando la Skill → E non riceve il Sigillo di B, B riceve quello di E. Ritirata: 8 minuti.
+  const r1 = K.requestAlliance(B, Cc.id);
+  K.respondRequest(Cc, r1.id, false);
+  assert.equal(timer(B, 'blocco').minutes, 8);
+  const r2 = K.requestAlliance(B, E.id, { diplomat: true });
+  K.respondRequest(E, r2.id, true);
+  assert.ok(!known(E, B));
+  assert.equal(known(B, E), codeOf(g.id, E.sectorId));
+  // Velenoso: A vince contro E (alleata di B) e rompe l'alleanza B+E.
+  q.run('DELETE FROM team_timers WHERE teamId IN (?, ?)', A.id, E.id);
+  q.run("UPDATE team_skills SET readyAt = NULL WHERE teamId = ?", A.id);
+  K.reportEngagement(E, A.id, 'lost');
+  const eng = K.combatState(A).history[0];
+  assert.equal(eng.canPoison, true);
+  K.poison(A, eng.id);
+  assert.equal(K.allianceOf(B.id), null);
+  assert.throws(() => K.poison(A, eng.id), /già stato usato/);
+});
+
+test('Skill con gli Eletti (fase 3): Maestro della caccia, Ombra che interrompe la caccia, Alleanze sporche, incarichi con bersaglio', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const squad = F.createSquad(g.id, { name: 'Nord' }, 'test');
+  const sqId = squad.id ?? q.get('SELECT id FROM elect_squads WHERE gameId = ?', g.id).id;
+  G.addElectPerson(g.id, { name: 'Eletto Uno' }, 'test');
+  const electPlayer = q.get("SELECT p.id FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'elect' LIMIT 1", g.id);
+  F.setMemberSquad(electPlayer.id, sqId, 'test');
+  G.updateGame(g.id, { maxActiveSkills: 2 }, 'test');
+  S.chooseSkill(A, 'caccia', true);
+  S.chooseSkill(B, 'ombra', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const now = Date.now();
+  const elect = G.electOf(g.id);
+  const put = (dev, teamId, playerId, lat, lng) => q.run('INSERT INTO positions (deviceId, gameId, teamId, playerId, lat, lng, at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, at = excluded.at', dev, g.id, teamId, playerId, lat, lng, Date.now());
+  put(`f3A${g.id}`, A.id, null, 45, 9); put(`f3B${g.id}`, B.id, null, 45.01, 9); put(`f3C${g.id}`, Cc.id, null, 45.02, 9); put(`f3E${g.id}`, elect.id, electPlayer.id, 45.0202, 9);
+  // Maestro della caccia: incarico da assegnare; dopo l'assegnazione la squadra vede B, che non lo sa.
+  S.useSkill(A, 'caccia', { teamId: B.id });
+  const hunt = q.get("SELECT * FROM squad_tasks WHERE gameId = ? AND kind = 'hunt'", g.id);
+  assert.equal(hunt.squadId, null);
+  assert.equal(F.taskTargetPositions(sqId).length, 0);
+  F.assignTask(hunt.id, sqId, 'test');
+  assert.equal(F.taskTargetPositions(sqId)[0].teamId, B.id);
+  // Ombra: la caccia si interrompe e il bersaglio sparisce.
+  S.useSkill(B, 'ombra');
+  assert.ok(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', hunt.id).cancelledAt);
+  assert.equal(F.taskTargetPositions(sqId).length, 0);
+  // Incarico della regia con bersaglio una coppia: la squadra la vede.
+  F.createTask(g.id, { squadId: sqId, target: `team:${Cc.id}` }, 'test');
+  assert.equal(F.taskTargetPositions(sqId)[0].teamId, Cc.id);
+  // Alleanze sporche: la squadra più vicina parte subito, la coppia la vede; vicini → alleati per 30 minuti.
+  const gid = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, 'sporche', 'Alleanze sporche', 'Dono', 'toksp', 'claimed', ?, ?, ?)", g.id, Cc.id, now, now).lastInsertRowid);
+  F.useGift(Cc, gid);
+  const meet = q.get("SELECT * FROM squad_tasks WHERE gameId = ? AND kind = 'meet'", g.id);
+  assert.equal(meet.squadId, sqId);
+  assert.ok(S.sightingsFor(Cc).some((x) => x.kind === 'elect'));
+  S.tickAll(Date.now());
+  const started = q.get('SELECT * FROM squad_tasks WHERE id = ?', meet.id);
+  assert.ok(started.startedAt);
+  assert.equal(S.skillsState(Cc).dirty.squadName, 'Nord');
+  S.tickAll(started.endsAt + 1000);
+  assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', meet.id).doneAt);
+  assert.equal(S.skillsState(Cc).dirty, null);
 });

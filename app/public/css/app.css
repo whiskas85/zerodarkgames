@@ -464,3 +464,11 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .pick-item:has(input:checked) { border-color: var(--brass); background: var(--paper-2); }
 .pick-item input { width: 20px; height: 20px; margin: 2px 0 0; }
 .pick-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+
+/* Skill degli scontri: pulsante da tenere premuto */
+.skill-holds { display: grid; gap: 8px; }
+.btn-hold { position: relative; overflow: hidden; width: 100%; user-select: none; -webkit-user-select: none; touch-action: none; border-color: var(--brass); }
+.btn-hold .hold-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--blood-soft); }
+.btn-hold.holding .hold-bar { width: 100%; transition: width 1.2s linear; background: rgba(209, 173, 98, .35); }
+.btn-hold .hold-label { position: relative; }
+.hist-wide { grid-column: 1 / -1; }

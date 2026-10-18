@@ -335,6 +335,8 @@ function fieldState(gameId) {
     gifts: q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', game.id).map(giftOut),
     giftTypes: giftTypes(),
     squads: squadsOf(game.id),
+    // Incarichi generati da Skill e Doni (o creati senza squadra): da assegnare.
+    openTasks: q.all('SELECT * FROM squad_tasks WHERE gameId = ? AND squadId IS NULL AND doneAt IS NULL AND cancelledAt IS NULL ORDER BY id', game.id),
     landmarks: G.landmarksOf(game.id).map(landmarkOut),
     pois: poisOf(game.id),
   };
@@ -444,7 +446,7 @@ function squadsOf(gameId) {
   return q.all('SELECT * FROM elect_squads WHERE gameId = ? ORDER BY id', gameId).map((s) => ({
     ...s,
     members: members.filter((m) => squadOfMember[m.id] === s.id).map((m) => ({ id: m.id, name: m.name, nickname: m.nickname })),
-    tasks: q.all('SELECT * FROM squad_tasks WHERE squadId = ? ORDER BY doneAt IS NOT NULL, id', s.id),
+    tasks: q.all('SELECT * FROM squad_tasks WHERE squadId = ? ORDER BY doneAt IS NOT NULL OR cancelledAt IS NOT NULL, id', s.id),
   }));
 }
 
@@ -539,15 +541,77 @@ function assignToSquad(kind, id, squadId, actor, opts = {}) {
   } else notifySquad(s.id, null);
 }
 
-function createTask(gameId, data, actor) {
-  const s = getSquad(data.squadId);
-  if (s.gameId !== Number(gameId)) throw err(400, 'Squadra di un\'altra partita');
-  const text = String(data.text || '').trim().slice(0, 300);
+// Incarichi degli Eletti. kind: text (libero), goto (raggiungere un punto o una coppia), hunt (caccia a una coppia,
+// da Maestro della caccia), meet (incontro con una coppia per Alleanze sporche). Senza squadra = da assegnare.
+const TASK_KINDS = ['text', 'goto', 'hunt', 'meet'];
+
+// Bersaglio: "team:ID", "point:ID", "landmark:ID", "poi:ID", "gift:ID" oppure { lat, lng }.
+function taskTarget(gameId, data) {
+  const ref = String(data.target || '');
+  const [kind, raw] = ref.split(':');
+  const id = Number(raw);
+  if (kind === 'team') {
+    const t = q.get("SELECT t.id, s.name, s.roman FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ? AND t.gameId = ? AND t.kind = 'couple'", id, gameId);
+    if (!t) throw err(400, 'Coppia non valida');
+    return { targetTeamId: t.id, targetLabel: `${t.roman} · Settore ${t.name}` };
+  }
+  const table = { point: 'points', landmark: 'landmarks', poi: 'pois', gift: 'gifts' }[kind];
+  if (table) {
+    const r = q.get(`SELECT * FROM ${table} WHERE id = ? AND gameId = ?`, id, gameId);
+    if (!r || r.lat == null) throw err(400, 'Punto non valido o non ancora piazzato');
+    return { targetLat: r.lat, targetLng: r.lng, targetLabel: r.label || r.name || 'Punto' };
+  }
+  const t = readTarget(data);
+  return t.lat != null ? { targetLat: t.lat, targetLng: t.lng, targetLabel: String(data.targetLabel || 'Punto sulla mappa').slice(0, 80) } : {};
+}
+
+function createTask(gameId, data, actor, extra = {}) {
+  const s = data.squadId ? getSquad(data.squadId) : null;
+  if (s && s.gameId !== Number(gameId)) throw err(400, 'Squadra di un\'altra partita');
+  const target = taskTarget(Number(gameId), data);
+  let kind = TASK_KINDS.includes(data.kind) ? data.kind : 'text';
+  if (kind === 'text' && (target.targetTeamId || target.targetLat != null)) kind = 'goto';
+  const text = String(data.text || '').trim().slice(0, 300)
+    || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
   if (!text) throw err(400, 'Scrivi l\'incarico');
-  const id = Number(q.run('INSERT INTO squad_tasks (gameId, squadId, text, createdAt) VALUES (?, ?, ?, ?)', s.gameId, s.id, text, Date.now()).lastInsertRowid);
-  G.log(s.gameId, actor, 'squad_task', { squad: s.name, text });
-  notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });
+  const now = Date.now();
+  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, source, sourceTeamId, assignedAt)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null,
+  extra.source || 'regia', extra.sourceTeamId ?? null, s ? now : null).lastInsertRowid);
+  G.log(Number(gameId), actor, 'squad_task', { squad: s?.name || null, text });
+  if (s) notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });
+  rt.toStaff(Number(gameId), 'field');
   return { id };
+}
+
+function assignTask(taskId, squadId, actor) {
+  const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
+  if (!t || t.doneAt || t.cancelledAt) throw err(404, 'Incarico non trovato o già chiuso');
+  const s = getSquad(squadId);
+  if (s.gameId !== t.gameId) throw err(400, 'Squadra di un\'altra partita');
+  const prev = t.squadId;
+  q.run('UPDATE squad_tasks SET squadId = ?, assignedAt = ? WHERE id = ?', s.id, Date.now(), t.id);
+  G.log(t.gameId, actor, 'squad_task_assigned', { squad: s.name, text: t.text });
+  if (prev && prev !== s.id) notifySquad(prev, { title: 'Incarico tolto', body: t.text, tag: `task-${t.id}` });
+  notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: t.text, tag: `task-${t.id}` });
+  if (t.kind === 'meet' && t.targetTeamId) {
+    rt.pushTeams(t.gameId, { title: 'Alleanze sporche', body: `La squadra ${s.name} degli Eletti vi raggiunge: la vedete sulla mappa.`, tag: `meet-${t.id}`, url: '/#/mappa' }, t.targetTeamId);
+    rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
+  }
+  rt.toStaff(t.gameId, 'field');
+}
+
+// Annullato (dalla regia, oppure perché la coppia bersaglio è entrata nell'Ombra).
+function cancelTask(taskId, actor, why = null) {
+  const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
+  if (!t || t.doneAt || t.cancelledAt) return false;
+  q.run('UPDATE squad_tasks SET cancelledAt = ? WHERE id = ?', Date.now(), t.id);
+  G.log(t.gameId, actor, 'squad_task_cancelled', { text: t.text, why });
+  if (t.squadId) notifySquad(t.squadId, { title: why ? 'Abortite l\'incarico' : 'Incarico annullato', body: why || t.text, tag: `task-${t.id}` });
+  if (t.kind === 'meet' && t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
+  rt.toStaff(t.gameId, 'field');
+  return true;
 }
 
 function setTaskDone(taskId, done, who, gameId = null) {
@@ -555,7 +619,9 @@ function setTaskDone(taskId, done, who, gameId = null) {
   if (!t || (gameId && t.gameId !== Number(gameId))) throw err(404, 'Incarico non trovato');
   q.run('UPDATE squad_tasks SET doneAt = ?, doneBy = ? WHERE id = ?', done ? Date.now() : null, done ? who : null, t.id);
   G.log(t.gameId, who, done ? 'squad_task_done' : 'squad_task_reopened', { text: t.text });
-  notifySquad(t.squadId, null);
+  if (t.squadId) notifySquad(t.squadId, null);
+  if (t.kind === 'meet' && t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
+  rt.toStaff(t.gameId, 'field');
 }
 
 function deleteTask(taskId, actor) {
@@ -563,8 +629,12 @@ function deleteTask(taskId, actor) {
   if (!t) throw err(404, 'Incarico non trovato');
   q.run('DELETE FROM squad_tasks WHERE id = ?', t.id);
   G.log(t.gameId, actor, 'squad_task_deleted', { text: t.text });
-  notifySquad(t.squadId, null);
+  if (t.squadId) notifySquad(t.squadId, null);
+  rt.toStaff(t.gameId, 'field');
 }
+
+// Incarichi aperti con una coppia da seguire: gli Eletti della squadra ne vedono la posizione finché l'incarico è aperto.
+const openTaskSql = 'doneAt IS NULL AND cancelledAt IS NULL';
 
 // ---------------------------------------------------------------- posizioni GPS
 
@@ -710,6 +780,27 @@ function positionsOf(gameId, viewer = 'master') {
 }
 
 // Riepilogo per la home degli Eletti: la propria squadra e cosa resta da fare.
+// Posizioni delle coppie bersaglio degli incarichi aperti della squadra (mai chi è nell'Ombra).
+function taskTargets(squadId) {
+  const S = require('./skills');
+  return q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql}`, squadId).map((t) => {
+    const team = q.get('SELECT t.id, t.gameId, s.name, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', t.targetTeamId);
+    if (!team || S.hiddenTeam(team)) return null;
+    const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', team.id, Date.now() - POSITION_MAX_AGE);
+    return p ? { taskId: t.id, kind: t.kind, teamId: team.id, roman: team.roman, sectorName: team.name, color: team.color, lat: p.lat, lng: p.lng, at: p.at } : null;
+  }).filter(Boolean);
+}
+
+// Bersagli degli incarichi come segnaposto della mappa degli Eletti.
+function taskTargetPositions(squadId) {
+  const now = Date.now();
+  return taskTargets(squadId).map((x) => ({
+    deviceId: `task-${x.taskId}`, teamId: x.teamId, kind: 'team', lat: x.lat, lng: x.lng, acc: null, at: x.at, stale: now - x.at > POSITION_STALE,
+    label: `${x.roman} · Settore ${x.sectorName}`, who: x.kind === 'hunt' ? '🎯 Bersaglio della caccia' : x.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere',
+    roman: x.roman, color: x.color,
+  }));
+}
+
 function electSummary(team, player) {
   const squadId = player?.squadId || null;
   const squad = squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', squadId) : null;
@@ -717,15 +808,15 @@ function electSummary(team, player) {
   const todo = q.get('SELECT COUNT(*) AS n FROM points WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).n
     + q.get("SELECT COUNT(*) AS n FROM gifts WHERE squadId = ? AND status NOT IN ('claimed', 'expired') AND (status = 'draft' OR moveRequestedAt IS NOT NULL)", squad.id).n
     + q.get('SELECT COUNT(*) AS n FROM landmarks WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).n
-    + q.get('SELECT COUNT(*) AS n FROM squad_tasks WHERE squadId = ? AND doneAt IS NULL', squad.id).n;
+    + q.get(`SELECT COUNT(*) AS n FROM squad_tasks WHERE squadId = ? AND ${openTaskSql}`, squad.id).n;
   // Le cose da fare, con una chiave stabile: l'app avvisa quando ne compare una nuova.
   const items = [
     ...q.all('SELECT id, label, moveRequestedAt FROM landmarks WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).map((x) => ({ key: `l${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label}` })),
     ...q.all('SELECT id, label, moveRequestedAt FROM points WHERE squadId = ? AND (lat IS NULL OR moveRequestedAt IS NOT NULL)', squad.id).map((x) => ({ key: `p${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label}` })),
     ...q.all("SELECT id, label, name, moveRequestedAt FROM gifts WHERE squadId = ? AND status NOT IN ('claimed', 'expired') AND (status = 'draft' OR moveRequestedAt IS NOT NULL)", squad.id).map((x) => ({ key: `g${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label} (${x.name})` })),
-    ...q.all('SELECT id, text FROM squad_tasks WHERE squadId = ? AND doneAt IS NULL', squad.id).map((x) => ({ key: `t${x.id}`, label: x.text })),
+    ...q.all(`SELECT id, text FROM squad_tasks WHERE squadId = ? AND ${openTaskSql}`, squad.id).map((x) => ({ key: `t${x.id}`, label: x.text })),
   ];
-  return { squad, todo, items };
+  return { squad, todo, items, targets: taskTargets(squad.id) };
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.
@@ -788,7 +879,7 @@ function useGift(team, giftId, params = {}) {
 }
 
 module.exports = {
-  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, setTaskDone, deleteTask, electSummary,
+  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
   giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
   createPoi, updatePoi, deletePoi, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

@@ -277,7 +277,10 @@ tr.gift-row-claimed td { opacity: .6; }
 .squad-members { display: flex; flex-wrap: wrap; gap: 4px; }
 .squad-items, .squad-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .squad-items li.done, .squad-tasks li.done span { color: var(--muted); text-decoration: line-through; }
-.squad-tasks li { display: flex; align-items: center; gap: 8px; }
+.squad-tasks li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.squad-tasks li > span:first-child { flex: 1 1 220px; }
+.squad-tasks li select { flex: 1 1 180px; width: auto; }
+.squad-tasks li .btn { white-space: nowrap; }
 .squad-tasks label { flex: 1; display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .squad-card form .input { flex: 1; }
 

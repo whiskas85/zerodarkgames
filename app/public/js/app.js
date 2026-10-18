@@ -149,7 +149,7 @@ function setState(st) {
     // Nessun Sigillo nuovo: la Vittoria propone quale rubare.
     const steal = (st.combat.steals || []).find((x) => victories.some((y) => y.id === x.engagementId));
     if (steal) setTimeout(() => showSteal(steal), 300);
-    else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against), 300);
+    else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against, v.skill === 'maestria' && v.skillBy?.teamId === st.team.id), 300);
   }
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Allinea gli Altari visitati del server con quelli locali.
@@ -735,6 +735,7 @@ function viewHome() {
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
     owned && owned === total ? wonBanner() : null,
     privilegeCard(st),
+    st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     h('nav', { class: 'grid' },
@@ -810,7 +811,8 @@ function viewAlliances() {
       h('p', { class: 'small' }, 'Scade tra ', h('span', { class: 'mono', 'data-abs': r.expiresAt }, '—')),
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: true }, r.kind === 'join' ? 'Alleanza stretta' : 'Alleanza rotta') }, 'Accetta'),
-        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: false }, 'Rifiutata') }, 'Rifiuta'))))) : null,
+        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: false }, 'Rifiutata') }, 'Rifiuta')),
+      r.kind === 'join' && skillReady('diplomatico') ? h('button', { class: 'btn btn-sm', onclick: () => combatCall(`/api/team/alliance/${r.id}/respond`, { accept: true, diplomat: true }, 'Alleanza stretta con Diplomatico: il vostro Sigillo resta vostro') }, '🤝 Accetta con Diplomatico (non mostrate il vostro Sigillo)') : null))) : null,
 
     h('section', { class: 'card stack-sm' },
       h('div', { class: 'eyebrow' }, c.alliance ? `La vostra alleanza (${c.alliance.members.length}/${c.maxAlliance})` : 'Nessuna alleanza'),
@@ -832,7 +834,13 @@ function viewAlliances() {
             const waiting = t.retryAt && t.retryAt > clock.serverNow();
             const pending = c.outgoing.some((r) => r.kind === 'join' && r.team.teamId === t.teamId);
             return h('button', { type: 'button', class: 'opp', disabled: waiting || pending, onclick: async () => {
-              if (await dialog({ title: `Alleanza con ${t.sectorName}?`, text: `${t.sectorName} riceverà la proposta e dovrà accettarla entro pochi minuti. Accettando vi scambiate i Sigilli.`, okLabel: 'Proponi' })) combatCall('/api/team/alliance/request', { teamId: t.teamId }, `Proposta inviata a ${t.sectorName}`);
+              const dip = skillReady('diplomatico') ? h('input', { type: 'checkbox' }) : null;
+              if (dip) {
+                const ok = await modal({ title: `Alleanza con ${t.sectorName}?`, okLabel: 'Proponi', body: h('div', { class: 'stack-sm' },
+                  h('p', null, `${t.sectorName} riceverà la proposta e dovrà accettarla entro pochi minuti. Accettando vi scambiate i Sigilli.`),
+                  h('label', { class: 'pick-item' }, dip, h('span', { class: 'pick-text' }, h('strong', null, '🤝 Usa Diplomatico'), h('span', { class: 'tiny muted' }, 'Gli alleati non ricevono il vostro Sigillo (voi ricevete i loro).')))) });
+                if (ok) combatCall('/api/team/alliance/request', { teamId: t.teamId, diplomat: dip.checked }, `Proposta inviata a ${t.sectorName}`);
+              } else if (await dialog({ title: `Alleanza con ${t.sectorName}?`, text: `${t.sectorName} riceverà la proposta e dovrà accettarla entro pochi minuti. Accettando vi scambiate i Sigilli.`, okLabel: 'Proponi' })) combatCall('/api/team/alliance/request', { teamId: t.teamId }, `Proposta inviata a ${t.sectorName}`);
             } }, h('strong', null, teamName(t)),
             waiting ? h('span', { class: 'tiny muted' }, 'riproponi tra ', h('span', { class: 'mono', 'data-abs': t.retryAt }, '—')) : pending ? h('span', { class: 'tiny muted' }, 'in attesa') : null);
           })),
@@ -863,6 +871,19 @@ function viewCombat() {
     if (r) combatOpp = null;
   };
   const other = (e) => (e.mine === 'won' ? e.losers : e.mine === 'lost' ? e.winners : [...e.winners, ...e.losers].filter((x) => !c.alliance?.members.some((m) => m.teamId === x.teamId) && x.teamId !== st.team.id));
+  // Skill da scontro: Maestria delle armi e Immunità (sulla sconfitta), Velenoso (dopo lo scontro).
+  const maestria = skillReady('maestria');
+  const immunita = skillReady('immunita');
+  const lostWith = (skill) => {
+    if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
+    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Maestria delle armi: lo scontro con ${opp.sectorName} è vostro` : 'Sconfitta con Immunità: il vostro Sigillo resta coperto').then((r) => { if (r) combatOpp = null; });
+  };
+  const outcome = (e) => {
+    const vs = other(e).map((x) => x.sectorName).join(', ');
+    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id) return `Perso contro ${vs} → vinto con Maestria delle armi`;
+    if (e.skill === 'maestria' && e.mine === 'lost') return `Perso contro ${vs}: vittoria ribaltata dalla Maestria delle armi`;
+    return `${e.mine === 'draw' ? 'Pareggio con' : e.mine === 'won' ? 'Vinto contro' : 'Perso contro'} ${vs}${e.hidden?.[st.team.id] ? ` · Sigillo coperto (${e.hidden[st.team.id] === 'reliquia' ? 'Reliquia Antica' : 'Immunità'})` : ''}`;
+  };
 
   return h('div', { class: 'stack' },
     h('h2', null, 'Scontri'),
@@ -879,7 +900,11 @@ function viewCombat() {
       h('p', { class: 'small muted' }, `Confermando, i Sigilli di ${e.losers.map((x) => x.sectorName).join(', ')} vanno a ${e.winners.map((x) => x.sectorName).join(', ')} (e ai suoi alleati, se ne ha). Se non è vero, contestate: decide la regia.`),
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }, 'Sconfitta confermata: Veglia') }, 'Confermo, abbiamo perso'),
-        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto'))))) : null,
+        h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto')),
+      maestria || immunita ? h('div', { class: 'skill-holds' },
+        maestria ? holdButton('⚔️ Maestria delle armi: vinciamo noi', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'maestria' }, 'Maestria delle armi: lo scontro è vostro')) : null,
+        immunita ? holdButton('🧿 Confermo con Immunità', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'immunita' }, 'Sconfitta con Immunità: il vostro Sigillo resta coperto')) : null,
+        h('p', { class: 'tiny muted' }, 'Tenete premuto finché la barra si riempie.')) : null))) : null,
 
     h('section', { class: 'card stack-sm' },
       h('div', { class: 'eyebrow' }, 'Esito di uno scontro'),
@@ -891,6 +916,10 @@ function viewCombat() {
           h('button', { class: 'btn btn-xl res-won', disabled: !opp, onclick: () => report('won') }, 'VINTO'),
           h('button', { class: 'btn btn-xl res-lost', disabled: !opp, onclick: () => report('lost') }, 'PERSO'),
           h('button', { class: 'btn res-draw', disabled: !opp, onclick: () => report('draw') }, 'Pareggio')),
+        maestria || immunita ? h('div', { class: 'skill-holds' },
+          maestria ? holdButton('⚔️ Perso, ma Maestria delle armi', () => lostWith('maestria'), !opp) : null,
+          immunita ? holdButton('🧿 Perso con Immunità', () => lostWith('immunita'), !opp) : null,
+          h('p', { class: 'tiny muted' }, 'Skill: tenete premuto finché la barra si riempie.')) : null,
         h('p', { class: 'tiny muted' }, 'Niente scambio di Sigilli a mano: chi vince li riceve nel taccuino (anche i suoi alleati), chi perde fa la Veglia.'),
       ]),
 
@@ -898,9 +927,11 @@ function viewCombat() {
       h('div', { class: 'eyebrow' }, 'Ultimi scontri'),
       h('ul', { class: 'list' }, c.history.map((e) => h('li', { class: `hist hist-${e.mine}` },
         h('span', { class: 'mono small muted' }, fmtTime(e.createdAt)),
-        h('span', null, `${e.mine === 'draw' ? 'Pareggio con' : e.mine === 'won' ? 'Vinto contro' : 'Perso contro'} ${other(e).map((x) => x.sectorName).join(', ')}`),
+        h('span', null, outcome(e)),
         h('span', { class: `chip ${e.status === 'confirmed' ? (e.mine === 'won' ? 'chip-ok' : e.mine === 'lost' ? 'chip-blood' : '') : 'chip-brass'}` },
-          { pending: 'da confermare', confirmed: 'registrato', contested: 'contestato', cancelled: 'annullato' }[e.status]))))) : null);
+          { pending: 'da confermare', confirmed: 'registrato', contested: 'contestato', cancelled: 'annullato' }[e.status]),
+        e.poisonBy ? h('span', { class: 'tiny muted hist-wide' }, `☠️ Alleanza avversaria rotta dal Velenoso del Settore ${e.poisonBy.sectorName}`) : null,
+        e.canPoison && skillReady('velenoso') ? h('div', { class: 'hist-wide' }, holdButton('☠️ Velenoso: rompi la loro alleanza', () => combatCall(`/api/team/engagement/${e.id}/poison`, {}, 'Velenoso: la loro alleanza è rotta'))) : null)))) : null);
 }
 
 // ---------------------------------------------------------------- Posizione condivisa con il Consiglio
@@ -1054,7 +1085,7 @@ function viewMap(focus = null) {
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
-    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}` })),
+    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? null : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
   ]);
   teamMapView.setCircles([
@@ -1178,6 +1209,20 @@ const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;
 const SKILL_KIND = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
 const giftType = (g) => (S.state?.skills?.giftCatalog || []).find((t) => t.id === g.typeId && t.available);
 
+// Skill della coppia pronta all'uso (posseduta e non in ricarica).
+const skillReady = (id) => !!(S.state?.skills?.mine || []).find((s) => s.id === id && !s.readyAt);
+
+// Pulsante da tenere premuto (Skill degli scontri): la barra si riempie in 1,2 secondi, poi parte l'azione.
+function holdButton(label, onDone, disabled = false) {
+  let timer = null;
+  const bar = h('span', { class: 'hold-bar' });
+  const stop = () => { clearTimeout(timer); timer = null; btn.classList.remove('holding'); };
+  const btn = h('button', { type: 'button', class: 'btn btn-hold', disabled,
+    onpointerdown: (ev) => { ev.preventDefault(); btn.classList.add('holding'); vibrate(20); timer = setTimeout(() => { stop(); vibrate([60, 40, 60]); onDone(); }, 1200); },
+    onpointerup: stop, onpointerleave: stop, onpointercancel: stop, oncontextmenu: (ev) => ev.preventDefault() }, bar, h('span', { class: 'hold-label' }, label));
+  return btn;
+}
+
 function skillBadge(st) {
   const sk = st.skills;
   if (!sk) return null;
@@ -1186,7 +1231,7 @@ function skillBadge(st) {
     const missing = Math.max(0, sk.limits.active - chosen.filter((s) => s.kind !== 'passive').length) + Math.max(0, sk.limits.passive - chosen.filter((s) => s.kind === 'passive').length);
     return missing || null;
   }
-  return sk.mine.filter((s) => s.kind !== 'passive' && !s.auto && !s.readyAt && !s.active).length || null;
+  return sk.mine.filter((s) => s.kind !== 'passive' && !s.auto && !s.where && !s.readyAt && !s.active).length || null;
 }
 
 function privilegeCard(st) {
@@ -1199,14 +1244,23 @@ function privilegeCard(st) {
 }
 
 function sightingsNote() {
-  const list = S.state?.skills?.sightings || [];
+  const list = (S.state?.skills?.sightings || []).filter((x) => x.kind !== 'elect');
   const hints = S.state?.skills?.giftHints || [];
-  if (!list.length && !hints.length) return null;
+  const dirty = S.state?.skills?.dirty;
+  if (!list.length && !hints.length && !dirty) return null;
   const n = new Set(list.map((x) => x.teamId)).size;
   const until = Math.max(0, ...list.map((x) => x.until || 0));
   return h('div', { class: 'note' },
     list.length ? h('div', null, `Vedete ${n === 1 ? '1 coppia' : `${n} coppie`} (${[...new Set(list.map((x) => x.source))].join(', ')})`, until ? [' ancora ', h('span', { class: 'mono', 'data-abs': until }, '—')] : null) : null,
-    hints.length ? h('div', null, 'Presagio del Dono: il cerchio dorato contiene un dono appena comparso.') : null);
+    hints.length ? h('div', null, 'Presagio del Dono: il cerchio dorato contiene un dono appena comparso.') : null,
+    dirty ? dirtyLine(dirty) : null);
+}
+
+// Alleanze sporche: la squadra di Eletti in arrivo, poi alleata per 30 minuti.
+function dirtyLine(d) {
+  if (!d.squadName) return h('div', null, '🤝 Alleanze sporche: il Consiglio sta scegliendo la squadra di Eletti.');
+  if (!d.startedAt) return h('div', null, `🤝 La squadra ${d.squadName} vi raggiunge (pallini sulla mappa): l'alleanza parte quando siete vicini.`);
+  return h('div', null, `🤝 Alleati con la squadra ${d.squadName} ancora `, h('span', { class: 'mono', 'data-abs': d.endsAt }, '—'));
 }
 
 function skillMeta(s) {
@@ -1255,6 +1309,7 @@ function viewSkills() {
   const card = (s) => {
     if (s.kind === 'passive') return skillCard(s, h('span', { class: 'chip chip-ok' }, 'Sempre attiva'));
     if (s.auto) return skillCard(s, s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
+    if (s.where) return skillCard(s, s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('a', { class: 'btn btn-sm', href: `#/${s.where}` }, `Pronta: si usa da ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`));
     return skillCard(s,
       s.active && s.activeUntil ? h('span', { class: 'chip chip-blood' }, `In corso${s.targetName ? ` su ${s.targetName}` : ''} · `, left(s.activeUntil)) : null,
       s.active && !s.activeUntil && s.targetName ? h('span', { class: 'chip chip-blood' }, `In ascolto su ${s.targetName}`) : null,
@@ -1265,7 +1320,7 @@ function viewSkills() {
   const others = sk.catalog.filter((s) => !mineIds.has(s.id));
   return h('div', { class: 'stack' },
     h('h2', null, 'Le vostre Skill'),
-    timed.length ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until)))) : null,
+    timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? sk.mine.map(card) : h('p', { class: 'empty' }, 'Nessuna Skill: si scelgono prima del via o si vincono con i Doni.'),
     sk.results.length ? [h('h3', null, 'Ultimi risultati'), ...sk.results.map(resultCard)] : null,
     others.length ? h('details', { class: 'card' }, h('summary', null, 'Tutte le altre Skill'), h('div', { class: 'stack-sm' }, others.map((s) => skillCard(s)))) : null);
@@ -1627,16 +1682,19 @@ function battleOverlay(cls, ...children) {
   return el;
 }
 
-function showVictory(won, against) {
+function showVictory(won, against, maestria = false) {
   vibrate([120, 60, 120, 60, 400]);
   beep();
   const el = battleOverlay('victory',
     h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
-    h('div', { class: 'eyebrow' }, 'Scontro vinto'),
+    h('div', { class: 'eyebrow' }, maestria ? 'Maestria delle armi' : 'Scontro vinto'),
     h('h2', { class: 'battle-title' }, 'Vittoria'),
-    against ? h('p', null, `Avete battuto il Settore ${against.sectorName}.`) : null,
+    against ? h('p', null, maestria ? `Avevate perso contro il Settore ${against.sectorName}: la Maestria delle armi ha ribaltato lo scontro.` : `Avete battuto il Settore ${against.sectorName}.`) : null,
     h('p', { class: 'muted' }, won.length > 1 ? 'Il Consiglio vi consegna i Sigilli della parte sconfitta:' : 'Il Consiglio vi consegna il Sigillo dello sconfitto:'),
     h('div', { class: 'battle-seals' }, won.map((n, i) => {
+      // Immunità o Reliquia Antica: il Sigillo resta sfocato, con il motivo sotto.
+      if (!n.code) return h('div', { class: 'battle-seal' }, h('div', { class: 'eyebrow' }, `${n.roman} · Settore ${n.sectorName}`),
+        h('div', { class: 'battle-code mono' }, ghost(`won-${n.sectorId}`, n.length || 6, 'ghost-strong')), h('p', { class: 'small bad-text' }, `Il Sigillo è rimasto nascosto grazie a ${n.hiddenBy}.`));
       const code = h('div', { class: 'battle-code mono' }, ghost(`won-${n.sectorId}`, n.code.length, 'ghost-strong'));
       // Il simulacro sfocato si svela nel Sigillo vero, uno dopo l'altro.
       setTimeout(() => { code.replaceChildren(h('span', { class: 'unveil' }, n.code)); vibrate(60); }, 1100 + i * 900);
@@ -1718,7 +1776,7 @@ function syncServerTimers(st) {
     syncedTimers.add(key);
     const preset = (st.game.timers || []).find((x) => x.id === t.timerId);
     if (!preset) continue;
-    const endsAt = t.startedAt + preset.minutes * 60000 - clock.offset;
+    const endsAt = t.startedAt + (t.minutes || preset.minutes) * 60000 - clock.offset;
     if (endsAt <= Date.now()) continue;
     S.timers.push({ uid: key, id: preset.id, label: preset.label, endText: preset.endText, endsAt, done: false, reason: t.reason });
     if (t.timerId === 'veglia' && /^Sconfitta/.test(t.reason || '')) setTimeout(() => showDefeat(key, t.reason), 300);

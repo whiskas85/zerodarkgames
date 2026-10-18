@@ -353,13 +353,14 @@ app.get('/api/team/state', needMember, wrap((req) => {
   return st;
 }));
 // Alleanze: proposta, accettazione/rifiuto, rottura (stesso schema). Scontri: vinto / perso / pareggio.
-app.post('/api/team/alliance/request', needTeam, teamRateLimit, wrap((req) => K.requestAlliance(req.team, req.body.teamId)));
+app.post('/api/team/alliance/request', needTeam, teamRateLimit, wrap((req) => K.requestAlliance(req.team, req.body.teamId, { diplomat: !!req.body.diplomat })));
 app.post('/api/team/alliance/break', needTeam, teamRateLimit, wrap((req) => K.requestBreak(req.team, req.body.teamId)));
-app.post('/api/team/alliance/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondRequest(req.team, req.params.id, !!req.body.accept)));
+app.post('/api/team/alliance/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondRequest(req.team, req.params.id, !!req.body.accept, { diplomat: !!req.body.diplomat })));
 app.post('/api/team/alliance/:id/cancel', needTeam, wrap((req) => K.cancelRequest(req.team, req.params.id)));
-app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result)));
+app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result, { skill: req.body.skill })));
 app.post('/api/team/engagement/:id/steal', needTeam, teamRateLimit, wrap((req) => K.stealCode(req.team, req.params.id, req.body.sectorId)));
-app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm)));
+app.post('/api/team/engagement/:id/poison', needTeam, teamRateLimit, wrap((req) => K.poison(req.team, req.params.id)));
+app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm, { skill: req.body.skill })));
 // Posizione GPS del telefono (nessun limite di frequenza condiviso con le azioni: arriva ogni ~20 s).
 const lastPos = new Map();
 app.post('/api/team/position', needTeam, wrap((req) => {
@@ -473,7 +474,9 @@ app.get('/api/field/export.kmz', needField, (req, res, next) => { try { sendKmz(
 app.post('/api/field/pois', needField, wrap((req) => F.createPoi(fieldGame(req), req.body || {}, fieldWho(req))));
 app.patch('/api/field/pois/:id', needField, wrap((req) => F.updatePoi(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
-app.get('/api/field/positions', needField, wrap((req) => F.positionsOf(fieldGame(req), req.user?.role === 'master' ? 'master' : 'elect')));
+// Agli Eletti: gli altri Eletti e, finché un incarico della loro squadra è aperto, la coppia bersaglio.
+app.get('/api/field/positions', needField, wrap((req) => (req.user?.role === 'master' ? F.positionsOf(fieldGame(req), 'master')
+  : [...F.positionsOf(fieldGame(req), 'elect'), ...(req.player?.squadId ? F.taskTargetPositions(req.player.squadId) : [])])));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
 // La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.
@@ -640,6 +643,8 @@ m.post('/squads/:sid/read', wrap((req) => {
   return { ok: true };
 }));
 m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {}, actor(req))));
+m.post('/tasks/:tid/assign', wrap((req) => { F.assignTask(req.params.tid, req.body.squadId, actor(req)); return { ok: true }; }));
+m.post('/tasks/:tid/cancel', wrap((req) => { F.cancelTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));
 m.delete('/tasks/:tid', wrap((req) => { F.deleteTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.get('/gift-types', (_req, res) => res.json(F.giftTypes()));

@@ -40,9 +40,14 @@ function allianceOf(teamId) {
 // La "parte" di una coppia in uno scontro: lei e i suoi alleati.
 const sideOf = (teamId) => allianceOf(teamId)?.members || [teamId];
 
-function startTimer(teamId, timerId, reason) {
-  q.run('INSERT INTO team_timers (teamId, timerId, startedAt, reason) VALUES (?, ?, ?, ?)', teamId, timerId, Date.now(), reason);
+// Skill (caricato al bisogno: skills.js usa questo modulo).
+const SK = () => require('./skills');
+
+// minutes: durata diversa da quella del timer della partita (Veglia Forzata, Ritirata del Diplomatico).
+function startTimer(teamId, timerId, reason, minutes = null) {
+  q.run('INSERT INTO team_timers (teamId, timerId, startedAt, reason, minutes) VALUES (?, ?, ?, ?, ?)', teamId, timerId, Date.now(), reason, minutes);
 }
+const presetMin = (gameId, timerId) => ((JSON.parse(G.getGame(gameId).timers || 'null') || C.DEFAULT_TIMERS).find((t) => t.id === timerId)?.minutes) || 0;
 
 // Il Sigillo di un Settore arriva nel taccuino di una coppia (se non lo conosce già).
 function giveCode(toTeamId, fromTeamId, source) {
@@ -70,7 +75,13 @@ function stealCandidates(e, winnerId) {
   const me = team(winnerId);
   const mine = knownSectors(me);
   const pool = new Set();
-  for (const l of JSON.parse(e.losers)) for (const sid of knownSectors(team(l))) if (!mine.has(sid)) pool.add(sid);
+  const hidden = JSON.parse(e.hidden || '{}');
+  for (const l of JSON.parse(e.losers)) {
+    const lt = team(l);
+    // Reliquia Antica: nessun Sigillo di quella coppia si ruba. Immunità: solo il suo resta coperto.
+    if (hidden[l] === 'reliquia') continue;
+    for (const sid of knownSectors(lt)) if (!mine.has(sid) && !(hidden[l] && sid === lt.sectorId)) pool.add(sid);
+  }
   return q.all('SELECT s.id AS sectorId, s.name AS sectorName, s.roman FROM sectors s JOIN sector_codes c ON c.sectorId = s.id AND c.gameId = ? ORDER BY s.ord', me.gameId)
     .filter((s) => pool.has(s.sectorId));
 }
@@ -91,8 +102,9 @@ function expireOld(gameId) {
 
 // ---------------------------------------------------------------- alleanze
 
-function requestAlliance(me, toTeamId) {
+function requestAlliance(me, toTeamId, opts = {}) {
   requireCouple(me);
+  if (opts.diplomat) SK().checkSkill(me, 'diplomatico');
   requirePlaying(me.gameId);
   expireOld(me.gameId);
   const other = team(toTeamId);
@@ -109,7 +121,7 @@ function requestAlliance(me, toTeamId) {
   if (last && Date.now() - last.respondedAt < RETRY_BLOCK_MS) {
     throw err(409, `Blocco riproposta: potrete riproporre l'alleanza a ${other.sectorName} tra ${Math.ceil((RETRY_BLOCK_MS - (Date.now() - last.respondedAt)) / 60000)} minuti`);
   }
-  const id = Number(q.run("INSERT INTO alliance_requests (gameId, kind, fromTeamId, toTeamId, status, createdAt) VALUES (?, 'join', ?, ?, 'pending', ?)", me.gameId, me.id, other.id, Date.now()).lastInsertRowid);
+  const id = Number(q.run("INSERT INTO alliance_requests (gameId, kind, fromTeamId, toTeamId, status, createdAt, diplomat) VALUES (?, 'join', ?, ?, 'pending', ?, ?)", me.gameId, me.id, other.id, Date.now(), opts.diplomat ? 1 : 0).lastInsertRowid);
   G.log(me.gameId, `coppia:${me.id}`, 'alliance_proposed', { from: me.sectorName, to: other.sectorName });
   notify([other.id, me.id], me.gameId, null);
   rt.pushTeams(me.gameId, { title: 'Proposta di alleanza', body: `Il Settore ${me.sectorName} vi propone un'alleanza. Rispondete nell'app.`, tag: `ally-${id}`, url: '/#/alleanze' }, other.id);
@@ -131,7 +143,7 @@ function requestBreak(me, allyTeamId) {
   return { ok: true, id };
 }
 
-function respondRequest(me, requestId, accept) {
+function respondRequest(me, requestId, accept, opts = {}) {
   requireCouple(me);
   expireOld(me.gameId);
   const r = q.get('SELECT * FROM alliance_requests WHERE id = ?', Number(requestId));
@@ -139,12 +151,19 @@ function respondRequest(me, requestId, accept) {
   if (r.status !== 'pending') throw err(409, r.status === 'expired' ? 'Proposta scaduta: chiedete di rifarla' : 'Proposta già chiusa');
   requirePlaying(me.gameId);
   const from = team(r.fromTeamId);
+  // Diplomatico: chi lo usa (chi propone o chi accetta) entra nell'alleanza senza mostrare il proprio Sigillo.
+  const diplomats = new Set();
+  if (accept && r.kind === 'join') {
+    if (opts.diplomat) { SK().checkSkill(me, 'diplomatico'); diplomats.add(me.id); }
+    if (r.diplomat) { try { SK().checkSkill(from, 'diplomatico'); diplomats.add(from.id); } catch { /* ricarica partita nel frattempo: alleanza normale */ } }
+  }
   if (!accept) {
     q.run("UPDATE alliance_requests SET status = 'rejected', respondedAt = ? WHERE id = ?", Date.now(), r.id);
     if (r.kind === 'join') {
-      // Trattativa fallita: blocco ingaggio tra le due coppie.
-      startTimer(me.id, 'blocco', `Trattativa fallita con ${from.sectorName}`);
-      startTimer(from.id, 'blocco', `Trattativa fallita con ${me.sectorName}`);
+      // Trattativa fallita: blocco ingaggio tra le due coppie (8 minuti con la Ritirata del Diplomatico).
+      const retreat = SK().hasSkill(me.id, 'ritirata') || SK().hasSkill(from.id, 'ritirata') ? 8 : null;
+      startTimer(me.id, 'blocco', `Trattativa fallita con ${from.sectorName}${retreat ? ' (Ritirata del Diplomatico)' : ''}`, retreat);
+      startTimer(from.id, 'blocco', `Trattativa fallita con ${me.sectorName}${retreat ? ' (Ritirata del Diplomatico)' : ''}`, retreat);
     }
     G.log(me.gameId, `coppia:${me.id}`, r.kind === 'join' ? 'alliance_rejected' : 'alliance_break_rejected', { from: from.sectorName, to: me.sectorName });
     notify([from.id, me.id], me.gameId, null);
@@ -163,13 +182,16 @@ function respondRequest(me, requestId, accept) {
         || Number(q.run('INSERT INTO alliances (gameId, createdAt) VALUES (?, ?)', me.gameId, Date.now()).lastInsertRowid);
       for (const id of new Set([...mine, ...theirs])) {
         const cur = allianceOf(id);
-        if (cur?.id === keep) continue;
+        if (cur?.id === keep) { if (diplomats.has(id)) q.run('UPDATE alliance_members SET hideCode = 1 WHERE allianceId = ? AND teamId = ? AND leftAt IS NULL', keep, id); continue; }
+        const wasHidden = cur ? q.get('SELECT hideCode FROM alliance_members WHERE allianceId = ? AND teamId = ? AND leftAt IS NULL', cur.id, id)?.hideCode : 0;
         if (cur) q.run('UPDATE alliance_members SET leftAt = ? WHERE teamId = ? AND leftAt IS NULL', Date.now(), id);
-        q.run('INSERT INTO alliance_members (allianceId, teamId, joinedAt) VALUES (?, ?, ?)', keep, id, Date.now());
+        q.run('INSERT INTO alliance_members (allianceId, teamId, joinedAt, hideCode) VALUES (?, ?, ?, ?)', keep, id, Date.now(), wasHidden || diplomats.has(id) ? 1 : 0);
       }
       members = allianceOf(me.id).members;
-      // Stringendo l'alleanza ci si mostra i Sigilli: ogni alleato riceve quelli degli altri.
-      for (const a of members) for (const b of members) if (a !== b) giveCode(a, b, 'alliance');
+      // Stringendo l'alleanza ci si mostra i Sigilli: ogni alleato riceve quelli degli altri (non chi ha usato Diplomatico).
+      const hidden = new Set(q.all('SELECT teamId FROM alliance_members WHERE allianceId = ? AND leftAt IS NULL AND hideCode = 1', keep).map((x) => x.teamId));
+      for (const a of members) for (const b of members) if (a !== b && !hidden.has(b)) giveCode(a, b, 'alliance');
+      for (const d of diplomats) SK().consumeSkill(team(d), 'diplomatico', names(members.filter((x) => x !== d)).join(', '));
     } else {
       const a = allianceOf(from.id);
       members = a ? [...a.members] : [from.id, me.id];
@@ -183,9 +205,9 @@ function respondRequest(me, requestId, accept) {
       for (const id of members) startTimer(id, 'blocco', `Alleanza rotta (${from.sectorName})`);
     }
   });
-  G.log(me.gameId, `coppia:${me.id}`, r.kind === 'join' ? 'alliance_formed' : 'alliance_broken', { teams: names(members) });
+  G.log(me.gameId, `coppia:${me.id}`, r.kind === 'join' ? 'alliance_formed' : 'alliance_broken', { teams: names(members), diplomats: names([...diplomats]) });
   notify(members, me.gameId, r.kind === 'join'
-    ? { title: 'Alleanza stretta', body: `Alleati: ${names(members).join(', ')}. Avete ricevuto i loro Sigilli.`, tag: `ally-${r.id}` }
+    ? { title: 'Alleanza stretta', body: `Alleati: ${names(members).join(', ')}. Avete ricevuto i loro Sigilli${diplomats.size ? ' (non quelli protetti da Diplomatico)' : ''}.`, tag: `ally-${r.id}` }
     : { title: 'Alleanza rotta', body: `Il Settore ${from.sectorName} lascia l'alleanza. Blocco ingaggio 5 minuti.`, tag: `ally-${r.id}` });
   return { ok: true, accepted: true };
 }
@@ -266,6 +288,13 @@ function applyEngagement(e, by) {
   const losers = JSON.parse(e.losers);
   const won = [];
   const stealers = [];
+  // Sigilli che restano coperti: Immunità (Skill, scelta nello scontro) e Reliquia Antica (Dono attivo).
+  const hidden = JSON.parse(e.hidden || '{}');
+  for (const l of losers) if (!hidden[l] && SK().reliquiaOn(team(l))) hidden[l] = 'reliquia';
+  if (Object.keys(hidden).length) { q.run('UPDATE engagements SET hidden = ? WHERE id = ?', JSON.stringify(hidden), e.id); e.hidden = JSON.stringify(hidden); }
+  // Veglia Forzata: chi perde contro chi ce l'ha resta fermo il doppio.
+  const forced = winners.some((w) => SK().hasSkill(w, 'veglia_forzata'));
+  const vegliaMin = forced ? 2 * (presetMin(e.gameId, 'veglia') || 2) : null;
   tx(() => {
     q.run("UPDATE engagements SET status = 'confirmed', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), by, e.id);
     if (e.result === 'draw') {
@@ -274,7 +303,7 @@ function applyEngagement(e, by) {
     }
     // Ogni vincitore (e ogni suo alleato) riceve i Sigilli di tutta la parte sconfitta.
     const gained = new Set();
-    for (const w of winners) for (const l of losers) if (giveCode(w, l, 'won')) { won.push(l); gained.add(w); }
+    for (const w of winners) for (const l of losers) if (!hidden[l] && giveCode(w, l, 'won')) { won.push(l); gained.add(w); }
     // Chi non ottiene niente di nuovo (li conosceva già tutti) sceglie un Sigillo da rubare alla parte sconfitta.
     for (const w of winners) {
       if (!gained.has(w) && stealCandidates(e, w).length) {
@@ -283,7 +312,7 @@ function applyEngagement(e, by) {
       }
     }
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
-    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}`);
+    for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${forced ? ' (Veglia Forzata)' : ''}`, vegliaMin);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
   if (e.result === 'draw') {
@@ -292,27 +321,33 @@ function applyEngagement(e, by) {
   }
   notify(winners.filter((w) => !stealers.includes(w)), e.gameId, { title: 'Scontro vinto', body: `Sigilli conquistati: ${names(losers).join(', ')}. Li trovate nel taccuino.`, tag: `eng-${e.id}`, url: '/#/codici' });
   notify(stealers, e.gameId, { title: 'Scontro vinto', body: 'I loro Sigilli li conoscete già: scegliete quale rubare.', tag: `eng-${e.id}`, url: '/#/scontri' });
-  notify(losers, e.gameId, { title: 'Scontro perso', body: 'Cappellino: Veglia di 2 minuti, poi tornate in gioco.', tag: `eng-${e.id}`, url: '/#/timer' });
+  notify(losers, e.gameId, { title: 'Scontro perso', body: `${e.skill === 'maestria' ? `Il Settore ${team(e.skillTeamId)?.sectorName} ha ribaltato lo scontro con Maestria delle armi. ` : ''}Cappellino: Veglia di ${vegliaMin || presetMin(e.gameId, 'veglia') || 2} minuti, poi tornate in gioco.`, tag: `eng-${e.id}`, url: '/#/timer' });
 }
 
-function reportEngagement(me, opponentTeamId, result) {
+function reportEngagement(me, opponentTeamId, result, opts = {}) {
   requireCouple(me);
   requirePlaying(me.gameId, { engagement: true });
   if (!['won', 'lost', 'draw'].includes(result)) throw err(400, 'Esito non valido');
+  // Perso, ma con una Skill: Maestria delle armi (diventa vittoria) o Immunità (il Sigillo resta coperto).
+  const skill = result === 'lost' && ['maestria', 'immunita'].includes(opts.skill) ? opts.skill : null;
+  if (skill) SK().checkSkill(me, skill);
   const opp = team(opponentTeamId);
   requireCouple(opp);
   if (opp.gameId !== me.gameId || opp.id === me.id) throw err(400, 'Avversario non valido');
   const mine = sideOf(me.id);
   if (mine.includes(opp.id)) throw err(409, 'Non si combatte contro un alleato');
   const theirs = sideOf(opp.id);
-  const winners = result === 'lost' ? theirs : mine;
-  const losers = result === 'lost' ? mine : theirs;
-  // "Vinto" va confermato dallo sconfitto; "perso" e "pareggio" valgono subito.
+  const flip = skill === 'maestria';
+  const winners = result === 'lost' && !flip ? theirs : mine;
+  const losers = result === 'lost' && !flip ? mine : theirs;
+  // "Vinto" va confermato dallo sconfitto; "perso" e "pareggio" valgono subito (anche la Maestria delle armi).
   const status = result === 'won' ? 'pending' : 'confirmed';
-  const id = Number(q.run('INSERT INTO engagements (gameId, reporterTeamId, opponentTeamId, result, status, winners, losers, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    me.gameId, me.id, opp.id, result, 'pending', JSON.stringify(winners), JSON.stringify(losers), Date.now()).lastInsertRowid);
+  const id = Number(q.run('INSERT INTO engagements (gameId, reporterTeamId, opponentTeamId, result, status, winners, losers, createdAt, skill, skillTeamId, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    me.gameId, me.id, opp.id, flip ? 'won' : result, 'pending', JSON.stringify(winners), JSON.stringify(losers), Date.now(), skill, skill ? me.id : null,
+    skill === 'immunita' ? JSON.stringify({ [me.id]: 'immunita' }) : null).lastInsertRowid);
   const e = q.get('SELECT * FROM engagements WHERE id = ?', id);
-  G.log(me.gameId, `coppia:${me.id}`, 'engagement_reported', { result, reporter: me.sectorName, opponent: opp.sectorName });
+  if (skill) SK().consumeSkill(me, skill, opp.sectorName);
+  G.log(me.gameId, `coppia:${me.id}`, 'engagement_reported', { result, reporter: me.sectorName, opponent: opp.sectorName, skill });
   if (status === 'confirmed') {
     applyEngagement(e, `coppia:${me.id}`);
   } else {
@@ -323,20 +358,63 @@ function reportEngagement(me, opponentTeamId, result) {
   return { ok: true, id, status };
 }
 
-function respondEngagement(me, engagementId, confirm) {
+function respondEngagement(me, engagementId, confirm, opts = {}) {
   requireCouple(me);
   const e = q.get('SELECT * FROM engagements WHERE id = ?', Number(engagementId));
   if (!e || !JSON.parse(e.losers).includes(me.id)) throw err(404, 'Scontro non trovato');
   if (e.status !== 'pending') throw err(409, 'Scontro già registrato');
+  const skill = confirm && ['maestria', 'immunita'].includes(opts.skill) ? opts.skill : null;
+  if (skill) {
+    SK().checkSkill(me, skill);
+    if (skill === 'maestria') {
+      // L'esito dichiarato dall'avversario non conta: vince chi usa la Maestria (e la sua parte).
+      q.run('UPDATE engagements SET winners = ?, losers = ?, skill = ?, skillTeamId = ? WHERE id = ?', e.losers, e.winners, 'maestria', me.id, e.id);
+    } else {
+      q.run('UPDATE engagements SET skill = ?, skillTeamId = ?, hidden = ? WHERE id = ?', 'immunita', me.id, JSON.stringify({ ...JSON.parse(e.hidden || '{}'), [me.id]: 'immunita' }), e.id);
+    }
+    SK().consumeSkill(me, skill, team(e.reporterTeamId)?.sectorName);
+  }
   if (confirm) {
-    applyEngagement(e, `coppia:${me.id}`);
-    return { ok: true, status: 'confirmed' };
+    applyEngagement(q.get('SELECT * FROM engagements WHERE id = ?', e.id), `coppia:${me.id}`);
+    return { ok: true, status: 'confirmed', skill };
   }
   q.run("UPDATE engagements SET status = 'contested', resolvedAt = ? WHERE id = ?", Date.now(), e.id);
   G.log(e.gameId, `coppia:${me.id}`, 'engagement_contested', { by: me.sectorName, reporter: team(e.reporterTeamId).sectorName });
   notify([e.reporterTeamId, me.id], e.gameId, null);
   rt.pushMasters({ title: 'Scontro contestato', body: `${team(e.reporterTeamId).sectorName} contro ${me.sectorName}: serve la regia.`, url: '/regia#live' });
   return { ok: true, status: 'contested' };
+}
+
+// Velenoso: subito dopo uno scontro registrato (vinto o perso), una coppia della parte che ha la Skill rompe
+// l'alleanza della parte avversaria. Una volta per scontro.
+function poison(me, engagementId) {
+  requireCouple(me);
+  requirePlaying(me.gameId);
+  const e = q.get('SELECT * FROM engagements WHERE id = ?', Number(engagementId));
+  const winners = e ? JSON.parse(e.winners) : [];
+  const losers = e ? JSON.parse(e.losers) : [];
+  if (!e || e.gameId !== me.gameId || ![...winners, ...losers].includes(me.id)) throw err(404, 'Scontro non trovato');
+  if (e.status !== 'confirmed' || e.result === 'draw') throw err(409, 'Velenoso si usa dopo uno scontro vinto o perso');
+  if (e.poisonBy) throw err(409, 'In questo scontro Velenoso è già stato usato');
+  if (Date.now() - (e.resolvedAt || e.createdAt) > VICTORY_SHOW_MS) throw err(409, 'Troppo tardi: Velenoso si usa subito dopo lo scontro');
+  const enemySide = winners.includes(me.id) ? losers : winners;
+  const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => enemySide.includes(id)));
+  const a = allianceOf(face.id);
+  if (!a) throw err(409, `Il Settore ${face.sectorName} non è in alleanza`);
+  if (SK().immune(face)) throw err(409, `Il Settore ${face.sectorName} è protetto da un'Immunità`);
+  SK().checkSkill(me, 'velenoso');
+  const members = [...a.members];
+  tx(() => {
+    q.run('UPDATE alliance_members SET leftAt = ? WHERE allianceId = ? AND leftAt IS NULL', Date.now(), a.id);
+    q.run('UPDATE alliances SET endedAt = ? WHERE id = ?', Date.now(), a.id);
+    q.run('UPDATE engagements SET poisonBy = ? WHERE id = ?', me.id, e.id);
+    for (const id of members) startTimer(id, 'blocco', `Alleanza rotta dal Velenoso del Settore ${me.sectorName}`);
+  });
+  SK().consumeSkill(me, 'velenoso', names(members).join(', '));
+  G.log(me.gameId, `coppia:${me.id}`, 'alliance_poisoned', { by: me.sectorName, teams: names(members) });
+  notify(members, me.gameId, { title: 'Alleanza avvelenata', body: `Il Settore ${me.sectorName} ha usato Velenoso: la vostra alleanza è rotta. Blocco ingaggio 5 minuti.`, tag: `poison-${e.id}`, url: '/#/alleanze' });
+  notify([me.id], me.gameId, null);
+  return { ok: true, broken: names(members) };
 }
 
 // La regia decide gli scontri contestati (o annulla un esito).
@@ -370,6 +448,11 @@ function engagementOut(e, meId) {
     reporter: teamLite(e.reporterTeamId), opponent: teamLite(e.opponentTeamId),
     winners: winners.map(teamLite), losers: losers.map(teamLite),
     mine: meId ? (e.result === 'draw' ? 'draw' : winners.includes(meId) ? 'won' : losers.includes(meId) ? 'lost' : null) : null,
+    skill: e.skill || null, skillBy: e.skillTeamId ? teamLite(e.skillTeamId) : null,
+    hidden: JSON.parse(e.hidden || '{}'), poisonBy: e.poisonBy ? teamLite(e.poisonBy) : null,
+    // Velenoso si può usare: scontro registrato da poco e parte avversaria in alleanza (lo vede solo chi ha la Skill).
+    canPoison: !!(meId && e.status === 'confirmed' && e.result !== 'draw' && !e.poisonBy && Date.now() - (e.resolvedAt || e.createdAt) < VICTORY_SHOW_MS
+      && SK().hasSkill(meId, 'velenoso') && (() => { const enemy = JSON.parse(e.winners).includes(meId) ? JSON.parse(e.losers) : JSON.parse(e.winners); const f = [e.reporterTeamId, e.opponentTeamId].find((id) => enemy.includes(id)); return f && !!allianceOf(f); })()),
   };
 }
 
@@ -408,12 +491,16 @@ function pendingSteals(me) {
 function victoryOut(e) {
   const winners = JSON.parse(e.winners);
   const face = [e.reporterTeamId, e.opponentTeamId].find((id) => !winners.includes(id));
+  const hidden = JSON.parse(e.hidden || '{}');
   const seals = JSON.parse(e.losers).map((id) => {
     const t = team(id);
     const sc = t?.sectorId ? q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', t.gameId, t.sectorId) : null;
-    return sc ? { sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, code: sc.code } : null;
+    if (!sc) return null;
+    // Immunità o Reliquia Antica: il Sigillo resta sfocato, con il motivo.
+    if (hidden[id]) return { sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, code: null, hiddenBy: hidden[id] === 'reliquia' ? 'Reliquia Antica' : 'Immunità', length: sc.code.length };
+    return { sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, code: sc.code };
   }).filter(Boolean);
-  return { id: e.id, resolvedAt: e.resolvedAt, against: teamLite(face), seals };
+  return { id: e.id, resolvedAt: e.resolvedAt, against: teamLite(face), seals, skill: e.skill, skillBy: e.skillTeamId ? teamLite(e.skillTeamId) : null };
 }
 
 function combatState(me) {
@@ -472,4 +559,4 @@ function masterCombat(gameId) {
   };
 }
 
-module.exports = { knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { poison, knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };

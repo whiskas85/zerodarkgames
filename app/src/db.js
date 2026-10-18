@@ -405,4 +405,47 @@ function setSetting(key, value) {
   q.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
 }
 
+// Fase 2 delle Skill (scontri e alleanze): durata propria di un timer (Veglia Forzata, Ritirata del Diplomatico),
+// Sigillo nascosto agli alleati (Diplomatico), Skill usate in uno scontro (Maestria, Immunità, Velenoso).
+addColumn('team_timers', 'minutes', 'REAL');
+addColumn('alliance_members', 'hideCode', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('alliance_requests', 'diplomat', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('engagements', 'skill', 'TEXT');
+addColumn('engagements', 'skillTeamId', 'INTEGER');
+addColumn('engagements', 'hidden', 'TEXT');
+addColumn('engagements', 'poisonBy', 'INTEGER');
+
+// Fase 3 delle Skill: incarichi degli Eletti con un tipo (testo, raggiungi, caccia, incontro) e un bersaglio,
+// anche ancora senza squadra (generati da una Skill o da un Dono: la regia li assegna).
+{
+  const col = db.prepare('PRAGMA table_info(squad_tasks)').all().find((c) => c.name === 'squadId');
+  if (col?.notnull) {
+    db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+    CREATE TABLE squad_tasks_new (
+      id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      squadId INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL,
+      text TEXT NOT NULL, createdAt INTEGER NOT NULL, doneAt INTEGER, doneBy TEXT
+    );
+    INSERT INTO squad_tasks_new (id, gameId, squadId, text, createdAt, doneAt, doneBy) SELECT id, gameId, squadId, text, createdAt, doneAt, doneBy FROM squad_tasks;
+    DROP TABLE squad_tasks;
+    ALTER TABLE squad_tasks_new RENAME TO squad_tasks;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+    `);
+  }
+}
+addColumn('squad_tasks', 'kind', "TEXT NOT NULL DEFAULT 'text'");
+addColumn('squad_tasks', 'targetTeamId', 'INTEGER');
+addColumn('squad_tasks', 'targetLat', 'REAL');
+addColumn('squad_tasks', 'targetLng', 'REAL');
+addColumn('squad_tasks', 'targetLabel', 'TEXT');
+addColumn('squad_tasks', 'source', "TEXT NOT NULL DEFAULT 'regia'");
+addColumn('squad_tasks', 'sourceTeamId', 'INTEGER');
+addColumn('squad_tasks', 'assignedAt', 'INTEGER');
+addColumn('squad_tasks', 'cancelledAt', 'INTEGER');
+addColumn('squad_tasks', 'startedAt', 'INTEGER');
+addColumn('squad_tasks', 'endsAt', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

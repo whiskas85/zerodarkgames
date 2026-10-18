@@ -67,6 +67,7 @@ export function createField(F, { rerender }) {
   }
   setInterval(() => { if (mapOn) loadPositions(); }, 15000);
 
+  const TASK_ICON = { hunt: '🎯 ', goto: '⌖ ', meet: '🤝 ' };
   const mySquad = () => (F.data?.squads || []).find((x) => x.id === F.squadId) || null;
 
   // ------------------------------------------------------------ incarichi della squadra
@@ -108,10 +109,20 @@ export function createField(F, { rerender }) {
             h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPlacement(t) }, x.moveRequestedAt ? 'Sposta' : 'Piazza'),
             target ? h('button', { class: 'btn btn-sm', onclick: () => showOnMap(target) }, 'Mappa') : null));
       })) : h('p', { class: 'muted small' }, 'Niente da piazzare.'),
-      h('div', { class: 'eyebrow' }, `Incarichi (${sq.tasks.filter((t) => !t.doneAt).length} da fare)`),
-      sq.tasks.length ? h('ul', { class: 'campo-list' }, sq.tasks.map((t) => h('li', { class: `campo-item task-item ${t.doneAt ? 'done' : ''}` },
-        h('div', { class: 'campo-info' }, h('strong', null, t.text), t.doneAt ? h('span', { class: 'tiny muted' }, `Fatto ${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null),
-        h('button', { class: `btn btn-sm ${t.doneAt ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto')))) : h('p', { class: 'muted small' }, 'Nessun incarico libero.'),
+      h('div', { class: 'eyebrow' }, `Incarichi (${sq.tasks.filter((t) => !t.doneAt && !t.cancelledAt).length} da fare)`),
+      sq.tasks.length ? h('ul', { class: 'campo-list' }, sq.tasks.map((t) => {
+        const target = t.targetLat != null ? { lat: t.targetLat, lng: t.targetLng } : null;
+        return h('li', { class: `campo-item task-item ${t.doneAt || t.cancelledAt ? 'done' : ''}` },
+          h('div', { class: 'campo-info' },
+            h('strong', null, `${TASK_ICON[t.kind] || ''}${t.text}`),
+            t.targetTeamId && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small ok-text' }, 'La coppia compare sulla vostra mappa finché l\'incarico è aperto') : null,
+            target && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small ok-text' }, `⌖ ${t.targetLabel || 'Punto indicato'}`, F.me ? ` · a ${fmtDist(meters(F.me, target))}` : '') : null,
+            t.kind === 'meet' && t.endsAt ? h('div', { class: 'small' }, `Alleanza attiva fino alle ${fmtTime(t.endsAt)}`) : null,
+            t.cancelledAt ? h('span', { class: 'chip chip-blood' }, `Annullato ${fmtTime(t.cancelledAt)}: abortite`) : t.doneAt ? h('span', { class: 'tiny muted' }, `Fatto ${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null),
+          h('div', { class: 'stack-sm' },
+            t.cancelledAt ? null : h('button', { class: `btn btn-sm ${t.doneAt ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto'),
+            target && !t.doneAt && !t.cancelledAt ? h('button', { class: 'btn btn-sm', onclick: () => showOnMap(target) }, 'Mappa') : null));
+      })) : h('p', { class: 'muted small' }, 'Nessun incarico libero.'),
       done.length ? h('p', { class: 'small ok-text' }, `Già piazzati: ${done.join(', ')}`) : null);
   }
 

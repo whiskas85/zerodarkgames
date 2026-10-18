@@ -24,11 +24,11 @@ const SKILLS = [
   { id: 'tracker', name: 'Tracker', icon: '⚡', kind: 'active', cooldownMin: 30, durationMin: 5, target: 'team', description: 'Seguite una coppia sulla mappa per 5 minuti. Lei se ne accorge dopo 1 minuto.' },
   { id: 'memoria', name: 'Memoria', icon: '🧩', kind: 'active', cooldownMin: 60, target: 'expiredAltar', description: 'Riaprite un Altare già inquadrato la cui scansione è scaduta: potete di nuovo pronunciarne il Sigillo.' },
   { id: 'confusione', name: 'Confusione', icon: '🌀', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, auto: true, description: 'Automatica: quando qualcuno vede la vostra posizione, per 15 minuti vede anche una posizione falsa.' },
-  { id: 'diplomatico', name: 'Diplomatico', icon: '🤝', kind: 'active', cooldownMin: 60, phase: 2, description: 'Stringete un\'alleanza senza mostrare il vostro Sigillo agli alleati.' },
-  { id: 'velenoso', name: 'Velenoso', icon: '☠️', kind: 'active', cooldownMin: 60, phase: 2, description: 'Dopo uno scontro, rompete l\'alleanza avversaria coinvolta.' },
-  { id: 'maestria', name: 'Maestria delle armi', icon: '⚔️', kind: 'active', cooldownMin: 60, phase: 2, description: 'Trasformate uno scontro perso in una vittoria.' },
-  { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, phase: 2, description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
-  { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, phase: 3, description: 'Mandate gli Eletti a dare la caccia a una coppia.' },
+  { id: 'diplomatico', name: 'Diplomatico', icon: '🤝', kind: 'active', cooldownMin: 60, where: 'alleanze', description: 'Proponendo o accettando un\'alleanza, stringetela senza mostrare il vostro Sigillo agli alleati.' },
+  { id: 'velenoso', name: 'Velenoso', icon: '☠️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Subito dopo uno scontro (vinto o perso), rompete l\'alleanza della parte avversaria.' },
+  { id: 'maestria', name: 'Maestria delle armi', icon: '⚔️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Trasformate uno scontro perso in una vittoria, qualunque esito dichiari l\'avversario.' },
+  { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, where: 'scontri', description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
+  { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio non lo sa.' },
   { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per 3 minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
   { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Scegliete un Altare e prendete subito il suo frammento, senza Sigillo e senza andarci.' },
   { id: 'intuizione', name: 'Intuizione', icon: '🧠', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Aprite un Altare a scelta da lontano, come se l\'aveste appena inquadrato: poi serve il suo Sigillo.' },
@@ -39,8 +39,8 @@ const SKILLS = [
   { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo.' },
   { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale il doppio del tempo.' },
   { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura e 5 minuti dopo la chiusura.' },
-  { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', phase: 2, description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
-  { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', phase: 2, description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
+  { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
+  { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
 ];
 
 // target: team | altar | skill | swap | null. phase > 1: non ancora creabile dalla regia.
@@ -56,8 +56,8 @@ const GIFTS = [
   { id: 'taglia', name: 'Taglia', icon: '🚨', color: '#e5484d', target: 'team', durationMin: 15, description: 'Una coppia a scelta compare sulla mappa di tutti per 15 minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'dossier', name: 'Dossier Segreto', icon: '🕵️', color: '#a0703c', target: 'team', description: 'Vedete tutti i Sigilli che conosce una coppia a scelta.' },
   { id: 'benedizione', name: 'Benedizione del Consiglio', icon: '✨', color: '#f0e3b0', target: 'swap', description: 'Sostituite una vostra Skill con un\'altra, pronta da usare.' },
-  { id: 'sporche', name: 'Alleanze sporche', icon: '🤝', color: '#7a7a7a', phase: 3, description: 'Per 30 minuti alleati con una squadra di Eletti.' },
-  { id: 'reliquia', name: 'Reliquia Antica', icon: '💎', color: '#22c3e6', phase: 2, durationMin: 30, description: 'Per 30 minuti i vostri Sigilli non si perdono.' },
+  { id: 'sporche', name: 'Alleanze sporche', icon: '🤝', color: '#7a7a7a', target: null, description: 'Una squadra di Eletti vi raggiunge (la vedete sulla mappa): quando siete vicini, siete alleati per 30 minuti. Poi gli Eletti se ne vanno, qualunque cosa stia succedendo.' },
+  { id: 'reliquia', name: 'Reliquia Antica', icon: '💎', color: '#22c3e6', target: null, durationMin: 30, description: 'Per 30 minuti i vostri Sigilli non si perdono: perdendo uno scontro il vostro resta coperto e nessuno ve li ruba.' },
 ];
 
 const skillById = (id) => SKILLS.find((s) => s.id === id);
@@ -90,6 +90,7 @@ function activeEffects(gameId, now = Date.now()) {
 }
 const effectOn = (gameId, teamId, code, now = Date.now()) => activeEffects(gameId, now).find((e) => e.teamId === teamId && e.code === code);
 const immune = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'scudo', now);
+const reliquiaOn = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'reliquia', now);
 const hidden = (t, now = Date.now()) => !!effectOn(t.gameId, t.id, 'ombra', now);
 
 function latestPos(teamId, now = Date.now()) {
@@ -178,6 +179,7 @@ function useSkill(me, skillId, params = {}) {
   if (!own) throw err(404, 'Non avete questa Skill');
   if (!available(s)) throw err(409, `${s.name} non è ancora disponibile`);
   if (isPassive(s) || s.auto) throw err(409, `${s.name} si attiva da sola`);
+  if (s.where) throw err(409, `${s.name} si usa dalla pagina ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`);
   const now = Date.now();
   if (own.readyAt && own.readyAt > now) throw err(409, `${s.name} è in ricarica: pronta tra ${Math.ceil((own.readyAt - now) / MIN)} minuti`);
   const result = applySkill(g, me, s, params);
@@ -195,9 +197,25 @@ function applySkill(g, me, s, p) {
       startEffect(me, 'skill', s.id, { durationMin: s.durationMin });
       return { message: 'Per 2 minuti vedete le coppie entro 500 m.' };
     }
-    case 'ombra':
+    case 'ombra': {
       startEffect(me, 'skill', s.id, { durationMin: s.durationMin });
+      // Gli Eletti che vi davano la caccia (o vi raggiungevano) perdono le vostre tracce: devono abortire.
+      const F = require('./field');
+      for (const t of q.all("SELECT id FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto') AND doneAt IS NULL AND cancelledAt IS NULL", me.id)) {
+        F.cancelTask(t.id, 'sistema', `Abortite la caccia: il Settore ${team(me.id).sectorName} è sparito nell'Ombra.`);
+      }
       return { message: 'Siete nell\'Ombra per 15 minuti.' };
+    }
+    case 'caccia': {
+      const t = pickTarget(me, p.teamId);
+      if (hidden(t)) throw err(409, `Il Settore ${t.sectorName} è nell'Ombra: gli Eletti non lo trovano`);
+      const F = require('./field');
+      const task = F.createTask(g.id, { kind: 'hunt', target: `team:${t.id}`, text: `Caccia al Settore ${t.sectorName} (Maestro della caccia)` }, `coppia:${me.id}`, { source: 'skill', sourceTeamId: me.id });
+      startEffect(me, 'skill', s.id, { target: t.id, data: { taskId: task.id } });
+      endNow(g.id, me.id, s.id);
+      rt.pushMasters({ title: 'Maestro della caccia', body: `Una coppia manda gli Eletti a caccia del Settore ${t.sectorName}: assegna la missione a una squadra.`, url: '/regia#squadre' });
+      return { targetName: t.sectorName, message: `Il Consiglio manderà gli Eletti a caccia del Settore ${t.sectorName}.` };
+    }
     case 'rete':
       startEffect(me, 'skill', s.id, { durationMin: s.durationMin, notifyAfterMin: 1 });
       return { message: 'Per 3 minuti vedete tutte le coppie.' };
@@ -265,6 +283,38 @@ function applySkill(g, me, s, p) {
     default:
       throw err(409, `${s.name} non si usa da qui`);
   }
+}
+
+// Skill usate da alleanze e scontri (Diplomatico, Maestria, Immunità, Velenoso): controlla e fa partire la ricarica.
+function checkSkill(t, skillId) {
+  const s = skillById(skillId);
+  const own = s && q.get('SELECT * FROM team_skills WHERE teamId = ? AND skillId = ?', t.id, s.id);
+  if (!own) throw err(403, `Non avete ${s ? s.name : 'questa Skill'}`);
+  if (own.readyAt && own.readyAt > Date.now()) throw err(409, `${s.name} è in ricarica: pronta tra ${Math.ceil((own.readyAt - Date.now()) / MIN)} minuti`);
+  return { s, own };
+}
+function consumeSkill(t, skillId, target = null) {
+  const { s, own } = checkSkill(t, skillId);
+  q.run('UPDATE team_skills SET readyAt = ? WHERE id = ?', Date.now() + s.cooldownMin * MIN, own.id);
+  G.log(t.gameId, `coppia:${t.id}`, 'skill_used', { teamId: t.id, skill: s.name, target });
+  rt.toStaff(t.gameId, 'skills');
+}
+
+// Posizioni recenti dei membri di una squadra di Eletti.
+function squadPositions(squadId, now = Date.now()) {
+  return q.all('SELECT pos.lat, pos.lng, pos.at, pl.name, pl.nickname FROM positions pos JOIN players pl ON pl.id = pos.playerId WHERE pl.squadId = ? AND pos.at > ?', squadId, now - POS_FRESH_MS);
+}
+
+function nearestSquad(gameId, me) {
+  const here = latestPos(me.id);
+  let best = null;
+  for (const sq of q.all('SELECT * FROM elect_squads WHERE gameId = ?', gameId)) {
+    const pts = squadPositions(sq.id);
+    if (!pts.length) continue;
+    const d = here ? Math.min(...pts.map((x) => distM(here, x))) : Infinity;
+    if (!best || d < best.d) best = { ...sq, d };
+  }
+  return best;
 }
 
 function endNow(gameId, teamId, code) {
@@ -345,6 +395,7 @@ function applyGift(g, me, type, p) {
     }
     case 'furto': {
       const t = pickTarget(me, p.teamId);
+      if (reliquiaOn(t)) throw err(409, `I Sigilli del Settore ${t.sectorName} sono protetti da una Reliquia Antica`);
       const mine = K.knownSectors(me);
       const pool = [...K.knownSectors(t)].filter((sid) => !mine.has(sid));
       if (!pool.length) return { targetName: t.sectorName, stolen: null, message: `Il Settore ${t.sectorName} non conosce Sigilli che voi non abbiate già.` };
@@ -369,6 +420,20 @@ function applyGift(g, me, type, p) {
       const sec = G.sectorById(sid);
       return { stolen: { sectorId: sid, sectorName: sec.name, roman: sec.roman, code: sc.code }, message: `Nuovo Sigillo: Settore ${sec.name}.` };
     }
+    case 'sporche': {
+      if (q.get("SELECT 1 FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND doneAt IS NULL AND cancelledAt IS NULL", me.id)) throw err(409, 'Avete già un\'alleanza sporca in corso');
+      const F = require('./field');
+      const label = `${team(me.id).roman} · Settore ${team(me.id).sectorName}`;
+      const task = F.createTask(g.id, { kind: 'meet', target: `team:${me.id}`, text: `Alleanze sporche: raggiungete il ${label} e alleatevi per 30 minuti` }, `coppia:${me.id}`, { source: 'gift', sourceTeamId: me.id });
+      // La squadra più vicina parte subito; se nessuna ha una posizione, la sceglie il Consiglio.
+      const squad = nearestSquad(g.id, me);
+      if (squad) F.assignTask(task.id, squad.id, 'sistema');
+      else rt.pushMasters({ title: 'Alleanze sporche', body: `Il Settore ${team(me.id).sectorName} chiama gli Eletti: assegna una squadra.`, url: '/regia#squadre' });
+      return { message: squad ? `La squadra ${squad.name} vi raggiunge: la vedete sulla mappa.` : 'Il Consiglio sta scegliendo la squadra di Eletti che vi raggiungerà.' };
+    }
+    case 'reliquia':
+      startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
+      return { message: 'Per 30 minuti i vostri Sigilli non si perdono.' };
     case 'scudo':
       startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
       return { message: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce.' };
@@ -429,6 +494,11 @@ function sightingsFor(me, now = Date.now()) {
     if (t) add(t, 'Taglia', e.endsAt, false);
   }
   const list = [];
+  // Alleanze sporche: la squadra di Eletti in arrivo (o alleata) compare sulla mappa della coppia.
+  for (const task of q.all("SELECT t.*, s.name AS squadName, s.color AS squadColor FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id)) {
+    squadPositions(task.squadId, now).forEach((p, i) => list.push({ kind: 'elect', teamId: null, key: `e${task.id}-${i}`, sectorName: task.squadName, roman: (p.nickname || p.name || 'E').slice(0, 2).toUpperCase(),
+      displayName: p.nickname || p.name, color: task.squadColor, source: task.startedAt ? 'Alleanza sporca' : 'In arrivo', until: task.endsAt, at: p.at, lat: p.lat, lng: p.lng, radius: null }));
+  }
   for (const { t, pos, source, until, scan } of out.values()) {
     const base = { teamId: t.id, sectorName: t.sectorName, displayName: t.displayName || null, roman: t.roman, color: t.sectorColor, source, until, at: pos.at };
     if (scan && hasSkill(t.id, 'silenzio')) {
@@ -545,6 +615,10 @@ function skillsState(me, now = Date.now()) {
     results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),
     sightings: sightingsFor(me, now),
+    dirty: (() => {
+      const t = q.get("SELECT t.*, s.name AS squadName FROM squad_tasks t LEFT JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id);
+      return t ? { squadName: t.squadName, startedAt: t.startedAt, endsAt: t.endsAt } : null;
+    })(),
     giftHints: giftHints(me, now),
     supply: C.ACTIVE.includes(g.status) ? supplyFor(me, g, now) : null,
   };
@@ -597,7 +671,30 @@ function tickAll(now = Date.now()) {
       G.announce(g.id, 'gift', {}, { giftId: gift.id });
       rt.toTeams(g.id, 'state', {});
     }
-    if (g.status !== 'paused') proximity(g, now);
+    if (g.status !== 'paused') { proximity(g, now); meetings(g, now); }
+  }
+}
+
+// Alleanze sporche: l'alleanza parte quando un Eletto della squadra arriva entro 40 m dalla coppia e dura 30 minuti;
+// allo scadere gli Eletti se ne vanno, anche in mezzo a uno scontro.
+function meetings(g, now) {
+  const F = require('./field');
+  for (const t of q.all("SELECT t.*, s.name AS squadName FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.gameId = ? AND t.kind = 'meet' AND t.doneAt IS NULL AND t.cancelledAt IS NULL", g.id)) {
+    if (t.endsAt && t.endsAt <= now) {
+      F.setTaskDone(t.id, true, 'sistema');
+      rt.pushTeams(g.id, { title: 'Alleanza sporca finita', body: `La squadra ${t.squadName} lascia l'alleanza e si allontana.`, tag: `meet-${t.id}`, url: '/#/home' }, t.targetTeamId);
+      q.run('UPDATE squad_tasks SET doneBy = ? WHERE id = ?', 'sistema', t.id);
+      continue;
+    }
+    if (t.startedAt) continue;
+    const here = latestPos(t.targetTeamId, now);
+    if (!here || !squadPositions(t.squadId, now).some((p) => distM(here, p) <= 40)) continue;
+    q.run('UPDATE squad_tasks SET startedAt = ?, endsAt = ? WHERE id = ?', now, now + 30 * MIN, t.id);
+    G.log(g.id, 'sistema', 'dirty_alliance', { squad: t.squadName, teamId: t.targetTeamId });
+    rt.pushTeams(g.id, { title: 'Alleanza sporca', body: `Siete alleati con la squadra ${t.squadName} per 30 minuti.`, tag: `meet-${t.id}`, url: '/#/home' }, t.targetTeamId);
+    rt.toTeams(g.id, 'state', {}, t.targetTeamId);
+    F.notifySquadPublic?.(t.squadId, { title: 'Alleanza sporca', body: 'Alleanza attiva per 30 minuti: allo scadere vi allontanate.', tag: `meet-${t.id}` });
+    rt.toStaff(g.id, 'field');
   }
 }
 
@@ -632,5 +729,5 @@ function resetGame(gameId) {
 
 module.exports = {
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
-  onGiftRevealed, onAltarUnlocked, scanFactor, tickAll, resetGame, limitsOf,
+  onGiftRevealed, onAltarUnlocked, scanFactor, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
 };
