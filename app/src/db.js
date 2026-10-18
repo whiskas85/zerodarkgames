@@ -475,4 +475,8 @@ CREATE TABLE IF NOT EXISTS privilege_notices (
 );
 `);
 
+// Doni: ritardo (minuti) tra l'annuncio della regia e la comparsa; cartello da rimuovere dopo la presa o da lasciare.
+addColumn('gifts', 'revealDelayMin', 'REAL');
+addColumn('gifts', 'removeSign', 'INTEGER NOT NULL DEFAULT 1');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

@@ -1569,3 +1569,18 @@ test('Privilegio del Cuore: la notifica degli armamenti arriva prima, e alla chi
   S.tickAll();
   assert.equal(sent(A, 'late'), 1);
 });
+
+test('doni: ritardo all\'annuncio (compare N minuti dopo l\'annuncio) e cartello da rimuovere o no', () => {
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const { ids: [a] } = F.createGifts(g.id, { typeId: 'archivio', count: 1, revealDelayMin: 7, removeSign: false }, 'test');
+  const { ids: [b] } = F.createGifts(g.id, { typeId: 'archivio', count: 1 }, 'test');
+  const row = (id) => q.get('SELECT * FROM gifts WHERE id = ?', id);
+  assert.equal(row(a).removeSign, 0);
+  assert.equal(row(b).removeSign, 1);
+  const before = Date.now();
+  assert.equal(F.scheduleGiftReveal(a, { mode: 'now' }, 'test').revealed, false);
+  assert.equal(row(a).revealMode, 'at');
+  assert.ok(row(a).revealAt >= before + 7 * 60000 && row(a).revealAt <= Date.now() + 7 * 60000);
+  assert.throws(() => F.createGifts(g.id, { typeId: 'archivio', revealDelayMin: -1 }, 'test'), /Ritardo/);
+});

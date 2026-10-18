@@ -37,6 +37,7 @@ function giftOut(g) {
     provisional: !!g.provisional,
     ...taskFields(g),
     revealedAt: g.revealedAt, claimedAt: g.claimedAt, usedAt: g.usedAt, expiredAt: g.expiredAt,
+    revealDelayMin: g.revealDelayMin || null, removeSign: g.removeSign !== 0,
     expiresAfterMin: g.expiresAfterMin, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null,
     claimedBy: t ? `${t.roman || ''} ${t.sectorName || ''}`.trim() : null,
   };
@@ -65,6 +66,8 @@ function createGifts(gameId, data, actor) {
     expiresAfterMin = parseFloat(data.expiresAfterMin);
     if (!Number.isFinite(expiresAfterMin) || expiresAfterMin <= 0 || expiresAfterMin > 600) throw err(400, 'Scadenza non valida (minuti dopo la comparsa)');
   }
+  const revealDelayMin = readDelay(data.revealDelayMin);
+  const removeSign = data.removeSign === false || data.removeSign === 0 || data.removeSign === '0' ? 0 : 1;
   const squad = data.squadId ? getSquad(data.squadId) : null;
   if (squad && squad.gameId !== game.id) throw err(400, 'Squadra di un\'altra partita');
   const target = readTarget(data);
@@ -74,10 +77,10 @@ function createGifts(gameId, data, actor) {
     const out = [];
     for (let i = 0; i < count; i++) {
       n += 1;
-      out.push(Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, revealMode, revealAtMin, expiresAfterMin, squadId, targetLat, targetLng, taskNote, createdAt)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      out.push(Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, revealMode, revealAtMin, expiresAfterMin, squadId, targetLat, targetLng, taskNote, createdAt, revealDelayMin, removeSign)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         game.id, type.id, type.name, type.icon, type.color, type.description, `Dono ${n}`, randomToken(18), revealMode, revealAtMin, expiresAfterMin,
-        squad?.id ?? null, target.lat, target.lng, note, Date.now()).lastInsertRowid));
+        squad?.id ?? null, target.lat, target.lng, note, Date.now(), revealDelayMin, removeSign).lastInsertRowid));
     }
     return out;
   });
@@ -85,6 +88,14 @@ function createGifts(gameId, data, actor) {
   if (squad) notifySquad(squad.id, { title: `Incarico per la squadra ${squad.name}`, body: `Piazzate ${count > 1 ? `${count} doni` : 'un dono'} (${type.name})${target.lat != null ? ' nel punto indicato sulla mappa' : ''}`, tag: `task-gifts-${ids[0]}` });
   rt.toStaff(game.id, 'gifts');
   return { ids };
+}
+
+// Ritardo dopo l'annuncio (minuti, facoltativo).
+function readDelay(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const m = parseFloat(v);
+  if (!Number.isFinite(m) || m < 0 || m > 600) throw err(400, 'Ritardo non valido (minuti dopo l\'annuncio)');
+  return m || null;
 }
 
 // Punto indicato dalla regia sulla mappa (facoltativo): { lat, lng } oppure null.
@@ -105,6 +116,11 @@ function scheduleGiftReveal(id, data, actor) {
   if (mode === 'cancel') {
     q.run("UPDATE gifts SET revealMode = 'manual', revealAt = NULL WHERE id = ?", g.id);
     G.log(g.gameId, actor, 'gift_schedule_cancelled', { label: g.label });
+  } else if (mode === 'now' && g.revealDelayMin > 0) {
+    // Ritardo all'annuncio: il dono compare N minuti dopo questo annuncio (o appena piazzato, se arriva dopo).
+    const at = Date.now() + g.revealDelayMin * 60000;
+    q.run("UPDATE gifts SET revealMode = 'at', revealAt = ? WHERE id = ?", at, g.id);
+    G.log(g.gameId, actor, 'gift_scheduled', { label: g.label, at, ritardo: g.revealDelayMin });
   } else if (mode === 'now') {
     if (g.status === 'placed') { revealGift(g.id, actor); return { revealed: true }; }
     q.run("UPDATE gifts SET revealMode = 'onplace', revealAt = NULL WHERE id = ?", g.id);
@@ -132,6 +148,8 @@ function updateGift(id, data, actor) {
     if (data.revealMode === 'time' && (!Number.isFinite(m) || m < 0)) throw err(400, 'Minuto di comparsa non valido');
     sets.push('revealAtMin = ?'); vals.push(m);
   }
+  if (data.revealDelayMin !== undefined) { sets.push('revealDelayMin = ?'); vals.push(readDelay(data.revealDelayMin)); }
+  if (data.removeSign !== undefined) { sets.push('removeSign = ?'); vals.push(data.removeSign ? 1 : 0); }
   if (data.expiresAfterMin !== undefined) {
     const m = data.expiresAfterMin === '' || data.expiresAfterMin === null ? null : parseFloat(data.expiresAfterMin);
     if (m !== null && (!Number.isFinite(m) || m <= 0)) throw err(400, 'Scadenza non valida');

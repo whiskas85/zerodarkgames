@@ -558,3 +558,15 @@ tr.gift-row-claimed td { opacity: .6; }
 @keyframes task-pulse { 0%, 100% { background: #5b2a0c; } 50% { background: #8a3d12; } }
 @media (prefers-reduced-motion: reduce) { .task-banner { animation: none; } }
 .gift-qr { display: block; background: #fff; padding: 4px; border-radius: 4px; }
+
+/* Crea dono: card dei tipi */
+.gift-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; max-height: 46vh; overflow: auto; padding: 2px; }
+.gift-card { display: grid; gap: 4px; text-align: left; padding: 12px; border: 2px solid var(--line, #333); border-left: 6px solid var(--c); background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 6px; }
+.gift-card:hover { border-color: var(--c); }
+.gift-card.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); box-shadow: 0 0 0 2px var(--c) inset; }
+.gift-card strong { font-size: 15px; }
+.gift-card-ico { font-size: 26px; line-height: 1; }
+.gift-chosen { margin: 0; font-weight: 700; }
+.how-gifts summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.gift-cards { max-height: 34vh; }
+.gift-opts-note { grid-column: 1 / -1; margin: 0; }

@@ -2095,7 +2095,7 @@ async function scheduleGiftDialog(g, preset = null) {
     intro: placed
       ? 'Al momento scelto il dono compare sulla mappa di tutte le coppie, con annuncio e notifica. La prima coppia che lo scansiona lo prende e sparisce dalle mappe di tutti. L\'annuncio parte solo a partita in corso.'
       : 'Il dono non è ancora piazzato: verrà annunciato al momento scelto, o appena viene piazzato se quel momento è già passato. L\'annuncio parte solo a partita in corso.',
-    nowLabel: placed ? 'Ora' : 'Appena viene piazzato',
+    nowLabel: g.revealDelayMin ? `Ora (compare tra ${g.revealDelayMin} minuti)` : placed ? 'Ora' : 'Appena viene piazzato',
     withDuration: true, durationLabel: 'Svanisce dopo (minuti)', defaultDuration: g.expiresAfterMin ?? '', allowDurationEmpty: true,
     exclude: { kind: 'gift', id: g.id }, initial, okLabel: 'Programma',
   });
@@ -2115,20 +2115,61 @@ function giftRevealCell(g) {
   if (['claimed', 'expired'].includes(g.status)) return g.revealedAt ? h('span', { class: 'muted' }, `Annunciato ${fmtTime(g.revealedAt)}`) : '—';
   if (g.revealMode === 'at' && g.revealAt) return h('span', null, `alle ${fmtTime(g.revealAt)} · tra `, h('span', { class: 'mono', 'data-clock': `abs:${g.revealAt}` }, '—'));
   if (g.revealMode === 'onplace') return 'appena piazzato';
+  if (g.revealDelayMin) return h('span', { class: 'muted' }, `quando decidi tu · compare ${g.revealDelayMin}′ dopo l'annuncio`);
   if (g.revealMode === 'time') return `a ${g.revealAtMin}′ dal via`;
   return h('span', { class: 'muted' }, 'quando decidi tu');
+}
+
+// Crea dono: una card per tipo (titolo e descrizione); scelto il tipo, squadra, annuncio, ritardo, scadenza e cartello.
+async function createGiftDialog() {
+  const d = fieldData;
+  let type = null;
+  const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1 });
+  const squadSel = h('select', { class: 'input' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
+  const mode = h('select', { class: 'input' },
+    h('option', { value: 'manual' }, 'Lo annuncio io (dalla tabella: ora, tra X minuti o a un orario)'),
+    h('option', { value: 'onplace' }, 'Appena viene piazzato'));
+  const delay = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'nessuno' });
+  const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai' });
+  const sign = h('select', { class: 'input' },
+    h('option', { value: '1' }, 'Cartello da rimuovere (dopo la scansione)'),
+    h('option', { value: '0' }, 'Non rimuovere il cartello'));
+  const opts = h('div', { class: 'form-grid gift-opts', hidden: true },
+    h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
+    h('label', { class: 'field' }, h('span', null, 'Squadra che li piazza'), squadSel),
+    h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
+    h('label', { class: 'field' }, h('span', null, 'Ritardo all\'annuncio (min)'), delay),
+    h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
+    h('label', { class: 'field' }, h('span', null, 'Cartello stampato'), sign),
+    h('p', { class: 'tiny muted gift-opts-note' }, 'Ritardo all\'annuncio: quando annunci il dono, compare sulla mappa delle coppie N minuti dopo il tuo annuncio (non al piazzamento).'));
+  const chosen = h('p', { class: 'gift-chosen', hidden: true });
+  const cards = h('div', { class: 'gift-cards' }, d.giftTypes.map((t) => {
+    const card = h('button', { type: 'button', class: 'gift-card', style: { '--c': t.color }, onclick: () => {
+      type = t;
+      for (const c of cards.children) c.classList.toggle('on', c === card);
+      chosen.hidden = false; chosen.textContent = `${t.icon} ${t.name}`;
+      opts.hidden = false;
+    } },
+    h('span', { class: 'gift-card-ico', 'aria-hidden': 'true' }, t.icon),
+    h('strong', null, t.name),
+    h('span', { class: 'tiny' }, t.description));
+    return card;
+  }));
+  return modal({ title: 'Crea dono', wide: true, okLabel: 'Crea',
+    body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), cards, chosen, opts),
+    onOk: async () => {
+      if (!type) { toast('Scegli prima il dono', 'error'); return false; }
+      const r = await api('POST', G('/gifts'), { typeId: type.id, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
+        squadId: Number(squadSel.value) || null, removeSign: sign.value === '1' });
+      toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
+      loadField();
+      return true;
+    } });
 }
 
 function viewGiftsQR() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento dei doni…'); }
-  const typeSel = h('select', { class: 'input', 'data-keep': 'gq-type' }, d.giftTypes.map((t) => h('option', { value: t.id }, `${t.icon} ${t.name}`)));
-  const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1, 'data-keep': 'gq-count' });
-  const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai', 'data-keep': 'gq-exp' });
-  const squadSel = h('select', { class: 'input', 'data-keep': 'gq-squad' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
-  const mode = h('select', { class: 'input', 'data-keep': 'gq-mode' }, h('option', { value: 'manual' }, 'Lo annuncio io (ora, tra X minuti o a un orario)'), h('option', { value: 'onplace' }, 'Appena viene piazzato'));
-
-
   const live = d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
   const gone = d.gifts.filter((g) => ['claimed', 'expired'].includes(g.status));
   const giftQr = (g) => {
@@ -2139,7 +2180,8 @@ function viewGiftsQR() {
   };
   const row = (g) => h('tr', { class: `gift-row-${g.status}` },
     h('td', null, giftQr(g)),
-    h('td', null, h('strong', null, g.label), h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`)),
+    h('td', null, h('strong', null, g.label), h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
+      h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello')),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
         : g.status === 'revealed' ? h('span', { class: 'chip chip-blood' }, 'In mappa alle coppie') : placementChips(g, g.status !== 'draft')),
@@ -2157,35 +2199,17 @@ function viewGiftsQR() {
     h('tbody', null, list.map(row))));
 
   return h('div', { class: 'stack' },
-    section('Come funzionano i doni',
+    sectionActions(`Doni in gioco (${live.length})`, [
+      h('button', { class: 'btn btn-sm btn-primary', onclick: createGiftDialog }, '+ Crea dono'),
+      h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
+    live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco: crealo con «+ Crea dono».')),
+    gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null,
+    h('details', { class: 'panel how-gifts' }, h('summary', null, 'Come funzionano i doni'),
       h('ol', { class: 'how-steps' },
-        h('li', null, h('strong', null, 'Crea'), ' il dono qui sotto e stampa il suo cartello QR (il tipo non è stampato: è una sorpresa).'),
+        h('li', null, h('strong', null, 'Crea'), ' il dono e stampa il suo cartello QR (il tipo non è stampato: è una sorpresa). Sul cartello c\'è scritto se va rimosso dopo la scansione.'),
         h('li', null, h('strong', null, 'Fallo piazzare'), ' a una squadra di Eletti: indichi tu il punto sulla mappa o li lasci liberi. Piazzandolo, l\'Eletto scatta la foto e il dono prende la posizione del suo telefono.'),
-        h('li', null, h('strong', null, 'Annuncialo'), ': ora, tra X minuti o a un orario. Compare sulla mappa di tutte le coppie, con notifica.'),
-        h('li', null, h('strong', null, 'La prima coppia'), ' che lo scansiona lo prende: notifica a tutti, sparisce dalle mappe di coppie ed Eletti. Tu lo vedi qui e in mappa (barrato). Se ha una scadenza e nessuno lo prende, svanisce.'))),
-    h('div', { class: 'cols-2' },
-      section('Nuovi doni',
-        h('form', { class: 'form-grid', onsubmit: async (e) => {
-          e.preventDefault();
-          try {
-            const r = await api('POST', G('/gifts'), { typeId: typeSel.value, count: count.value, revealMode: mode.value, expiresAfterMin: exp.value, squadId: Number(squadSel.value) || null });
-            toast(`${r.ids.length} doni creati${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
-            loadField();
-          } catch (err) { toast(err.message, 'error', 6000); }
-        } },
-        h('label', { class: 'field' }, h('span', null, 'Tipo'), typeSel),
-        h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
-        h('label', { class: 'field' }, h('span', null, 'Squadra che li piazza'), squadSel),
-        h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
-        h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo l\'annuncio'), exp),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea')),
-        h('p', { class: 'tiny muted' }, 'Per indicare il punto esatto sulla mappa usa "Assegna a una squadra" sul dono creato.')),
-      section('Tipi di dono',
-        h('p', { class: 'muted tiny' }, 'Ogni dono ha il suo effetto, applicato dall\'app quando la coppia lo usa (una volta sola).'),
-        h('ul', { class: 'gift-types' }, d.giftTypes.map((t) => h('li', null, h('strong', { style: { color: t.color } }, `${t.icon} ${t.name}`), h('div', { class: 'tiny muted' }, t.description)))))),
-    sectionActions(`Doni in gioco (${live.length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
-      live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco.')),
-    gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null);
+        h('li', null, h('strong', null, 'Annuncialo'), ': ora, tra X minuti o a un orario (con il ritardo all\'annuncio compare N minuti dopo). Compare sulla mappa di tutte le coppie, con notifica.'),
+        h('li', null, h('strong', null, 'La prima coppia'), ' che lo scansiona lo prende: notifica a tutti, sparisce dalle mappe di coppie ed Eletti. Se ha una scadenza e nessuno lo prende, svanisce.'))));
 }
 
 // ---------------------------------------------------------------- ARMAMENTI

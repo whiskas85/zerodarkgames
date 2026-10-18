@@ -144,6 +144,7 @@ async function giftsPage(g, base) {
       <div class="qr">${await qr(`${base}/d/${d.qrToken}`)}</div>
       <div class="display label">${esc(d.label)}</div>
       <p>Scansionatelo con l'app dei Giochi («Scansiona»). Chi arriva primo lo prende.</p>
+      <div class="sign ${d.removeSign === 0 ? 'keep' : 'remove'}">${d.removeSign === 0 ? 'Non rimuovere il cartello' : 'Cartello da rimuovere dopo la scansione'}</div>
     </div>`));
   const pages = [];
   for (let i = 0; i < cards.length; i += 4) pages.push(`<section class="sheet gifts">${cards.slice(i, i + 4).join('')}</section>`);
@@ -157,6 +158,8 @@ async function giftsPage(g, base) {
 .gift .qr svg{width:100%;height:100%;display:block}
 .gift .label{font-size:8mm;font-weight:800;color:#7D6226}
 .gift p{margin:0;font-size:9.5pt}
+.gift .sign{margin-top:auto;width:100%;padding:2mm;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.06em;border:.6mm solid #1C211E}
+.gift .sign.remove{background:#1C211E;color:#fff}
 </style></head><body>
 <div class="toolbar"><span>${gifts.length} doni · ${esc(g.name)}</span><button onclick="print()">Stampa / Salva PDF</button><span>Il tipo del dono non è stampato.</span></div>
 ${pages.join('\n') || '<p style="padding:40px">Nessun dono: creali nella sezione Doni QR della regia.</p>'}
