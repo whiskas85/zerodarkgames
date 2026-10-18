@@ -451,19 +451,23 @@ async function clearNotifications(view) {
   } catch { /* notifiche non disponibili */ }
 }
 
+const fxGradient = (fx) => `conic-gradient(from 0deg, ${[...fx.map((x) => x.color), fx[0].color].join(', ')})`;
+
 function header(view) {
   const st = S.state;
   const sec = st?.team.sector;
   const net = !S.online ? ['off', 'Senza rete'] : !S.connected ? ['wait', 'Riconnessione…'] : ['on', 'Collegati'];
-  return h('header', { class: `top ${isElect() ? 'top-elect' : ''}` },
+  // Effetti su di voi (chi vi osserva, i vostri effetti, l'Allarme di Prossimità): icone e alone dei loro colori, sommati.
+  const fx = st?.skills?.indicators || [];
+  return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
     view !== 'home' ? h('a', { class: 'back', href: '#/home', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? `Settore ${sec.name}` : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
         : st?.team.displayName || st?.team.members.map((m) => m.nickname || m.name).join(' · ') || '')),
-    h('div', { class: `top-clock ${st?.skills?.nearby ? 'alarm-on' : ''}` },
+    h('div', { class: `top-clock ${fx.length ? 'fx-on' : ''}`, style: fx.length ? { '--fx-grad': fxGradient(fx), '--fx-a': fx[0].color, '--fx-b': (fx[1] || fx[0]).color } : null },
+      fx.length ? h('div', { class: 'fx-icons' }, fx.map((x) => h('span', { class: 'fx-ico', role: 'img', 'aria-label': x.label, title: x.label, style: { '--c': x.color } }, x.icon))) : null,
       h('div', { class: 'top-time' },
-        st?.skills?.nearby ? h('span', { class: 'alarm-ico', role: 'img', 'aria-label': 'Presenza rilevata nelle vicinanze', title: 'Allarme di Prossimità: una coppia è vicina' }, '📳') : null,
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
         h('span', { class: 'mono big', 'data-clock': 'remaining' }, '—')),
       h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')));
@@ -2156,7 +2160,7 @@ function traccarPrompt(st) {
 
 // Mentre una Skill o un Dono vi mostra altre coppie, le posizioni si aggiornano ogni 8 secondi (e spariscono subito
 // se il bersaglio entra nell'Ombra, anche se l'aggiornamento in tempo reale si fosse perso).
-setInterval(() => { const sk = S.state?.skills; if (!document.hidden && (sk?.sightings?.length || sk?.giftHints?.length || sk?.nearby)) refresh(); }, 8000);
+setInterval(() => { const sk = S.state?.skills; if (!document.hidden && (sk?.sightings?.length || sk?.giftHints?.length || sk?.indicators?.length)) refresh(); }, 8000);
 
 // Con l'avviso Traccar aperto l'app ricontrolla da sola ogni 20 secondi: sparisce appena arrivano i segnali.
 setInterval(() => { if (!document.hidden && S.state?.tracking?.prompt) refresh(); }, 20000);

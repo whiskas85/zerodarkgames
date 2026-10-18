@@ -201,7 +201,7 @@ function applySkill(g, me, s, p) {
   switch (s.id) {
     case 'occhio': {
       if (!latestPos(me.id)) throw err(409, 'Serve la vostra posizione: accendete il GPS (o Traccar) e riprovate');
-      startEffect(me, 'skill', s.id, { durationMin: s.durationMin });
+      startEffect(me, 'skill', s.id, { durationMin: s.durationMin, notifyAfterMin: 1 });
       return { message: 'Per 2 minuti vedete le coppie entro 500 m.' };
     }
     case 'ombra': {
@@ -446,7 +446,7 @@ function applyGift(g, me, type, p) {
       return { message: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce.' };
     case 'tracciamento': {
       const t = pickTarget(me, p.teamId);
-      startEffect(me, 'gift', type.id, { durationMin: trackMin(t, type.durationMin), target: t.id });
+      startEffect(me, 'gift', type.id, { durationMin: trackMin(t, type.durationMin), target: t.id, notifyAfterMin: 1 });
       return { targetName: t.sectorName, message: `Vedete il Settore ${t.sectorName} sulla mappa.` };
     }
     case 'taglia': {
@@ -544,6 +544,50 @@ function confusionFor(t, couples, now) {
   return p || d.fallback || null;
 }
 
+// Effetti che vi osservano (dopo 1 minuto lo sapete) e le loro icone nell'orologio.
+const WATCH = {
+  occhio: { icon: '👁️', color: '#d1ad62', label: 'Occhio del Consiglio: una coppia vicina vi vede' },
+  rete: { icon: '🌐', color: '#22c3e6', label: 'Rete del Consiglio: una coppia vede tutte le posizioni' },
+  tracker: { icon: '⚡', color: '#facc15', label: 'Tracker: una coppia vi segue' },
+  tracciamento: { icon: '📍', color: '#5aa0e0', label: 'Tracciamento: una coppia vi segue' },
+  taglia: { icon: '🚨', color: '#e5484d', label: 'Taglia: tutti vedono la vostra posizione' },
+};
+// I vostri effetti in corso.
+const OWN = {
+  ombra: { icon: '🥷', color: '#9b6cf0', label: 'Ombra: nessuno vede la vostra posizione' },
+  scudo: { icon: '🛡️', color: '#46c46a', label: 'Immunità: Skill e Doni avversari non vi colpiscono' },
+  reliquia: { icon: '💎', color: '#14b8a6', label: 'Reliquia Antica: i vostri Sigilli non si perdono' },
+};
+
+// Le coppie che un effetto di osservazione sta vedendo adesso.
+function watchedBy(e, now = Date.now()) {
+  const others = q.all("SELECT id, gameId FROM teams WHERE gameId = ? AND kind = 'couple' AND status = 'active' AND id <> ?", e.gameId, e.teamId)
+    .filter((t) => !hidden(t, now));
+  if (e.code === 'rete') return others.filter((t) => !immune(t, now)).map((t) => t.id);
+  if (e.code === 'occhio') {
+    const here = latestPos(e.teamId, now);
+    if (!here) return [];
+    return others.filter((t) => { if (immune(t, now)) return false; const p = latestPos(t.id, now); return p && distM(here, p) <= 500; }).map((t) => t.id);
+  }
+  return e.targetTeamId && others.some((t) => t.id === e.targetTeamId) ? [e.targetTeamId] : [];
+}
+
+// Icone accanto all'orologio: chi vi osserva (dal momento dell'avviso), i vostri effetti, l'Allarme di Prossimità.
+function indicatorsFor(me, now = Date.now()) {
+  const out = [];
+  for (const e of activeEffects(me.gameId, now)) {
+    if (WATCH[e.code] && e.teamId !== me.id && e.notifiedAt && watchedBy(e, now).includes(me.id)) out.push({ code: e.code, ...WATCH[e.code], until: e.endsAt });
+    if (OWN[e.code] && e.teamId === me.id) out.push({ code: e.code, ...OWN[e.code], until: e.endsAt });
+  }
+  const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
+  if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', until: dirty.endsAt });
+  if (hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', until: null });
+  // Lo stesso effetto da più coppie: una sola icona (con la fine più lontana).
+  const seen = new Map();
+  for (const x of out) { const p = seen.get(x.code); if (!p || (x.until || Infinity) > (p.until || Infinity)) seen.set(x.code, x); }
+  return [...seen.values()];
+}
+
 // Sigilli coperti da Custode di un'altra coppia: { sectorId: endsAt }.
 function protectedSeals(me, now = Date.now()) {
   const out = {};
@@ -624,6 +668,7 @@ function skillsState(me, now = Date.now()) {
     sightings: sightingsFor(me, now),
     // Allarme di Prossimità: una coppia non alleata è entro 80 m (finché non si allontana oltre 120 m).
     nearby: hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`)),
+    indicators: indicatorsFor(me, now),
     dirty: (() => {
       const t = q.get("SELECT t.*, s.name AS squadName FROM squad_tasks t LEFT JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id);
       return t ? { squadName: t.squadName, startedAt: t.startedAt, endsAt: t.endsAt } : null;
@@ -657,20 +702,26 @@ function tickAll(now = Date.now()) {
     for (const e of q.all('SELECT * FROM skill_effects WHERE gameId = ? AND notifyAt IS NOT NULL AND notifiedAt IS NULL AND notifyAt <= ?', g.id, now)) {
       q.run('UPDATE skill_effects SET notifiedAt = ? WHERE id = ?', now, e.id);
       if (e.endedAt) continue;
-      if (e.code === 'rete') {
-        const ids = q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple' AND status = 'active' AND id <> ?", g.id, e.teamId).map((r) => r.id);
-        for (const id of ids) if (!hidden({ gameId: g.id, id }, now)) rt.pushTeams(g.id, { title: 'Rete del Consiglio', body: 'Una coppia ha visto le posizioni di tutti.', tag: `rete-${e.id}`, url: '/#/home' }, id);
+      if (e.code === 'rete' || e.code === 'occhio') {
+        // Chi è stato visto (Rete: tutti; Occhio: chi era entro 500 m) lo scopre dopo 1 minuto.
+        for (const id of watchedBy(e, now)) {
+          rt.pushTeams(g.id, e.code === 'rete'
+            ? { title: 'Rete del Consiglio', body: 'Una coppia vede le posizioni di tutti, anche la vostra.', tag: `rete-${e.id}`, url: '/#/home' }
+            : { title: 'Occhio del Consiglio', body: 'Una coppia vicina vi ha visti sulla mappa.', tag: `occhio-${e.id}`, url: '/#/home' }, id);
+          rt.toTeams(g.id, 'state', {}, id);
+        }
       } else if (e.targetTeamId) {
         const title = e.code === 'taglia' ? 'Taglia su di voi' : 'Siete tracciati';
         const body = e.code === 'taglia' ? 'Tutte le coppie vedono la vostra posizione.' : 'Una coppia segue la vostra posizione sulla mappa.';
         rt.pushTeams(g.id, { title, body, tag: `track-${e.id}`, url: '/#/home' }, e.targetTeamId);
+        rt.toTeams(g.id, 'state', {}, e.targetTeamId);
       }
     }
     // Effetti appena finiti: le mappe si aggiornano.
     const ended = q.all('SELECT * FROM skill_effects WHERE gameId = ? AND endedAt IS NULL AND endsAt IS NOT NULL AND endsAt <= ?', g.id, now);
     for (const e of ended) q.run('UPDATE skill_effects SET endedAt = ? WHERE id = ?', e.endsAt, e.id);
     if (ended.length) {
-      if (ended.some((e) => EVERYONE.has(e.code))) rt.toTeams(g.id, 'state', {});
+      if (ended.some((e) => EVERYONE.has(e.code) || WATCH[e.code])) rt.toTeams(g.id, 'state', {});
       else for (const id of new Set(ended.map((e) => e.teamId))) rt.toTeams(g.id, 'state', {}, id);
       rt.toStaff(g.id, 'skills');
     }

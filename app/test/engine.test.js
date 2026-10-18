@@ -1335,3 +1335,31 @@ test('Traccar: a partita pronta l\'avviso compare e sparisce solo dopo due segna
   F.recordTraccar({ id: info.deviceId, lat: '45', lon: '9' }, {});
   assert.equal(st().prompt, false);
 });
+
+test('effetti nell\'orologio: chi vi osserva (dopo 1 minuto), i vostri effetti, sommati', () => {
+  const S = require('../src/skills');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.updateGame(g.id, { maxActiveSkills: 2 }, 'test');
+  S.chooseSkill(A, 'occhio', true); S.chooseSkill(A, 'rete', true);
+  S.chooseSkill(B, 'ombra', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const put = (t, lat) => q.run('INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES (?, ?, ?, ?, 9, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, at = excluded.at', `ind${t.id}`, g.id, t.id, lat, Date.now());
+  put(A, 45); put(B, 45.002); put(Cc, 45.02);
+  S.useSkill(A, 'occhio');
+  const codes = (t, now) => S.skillsState(t, now).indicators.map((x) => x.code).sort();
+  assert.deepEqual(codes(B), []);
+  S.tickAll(Date.now() + 61000);
+  assert.deepEqual(codes(B, Date.now() + 61000), ['occhio']);
+  assert.deepEqual(codes(Cc, Date.now() + 61000), []);
+  // Due effetti insieme: Rete del Consiglio e Occhio (dopo l'avviso) si vedono entrambi.
+  S.useSkill(A, 'rete');
+  S.tickAll(Date.now() + 61000);
+  assert.deepEqual(codes(B, Date.now() + 62000), ['occhio', 'rete']);
+  assert.deepEqual(codes(Cc, Date.now() + 62000), ['rete']);
+  // Ombra: non vi vede più nessuno, nell'orologio resta la vostra Ombra.
+  S.useSkill(B, 'ombra');
+  assert.deepEqual(codes(B, Date.now() + 62000), ['ombra']);
+});
