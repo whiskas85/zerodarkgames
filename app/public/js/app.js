@@ -73,7 +73,7 @@ function boot() {
   window.addEventListener('hashchange', render);
   window.addEventListener('online', () => { S.online = true; refresh(); flushQueue(); render(); });
   window.addEventListener('offline', () => { S.online = false; render(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); flushQueue(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); flushQueue(); clearNotifications(route().view); } });
   navigator.serviceWorker?.addEventListener('message', (e) => {
     if (e.data?.type === 'refresh') refresh();
     if (e.data?.type === 'navigate' && e.data.hash) location.hash = e.data.hash;
@@ -190,6 +190,7 @@ function connect() {
       beep();
       toast(a.text, 'blood', 9000);
       if (document.hidden) localNotify('Consiglio Zero', a.text, `ann-${a.id}`);
+      else closeTag(`ann-${a.id}`);
       refresh();
     },
     notice: (n) => {
@@ -198,6 +199,7 @@ function connect() {
       vibrate([300, 120, 300, 120, 300]);
       beep();
       toast(`Avviso del Consiglio: ${n.title}`, 'blood', 9000);
+      if (!document.hidden) closeTag(`notice-${n.id}`);
       if (document.hidden) localNotify(`Avviso · ${n.title}`, n.body || 'Toccate per leggere l\'avviso.', `notice-${n.id}`, '/#/avvisi');
       refresh();
     },
@@ -411,7 +413,42 @@ function render() {
   if (view === 'messaggi') markSeen('msg');
   if (view !== 'messaggi') S.chatScroll = true;
   if (view === 'avvisi') markSeen('notice');
+  clearNotifications(view);
   updateClocks();
+}
+
+// Letta nell'app (avviso a schermo con l'app aperta): la stessa notifica non resta nella tendina.
+// La notifica push può arrivare qualche secondo dopo: si riprova per una decina di secondi.
+function closeTag(tag) {
+  if (!('serviceWorker' in navigator)) return;
+  let tries = 0;
+  const run = async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      for (const n of (await reg?.getNotifications?.({ tag })) || []) n.close();
+    } catch { /* non disponibile */ }
+    if (++tries < 5) setTimeout(run, 2500);
+  };
+  run();
+}
+
+// Notifiche del telefono già lette nell'app: quando apri la pagina a cui portano (annunci, avvisi, messaggi,
+// scontri…), spariscono dalla tendina. Sulla home spariscono anche quelle degli annunci già visti.
+let clearingFor = null;
+async function clearNotifications(view) {
+  if (document.hidden || !('serviceWorker' in navigator) || clearingFor === view) return;
+  clearingFor = view;
+  setTimeout(() => { clearingFor = null; }, 3000);
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg?.getNotifications) return;
+    for (const n of await reg.getNotifications()) {
+      const hash = new URL(n.data?.url || '/', location.origin).hash || '#/home';
+      const target = hash.replace(/^#\/?/, '').split(/[/?]/)[0] || 'home';
+      const annSeen = /^ann-(\d+)$/.exec(n.tag || '');
+      if (target === view || (annSeen && Number(annSeen[1]) <= S.seenAnn)) n.close();
+    }
+  } catch { /* notifiche non disponibili */ }
 }
 
 function header(view) {
