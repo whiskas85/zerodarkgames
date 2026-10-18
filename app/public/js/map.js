@@ -188,7 +188,7 @@ export function createMapView({ className = '' } = {}) {
     // Inquadra alcuni segnaposto (per chiave) insieme alla mia posizione; la centratura automatica si ferma.
     focus(keys) {
       if (!map) return false;
-      const pts = keys.map((k) => markers.get(k)?.getLatLng()).filter(Boolean);
+      const pts = keys.map((k) => (markers.get(k) || circles.get(k))?.getLatLng()).filter(Boolean);
       if (!pts.length) return false;
       auto = false;
       clearTimeout(fitTimer);

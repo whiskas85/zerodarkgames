@@ -628,7 +628,7 @@ function onGiftRevealed(gift) {
   const a = Math.random() * 2 * Math.PI;
   const c = offset(gift, Math.cos(a) * 35 * Math.random(), Math.sin(a) * 35 * Math.random());
   q.run('UPDATE gifts SET publicAt = ?, hintLat = ?, hintLng = ? WHERE id = ?', Date.now() + 5 * MIN, c.lat, c.lng, gift.id);
-  for (const id of holders) rt.pushTeams(gift.gameId, { title: 'Presagio del Dono', body: 'Un Dono è appena comparso: guardate il cerchio sulla mappa. Gli altri lo sapranno tra 5 minuti.', tag: `presagio-${gift.id}`, url: '/#/mappa' }, id);
+  for (const id of holders) rt.pushTeams(gift.gameId, { title: 'Presagio del Dono', body: 'Un Dono è appena comparso: guardate il cerchio sulla mappa. Gli altri lo sapranno tra 5 minuti.', tag: `presagio-${gift.id}`, url: '/#/mappa/presagio' }, id);
   return true;
 }
 

@@ -875,6 +875,7 @@ function viewHome() {
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
     owned && owned === total ? wonBanner() : null,
     houndCards(st),
+    presageCards(st),
     trackingCards(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
@@ -1250,6 +1251,10 @@ function viewMap(focus = null) {
   const soglia = focus === 'soglia' ? (m.landmarks || []).find((l) => l.kind === 'soglia' && l.lat != null) : null;
   if (soglia && S.focusedSoglia !== location.hash) { S.focusedSoglia = location.hash; setTimeout(() => teamMapView.focus([`l${soglia.id}`]), 120); }
   if (focus !== 'soglia') S.focusedSoglia = null;
+  // Dalla scheda del Presagio: la mappa si centra sul cerchio del dono.
+  const hints = S.state?.skills?.giftHints || [];
+  if (focus === 'presagio' && hints.length && S.focusedHint !== location.hash) { S.focusedHint = location.hash; setTimeout(() => teamMapView.focus(hints.map((x) => `h${x.id}`)), 120); }
+  if (focus !== 'presagio') S.focusedHint = null;
   return h('div', { class: 'stack map-page' },
     h('h2', null, 'Mappa'),
     sightingsNote(),
@@ -1459,6 +1464,18 @@ function houndCards(st) {
       h('span', { class: 'hound-ico', 'aria-hidden': 'true' }, '🦅'),
       h('span', null, h('span', { class: 'eyebrow' }, 'Segugio in ascolto'), h('strong', null, `Settore ${n}: vi avvisiamo alla prossima conquista`)))),
   ];
+}
+
+// Presagio del Dono: un dono è comparso e lo sapete per primi. La barra si esaurisce quando lo vedono anche gli altri.
+function presageCards(st) {
+  return (st.skills?.giftHints || []).map((x) => h('a', { class: 'track-card presage', href: '#/mappa/presagio' },
+    h('span', { class: 'track-ico', 'aria-hidden': 'true' }, '✨'),
+    h('span', { class: 'track-body' },
+      h('span', { class: 'eyebrow' }, 'Presagio del Dono · lo sapete per primi'),
+      h('strong', null, 'Un Dono è appena comparso: guardate il cerchio sulla mappa'),
+      h('span', { class: 'small' }, 'Gli altri lo vedranno tra ', h('span', { class: 'mono', 'data-abs': x.until }, '—')),
+      h('div', { class: 'cd-bar fx', 'data-from': x.until - 5 * 60000, 'data-to': x.until, 'data-drain': '1' }, h('i'))),
+    h('span', { class: 'track-go', 'aria-hidden': 'true' }, '›')));
 }
 
 // Tracker e Tracciamento lanciati da voi: chi state seguendo, quanto manca, e un tocco porta alla mappa.

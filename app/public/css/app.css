@@ -604,3 +604,9 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .alliance.broken:not(.poisoned) .alliance-ico { color: #e0603f; filter: drop-shadow(0 0 14px rgba(224, 96, 63, .8)); transform: rotate(-20deg); }
 .alliance.broken:not(.poisoned) .battle-burst { background: radial-gradient(circle, rgba(224, 96, 63, .35), rgba(224, 96, 63, 0) 65%); }
 .alliance.broken:not(.poisoned) .poison-by strong { color: #e0603f; }
+/* Presagio del Dono */
+.track-card.presage { border-color: #d1ad62; background: linear-gradient(135deg, rgba(209, 173, 98, .28), rgba(209, 173, 98, .05)); animation: presage-glow 2.4s ease-in-out infinite; }
+.track-card.presage .track-ico { filter: drop-shadow(0 0 10px rgba(209, 173, 98, .9)); }
+.track-card.presage .cd-bar.fx i { background: #d1ad62; }
+@keyframes presage-glow { 0%, 100% { box-shadow: 0 0 0 rgba(209, 173, 98, 0); } 50% { box-shadow: 0 0 18px rgba(209, 173, 98, .5); } }
+@media (prefers-reduced-motion: reduce) { .track-card.presage { animation: none; } }
