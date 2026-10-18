@@ -178,12 +178,16 @@ function deleteGame(id, actor) {
  */
 const TRACK_SOON_MS = 3 * 60000;
 const TRACK_LIVE_MS = 10 * 60000;
+const TRACK_ON_PINGS = 2;
+const TRACK_PINGS_WINDOW_MS = 30 * 60000;
 function trackStateOf(player, game, team) {
   const soon = !!team && ['ready', 'circle'].includes(game.status);
   const live = !!team && (team.kind === 'elect' ? !['draft', 'ended'].includes(game.status) && !soon : [...C.ACTIVE, 'paused'].includes(game.status) && team.status !== 'withdrawn');
   const verified = !!player.trackVerifiedAt;
   if (!soon && !live) return { state: verified ? 'ok' : 'none', soon, live, prompt: false };
-  const recent = player.trackSeenAt && Date.now() - player.trackSeenAt < (soon ? TRACK_SOON_MS : TRACK_LIVE_MS);
+  // Traccar acceso: almeno 2 segnali (nell'ultima mezz'ora) e l'ultimo recente.
+  const recent = player.trackSeenAt && Date.now() - player.trackSeenAt < (soon ? TRACK_SOON_MS : TRACK_LIVE_MS)
+    && q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, Date.now() - TRACK_PINGS_WINDOW_MS).n >= TRACK_ON_PINGS;
   if (recent) return { state: 'ok', soon, live, prompt: false, on: true };
   return { state: !verified ? 'none' : soon ? 'off' : 'stale', soon, live, prompt: true };
 }
@@ -992,9 +996,9 @@ function restartGame(g, actor) {
   pushTraccarOn(g);
 }
 
-// Si parte a breve: a tutti i telefoni della partita, «accendi Traccar» (l'avviso nell'app sparisce al primo segnale).
+// Si parte a breve: a tutti i telefoni della partita, «accendi Traccar» (l'avviso nell'app sparisce dopo due segnali).
 function pushTraccarOn(g) {
-  rt.pushTeams(g.id, { title: 'Accendi Traccar Client', body: 'I Giochi stanno per iniziare: apri Traccar Client e accendi il tracciamento. L\'avviso sparisce appena arriva il primo segnale.', tag: 'traccar-on', url: '/#/home' });
+  rt.pushTeams(g.id, { title: 'Accendi Traccar Client', body: 'I Giochi stanno per iniziare: apri Traccar Client e accendi il tracciamento. L\'avviso sparisce appena arrivano due segnali.', tag: 'traccar-on', url: '/#/home' });
 }
 
 function control(gameId, action, actor) {
@@ -2001,7 +2005,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  spotsOf, pushReport, trackStateOf, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

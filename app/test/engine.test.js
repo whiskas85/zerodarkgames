@@ -1319,3 +1319,19 @@ test('Skill con gli Eletti (fase 3): Maestro della caccia, Ombra che interrompe 
   assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', meet.id).doneAt);
   assert.equal(S.skillsState(Cc).dirty, null);
 });
+
+test('Traccar: a partita pronta l\'avviso compare e sparisce solo dopo due segnali', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const p = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", g.id);
+  const info = F.trackingInfo(p);
+  assert.equal(F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', p.id)).prompt, false);
+  G.control(g.id, 'ready', 'test');
+  const st = () => F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', p.id));
+  assert.equal(st().prompt, true);
+  F.recordTraccar({ id: info.deviceId, lat: '45', lon: '9' }, {});
+  assert.equal(st().prompt, true);
+  assert.equal(st().pings, 1);
+  F.recordTraccar({ id: info.deviceId, lat: '45', lon: '9' }, {});
+  assert.equal(st().prompt, false);
+});

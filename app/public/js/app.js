@@ -2090,14 +2090,14 @@ const traccarOpenUrl = () => (PLATFORM === 'android'
   : STORE.ios);
 
 // Si parte a breve (partita pronta o cerchio aperto) o si sta giocando, e da Traccar non arriva niente:
-// avviso su tutte le pagine, finché non arriva il primo segnale.
+// avviso su tutte le pagine, finché non arrivano due segnali.
 function traccarPrompt(st) {
   const t = st?.tracking;
   if (!st?.player || !t?.prompt) return null;
   const setup = t.state === 'none' && !t.everSeen;
   return h('div', { class: 'banner banner-traccar', role: 'alert' },
     h('strong', null, t.soon ? '📍 Si parte a breve: accendi Traccar' : '📍 Traccar non manda la posizione'),
-    h('span', null, setup ? 'Traccar Client non è ancora configurato su questo telefono: fallo adesso, servono tre minuti.' : 'Apri Traccar Client e accendi il tracciamento. Questo avviso sparisce appena il Consiglio riceve il primo segnale.'),
+    h('span', null, setup ? 'Traccar Client non è ancora configurato su questo telefono: fallo adesso, servono tre minuti.' : t.everSeen && t.pings === 1 ? 'Primo segnale ricevuto: ne serve ancora uno, lascia Traccar acceso.' : 'Apri Traccar Client e accendi il tracciamento. Questo avviso sparisce quando il Consiglio riceve due segnali.'),
     h('span', { class: 'trk-actions' },
       setup ? h('a', { class: 'btn btn-sm btn-primary', href: '#/traccar' }, 'Configura Traccar →')
         : h('a', { class: 'btn btn-sm btn-primary', href: traccarOpenUrl(), rel: 'noopener' }, PLATFORM === 'android' ? 'Apri Traccar' : 'Apri Traccar (App Store)'),

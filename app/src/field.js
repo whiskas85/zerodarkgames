@@ -679,11 +679,12 @@ function recordTraccar(query, body) {
   if (p.at && Date.now() - p.at > 2 * 60000) return { ok: true, ignored: 'vecchia' };
   // Segnale ricevuto (anche prima del via o prima della coppia): serve alla verifica, senza salvare la posizione.
   const now = Date.now();
-  // Primo segnale dopo un silenzio: l'app di quella persona si aggiorna e toglie l'avviso «accendi Traccar».
   const wasQuiet = !player.trackSeenAt || now - player.trackSeenAt > 2 * 60000;
   q.run('UPDATE players SET trackSeenAt = ? WHERE id = ?', now, player.id);
-  if (wasQuiet && player.teamId) { rt.toTeamsWhere(player.gameId, 'state', {}, (c) => c.playerId === player.id || c.teamId === player.teamId); rt.toStaff(player.gameId, 'traccar'); }
   q.run('INSERT INTO track_pings (playerId, at, acc) VALUES (?, ?, ?)', player.id, now, Number.isFinite(p.acc) ? Math.round(p.acc) : null);
+  // Secondo segnale (o primo dopo un silenzio): l'app di quella persona si aggiorna e toglie o rimette l'avviso «accendi Traccar».
+  const pings = q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, now - G.TRACK_PINGS_WINDOW_MS).n;
+  if ((wasQuiet || pings === G.TRACK_ON_PINGS) && player.teamId) { rt.toTeamsWhere(player.gameId, 'state', {}, (c) => c.playerId === player.id || c.teamId === player.teamId); rt.toStaff(player.gameId, 'traccar'); }
   q.run('DELETE FROM track_pings WHERE playerId = ? AND id NOT IN (SELECT id FROM track_pings WHERE playerId = ? ORDER BY id DESC LIMIT 60)', player.id, player.id);
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
   if (!team) return { ok: true, tracking: false };
@@ -721,7 +722,8 @@ function trackingStatus(player) {
   if (!player) return { state: 'none' };
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
   const st = G.trackStateOf(player, G.getGame(player.gameId), team);
-  return { ...st, everSeen: !!player.trackSeenAt, verifiedAt: player.trackVerifiedAt || null };
+  const pings = q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, Date.now() - G.TRACK_PINGS_WINDOW_MS).n;
+  return { ...st, everSeen: !!player.trackSeenAt, pings, verifiedAt: player.trackVerifiedAt || null };
 }
 
 // Fine della prova: almeno 2 segnali da Traccar dopo l'inizio, su almeno 45 secondi (il telefono era in tasca).
