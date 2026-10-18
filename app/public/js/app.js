@@ -87,7 +87,11 @@ function boot() {
 
 async function refresh() {
   try {
+    const t0 = Date.now();
     const st = await api('GET', '/api/team/state');
+    // Ora del server corretta per il tempo di andata e ritorno: ricariche e conti alla rovescia seguono il server,
+    // non l'orologio del telefono.
+    const offset = st.clock ? st.clock.serverNow - Math.round((t0 + Date.now()) / 2) : undefined;
     S.online = true;
     // Account senza iscrizione a una partita: si sceglie come partecipare.
     if (st.noEnrollment) {
@@ -99,7 +103,7 @@ async function refresh() {
       return;
     }
     const first = S.auth !== 'team';
-    setState(st);
+    setState(st, offset);
     S.auth = 'team';
     if (first) {
       connect();
@@ -120,10 +124,10 @@ async function refresh() {
 
 const seenVictories = new Set(store.get('zdg_seen_victories', []));
 
-function setState(st) {
+function setState(st, offset) {
   const prev = S.state;
   S.state = st;
-  clock.set(st.clock);
+  clock.set(st.clock, offset);
   syncServerTimers(st);
   updateTracking(st);
   if (st.team.kind === 'elect') {
@@ -496,6 +500,7 @@ function radioBar() {
   return h('footer', { class: 'radio' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'));
 }
 
+const dueDone = new Set();
 function updateClocks() {
   const c = clock.snap;
   for (const el of document.querySelectorAll('[data-clock]')) {
@@ -514,10 +519,12 @@ function updateClocks() {
     const left = Number(el.dataset.abs) - clock.serverNow();
     const t = fmtDuration(Math.max(0, left), false);
     if (el.textContent !== t) el.textContent = t;
-    if (left <= 0) due = true;
+    // Ogni scadenza fa ricaricare una volta sola (niente richieste a raffica se il conto resta a zero).
+    if (left <= 0 && !dueDone.has(el.dataset.abs)) { dueDone.add(el.dataset.abs); due = true; }
   }
   // Una scansione è appena scaduta: ridisegna la pagina (sparisce il pulsante di sblocco).
-  if (due && !updateClocks.redrawn) { updateClocks.redrawn = true; setTimeout(() => { updateClocks.redrawn = false; render(); }, 300); }
+  // (Ricarica di una Skill finita, effetto scaduto…): si chiede lo stato al server, che decide se è davvero pronta.
+  if (due && !updateClocks.redrawn) { updateClocks.redrawn = true; setTimeout(() => { updateClocks.redrawn = false; refresh(); }, 300); }
   for (const el of document.querySelectorAll('.cd-bar[data-to]')) {
     const from = Number(el.dataset.from);
     const to = Number(el.dataset.to);
