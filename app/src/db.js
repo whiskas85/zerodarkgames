@@ -467,4 +467,12 @@ addColumn('games', 'nodeScanMin', 'INTEGER NOT NULL DEFAULT 30');
 addColumn('games', 'eyeMin', 'INTEGER NOT NULL DEFAULT 10');
 addColumn('games', 'eyeRadiusM', 'INTEGER NOT NULL DEFAULT 500');
 
+// Privilegio del Cuore: avvisi già mandati (apertura anticipata, chiusura posticipata), una volta per finestra.
+db.exec(`
+CREATE TABLE IF NOT EXISTS privilege_notices (
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, dropId INTEGER NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY (teamId, dropId, kind)
+);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

@@ -38,7 +38,7 @@ const SKILLS = [
   { id: 'allarme', name: 'Allarme di Prossimità', icon: '📳', kind: 'passive', description: 'Una vibrazione silenziosa vi avvisa quando una coppia non alleata arriva entro 80 m.' },
   { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo.' },
   { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale più a lungo.' },
-  { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura e 5 minuti dopo la chiusura.' },
+  { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura (e la notifica vi arriva subito) e 5 minuti dopo la chiusura.' },
   { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
   { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
 ];
@@ -773,7 +773,28 @@ function tickAll(now = Date.now()) {
       G.announce(g.id, 'gift', {}, { giftId: gift.id });
       rt.toTeams(g.id, 'state', {});
     }
-    if (g.status !== 'paused') { proximity(g, now); meetings(g, now); }
+    if (g.status !== 'paused') { proximity(g, now); meetings(g, now); privilegeNotices(g, now); }
+  }
+}
+
+// Privilegio del Cuore: la notifica degli armamenti arriva prima (all'apertura anticipata) e, alla chiusura,
+// un avviso che per voi restano aperti ancora 5 minuti.
+function privilegeNotices(g, now) {
+  const holders = q.all("SELECT t.* FROM team_skills k JOIN teams t ON t.id = k.teamId WHERE t.gameId = ? AND k.skillId = 'privilegio' AND t.status = 'active'", g.id);
+  for (const t of holders) {
+    const sp = supplyFor(t, g, now);
+    if (!sp) continue;
+    const once = (dropId, kind) => q.run('INSERT OR IGNORE INTO privilege_notices (teamId, dropId, kind, at) VALUES (?, ?, ?, ?)', t.id, dropId, kind, now).changes > 0;
+    for (const x of sp.early) {
+      if (!once(x.id, 'early')) continue;
+      rt.pushTeams(g.id, { title: 'Privilegio del Cuore: armamenti aperti', body: `Per voi gli armamenti al Cuore sono già aperti: entrate per primi. Per gli altri aprono tra ${Math.max(1, Math.round((x.opensAt - now) / MIN))} minuti.`, tag: `privilegio-${x.id}`, url: '/#/home', requireInteraction: true }, t.id);
+      rt.toTeams(g.id, 'state', {}, t.id);
+    }
+    for (const x of sp.late) {
+      if (!once(x.id, 'late')) continue;
+      rt.pushTeams(g.id, { title: 'Privilegio del Cuore: ancora aperti', body: 'Gli armamenti al Cuore sono chiusi per tutti, ma per voi restano aperti ancora 5 minuti.', tag: `privilegio-${x.id}`, url: '/#/home' }, t.id);
+      rt.toTeams(g.id, 'state', {}, t.id);
+    }
   }
 }
 
@@ -830,6 +851,7 @@ function proximity(g, now) {
 // Partita di test ripartita: si azzerano ricariche, effetti e Skill vinte con i Doni (la scelta resta).
 function resetGame(gameId) {
   q.run('DELETE FROM skill_effects WHERE gameId = ?', gameId);
+  q.run('DELETE FROM privilege_notices WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', gameId);
   q.run("DELETE FROM team_skills WHERE source <> 'chosen' AND teamId IN (SELECT id FROM teams WHERE gameId = ?)", gameId);
   q.run('UPDATE team_skills SET readyAt = NULL WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', gameId);
 }

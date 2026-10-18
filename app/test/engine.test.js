@@ -1543,3 +1543,27 @@ test('rompere un\'alleanza a più di 50 m non chiede conferma, anche allontanand
   assert.equal(K.allianceOf(A.id), null);
   assert.equal(q.get('SELECT status FROM alliance_requests WHERE id = ?', r.id).status, 'accepted');
 });
+
+test('Privilegio del Cuore: la notifica degli armamenti arriva prima, e alla chiusura un avviso per i 5 minuti in più', () => {
+  const S = require('../src/skills');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.chooseSkill(A, 'privilegio', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  q.run("INSERT INTO supply_drops (gameId, scheduledMin, status, description) VALUES (?, 20, 'scheduled', 'Prova')", g.id);
+  const drop = q.get('SELECT id FROM supply_drops WHERE gameId = ? ORDER BY id DESC', g.id).id;
+  const sent = (t, kind) => q.get('SELECT COUNT(*) AS n FROM privilege_notices WHERE teamId = ? AND dropId = ? AND kind = ?', t.id, drop, kind).n;
+  advanceTo(g.id, 10);
+  S.tickAll();
+  assert.equal(sent(A, 'early'), 0);
+  advanceTo(g.id, 16);
+  S.tickAll(); S.tickAll();
+  assert.equal(sent(A, 'early'), 1);
+  assert.equal(sent(B, 'early'), 0);
+  G.fireSupply(drop, 'test');
+  G.closeSupply(drop, 'test');
+  S.tickAll();
+  assert.equal(sent(A, 'late'), 1);
+});
