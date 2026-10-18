@@ -499,3 +499,7 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 @media (prefers-reduced-motion: reduce) { .top-clock.fx-on, .top-clock.fx-on::before, .fx-ico { animation: none; } }
 
 .battle-forced { margin: 0; padding: 8px 12px; border: 1px solid var(--blood); background: var(--blood-soft); font-weight: 600; }
+
+/* Veglia in corso: pillola minimal sotto l'orologio */
+.top-veglia { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--blood); background: var(--blood-soft);
+  color: var(--ink); font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-decoration: none; white-space: nowrap; }

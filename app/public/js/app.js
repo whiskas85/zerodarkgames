@@ -463,6 +463,8 @@ function header(view) {
   const net = !S.online ? ['off', 'Senza rete'] : !S.connected ? ['wait', 'Riconnessione…'] : ['on', 'Collegati'];
   // Effetti su di voi (chi vi osserva, i vostri effetti, l'Allarme di Prossimità): icone e alone dei loro colori, sommati.
   const fx = st?.skills?.indicators || [];
+  // Veglia dopo una sconfitta: piccolo conto alla rovescia nella barra in alto, al posto della fase.
+  const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
     view !== 'home' ? h('a', { class: 'back', href: '#/home', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
@@ -474,7 +476,8 @@ function header(view) {
       h('div', { class: 'top-time' },
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
         h('span', { class: 'mono big', 'data-clock': 'remaining' }, '—')),
-      h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')));
+      veglia ? h('a', { class: 'top-veglia', href: '#/timer', title: veglia.reason || 'Veglia' }, '⛓ Veglia ', h('span', { class: 'mono', 'data-timer': veglia.uid }, '—'))
+        : h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')));
 }
 
 function banners() {
@@ -1880,7 +1883,8 @@ function checkTimers() {
       localNotify(`Timer ${t.label}`, t.endText, `timer-${t.uid}`);
     }
   }
-  if (changed) { saveTimers(); if (route().view === 'timer' || route().view === 'home') render(); }
+  // Timer finito: ridisegna (sparisce anche la Veglia dalla barra in alto).
+  if (changed) { saveTimers(); render(); }
 }
 
 function viewTimers() {
