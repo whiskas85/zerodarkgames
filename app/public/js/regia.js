@@ -1130,6 +1130,7 @@ function placementButtons(kind, x, placed) {
 async function assignDialog(kind, item, move) {
   const squads = R.ms.squads;
   if (!squads.length) { toast('Crea prima una squadra in "Squadre Eletti"', 'error', 6000); location.hash = 'squadre'; return; }
+  if (!fieldData) await loadField(false);
   const def = move ? (item.placedSquadId || item.squadId) : item.squadId;
   const sel = h('select', { class: 'input' }, squads.map((s) => h('option', { value: s.id, selected: s.id === def }, `${s.name} · ${s.members.length} Eletti`)));
   let target = item.targetLat != null && !move ? { lat: item.targetLat, lng: item.targetLng } : null;
@@ -1139,8 +1140,20 @@ async function assignDialog(kind, item, move) {
   const note = h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'Nota per la squadra (facoltativa): es. dietro la quercia caduta' });
   note.value = move ? '' : item.taskNote || '';
   const pickMap = createMapView({ className: 'pick-map' });
+  // Punti di interesse: si può scegliere uno di questi invece di toccare la mappa.
+  const pois = (fieldData?.pois || []).filter((x) => x.lat != null);
+  const poiSel = pois.length ? h('select', { class: 'input', onchange: () => {
+    const x = pois.find((p) => String(p.id) === poiSel.value);
+    if (!x) return;
+    target = { lat: x.lat, lng: x.lng };
+    pick.checked = true;
+    if (!note.value.trim()) note.value = `Presso: ${x.label}`;
+    draw();
+    pickMap.focus?.(['target']);
+  } }, h('option', { value: '' }, 'Scegli un punto di interesse…'), pois.map((x) => h('option', { value: x.id }, x.label))) : null;
   const draw = () => {
     const items = [
+      ...pois.map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label })),
       ...R.ms.landmarks.filter((l) => l.lat != null).map((l) => landmarkItem(l)),
       ...R.ms.points.filter((p) => p.lat != null).map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label, mine: kind === 'point' && p.id === item.id })),
       ...(fieldData?.gifts || []).filter((g) => g.lat != null && !['claimed', 'expired'].includes(g.status)).map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label })),
@@ -1152,7 +1165,7 @@ async function assignDialog(kind, item, move) {
   free.addEventListener('change', draw);
   pick.addEventListener('change', draw);
   pickMap.ready.then(() => {
-    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; pick.checked = true; draw(); });
+    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; pick.checked = true; if (poiSel) poiSel.value = ''; draw(); });
     draw();
     setTimeout(() => { pickMap.refresh(); pickMap.fit(); }, 60);
     setTimeout(() => pickMap.refresh(), 400);
@@ -1166,6 +1179,7 @@ async function assignDialog(kind, item, move) {
       move ? h('p', { class: 'muted tiny' }, 'Proposta la squadra che lo ha piazzato. Riceve una notifica e trova l\'incarico nella sua app; quando lo ripiazzano, foto e posizione si aggiornano qui.') : h('p', { class: 'muted tiny' }, 'La squadra riceve una notifica e trova l\'incarico nella sua app, con il punto sulla mappa se lo indichi.'),
       h('label', { class: 'field' }, h('span', null, 'Squadra'), sel),
       h('div', { class: 'radio-row' }, h('label', null, free, ' Lasciali liberi di decidere'), h('label', null, pick, ' Indico io il punto sulla mappa')),
+      poiSel ? h('label', { class: 'field' }, h('span', null, 'Oppure un punto di interesse'), poiSel) : null,
       pickMap.el, info,
       h('label', { class: 'field' }, h('span', null, 'Nota'), note)),
     onOk: async () => {
