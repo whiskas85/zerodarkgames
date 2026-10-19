@@ -18,7 +18,10 @@ const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: nul
 
 async function start() {
   V.games = await api('GET', '/api/v/games');
-  if (!V.games.some((g) => g.id === V.gameId)) V.gameId = V.games[0]?.id || null;
+  // Partita ricordata finita o sparita: si passa a quella in corso (o pronta), la stessa della regia.
+  const live = V.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready'].includes(g.status));
+  const kept = V.games.find((g) => g.id === V.gameId);
+  if (!kept || (kept.status === 'ended' && live)) V.gameId = (live || V.games[0])?.id || null;
   stream('/api/stream?as=staff', { refresh: (d) => { if (d.gameId === V.gameId) load(); } });
   await load();
 }
@@ -61,6 +64,8 @@ function exitPanel() {
   return h('aside', { class: 'panel exit-panel' },
     h('div', { class: 'eyebrow' }, 'La Soglia · codice di uscita'),
     d.exitSvg ? box : h('p', { class: 'muted' }, 'Codice di uscita non ancora creato: si crea quando la Soglia è segnata sulla mappa.'),
+    d.exitCode ? h('div', { class: 'mono exit-code' }, `${d.game.name} · codice ${d.exitCode}`) : null,
+    d.exitCode ? h('p', { class: 'tiny muted' }, 'Lo stesso codice è scritto sotto il QR del cartello stampato: se non coincide, avete scelto un\'altra partita in alto.') : null,
     h('p', { class: 'small' }, 'Con la Parola intera la coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'));
 }
 

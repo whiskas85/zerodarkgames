@@ -1411,8 +1411,18 @@ function viewGift(token) {
   const pending = S.queue.find((q) => q.kind === 'claim' && q.payload.token === token);
   const claim = async () => {
     claimRequested.add(token);
-    const r = await act('claim', { token }, 'Dono da prendere');
-    if (r && r.ok === false) S.giftResults[token] = r;
+    // Errore del server (dono scaduto, già preso, non ancora comparso…): si mostra qui, non resta «sta verificando».
+    if (!navigator.onLine) await enqueue('claim', { token }, 'Dono da prendere');
+    else {
+      try {
+        const r = await sendItem({ kind: 'claim', payload: { token } });
+        handleResult({ kind: 'claim', payload: { token } }, r, false);
+        refresh();
+      } catch (e) {
+        if (e.offline) await enqueue('claim', { token }, 'Dono da prendere');
+        else S.giftResults[token] = { ok: false, message: e.message || 'Dono non disponibile' };
+      }
+    }
     render();
   };
   if (!res && !pending && !claimRequested.has(token)) setTimeout(claim);

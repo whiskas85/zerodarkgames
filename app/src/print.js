@@ -48,6 +48,7 @@ h1{font-size:30mm;line-height:.85;margin:0;font-weight:900}
 .sector{font-size:13pt;color:#8E2A1F;font-weight:600}
 .qr{width:105mm;height:105mm;background:#fff;padding:5mm;border:1mm solid #1C211E}
 .qr svg{width:100%;height:100%;display:block}
+.code{font-size:10pt;letter-spacing:.2em;color:#5B615A;margin-top:-4mm}
 .how{font-size:13pt;max-width:140mm;margin:0}
 .motto{font-size:14mm;color:#8E2A1F;font-weight:800}
 .warn{font-size:9pt;color:#5B615A;margin-top:auto}
@@ -68,6 +69,7 @@ h1{font-size:28mm;line-height:.85;margin:0;font-weight:900}
 .sub{font-size:13pt;color:#8E2A1F;font-weight:600}
 .qr{width:120mm;height:120mm;background:#fff;padding:5mm;border:1mm solid #1C211E}
 .qr svg{width:100%;height:100%;display:block}
+.code{font-size:10pt;letter-spacing:.2em;color:#5B615A;margin-top:-4mm}
 .how{font-size:13pt;max-width:150mm;margin:0}
 .warn{font-size:9pt;color:#5B615A;margin-top:auto}
 </style></head><body>
@@ -77,6 +79,7 @@ h1{font-size:28mm;line-height:.85;margin:0;font-weight:900}
   <h1 class="display">La Soglia</h1>
   <div class="sub mono">Codice di uscita</div>
   <div class="qr">${await qr(`${base}/u/${soglia.exitToken}`)}</div>
+  <div class="mono code">Codice ${esc(soglia.exitToken.slice(-6).toUpperCase())}</div>
   <p class="how">Con la Parola intera, inquadrate questo segno con l'app dei Giochi («Leggi il codice di uscita»). Chi è ancora in alleanza non esce: rompete prima l'alleanza. Uscendo, il vostro Sigillo viene rivelato a tutti.</p>
   <div class="warn mono">Non staccate questo avviso.</div>
 </div></section>
@@ -125,6 +128,7 @@ async function credentialsPage(g, base) {
 .body{display:flex;gap:7mm;align-items:center}
 .qr{width:40mm;height:40mm;background:#fff;padding:2mm;flex:none}
 .qr svg{width:100%;height:100%;display:block}
+.code{font-size:10pt;letter-spacing:.2em;color:#5B615A;margin-top:-4mm}
 .info{display:grid;gap:1.5mm}
 .small{font-size:8.5pt;color:#5B615A}
 .url{font-size:11pt;font-weight:600}
@@ -157,6 +161,7 @@ async function giftsPage(g, base) {
 .gift .title{font-size:10mm;font-weight:900;line-height:1}
 .gift .qr{width:62mm;height:62mm;background:#fff;padding:2mm}
 .gift .qr svg{width:100%;height:100%;display:block}
+.code{font-size:10pt;letter-spacing:.2em;color:#5B615A;margin-top:-4mm}
 .gift .label{font-size:8mm;font-weight:800;color:#7D6226}
 .gift p{margin:0;font-size:9.5pt}
 .gift .sign{margin-top:auto;width:100%;padding:2mm;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.06em;border:.6mm solid #1C211E}
@@ -167,4 +172,4 @@ ${pages.join('\n') || '<p style="padding:40px">Nessun dono: creali nella sezione
 </body></html>`;
 }
 
-module.exports = { exitPage, altarsPage, credentialsPage, giftsPage };
+module.exports = { qr, exitPage, altarsPage, credentialsPage, giftsPage };
