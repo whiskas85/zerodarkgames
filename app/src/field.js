@@ -899,26 +899,29 @@ function claimGift(team, token) {
     throw err(409, `Dono scaduto: l'ha già preso il Settore ${t?.name || '?'}`);
   }
   if (g.status === 'expired') throw err(409, 'Dono scaduto: è svanito');
-  if (g.status !== 'revealed') throw err(409, 'Questo dono non è ancora comparso: il Consiglio lo farà comparire più tardi');
+  // Presagio del Dono: chi ha la passiva può prendere anche un dono già piazzato ma non ancora annunciato.
+  const early = g.status === 'placed' && require('./skills').hasSkill(team.id, 'presagio');
+  if (g.status !== 'revealed' && !early) throw err(409, 'Questo dono non è ancora comparso: il Consiglio lo farà comparire più tardi');
   if (g.multi) {
     // Resta attivo per le altre coppie: questa ne prende una copia sua, il dono resta sulla mappa.
     const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt, parentGiftId, removeSign)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 'manual', ?, ?, ?, ?, ?)`,
     game.id, g.typeId, g.name, g.icon, g.color, g.description, g.label, randomToken(18), team.id, Date.now(), Date.now(), g.id, g.removeSign).lastInsertRowid);
-    G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name, multi: true });
+    G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name, multi: true, ...(early ? { presagio: 'preso prima dell\'annuncio' } : {}) });
     rt.toStaff(game.id, 'gifts');
     const s = q.get('SELECT name FROM sectors WHERE id = ?', team.sectorId);
     rt.pushMasters({ title: 'Dono preso', body: `${g.label} (${g.name}) preso dal Settore ${s?.name || '?'} · resta attivo per le altre coppie`, url: '/regia#doniqr' });
     return { ok: true, gift: teamGifts(team).find((x) => x.id === id) };
   }
-  const r = q.run("UPDATE gifts SET status = 'claimed', claimedByTeamId = ?, claimedAt = ? WHERE id = ? AND status = 'revealed'", team.id, Date.now(), g.id);
+  const r = q.run("UPDATE gifts SET status = 'claimed', claimedByTeamId = ?, claimedAt = ? WHERE id = ? AND status = ?", team.id, Date.now(), g.id, g.status);
   if (!r.changes) throw err(409, 'Troppo tardi: un\'altra coppia è stata più veloce');
-  G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name });
+  G.log(game.id, `coppia:${team.id}`, 'gift_claimed', { teamId: team.id, label: g.label, type: g.name, ...(early ? { presagio: 'preso prima dell\'annuncio' } : {}) });
   // Notifica a coppie ed Eletti (senza dire chi l'ha preso): il dono sparisce dalle loro mappe.
-  G.announce(game.id, 'gift_taken', {}, { giftId: g.id });
+  // Preso con Presagio prima dell'annuncio: nessuno l'ha mai visto, non si annuncia niente (e non comparirà più).
+  if (!early) G.announce(game.id, 'gift_taken', {}, { giftId: g.id });
   rt.toStaff(game.id, 'gifts');
   const s = q.get('SELECT name FROM sectors WHERE id = ?', team.sectorId);
-  rt.pushMasters({ title: 'Dono preso', body: `${g.label} (${g.name}) preso dal Settore ${s?.name || '?'}`, url: '/regia#mappa' });
+  rt.pushMasters({ title: 'Dono preso', body: `${g.label} (${g.name}) preso dal Settore ${s?.name || '?'}${early ? ' · con Presagio, prima dell\'annuncio' : ''}`, url: '/regia#mappa' });
   return { ok: true, gift: teamGifts(team).find((x) => x.id === g.id) };
 }
 

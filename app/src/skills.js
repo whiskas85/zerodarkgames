@@ -36,7 +36,7 @@ const SKILLS = [
   { id: 'silenzio', name: 'Silenzio di Vetro', icon: '🔇', kind: 'passive', description: 'Quando una coppia vi scopre con Occhio o Rete del Consiglio, vede solo un\'area di 100 m, non il punto esatto.' },
   { id: 'velo', name: 'Velo di Ceneri', icon: '🌫️', kind: 'passive', description: 'Tracciamenti e taglie contro di voi durano la metà.' },
   { id: 'allarme', name: 'Allarme di Prossimità', icon: '📳', kind: 'passive', description: 'Una vibrazione silenziosa vi avvisa quando una coppia non alleata arriva entro 80 m.' },
-  { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo.' },
+  { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo. Potete prendere anche un Dono trovato prima che venga annunciato.' },
   { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale più a lungo.' },
   { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura (e la notifica vi arriva subito) e 5 minuti dopo la chiusura.' },
   { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },

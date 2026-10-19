@@ -1181,6 +1181,12 @@ test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizion
     const id = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, ?, ?, 'Dono', ?, 'claimed', ?, ?, ?)", g.id, typeId, type.name, `tok${typeId}${t.id}${Math.random()}`, t.id, now, now).lastInsertRowid);
     return id;
   };
+  // Presagio: D prende un dono piazzato ma non ancora annunciato; A (senza Presagio) no.
+  const placed = (tok) => q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, lat, lng, createdAt) VALUES (?, 'taglia', 'Taglia', 'Dono', ?, 'placed', 45, 9, ?)", g.id, tok, now);
+  placed('presagio-early');
+  assert.throws(() => F.claimGift(A, 'presagio-early'), /non è ancora comparso/);
+  assert.equal(F.claimGift(D, 'presagio-early').ok, true);
+  assert.equal(q.get("SELECT status, claimedByTeamId FROM gifts WHERE qrToken = 'presagio-early'").claimedByTeamId, D.id);
   F.useGift(Cc, gift(Cc, 'taglia'), { teamId: D.id });
   assert.ok(S.sightingsFor(B).some((x) => x.teamId === D.id));
   F.useGift(A, gift(A, 'scudo'));
