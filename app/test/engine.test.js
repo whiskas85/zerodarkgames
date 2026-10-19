@@ -1636,3 +1636,20 @@ test('regia: testi e tempi di Skill e Doni modificabili in preparazione, poi blo
   assert.ok(Math.abs(ready - Date.now() - 50 * 60000) < 5000);
   assert.equal(S.skillsState(A).mine.find((x) => x.id === 'ombra').name, 'Ombra Lunga');
 });
+
+test('ICE: dati facoltativi del profilo, alla regia solo dentro l\'emergenza chiamata dalla persona', () => {
+  const A = require('../src/accounts');
+  const EM = require('../src/emergency');
+  const g = setupGame(3);
+  const acc = A.register({ username: `ice${g.id}`, password: 'password1', name: 'Mario Rossi', softairTeam: 'nessuno' });
+  A.updateProfile(acc, { iceBlood: '0 Rh+', iceConditions: 'asma', iceContactName: 'Laura', iceContactPhone: '333 1234567' });
+  assert.equal(A.publicAccount(q.get('SELECT * FROM accounts WHERE id = ?', acc.id)).ice.blood, '0 Rh+');
+  assert.ok(!JSON.stringify(A.listAccounts()).includes('asma'));
+  const [T] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const pid = Number(q.run('INSERT INTO players (gameId, teamId, name, accountId, status, createdAt) VALUES (?, ?, ?, ?, ?, ?)', g.id, T.id, 'Mario Rossi', acc.id, 'accepted', Date.now()).lastInsertRowid);
+  const player = q.get('SELECT * FROM players WHERE id = ?', pid);
+  EM.fromApp(T, player, { lat: 45, lng: 9 });
+  const e = EM.list(g.id)[0];
+  assert.equal(e.ice.conditions, 'asma');
+  assert.equal(e.ice.contactPhone, '333 1234567');
+});

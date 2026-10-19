@@ -309,6 +309,14 @@ function viewEmergencies() {
     h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ☎ ', h('a', { href: `tel:${e.phone.replace(/\s/g, '')}` }, e.phone)] : null),
     e.lat != null ? h('div', { class: 'small mono' }, `Posizione: ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${e.acc ? ` (±${e.acc} m)` : ''} · `, h('a', { href: gmaps(e.lat, e.lng), target: '_blank', rel: 'noopener' }, 'Apri in Google Maps'))
       : h('div', { class: 'small bad' }, 'Posizione sconosciuta: chiedetela via radio.'),
+    // ICE: i dati sanitari arrivano solo con l'emergenza che la persona ha chiamato.
+    e.ice ? h('div', { class: 'ice-box' },
+      h('div', { class: 'eyebrow' }, 'ICE · In Case of Emergency'),
+      e.ice.blood ? h('div', null, h('span', { class: 'muted small' }, 'Gruppo sanguigno: '), h('strong', null, e.ice.blood)) : null,
+      e.ice.conditions ? h('div', null, h('span', { class: 'muted small' }, 'Per i soccorritori: '), h('strong', null, e.ice.conditions)) : null,
+      e.ice.contactName || e.ice.contactPhone ? h('div', null, h('span', { class: 'muted small' }, 'Contatto di emergenza: '), h('strong', null, e.ice.contactName || ''),
+        e.ice.contactPhone ? [' · ☎ ', h('a', { href: `tel:${e.ice.contactPhone.replace(/\s/g, '')}` }, e.ice.contactPhone)] : null) : null)
+      : h('div', { class: 'tiny muted' }, 'Nessun dato ICE nel profilo di chi ha chiamato.'),
     e.live && !e.closedAt ? h('div', { class: 'small mono' }, `Ultima posizione ${fmtTime(e.live.at)}: ${e.live.lat.toFixed(5)}, ${e.live.lng.toFixed(5)} · `, h('a', { href: gmaps(e.live.lat, e.live.lng), target: '_blank', rel: 'noopener' }, 'Maps')) : null,
     e.note ? h('div', { class: 'small' }, `Nota: ${e.note}`) : null,
     e.closedAt ? null : h('div', { class: 'row-actions' },

@@ -577,6 +577,9 @@ function emergencyModal() {
     h('div', { class: 'eyebrow' }, 'Evento OFF GAME'),
     h('h2', null, 'Emergenza reale'),
     h('p', null, 'Questo pulsante manda la tua posizione in DE (Direzione). È un evento ', h('strong', null, 'OFF GAME'), ': non è un\'emergenza di gioco, ma una cosa seria — infortunio, malore, pericolo reale.'),
+    h('p', { class: 'small' }, S.state?.account?.ice && Object.values(S.state.account.ice).some(Boolean)
+      ? 'Con la chiamata arrivano alla Direzione anche i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza).'
+      : ['Puoi aggiungere i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza) nel ', h('a', { href: '/iscrizione#profilo' }, 'profilo'), ': arrivano alla Direzione solo se premi questo pulsante.']),
     big,
     status,
     ch ? h('p', { class: 'small' }, 'Se puoi, chiama anche via radio: ', h('strong', { class: 'mono' }, ch)) : null,

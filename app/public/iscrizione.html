@@ -19,6 +19,8 @@
     form, fieldset { display: grid; gap: 12px; }
     fieldset { border: 2px solid var(--line); padding: 16px; margin: 0; }
     legend { font-family: var(--f-display); font-size: 22px; text-transform: uppercase; padding: 0 6px; }
+    fieldset.ice { border-color: #c0392b; background: rgba(192, 57, 43, .06); }
+    fieldset.ice p { margin: 0; }
     .step { font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
     .steps { display: flex; gap: 6px; }
     .steps i { flex: 1; height: 4px; background: var(--line); }
@@ -337,6 +339,15 @@
         field('Nome di battaglia', { name: 'nickname', value: a.nickname || '' }),
         field('Team di softair di appartenenza', { name: 'softairTeam', required: true, value: a.softairTeam || '' }),
         field('Telefono', { name: 'phone', type: 'tel', value: a.phone || '' })),
+      // ICE: facoltativo, OFF GAME. Lo legge la Direzione solo se la persona preme EMERGENZA (o l'SOS di Traccar).
+      h('fieldset', { class: 'ice' }, h('legend', null, 'ICE · In Case of Emergency (facoltativo)'),
+        h('p', { class: 'small' }, 'Per la tua sicurezza. Questa è una sezione ', h('strong', null, 'OFF GAME'), ', fuori dal gioco.'),
+        h('p', { class: 'small' }, h('strong', null, 'Questi dati non sono visibili in regia.'), ' Arrivano alla Direzione solo ed esclusivamente se premi il pulsante EMERGENZA nell\'app (o l\'SOS di Traccar Client), insieme alla tua posizione, perché i soccorritori sappiano cosa fare.'),
+        field('Gruppo sanguigno', { name: 'iceBlood', maxlength: 12, placeholder: 'es. 0 Rh+', value: a.ice?.blood || '' }),
+        h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'),
+          h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' }, a.ice?.conditions || '')),
+        field('Nome del contatto di emergenza', { name: 'iceContactName', maxlength: 80, placeholder: 'es. Laura (moglie)', value: a.ice?.contactName || '' }),
+        field('Telefono del contatto di emergenza', { name: 'iceContactPhone', type: 'tel', maxlength: 30, value: a.ice?.contactPhone || '' })),
       h('fieldset', null, h('legend', null, a.hasPassword ? 'Cambia password (facoltativo)' : 'Imposta una password (facoltativo)'),
         a.hasPassword ? field('Password attuale', { name: 'currentPassword', type: 'password', autocomplete: 'current-password' })
           : h('p', { class: 'muted small' }, `Entri con il gestionale. Con una password potrai entrare anche come @${a.username}.`),

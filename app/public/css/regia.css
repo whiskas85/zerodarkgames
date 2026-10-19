@@ -582,3 +582,5 @@ tr.gift-row-claimed td { opacity: .6; }
 .cat-card .btn { justify-self: start; }
 .cat-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cat-ico { font-size: 22px; }
+/* Dati ICE dentro un'emergenza */
+.ice-box { display: grid; gap: 4px; padding: 10px 12px; border: 2px solid #c0392b; background: rgba(192, 57, 43, .12); border-radius: 4px; }

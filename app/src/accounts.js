@@ -16,7 +16,9 @@ function publicAccount(a) {
   const ops = q.all('SELECT id, iss, providerName, opsName, squadra FROM account_identities WHERE accountId = ? ORDER BY id', a.id);
   // staff: ruolo nell'organizzazione ottenuto con un invito del Consiglio (master o validatore).
   const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id)?.role || null;
-  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops, staff };
+  // ice: solo alla persona stessa (il suo profilo); alla regia arriva soltanto dentro un'emergenza chiamata da lei.
+  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops, staff,
+    ice: { blood: a.iceBlood || '', conditions: a.iceConditions || '', contactName: a.iceContactName || '', contactPhone: a.iceContactPhone || '' } };
 }
 
 function register(data) {
@@ -50,6 +52,12 @@ function updateProfile(account, data) {
   const nickname = data.nickname !== undefined ? String(data.nickname).trim().slice(0, 40) || null : account.nickname;
   const phone = data.phone !== undefined ? String(data.phone).trim().slice(0, 30) || null : account.phone;
   q.run('UPDATE accounts SET name = ?, nickname = ?, softairTeam = ?, phone = ? WHERE id = ?', name, nickname, softairTeam, phone, account.id);
+  // ICE (facoltativo): si salva solo se il modulo lo manda.
+  if (data.iceBlood !== undefined || data.iceConditions !== undefined || data.iceContactName !== undefined || data.iceContactPhone !== undefined) {
+    const t = (v, n) => String(v ?? '').trim().slice(0, n) || null;
+    q.run('UPDATE accounts SET iceBlood = ?, iceConditions = ?, iceContactName = ?, iceContactPhone = ? WHERE id = ?',
+      t(data.iceBlood, 12), t(data.iceConditions, 600), t(data.iceContactName, 80), t(data.iceContactPhone, 30), account.id);
+  }
   // I dati seguono le iscrizioni alle partite non ancora finite.
   q.run(`UPDATE players SET name = ?, nickname = ?, softairTeam = ?, phone = ? WHERE accountId = ? AND gameId IN (SELECT id FROM games WHERE status != 'ended')`, name, nickname, softairTeam, phone, account.id);
   if (data.password) {

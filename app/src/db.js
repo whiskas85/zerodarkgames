@@ -486,4 +486,12 @@ addColumn('gifts', 'parentGiftId', 'INTEGER');
 // Testi e tempi di Skill e Doni modificati dalla regia per questa partita (JSON: { skills: {id: {...}}, gifts: {id: {...}} }).
 addColumn('games', 'catalogEdits', 'TEXT');
 
+// ICE (In Case of Emergency), facoltativo e OFF GAME: dati sanitari e contatto, letti solo quando la persona chiama un'emergenza.
+addColumn('accounts', 'iceBlood', 'TEXT');
+addColumn('accounts', 'iceConditions', 'TEXT');
+addColumn('accounts', 'iceContactName', 'TEXT');
+addColumn('accounts', 'iceContactPhone', 'TEXT');
+// L'emergenza porta con sé i dati ICE di chi l'ha chiamata (copiati al momento della chiamata).
+addColumn('emergencies', 'ice', 'TEXT');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

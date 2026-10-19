@@ -35,6 +35,13 @@ function lastPos(playerId, teamId) {
     || (teamId && q.get('SELECT lat, lng, acc, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, since)) || null;
 }
 
+// Dati ICE dell'account di chi chiama: è l'unico momento in cui arrivano alla regia.
+function iceOf(player) {
+  const a = player?.accountId ? q.get('SELECT iceBlood, iceConditions, iceContactName, iceContactPhone FROM accounts WHERE id = ?', player.accountId) : null;
+  if (!a || !(a.iceBlood || a.iceConditions || a.iceContactName || a.iceContactPhone)) return null;
+  return JSON.stringify({ blood: a.iceBlood, conditions: a.iceConditions, contactName: a.iceContactName, contactPhone: a.iceContactPhone });
+}
+
 function raise({ gameId, team = null, player = null, pos = null, source = 'app' }) {
   const lat = parseFloat(pos?.lat);
   const lng = parseFloat(pos?.lng);
@@ -50,8 +57,8 @@ function raise({ gameId, team = null, player = null, pos = null, source = 'app' 
   }
   const who = whoOf(player, team);
   const where = whereOf(team, player);
-  const id = Number(q.run(`INSERT INTO emergencies (gameId, teamId, playerId, who, phone, source, lat, lng, acc, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    gameId, team?.id ?? null, player?.id ?? null, where ? `${who} (${where})` : who, player?.phone || null, source, p?.lat ?? null, p?.lng ?? null, p?.acc ?? null, Date.now()).lastInsertRowid);
+  const id = Number(q.run(`INSERT INTO emergencies (gameId, teamId, playerId, who, phone, source, lat, lng, acc, createdAt, ice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    gameId, team?.id ?? null, player?.id ?? null, where ? `${who} (${where})` : who, player?.phone || null, source, p?.lat ?? null, p?.lng ?? null, p?.acc ?? null, Date.now(), iceOf(player)).lastInsertRowid);
   G.log(gameId, player ? `giocatore:${player.id}` : team ? `coppia:${team.id}` : 'traccar', 'emergency', { id, who, source });
   rt.pushMasters({ title: '🚨 EMERGENZA (OFF GAME)', body: `${who}${where ? ` · ${where}` : ''}${source === 'traccar' ? ' · SOS da Traccar' : ''}${p ? '' : ' · posizione sconosciuta'}`,
     tag: `emergency-${id}`, url: '/regia#emergenze', requireInteraction: true });
@@ -76,7 +83,7 @@ function fromTraccar(player, pos) {
 function list(gameId) {
   return q.all('SELECT * FROM emergencies WHERE gameId = ? ORDER BY closedAt IS NOT NULL, id DESC LIMIT 50', gameId).map((e) => {
     const live = e.closedAt ? null : lastPos(e.playerId, e.teamId);
-    return { ...e, live: live && (!e.lat || live.at > e.createdAt) ? live : null };
+    return { ...e, ice: e.ice ? JSON.parse(e.ice) : null, live: live && (!e.lat || live.at > e.createdAt) ? live : null };
   });
 }
 
