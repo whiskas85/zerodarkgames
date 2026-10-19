@@ -2670,6 +2670,7 @@ function viewNotices() {
         } },
         h('label', { class: 'field' }, h('span', null, 'Titolo'), title),
         h('label', { class: 'field' }, h('span', null, 'Testo'), body),
+        h('p', { class: 'tiny muted' }, 'Formattazione: **grassetto**, *corsivo*, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante; anche gli indirizzi https://… diventano link. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento.'),
         h('label', { class: 'field' }, h('span', null, 'Destinatari'), target),
         teamWrap,
         h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse'),

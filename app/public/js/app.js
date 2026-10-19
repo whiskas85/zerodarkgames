@@ -426,7 +426,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -574,16 +574,18 @@ function emergencyModal() {
   };
   const big = h('button', { class: 'sos-big', type: 'button', onclick: send }, 'EMERGENZA');
   ov.append(h('div', { class: 'sos-box' },
+    offGameStripe(),
     h('div', { class: 'eyebrow' }, 'Evento OFF GAME'),
     h('h2', null, 'Emergenza reale'),
     h('p', null, 'Questo pulsante manda la tua posizione in DE (Direzione). È un evento ', h('strong', null, 'OFF GAME'), ': non è un\'emergenza di gioco, ma una cosa seria — infortunio, malore, pericolo reale.'),
     h('p', { class: 'small' }, S.state?.account?.ice && Object.values(S.state.account.ice).some(Boolean)
       ? 'Con la chiamata arrivano alla Direzione anche i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza).'
-      : ['Puoi aggiungere i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza) nel ', h('a', { href: '/iscrizione#profilo' }, 'profilo'), ': arrivano alla Direzione solo se premi questo pulsante.']),
+      : ['Puoi aggiungere i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza) nella ', h('a', { href: '#/ice', onclick: () => close() }, 'pagina ICE'), ': arrivano alla Direzione solo se premi questo pulsante.']),
     big,
     status,
     ch ? h('p', { class: 'small' }, 'Se puoi, chiama anche via radio: ', h('strong', { class: 'mono' }, ch)) : null,
-    h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi')));
+    h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'),
+    offGameStripe()));
   document.body.append(ov);
 }
 
@@ -790,6 +792,7 @@ function viewLobbyHome(st) {
     h('nav', { class: 'grid' },
       h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app')),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
+      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
@@ -828,6 +831,7 @@ function viewElectHome(st) {
       tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
       tile('#/mappa', 'Mappa del campo', '⛰'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
+      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
@@ -894,6 +898,7 @@ function viewHome() {
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
       tile('#/codici', 'Codici', '✱'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
+      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
@@ -2183,6 +2188,66 @@ function viewTimers() {
 
 const ANN_LABEL = { gift: 'Dono', gift_taken: 'Dono preso', gift_expired: 'Dono svanito', start: 'Via', hunt_open: 'Caccia', revelation: 'Tradimento', supply: 'Armamenti', supply_end: 'Armamenti chiusi', last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', free: 'Consiglio' };
 
+// Avvisi in markdown ridotto: **grassetto**, *corsivo*, [testo](link) come pulsante, link nudi, paragrafi e a capo.
+// Si costruiscono nodi DOM (niente HTML dal testo): i link ammessi sono http(s), pagine del sito (/…) e pagine dell'app (#/…).
+function md(text) {
+  const safeUrl = (u) => (/^(https?:\/\/|\/|#\/)/i.test(u) ? u : null);
+  const inline = (line) => {
+    const out = [];
+    const re = /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(line))) {
+      if (m.index > last) out.push(line.slice(last, m.index));
+      if (m[1]) {
+        const url = safeUrl(m[2]);
+        out.push(url ? h('a', { class: 'btn btn-sm md-btn', href: url, ...(/^https?:/i.test(url) ? { target: '_blank', rel: 'noopener' } : {}) }, m[1]) : m[0]);
+      } else if (m[3]) out.push(h('a', { href: m[3], target: '_blank', rel: 'noopener' }, m[3]));
+      else if (m[4]) out.push(h('strong', null, m[4]));
+      else if (m[5]) out.push(h('em', null, m[5]));
+      last = re.lastIndex;
+    }
+    if (last < line.length) out.push(line.slice(last));
+    return out;
+  };
+  return String(text).split(/\n{2,}/).map((para) => h('p', null, para.split('\n').flatMap((l, i) => (i ? [h('br'), ...inline(l)] : inline(l)))));
+}
+
+// ICE: pagina OFF GAME con i dati per i soccorritori (solo per chi è entrato con il proprio account).
+const iceFilled = () => { const ice = S.state?.account?.ice; return !!ice && Object.values(ice).some(Boolean); };
+function iceTile() {
+  if (!S.state?.account) return null;
+  const empty = !iceFilled();
+  return h('a', { class: 'tile tile-ice', href: '#/ice' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '✚'), h('span', null, 'ICE'),
+    h('span', { class: 'tiny muted' }, 'In Case of Emergency'), empty ? h('span', { class: 'badge badge-alert' }, '!') : null);
+}
+const offGameStripe = () => h('div', { class: 'offgame-stripe', 'aria-hidden': 'true' }, h('span', null, 'OFF GAME'));
+function viewIce() {
+  const acc = S.state?.account;
+  const ice = acc?.ice || {};
+  const field = (label, name, value, attrs = {}) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', name, value: value || '', ...attrs }));
+  const cond = h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' });
+  cond.value = ice.conditions || '';
+  const form = h('form', { class: 'stack', onsubmit: async (e) => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(form).entries());
+    try { await api('PATCH', '/api/account', fd); toast('Dati ICE salvati', 'ok'); refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per salvare' : err.message, 'error', 6000); }
+  } },
+  field('Gruppo sanguigno', 'iceBlood', ice.blood, { maxlength: 12, placeholder: 'es. 0 Rh+' }),
+  h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'), cond),
+  field('Nome del contatto di emergenza', 'iceContactName', ice.contactName, { maxlength: 80, placeholder: 'es. Laura (moglie)' }),
+  field('Telefono del contatto di emergenza', 'iceContactPhone', ice.contactPhone, { type: 'tel', maxlength: 30 }),
+  h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Salva'));
+  return h('div', { class: 'stack ice-page' },
+    offGameStripe(),
+    h('h2', null, 'ICE · In Case of Emergency'),
+    h('p', null, 'Per la tua sicurezza, facoltativo. Questa è una sezione ', h('strong', null, 'OFF GAME'), ', fuori dal gioco.'),
+    h('div', { class: 'callout-off' }, h('strong', null, 'Questi dati non sono visibili in regia.'),
+      ' Arrivano alla Direzione solo ed esclusivamente se premi il pulsante EMERGENZA (o l\'SOS di Traccar Client), insieme alla tua posizione, perché i soccorritori sappiano cosa fare.'),
+    acc ? form : h('p', { class: 'empty' }, 'I dati ICE si salvano nel tuo account personale: entra con il tuo account (non con il codice della coppia) per compilarli.'),
+    offGameStripe());
+}
+
 // Mini sondaggio dell'avviso: Sì / No / Forse. La risposta si può cambiare; la regia vede chi ha risposto cosa.
 const POLL = [['si', 'Sì'], ['no', 'No'], ['forse', 'Forse']];
 function pollButtons(n) {
@@ -2205,7 +2270,7 @@ function viewNotices() {
     list.length ? h('ul', { class: 'feed' }, list.map((n) => h('li', { class: `ann notice ${n.id > S.seenNotice ? 'new' : ''}` },
       h('div', { class: 'ann-head' }, h('span', { class: `chip ${n.target === 'team' ? 'chip-blood' : 'chip-brass'}` }, forLabel(n)), h('span', { class: 'mono muted small' }, `${new Date(n.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · ${fmtTime(n.createdAt)}`)),
       h('h3', { class: 'notice-title' }, n.poll ? '📊 ' : '', n.title),
-      n.body ? h('p', null, n.body) : null,
+      n.body ? h('div', { class: 'md' }, md(n.body)) : null,
       n.poll ? pollButtons(n) : null)))
       : h('p', { class: 'empty' }, 'Nessun avviso, per ora.'));
 }

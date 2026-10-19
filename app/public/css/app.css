@@ -621,3 +621,18 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .poll-btns .btn.on.poll-si { background: #2f8f4e; border-color: #2f8f4e; color: #fff; }
 .poll-btns .btn.on.poll-no { background: var(--blood); border-color: var(--blood); color: #fff; }
 .poll-btns .btn.on.poll-forse { background: #c9a227; border-color: #c9a227; color: #1a1206; }
+
+/* OFF GAME: fasce rosse e nere (come quelle dell'ambiente di test) per ICE ed EMERGENZA */
+.offgame-stripe { display: grid; place-items: center; height: 30px; background: repeating-linear-gradient(45deg, #d0021b 0 14px, #111 14px 28px); border: 2px solid #111; }
+.offgame-stripe span { background: #111; color: #fff; font: 800 13px var(--f-mono, monospace); letter-spacing: .25em; padding: 3px 12px; text-transform: uppercase; }
+.sos-box .offgame-stripe { margin: -20px -20px 0; }
+.sos-box .offgame-stripe:last-child { margin: 0 -20px -20px; }
+.ice-page h2 { color: #ff5a4a; }
+.callout-off { border-left: 4px solid #d0021b; background: rgba(208, 2, 27, .1); padding: 12px 14px; }
+.tile-ice { border-color: #d0021b; background: linear-gradient(135deg, rgba(208, 2, 27, .16), transparent); }
+.tile-ice .tile-ico { color: #ff5a4a; }
+
+/* Avvisi in markdown ridotto: i link diventano pulsanti */
+.md p { margin: 0 0 8px; }
+.md p:last-child { margin-bottom: 0; }
+.md-btn { display: inline-flex; margin: 4px 4px 0 0; text-decoration: none; }
