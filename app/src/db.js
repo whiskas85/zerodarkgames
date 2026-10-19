@@ -507,4 +507,9 @@ CREATE TABLE IF NOT EXISTS notice_votes (
 // Avviso di sicurezza pre-gara (EMERGENZA e ICE): quando la persona ha confermato «Ho letto e ho compreso».
 addColumn('players', 'safetyAckAt', 'INTEGER');
 
+// App del giocatore: installata (schermata Home) e versione, comunicate quando apre l'app.
+addColumn('players', 'appInstalled', 'INTEGER');
+addColumn('players', 'appVersion', 'TEXT');
+addColumn('players', 'appSeenAt', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

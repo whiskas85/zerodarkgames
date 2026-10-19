@@ -201,7 +201,9 @@ function setState(st, offset) {
 let sse = null;
 function connect() {
   if (sse) return;
-  sse = stream('/api/stream', {
+  // Alla regia: app installata (schermata Home) e versione caricata.
+  const installed = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  sse = stream(`/api/stream?v=${encodeURIComponent(S.bootVersion || '')}&inst=${installed ? 1 : 0}`, {
     open: () => { S.connected = true; S.online = true; refresh(); flushQueue(); },
     error: () => { S.connected = false; render(); },
     state: () => refresh(),

@@ -464,6 +464,8 @@ app.get('/api/stream', (req, res, next) => {
   if (asStaff) rt.addClient({ res, kind: 'user', userId: req.user.id, role: req.user.role });
   else {
     const gameId = req.team?.gameId ?? req.player.gameId;
+    // L'app dice se è installata e con quale versione (pagina Notifiche, Traccar e ICE della regia).
+    if (req.player && req.query.v) q.run('UPDATE players SET appVersion = ?, appInstalled = ?, appSeenAt = ? WHERE id = ?', String(req.query.v).slice(0, 20), req.query.inst === '1' ? 1 : 0, Date.now(), req.player.id);
     rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null });
     rt.toStaff(gameId, 'online');
     res.on('close', () => rt.toStaff(gameId, 'online'));
@@ -540,7 +542,7 @@ m.post('/push/off', wrap((req) => {
   q.run('DELETE FROM push_subs WHERE endpoint = ? AND userId IS NULL AND teamId IS NULL AND playerId IS NULL', ep);
   return { ok: true };
 }));
-m.get('/games/:id/push-report', wrap((req) => G.pushReport(gameId(req))));
+m.get('/games/:id/push-report', wrap((req) => ({ ...G.pushReport(gameId(req)), currentVersion: APP_VERSION })));
 m.get('/sectors', (_req, res) => res.json(G.sectorsAdmin()));
 m.post('/sectors', wrap((req) => ({ id: G.saveSector(null, req.body || {}, actor(req)) })));
 m.patch('/sectors/:sid', wrap((req) => ({ id: G.saveSector(Number(req.params.sid), req.body || {}, actor(req)) })));

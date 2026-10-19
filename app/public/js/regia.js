@@ -2573,6 +2573,16 @@ const TRACCAR_STATE = {
   none: () => h('span', { class: 'chip chip-warn' }, 'da attivare'),
 };
 
+// App: installata o dal browser, e versione (in giallo se non è l'ultima).
+function appCell(app, current) {
+  if (!app) return h('span', { class: 'tiny muted', title: 'Non ha ancora aperto l\'app con il suo accesso personale' }, '—');
+  const old = current && app.version && app.version !== current;
+  return h('div', { class: 'app-cell' },
+    h('span', { class: `chip ${app.installed ? 'chip-ok' : ''}`, title: app.installed ? 'Installata nella schermata Home' : 'Aperta dal browser, non installata' }, app.installed ? 'installata' : 'browser'),
+    h('div', { class: `mono tiny ${old ? 'warn-text' : 'muted'}`, title: old ? `Versione vecchia: l'ultima è ${current}. Deve chiudere e riaprire l'app.` : `Vista ${fmtTime(app.at)}` },
+      (app.version || '?').replace('zdg-', ''), old ? ' · vecchia' : ''));
+}
+
 // Pallino: app aperta adesso (verde), aperta solo sul telefono della coppia (giallo), chiusa (grigio).
 const onlineDot = (o) => h('span', { class: `online-dot ${o || 'off'}`, title: o === 'on' ? 'Online adesso' : o === 'team' ? 'Online dal telefono della coppia' : 'Non online' });
 // La tabella si aggiorna da sola mentre la pagina è aperta (e a ogni cambiamento che arriva dal server).
@@ -2597,7 +2607,7 @@ function viewPushReport() {
     navigator.clipboard?.writeText(text).then(() => toast('Elenco copiato: incollalo nel gruppo WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
   };
   const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
-    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
+    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'App', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
     h('tbody', null, list.map((p) => (staff
       ? h('tr', null, h('td', null, onlineDot(p.online), ' ', h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
       : h('tr', { class: p.ready ? 'row-ready' : '' },
@@ -2605,6 +2615,7 @@ function viewPushReport() {
         h('td', null, h('div', { class: 'who-online' }, onlineDot(p.online), personLine(p))),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
+        h('td', null, appCell(p.app, rep.currentVersion)),
         h('td', null, PUSH_STATE[p.state](p)),
         h('td', null, TRACCAR_STATE[p.traccar](p)),
         h('td', { class: 'mono tiny' }, p.trackSeenAt
