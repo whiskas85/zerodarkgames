@@ -1933,6 +1933,7 @@ function pushReport(gameId) {
   const own = Object.fromEntries(q.all('SELECT playerId, COUNT(*) AS n FROM push_subs WHERE playerId IS NOT NULL GROUP BY playerId').map((r) => [r.playerId, r.n]));
   const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
+  const live = rt.onlineNow();
   // ICE: alla regia arriva solo se è compilato (sì/no), mai il contenuto.
   const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt, p.safetyAckAt, p.accountId,
                                (a.iceBlood IS NOT NULL OR a.iceConditions IS NOT NULL OR a.iceContactName IS NOT NULL OR a.iceContactPhone IS NOT NULL) AS iceFilled,
@@ -1950,6 +1951,8 @@ function pushReport(gameId) {
       // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
       traccar: trackStateOf(p, g, p.teamId ? { kind: p.teamKind, status: p.teamStatus } : null).state, trackSeenAt: p.trackSeenAt || null,
       ice: p.accountId ? !!p.iceFilled : null, safetyAckAt: p.safetyAckAt || null,
+      // App aperta adesso: con il suo accesso personale, oppure (solo) dal telefono della coppia.
+      online: live.players.has(p.id) ? 'on' : p.teamId && live.teams.has(p.teamId) ? 'team' : 'off',
     };
   }).map((p) => {
     // Cosa manca a ognuno: notifiche, Traccar (coppie ed Eletti), ICE (chi ha l'account), avviso di sicurezza letto.
@@ -1958,7 +1961,7 @@ function pushReport(gameId) {
     return { ...p, todo, ready: !todo.length };
   }).sort((a, b) => b.ready - a.ready || a.todo.length - b.todo.length || a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
   const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
-                       FROM users u ORDER BY u.role = 'master' DESC, u.username`).map((u) => ({ ...u, state: u.devices ? 'on' : 'off' }));
+                       FROM users u ORDER BY u.role = 'master' DESC, u.username`).map((u) => ({ ...u, state: u.devices ? 'on' : 'off', online: live.users.has(u.id) ? 'on' : 'off' }));
   return { people, staff };
 }
 

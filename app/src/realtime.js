@@ -38,6 +38,19 @@ function toStaff(gameId, reason = 'update') {
   }, 300));
 }
 
+// Chi ha l'app aperta adesso: giocatori (accesso personale), coppie entrate con il codice, utenti della regia.
+function onlineNow() {
+  const players = new Set();
+  const teams = new Set();
+  const users = new Set();
+  for (const c of clients) {
+    if (c.kind === 'user') users.add(c.userId);
+    else if (c.playerId) players.add(c.playerId);
+    else if (c.teamId) teams.add(c.teamId);
+  }
+  return { players, teams, users };
+}
+
 function onlineByTeam() {
   const m = {};
   for (const c of clients) if (c.kind === 'team') m[c.teamId] = (m[c.teamId] || 0) + 1;
@@ -125,4 +138,5 @@ function pushSubs(subs, payload) {
   sendPush(subs, payload).catch(() => {});
 }
 
-module.exports = { addClient, toTeams, toTeamsWhere, toStaff, toStaffEvent, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };
+module.exports = {
+  onlineNow, addClient, toTeams, toTeamsWhere, toStaff, toStaffEvent, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };

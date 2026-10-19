@@ -1,7 +1,7 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { createField } from './field-ui.js';
-import { h, mount, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
+import { h, mount, md, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -2251,30 +2251,6 @@ function viewTimers() {
 
 const ANN_LABEL = { gift: 'Dono', gift_taken: 'Dono preso', gift_expired: 'Dono svanito', start: 'Via', hunt_open: 'Caccia', revelation: 'Tradimento', supply: 'Armamenti', supply_end: 'Armamenti chiusi', last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', free: 'Consiglio' };
 
-// Avvisi in markdown ridotto: **grassetto**, *corsivo*, [testo](link) come pulsante, link nudi, paragrafi e a capo.
-// Si costruiscono nodi DOM (niente HTML dal testo): i link ammessi sono http(s), pagine del sito (/…) e pagine dell'app (#/…).
-function md(text) {
-  const safeUrl = (u) => (/^(https?:\/\/|\/|#\/)/i.test(u) ? u : null);
-  const inline = (line) => {
-    const out = [];
-    const re = /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
-    let last = 0;
-    let m;
-    while ((m = re.exec(line))) {
-      if (m.index > last) out.push(line.slice(last, m.index));
-      if (m[1]) {
-        const url = safeUrl(m[2]);
-        out.push(url ? h('a', { class: 'btn btn-sm md-btn', href: url, ...(/^https?:/i.test(url) ? { target: '_blank', rel: 'noopener' } : {}) }, m[1]) : m[0]);
-      } else if (m[3]) out.push(h('a', { href: m[3], target: '_blank', rel: 'noopener' }, m[3]));
-      else if (m[4]) out.push(h('strong', null, m[4]));
-      else if (m[5]) out.push(h('em', null, m[5]));
-      last = re.lastIndex;
-    }
-    if (last < line.length) out.push(line.slice(last));
-    return out;
-  };
-  return String(text).split(/\n{2,}/).map((para) => h('p', null, para.split('\n').flatMap((l, i) => (i ? [h('br'), ...inline(l)] : inline(l)))));
-}
 
 // ICE: pagina OFF GAME con i dati per i soccorritori (solo per chi è entrato con il proprio account).
 const iceFilled = () => { const ice = S.state?.account?.ice; return !!ice && Object.values(ice).some(Boolean); };

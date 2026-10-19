@@ -1,5 +1,5 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
-import { h, mount, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
+import { h, mount, md, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions } from './map.js';
 
 const $root = document.getElementById('root');
@@ -64,7 +64,7 @@ async function start() {
   await loadGames();
   stream('/api/stream?as=staff', {
     open: () => load(),
-    refresh: (d) => { if (d.gameId === R.gameId || d.gameId == null) load(); },
+    refresh: (d) => { if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
     // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
     emergency: async (d) => {
       if (d.gameId && d.gameId !== R.gameId) { R.gameId = d.gameId; store.set('zdg_regia_game', R.gameId); R.ms = null; }
@@ -2569,9 +2569,14 @@ const TRACCAR_STATE = {
   none: () => h('span', { class: 'chip chip-warn' }, 'da attivare'),
 };
 
+// Pallino: app aperta adesso (verde), aperta solo sul telefono della coppia (giallo), chiusa (grigio).
+const onlineDot = (o) => h('span', { class: `online-dot ${o || 'off'}`, title: o === 'on' ? 'Online adesso' : o === 'team' ? 'Online dal telefono della coppia' : 'Non online' });
+// La tabella si aggiorna da sola mentre la pagina è aperta (e a ogni cambiamento che arriva dal server).
+setInterval(() => { if (tab() === 'notifiche' && !document.hidden && R.gameId && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }, 15000);
+
 function viewPushReport() {
   const rep = R.pushRep;
-  if (!rep || rep.gameId !== R.gameId || Date.now() - rep.at > 60000) { if (!R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }
+  if (!rep || rep.gameId !== R.gameId || Date.now() - rep.at > 15000) { if (!R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }
   if (!rep || rep.gameId !== R.gameId) return h('p', { class: 'empty' }, 'Caricamento…');
   // Sempre tutti: in alto chi è a posto, poi chi ha meno cose da sistemare.
   const todo = (x) => !x.ready;
@@ -2590,10 +2595,10 @@ function viewPushReport() {
   const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
     h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
     h('tbody', null, list.map((p) => (staff
-      ? h('tr', null, h('td', null, h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
+      ? h('tr', null, h('td', null, onlineDot(p.online), ' ', h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
       : h('tr', { class: p.ready ? 'row-ready' : '' },
         h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓') : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.todo.length)),
-        h('td', null, personLine(p)),
+        h('td', null, h('div', { class: 'who-online' }, onlineDot(p.online), personLine(p))),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
         h('td', null, PUSH_STATE[p.state](p)),
@@ -2605,7 +2610,6 @@ function viewPushReport() {
         h('td', null, p.safetyAckAt ? h('span', { class: 'chip chip-ok', title: `Letto e compreso alle ${fmtTime(p.safetyAckAt)}` }, 'letto') : h('span', { class: 'chip chip-blood' }, 'non letto'))))))));
   return h('div', { class: 'stack' },
     sectionActions('Pronti per la gara: notifiche, Traccar, ICE e sicurezza', [
-      h('button', { class: 'btn btn-sm', onclick: loadPushReport }, '↻ Aggiorna'),
       missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
       h('p', { class: 'muted tiny' }, 'Traccar: «verificato» = ha fatto la prova a schermo spento nell\'app (pagina Traccar); «non manda» = a partita in corso non arriva niente da 10 minuti. Senza Traccar la posizione si perde appena chiude l\'app.'),
       h('p', { class: 'muted tiny' }, 'In alto chi è a posto (✓), poi chi ha meno cose da sistemare (il numero dice quante). ICE: solo se è compilato, il contenuto la regia non lo vede mai (arriva solo con un\'emergenza). Sicurezza: ha letto e compreso l\'avviso pre-gara su EMERGENZA e ICE.'),
@@ -2653,8 +2657,40 @@ function viewNotices() {
   const target = h('select', { class: 'input', 'data-keep': 'nt-target', onchange: () => teamWrap.classList.toggle('hidden', target.value !== 'team') },
     Object.entries(ms.noticeTargets).map(([k, v]) => h('option', { value: k }, v)));
   queueMicrotask(() => teamWrap.classList.toggle('hidden', target.value !== 'team'));
-  const devices = ms.teams.reduce((a, t) => a + t.pushDevices, 0) + ms.elect.pushDevices;
-  const withPush = ms.teams.filter((t) => t.pushDevices).length + (ms.elect.pushDevices ? 1 : 0);
+  // Anteprima: stessa resa dell'app (markdown ridotto), aggiornata a ogni tasto.
+  const preview = h('div', { class: 'notice-preview' });
+  const drawPreview = () => {
+    preview.replaceChildren(h('div', { class: 'np-card' },
+      h('div', { class: 'np-head' }, h('span', { class: 'chip' }, ms.noticeTargets[target.value] || 'Per tutti'), h('span', { class: 'mono tiny muted' }, 'adesso')),
+      h('h3', { class: 'np-title' }, poll.checked ? '📊 ' : '', title.value.trim() || 'Titolo dell\'avviso'),
+      body.value.trim() ? h('div', { class: 'md' }, md(body.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui.'),
+      poll.checked ? h('div', { class: 'np-poll' }, ['Sì', 'No', 'Forse'].map((x) => h('span', { class: 'btn btn-sm' }, x))) : null));
+  };
+  // Barra di formattazione: avvolge la selezione (o inserisce un esempio) con i segni del markdown.
+  const wrap = (before, after = before, sample = 'testo') => {
+    const a = body.selectionStart ?? body.value.length;
+    const b = body.selectionEnd ?? body.value.length;
+    const sel = body.value.slice(a, b) || sample;
+    body.value = body.value.slice(0, a) + before + sel + after + body.value.slice(b);
+    body.focus();
+    body.setSelectionRange(a + before.length, a + before.length + sel.length);
+    drawPreview();
+  };
+  const link = async () => {
+    const url = await dialog({ title: 'Link', text: 'Indirizzo (https://…) o pagina dell\'app (#/ice, #/skill, #/mappa, #/doni, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
+    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
+  };
+  const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm', title, onclick: fn }, label);
+  const toolbar = h('div', { class: 'md-toolbar' },
+    tool(h('strong', null, 'B'), 'Grassetto', () => wrap('**')),
+    tool(h('em', null, 'I'), 'Corsivo', () => wrap('*')),
+    tool('🔗 Link', 'Link come pulsante', link),
+    tool('✚ ICE', 'Pulsante per compilare i dati ICE', () => wrap('[', '](#/ice)', 'Compila i dati ICE')),
+    tool('¶', 'Nuovo paragrafo', () => wrap('\n\n', '', '')));
+  for (const el of [title, body]) el.addEventListener('input', drawPreview);
+  target.addEventListener('change', drawPreview);
+  poll.addEventListener('change', drawPreview);
+  queueMicrotask(drawPreview);
 
   return h('div', { class: 'stack' },
     h('div', { class: 'cols-2' },
@@ -2674,18 +2710,14 @@ function viewNotices() {
           } catch (err) { toast(err.message, 'error', 6000); }
         } },
         h('label', { class: 'field' }, h('span', null, 'Titolo'), title),
-        h('label', { class: 'field' }, h('span', null, 'Testo'), body),
+        h('label', { class: 'field' }, h('span', null, 'Testo'), toolbar, body),
         h('p', { class: 'tiny muted' }, 'Formattazione: **grassetto**, *corsivo*, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante; anche gli indirizzi https://… diventano link. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento.'),
         h('label', { class: 'field' }, h('span', null, 'Destinatari'), target),
         teamWrap,
         h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Invia avviso'))),
-      section('Notifiche sui telefoni',
-        h('div', { class: 'big' }, `${devices} dispositivi`),
-        h('p', { class: 'muted tiny' }, `Accessi con notifiche attive: ${withPush} su ${ms.teams.length + 1} (coppie + Eletti). Ogni giocatore le attiva dall'app: c'è un invito in home e il pulsante in Impostazioni. Servono HTTPS e, su Android, Chrome; meglio con l'app installata nella schermata home.`),
-        h('ul', { class: 'users' }, [...ms.teams, { ...ms.elect, roman: '0', sectorName: 'Eletti del Consiglio' }].map((t) => h('li', null,
-          h('strong', null, `${t.roman || ''} ${t.sectorName}`), h('span', { class: `chip ${t.pushDevices ? 'chip-ok' : ''}` }, t.pushDevices ? `${t.pushDevices} con notifiche` : 'nessuna notifica'),
-          h('span', { class: 'tiny muted' }, `${t.online} online`)))))),
+      // Anteprima di come appare l'avviso nell'app, aggiornata mentre scrivi.
+      section('Anteprima nell\'app', preview)),
     section(`Avvisi inviati (${ms.notices.length})`,
       ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', null,
         h('div', { class: 'grow' },

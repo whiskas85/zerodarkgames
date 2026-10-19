@@ -559,3 +559,28 @@ try {
     document.body.prepend(el);
   }).catch(() => {});
 } catch { /* niente rete */ }
+
+// Avvisi in markdown ridotto: **grassetto**, *corsivo*, [testo](link) come pulsante, link nudi, paragrafi e a capo.
+// Si costruiscono nodi DOM (niente HTML dal testo): i link ammessi sono http(s), pagine del sito (/…) e pagine dell'app (#/…).
+export function md(text) {
+  const safeUrl = (u) => (/^(https?:\/\/|\/|#\/)/i.test(u) ? u : null);
+  const inline = (line) => {
+    const out = [];
+    const re = /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(line))) {
+      if (m.index > last) out.push(line.slice(last, m.index));
+      if (m[1]) {
+        const url = safeUrl(m[2]);
+        out.push(url ? h('a', { class: 'btn btn-sm md-btn', href: url, ...(/^https?:/i.test(url) ? { target: '_blank', rel: 'noopener' } : {}) }, m[1]) : m[0]);
+      } else if (m[3]) out.push(h('a', { href: m[3], target: '_blank', rel: 'noopener' }, m[3]));
+      else if (m[4]) out.push(h('strong', null, ...inline(m[4])));
+      else if (m[5]) out.push(h('em', null, ...inline(m[5])));
+      last = re.lastIndex;
+    }
+    if (last < line.length) out.push(line.slice(last));
+    return out;
+  };
+  return String(text).split(/\n{2,}/).map((para) => h('p', null, para.split('\n').flatMap((l, i) => (i ? [h('br'), ...inline(l)] : inline(l)))));
+}
