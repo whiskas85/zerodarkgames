@@ -610,3 +610,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .md p { margin: 0 0 8px; }
 .md p:last-child { margin-bottom: 0; }
 .md-btn { display: inline-flex; margin: 4px 4px 0 0; text-decoration: none; }
+.sidebar-ext { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); display: grid; }

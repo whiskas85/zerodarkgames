@@ -345,10 +345,9 @@ function topbar() {
       h('span', { class: `chip status-${st}` }, STATUS_LABELS[st]),
       h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, '—'), h('div', { class: 'mono muted tiny' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')))) : null,
     h('div', { class: 'top-actions' },
-      R.gameId ? h('a', { class: 'btn btn-sm', href: `/tabellone?g=${R.gameId}`, target: '_blank' }, 'Tabellone') : null,
-      h('a', { class: 'btn btn-sm', href: '/soglia', target: '_blank' }, 'Soglia'),
-      R.install ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
-      R.push ? pushButton() : null,
+      // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
+      R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
+      R.push && R.push !== 'on' ? pushButton() : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
 }
 
@@ -371,8 +370,13 @@ function sidebar() {
     id === 'squadre' && pendingTasks ? h('span', { class: 'badge badge-alert badge-task', title: 'Incarichi da assegnare (Maestro della caccia…)' }, `🎯 ${pendingTasks}`) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,
-    id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Coppie ed Eletti con qualcosa da sistemare (notifiche, Traccar, ICE, avviso di sicurezza)' }, R.ms.pushOff) : null))));
+    id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Coppie ed Eletti con qualcosa da sistemare (notifiche, Traccar, ICE, avviso di sicurezza)' }, R.ms.pushOff) : null))),
+  // Pagine a parte (si aprono in una nuova scheda).
+  h('div', { class: 'sidebar-ext' },
+    R.gameId ? h('a', { href: `/tabellone?g=${R.gameId}`, target: '_blank', rel: 'noopener' }, 'Tabellone ↗') : h('span', { class: 'off' }, 'Tabellone ↗'),
+    h('a', { href: '/soglia', target: '_blank', rel: 'noopener' }, 'Soglia ↗')));
 }
+const installedApp = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function tick() {
   tickTimeline();
