@@ -2,7 +2,7 @@
 // Skill delle coppie e Doni con effetto. Le Skill si scelgono prima del via (limiti per partita) o si vincono con i
 // Doni; ogni Skill ha il suo tempo di ricarica. Le posizioni degli altri non arrivano mai alle coppie, tranne mentre
 // un effetto le mostra: il server decide chi vede chi e per quanto.
-const { q, tx } = require('./db');
+const { q, tx, getSetting, setSetting } = require('./db');
 const C = require('./constants');
 const G = require('./game');
 const K = require('./combat');
@@ -739,6 +739,39 @@ function editCatalog(gameId, kind, id, data, actor) {
   return editableCatalog(g.id);
 }
 
+// Una volta sola: nelle descrizioni già riscritte dalla regia, i minuti di durata e ricarica (e il raggio
+// dell'Occhio) diventano tag. Il testo per le coppie non cambia; da qui in poi segue i tempi impostati.
+function migrateCatalogTags() {
+  if (getSetting('catalogTagsV1')) return 0;
+  const esc = (n) => String(n).replace('.', '\\.');
+  let n = 0;
+  for (const g of q.all("SELECT * FROM games WHERE catalogEdits IS NOT NULL AND catalogEdits != ''")) {
+    const ed = catalogEdits(g);
+    let changed = false;
+    for (const [group, list] of [['skills', SKILLS], ['gifts', GIFTS]]) {
+      for (const [id, e] of Object.entries(ed[group] || {})) {
+        const base = list.find((x) => x.id === id);
+        if (!base || !e?.description) continue;
+        const cur = group === 'skills' ? skillTemplate(base, g) : giftTemplate(base, g);
+        let d = e.description;
+        const sub = (v, tag, unit) => { if (v != null) d = d.replace(new RegExp(`(^|[^\\d.,])${esc(v)}(\\s*${unit})`, 'g'), `$1{${tag}}$2`); };
+        sub(cur.durationMin, 'durata', '(?:minut|min\\b|′)');
+        sub(cur.cooldownMin, 'ricarica', '(?:minut|min\\b|′)');
+        if (group === 'skills' && id === 'occhio') sub(eyeOf(g).radius, 'raggio', '(?:m\\b|metri)');
+        if (d === e.description) continue;
+        if (d === base.description) delete e.description; else e.description = d;
+        if (!Object.keys(e).length) delete ed[group][id];
+        changed = true;
+        n++;
+      }
+    }
+    if (changed) q.run('UPDATE games SET catalogEdits = ? WHERE id = ?', JSON.stringify(ed), g.id);
+  }
+  setSetting('catalogTagsV1', String(Date.now()));
+  if (n) console.log(`Descrizioni di Skill e Doni convertite con i tag: ${n}`);
+  return n;
+}
+
 // Skill con valori che dipendono dai parametri della partita (Occhio del Consiglio, Memoria del Nodo), poi le modifiche della regia.
 function forGame(s, g) {
   const t = skillTemplate(s, g);
@@ -944,6 +977,7 @@ function resetGame(gameId) {
 }
 
 module.exports = {
+  migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
   editableCatalog, editCatalog, giftForGame,

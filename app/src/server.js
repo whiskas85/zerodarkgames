@@ -816,6 +816,7 @@ app.use((e, req, res, _next) => {
 seed();
 G.ensurePlayerCredentials();
 rt.initPush();
+try { S.migrateCatalogTags(); } catch (e) { console.error('migrazione tag', e); }
 setInterval(G.tickAll, 1000).unref();
 setInterval(F.tickAll, 2000).unref();
 setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }, 20000).unref();
