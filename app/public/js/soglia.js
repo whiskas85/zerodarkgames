@@ -1,7 +1,12 @@
 // La Soglia: validazione finale dei frammenti (validatore o regia).
-import { h, mount, api, fmtTime, toast, dialog, stream, store, STATUS_LABELS } from './lib.js';
+import { h, mount, api, fmtTime, fmtDuration, makeClock, toast, dialog, stream, store, STATUS_LABELS } from './lib.js';
 
 const $root = document.getElementById('root');
+// Countdown di gara (orologio del server, come in regia e nell'app).
+const clock = makeClock();
+setInterval(() => {
+  for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
+}, 1000);
 const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 
 (async function boot() {
@@ -22,6 +27,7 @@ async function load() {
   if (!V.gameId) return render();
   try {
     V.data = await api('GET', `/api/v/games/${V.gameId}/teams`);
+    clock.set(V.data.clock);
     if (V.teamId) V.team = await api('GET', `/api/v/teams/${V.teamId}`);
   } catch (e) { toast(e.message, 'error'); }
   render();
@@ -34,6 +40,8 @@ function render() {
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'La Soglia'), h('div', { class: 'eyebrow' }, `Ufficiale del Consiglio · ${V.me.username}`))),
       h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
+      V.data?.clock ? h('div', { class: 'top-clock' }, h('span', { class: `chip status-${V.data.clock.status}` }, STATUS_LABELS[V.data.clock.status]),
+        h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, clock.snap?.startedAt ? fmtDuration(clock.remaining()) : '—')) : null,
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
     h('main', { class: 'content soglia' },
       h('div', { class: 'reminder' }, h('strong', null, 'Si presenta una sola coppia: le alleanze vanno sciolte prima.'), ' Alla Soglia non si combatte.'),
