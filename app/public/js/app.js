@@ -2692,6 +2692,7 @@ function viewTraccar() {
         h('li', null, h('strong', null, 'Precisione (Location accuracy)'), ': alta / High'),
         h('li', null, h('strong', null, 'Intervallo (Interval)'), ': 30 secondi'),
         h('li', null, h('strong', null, 'Distanza (Distance)'), ': 0'),
+        h('li', null, h('strong', null, 'Invio da fermo (Heartbeat / Stationary interval)'), ': 60 secondi'),
         h('li', null, 'Se c\'è, ', h('strong', null, 'Offline buffering'), ': acceso')),
       h('p', { class: 'small muted' }, 'L\'identificativo è solo tuo: non condividerlo.'),
       nav(1, 3, 'Fatto →'),
