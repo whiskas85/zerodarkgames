@@ -297,8 +297,26 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .tile-scan { border-color: var(--brass); }
 
 /* Mappa delle coppie */
-.team-map { height: calc(100dvh - 330px); min-height: 300px; }
+/* La mappa prende quasi tutto lo schermo; i comandi stanno sopra, in basso a sinistra. */
+.team-map { height: calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 300px; }
 .map-page { gap: 10px; }
+.map-wrap { position: relative; margin: 0 -16px; }
+.map-wrap .team-map { border-left: 0; border-right: 0; }
+.map-tools { position: absolute; left: 10px; bottom: 24px; z-index: 500; display: flex; gap: 6px; flex-wrap: wrap; }
+.map-tools .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
+
+/* Menu laterale (da destra) */
+.rail-menu { display: none; }
+.side-menu { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0); transition: background .2s; }
+.side-menu.open { background: rgba(0,0,0,.55); }
+.side-menu-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(340px, 86vw); overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 8px;
+  padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) 12px; background: var(--bg); border-left: 2px solid var(--blood); transform: translateX(100%); transition: transform .2s; }
+.side-menu.open .side-menu-panel { transform: none; }
+.side-menu-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+.side-menu .tile { min-height: 64px; padding: 10px; font-size: 15px; gap: 4px; }
+.side-menu .tile .tiny { display: none; }
+
 
 /* Doni del Consiglio */
 .gift-card { display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center; padding: 14px; border: 3px solid var(--c, var(--brass)); background: var(--paper); }
@@ -670,3 +688,27 @@ button.banner-safety strong { letter-spacing: .08em; }
 /* Testo degli avvisi: il grassetto resta nel testo (non prende lo stile del titolo della scheda) */
 .md strong, .md em { display: inline; font-family: inherit; font-size: inherit; text-transform: none; letter-spacing: normal; line-height: inherit; margin: 0; }
 .md strong { font-weight: 700; }
+
+/* Telefono in orizzontale: radio, EMERGENZA e menu in colonna a destra; la mappa riempie il resto. */
+@media (orientation: landscape) and (max-height: 560px) {
+  :root { --rail-w: calc(84px + env(safe-area-inset-right)); }
+  body { padding-bottom: 0; padding-right: var(--rail-w); }
+  .radio { left: auto; top: 0; right: 0; bottom: 0; width: var(--rail-w); height: auto; flex-direction: column; justify-content: flex-start; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) 8px; border-top: 0; border-left: 2px solid var(--blood); white-space: normal; text-align: center; }
+  .radio .eyebrow { font-size: 10px; }
+  .radio strong { font-size: 12px; line-height: 1.25; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
+  .rail-menu { display: block; width: 100%; padding: 10px 0; font-size: 24px; line-height: 1; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-radius: 4px; cursor: pointer; }
+  .btn-sos { margin: auto 0 0; width: 100%; flex: 1 1 auto; max-height: 220px; min-height: 120px; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 15px; letter-spacing: .2em; }
+  .top { padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; }
+  .main { max-width: 900px; }
+  body[data-view="mappa"] .main { max-width: none; padding: 0 0 0 env(safe-area-inset-left); }
+  body[data-view="mappa"] .map-page > :not(.map-wrap) { margin: 8px 12px 0; }
+  body[data-view="mappa"] .map-wrap { margin: 0; }
+  .team-map { height: calc(100dvh - 58px - env(safe-area-inset-top)); min-height: 220px; }
+  /* Sulla mappa i banner restano, ma su una riga sola: lo spazio è della mappa. */
+  body[data-view="mappa"] .banners > * { max-height: 38px; overflow: hidden; padding-top: 8px; padding-bottom: 8px; }
+  .toasts { bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .composer { right: var(--rail-w); bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .main-chat { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  body.chat-open .toasts { bottom: calc(84px + env(safe-area-inset-bottom)); }
+}

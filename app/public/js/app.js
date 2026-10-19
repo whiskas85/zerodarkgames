@@ -432,6 +432,8 @@ function render() {
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
+    document.body.dataset.view = view;
+    if (view === 'mappa' && !isElect()) requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', view === 'messaggi');
     if (view === 'messaggi' && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
   });
@@ -542,10 +544,39 @@ function banners() {
   return out.length ? h('div', { class: 'banners' }, out) : null;
 }
 
+// In verticale è la barra in fondo; in orizzontale diventa la colonna a destra (con il menu).
 function radioBar() {
   const ch = S.state?.game.emergencyRadioChannel;
-  return h('footer', { class: 'radio' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
+  return h('footer', { class: 'radio' },
+    S.state ? h('button', { class: 'rail-menu', type: 'button', 'aria-label': 'Menu', onclick: openMenu }, '☰') : null,
+    h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
     S.state ? h('button', { class: 'btn-sos', type: 'button', onclick: emergencyModal }, 'EMERGENZA') : null);
+}
+
+// La mappa occupa tutto lo spazio libero sotto i banner (sopra la barra radio, se è in fondo).
+function fitMap() {
+  const el = teamMapView.el;
+  if (!document.body.contains(el)) return;
+  const radio = document.querySelector('.radio');
+  const bottom = radio && radio.getBoundingClientRect().top > window.innerHeight / 2 ? radio.offsetHeight : 0;
+  const top = el.getBoundingClientRect().top + window.scrollY;
+  const height = Math.max(240, Math.round(window.innerHeight - top - bottom));
+  if (el.style.height !== `${height}px`) { el.style.height = `${height}px`; teamMapView.resize(); }
+}
+window.addEventListener('resize', () => { if (document.body.dataset.view === 'mappa') requestAnimationFrame(fitMap); });
+
+// Menu laterale (in orizzontale): le stesse voci della home, che si apre da destra.
+function openMenu() {
+  document.querySelector('.side-menu')?.remove();
+  const grid = viewHome().querySelector?.('nav.grid');
+  const close = () => { ov.classList.remove('open'); setTimeout(() => ov.remove(), 200); };
+  const ov = h('div', { class: 'side-menu', onclick: (e) => { if (e.target === ov || e.target.closest('a, button')) close(); } },
+    h('nav', { class: 'side-menu-panel' },
+      h('div', { class: 'side-menu-head' }, h('strong', null, 'Menu'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi' }, '✕')),
+      h('a', { class: 'tile', href: '#/home' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌂'), h('span', null, 'Home')),
+      grid ? [...grid.children] : null));
+  document.body.append(ov);
+  requestAnimationFrame(() => ov.classList.add('open'));
 }
 
 // Avviso di sicurezza pre-gara: come funziona EMERGENZA (con un simulacro, che non chiama nessuno) e i dati ICE.
@@ -1230,10 +1261,9 @@ function startMapGps() {
     gpsMsg = null;
     teamMapView.setMe(p);
     const el = document.getElementById('map-gps');
-    if (el) el.textContent = gpsLine(p);
-  }, (msg) => { gpsMsg = msg; const el = document.getElementById('map-gps'); if (el) el.textContent = msg; });
+    if (el) el.hidden = true;
+  }, (msg) => { gpsMsg = msg; const el = document.getElementById('map-gps'); if (el) { el.textContent = msg; el.hidden = false; } });
 }
-const gpsLine = (p) => `La vostra posizione: ± ${p.acc} m${accuracyHint(p.acc) ? ` · ${accuracyHint(p.acc)}` : ''}`;
 function stopMapGps() { stopGps?.(); stopGps = null; }
 
 // Parola intera: il riquadro porta alla mappa inquadrata sulla Soglia.
@@ -1331,26 +1361,18 @@ function viewMap(focus = null) {
   const hints = S.state?.skills?.giftHints || [];
   if (focus === 'presagio' && hints.length && S.focusedHint !== location.hash) { S.focusedHint = location.hash; setTimeout(() => teamMapView.focus(hints.map((x) => `h${x.id}`)), 120); }
   if (focus !== 'presagio') S.focusedHint = null;
+  // La mappa prende quasi tutto lo schermo: niente titolo, legenda né note (il cerchio blu dice già dove siete).
   return h('div', { class: 'stack map-page' },
-    h('h2', null, 'Mappa'),
     sightingsNote(),
     canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,
     focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera e, senza alleati, leggete il codice di uscita appeso lì.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
-    h('p', { class: 'mono small', id: 'map-gps' }, myPos ? gpsLine(myPos) : gpsMsg || 'Ricerca della posizione…'),
-    teamMapView.el,
-    h('div', { class: 'row-actions' },
-      h('button', { class: 'btn btn-sm', onclick: () => teamMapView.centerMe() }, '◎ Dove siamo'),
-      h('button', { class: 'btn btn-sm', onclick: () => teamMapView.autoCenter() }, 'Tutto il campo'),
-      h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'I punti della vostra mappa per ATAK o Google Earth' }, '⇩ KMZ (ATAK)')),
-    h('div', { class: 'map-legend' },
-      h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
-      h('span', null, h('span', { class: 'pin pin-altar pin-mine' }, 'I'), ' Il vostro'),
-      h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
-      h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
-      h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono'),
-      h('span', null, h('span', { class: 'pin pin-me' }), ' Voi')),
-    trackingNote(S.state) || h('p', { class: 'muted small' }, 'Prima del via la vostra posizione resta su questo telefono.'),
-    h('p', { class: 'muted small' }, 'La mappa già vista funziona anche con poco segnale.'));
+    h('p', { class: 'mono small bad-text', id: 'map-gps', hidden: !!myPos || !gpsMsg }, myPos ? '' : gpsMsg || ''),
+    h('div', { class: 'map-wrap' },
+      teamMapView.el,
+      h('div', { class: 'map-tools' },
+        h('button', { class: 'btn btn-sm', onclick: () => teamMapView.centerMe() }, '◎ Dove siamo'),
+        h('button', { class: 'btn btn-sm', onclick: () => teamMapView.autoCenter() }, 'Tutto il campo'),
+        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'I punti della vostra mappa per ATAK o Google Earth' }, '⇩ KMZ'))));
 }
 
 // ---------------------------------------------------------------- Campo degli Eletti

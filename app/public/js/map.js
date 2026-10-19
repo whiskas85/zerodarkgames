@@ -190,6 +190,7 @@ export function createMapView({ className = '' } = {}) {
     onMarkerTap(fn) { onMarkerTap = fn; },
     // Da chiamare dopo che l'elemento è stato riagganciato alla pagina.
     refresh() { if (map) setTimeout(() => { map.invalidateSize(); autoFit(); }, 30); },
+    resize() { if (map) map.invalidateSize(); },
     // Inquadra alcuni segnaposto (per chiave) insieme alla mia posizione; la centratura automatica si ferma.
     focus(keys) {
       if (!map) return false;
