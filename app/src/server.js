@@ -403,6 +403,11 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
   return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.verifyTracking(req.player, req.body?.since) };
 }));
 // EMERGENZA reale (OFF GAME): da qualunque telefono della partita, anche prima della coppia.
+// Avviso di sicurezza pre-gara letto e compreso (per chi entra con l'accesso personale; con il codice di coppia resta sul telefono).
+app.post('/api/team/safety-ack', needMember, wrap((req) => {
+  if (req.player) q.run('UPDATE players SET safetyAckAt = COALESCE(safetyAckAt, ?) WHERE id = ?', Date.now(), req.player.id);
+  return { ok: true };
+}));
 // Risposta a un sondaggio negli avvisi (anche da chi è ancora in anteprima, senza Settore).
 app.post('/api/team/notices/:id/vote', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Iscriviti a una partita per rispondere');

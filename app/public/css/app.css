@@ -636,3 +636,33 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .md p { margin: 0 0 8px; }
 .md p:last-child { margin-bottom: 0; }
 .md-btn { display: inline-flex; margin: 4px 4px 0 0; text-decoration: none; }
+
+/* Avviso di sicurezza pre-gara (OFF GAME) */
+button.banner-safety { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; background: #b00012; color: #fff; display: grid; gap: 2px;
+  border-top: 3px solid #ff4d4d; border-bottom: 3px solid #ff4d4d; animation: safety-pulse 2s ease-in-out infinite; }
+button.banner-safety strong { letter-spacing: .08em; }
+@keyframes safety-pulse { 0%, 100% { background: #b00012; } 50% { background: #d0021b; } }
+@media (prefers-reduced-motion: reduce) { button.banner-safety { animation: none; } }
+.safety-box { text-align: left; }
+.safety-box h2, .safety-box .eyebrow { text-align: center; }
+.safety-h { margin: 6px 0 0; font-family: var(--f-display); text-transform: uppercase; color: #ff5a4a; font-size: 18px; }
+.safety-list { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.safety-back { justify-self: start; }
+.safety-check { display: flex; align-items: center; gap: 10px; font-weight: 700; padding: 10px; border: 2px solid #d0021b; }
+.safety-check input { width: 22px; height: 22px; }
+.btn-ice { background: #d0021b; color: #fff; border-color: #d0021b; }
+.safety-sim { position: relative; display: grid; gap: 6px; padding: 10px; border: 2px dashed #888; opacity: .95; pointer-events: none; }
+.safety-sim .sim-bar { position: static; border-radius: 4px; }
+.sim-arrow { text-align: center; font: 600 12px var(--f-mono, monospace); color: var(--muted); }
+.sim-screen { justify-self: center; width: 170px; display: grid; gap: 6px; justify-items: center; padding: 0 0 10px; border: 2px solid #d0021b; background: var(--bg); }
+.sim-stripe { width: 100%; height: 12px; background: repeating-linear-gradient(45deg, #d0021b 0 7px, #111 7px 14px); }
+.sim-title { font-family: var(--f-display); text-transform: uppercase; color: #ff5a4a; font-size: 14px; }
+.sim-big { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff; background: radial-gradient(circle at 35% 30%, #ff4d4d, #b00012 70%); color: #fff; display: grid; place-items: center; font: 800 9px var(--f-display); }
+.sim-note { font: 11px var(--f-mono, monospace); color: var(--muted); }
+.sim-tag { position: absolute; top: 6px; right: -4px; transform: rotate(8deg); background: #f2c94c; color: #111; font: 800 10px var(--f-mono, monospace); padding: 2px 6px; letter-spacing: .08em; }
+.sos-overlay.safety { place-items: start center; }
+.safety-box { min-width: 0; overflow-x: hidden; }
+.safety-sim .sim-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; }
+.safety-sim .sim-bar strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.safety-sim .sim-tag { right: 6px; }
+.safety-sim .sim-tag { top: -10px; left: 10px; right: auto; transform: rotate(-4deg); }

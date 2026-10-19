@@ -1809,7 +1809,7 @@ function electState(team, player = null) {
 }
 
 function playerInfo(player) {
-  return player ? { id: player.id, name: player.name, nickname: player.nickname, accessCode: player.accessCode, status: player.status, role: player.requestedRole } : null;
+  return player ? { id: player.id, name: player.name, nickname: player.nickname, accessCode: player.accessCode, status: player.status, role: player.requestedRole, safetyAckAt: player.safetyAckAt || null } : null;
 }
 
 // Anteprima: iscritto (anche in attesa di approvazione) che non è ancora in una coppia né tra gli Eletti.

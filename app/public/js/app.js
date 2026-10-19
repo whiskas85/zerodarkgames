@@ -527,6 +527,9 @@ function banners() {
   // Il server è stato aggiornato mentre l'app era aperta: questa versione può non capire le novità.
   if (S.bootVersion && st.appVersion && st.appVersion !== S.bootVersion) out.push(h('button', { type: 'button', class: 'banner banner-action banner-update', onclick: () => location.reload() },
     h('strong', null, 'Nuova versione dell\'app'), h('span', null, 'Tocca qui per aggiornare')));
+  // Prima della gara: avviso ROSSO di sicurezza (EMERGENZA e ICE) finché non viene letto e compreso.
+  if (['draft', 'ready', 'circle'].includes(c.status) && !safetyAcked()) out.push(h('button', { type: 'button', class: 'banner banner-safety', onclick: safetyModal },
+    h('strong', null, '⚠ SICUREZZA · OFF GAME'), h('span', null, 'Prima della gara: leggete come funziona il pulsante EMERGENZA e compilate i dati ICE. Toccate qui.')));
   const trkOn = traccarPrompt(st);
   if (trkOn) out.push(trkOn);
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
@@ -541,6 +544,66 @@ function radioBar() {
   const ch = S.state?.game.emergencyRadioChannel;
   return h('footer', { class: 'radio' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
     S.state ? h('button', { class: 'btn-sos', type: 'button', onclick: emergencyModal }, 'EMERGENZA') : null);
+}
+
+// Avviso di sicurezza pre-gara: come funziona EMERGENZA (con un simulacro, che non chiama nessuno) e i dati ICE.
+// Si toglie solo con la spunta «Ho letto e ho compreso».
+const safetyKey = () => `zdg_safety_${S.state?.game.id}`;
+const safetyAcked = () => !!(S.state?.player?.safetyAckAt || store.get(safetyKey(), false));
+function safetyModal() {
+  const ov = h('div', { class: 'sos-overlay safety', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Sicurezza OFF GAME' });
+  const close = () => ov.remove();
+  const box = h('div', { class: 'sos-box safety-box' });
+  const ch = S.state?.game.emergencyRadioChannel;
+  const showMain = () => {
+    const acc = S.state?.account;
+    const filled = iceFilled();
+    const check = h('input', { type: 'checkbox', onchange: () => { ok.disabled = !check.checked; } });
+    const ok = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true, onclick: async () => {
+      store.set(safetyKey(), true);
+      try { await api('POST', '/api/team/safety-ack', {}); } catch { /* resta sul telefono */ }
+      toast('Grazie: ora sapete cosa fare in caso di emergenza', 'ok');
+      close(); refresh(); render();
+    } }, 'Conferma');
+    box.replaceChildren(
+      offGameStripe(),
+      h('div', { class: 'eyebrow' }, 'Prima della gara · OFF GAME'),
+      h('h2', null, 'In Case of Emergency'),
+      h('p', null, 'Questa parte è ', h('strong', null, 'fuori dal gioco ed è una cosa seria'), ': serve solo per infortuni, malori o pericoli reali.'),
+      h('h3', { class: 'safety-h' }, '1 · Il pulsante EMERGENZA'),
+      h('p', { class: 'small' }, 'In fondo all\'app, sempre visibile, c\'è questo pulsante:'),
+      h('div', { class: 'safety-sim', 'aria-hidden': 'true' },
+        h('div', { class: 'radio sim-bar' }, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono' }, ch || '…'), h('span', { class: 'btn-sos' }, 'EMERGENZA')),
+        h('div', { class: 'sim-arrow' }, '↓ si apre la schermata di emergenza ↓'),
+        h('div', { class: 'sim-screen' }, h('div', { class: 'sim-stripe' }), h('div', { class: 'sim-title' }, 'Emergenza reale'), h('div', { class: 'sim-big' }, 'EMERGENZA'), h('div', { class: 'sim-note' }, 'conferma: «Sì, invia»')),
+        h('div', { class: 'sim-tag' }, 'SIMULACRO · non chiama nessuno')),
+      h('ul', { class: 'small safety-list' },
+        h('li', null, 'Premere EMERGENZA in fondo all\'app ', h('strong', null, 'non fa partire l\'emergenza'), ': apre la schermata di emergenza.'),
+        h('li', null, 'Lì premete il pulsante rosso grande e confermate: solo allora la Direzione riceve chi siete, la vostra posizione e i vostri dati ICE.'),
+        h('li', null, 'Lo stesso fa il pulsante SOS di Traccar Client.'),
+        ch ? h('li', null, 'Se potete, chiamate anche via radio: ', h('strong', { class: 'mono' }, ch), '.') : null),
+      h('h3', { class: 'safety-h' }, '2 · I vostri dati ICE'),
+      h('p', { class: 'small' }, 'Gruppo sanguigno, patologie da conoscere, contatto di emergenza. Facoltativi, ', h('strong', null, 'non visibili in regia'), ': arrivano alla Direzione solo con l\'emergenza.'),
+      acc ? h('button', { class: `btn btn-block ${filled ? '' : 'btn-ice'}`, type: 'button', onclick: showIce }, filled ? '✓ Dati ICE compilati · rivedili' : '✚ Compila i dati ICE')
+        : h('p', { class: 'tiny muted' }, 'I dati ICE si salvano nell\'account personale: entrate con il vostro account per compilarli.'),
+      h('label', { class: 'safety-check' }, check, ' Ho letto e ho compreso'),
+      ok,
+      h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: close }, 'Più tardi'),
+      offGameStripe());
+  };
+  // Compilazione ICE nella stessa finestra: freccia per tornare indietro, oppure Salva.
+  const showIce = () => {
+    box.replaceChildren(
+      offGameStripe(),
+      h('button', { class: 'btn btn-ghost btn-sm safety-back', type: 'button', onclick: showMain }, '‹ Indietro'),
+      h('h2', null, 'Dati ICE'),
+      h('p', { class: 'small' }, h('strong', null, 'Non visibili in regia.'), ' Arrivano alla Direzione solo se premete EMERGENZA e confermate.'),
+      iceForm(showMain),
+      offGameStripe());
+  };
+  showMain();
+  ov.append(box);
+  document.body.append(ov);
 }
 
 // EMERGENZA reale (OFF GAME): manda alla Direzione (DE) chi siete e dove siete. Non è un'emergenza di gioco.
@@ -2228,22 +2291,28 @@ function bloodSelect(value) {
   return h('select', { class: 'input', name: 'iceBlood' }, h('option', { value: '' }, 'Non indicato'), opts.map((g) => h('option', { value: g, selected: g === value }, g)));
 }
 const offGameStripe = () => h('div', { class: 'offgame-stripe', 'aria-hidden': 'true' }, h('span', null, 'OFF GAME'));
-function viewIce() {
-  const acc = S.state?.account;
-  const ice = acc?.ice || {};
+// Modulo ICE: nella pagina ICE e dentro l'avviso di sicurezza pre-gara. onSaved: cosa fare dopo il salvataggio.
+function iceForm(onSaved = null) {
+  const ice = S.state?.account?.ice || {};
   const field = (label, name, value, attrs = {}) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', name, value: value || '', ...attrs }));
   const cond = h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' });
   cond.value = ice.conditions || '';
   const form = h('form', { class: 'stack', onsubmit: async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(form).entries());
-    try { await api('PATCH', '/api/account', fd); toast('Dati ICE salvati', 'ok'); refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per salvare' : err.message, 'error', 6000); }
+    try { await api('PATCH', '/api/account', fd); toast('Dati ICE salvati', 'ok'); await refresh(); onSaved?.(); } catch (err) { toast(err.offline ? 'Serve la rete per salvare' : err.message, 'error', 6000); }
   } },
   h('label', { class: 'field' }, h('span', null, 'Gruppo sanguigno'), bloodSelect(ice.blood)),
   h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'), cond),
   field('Nome del contatto di emergenza', 'iceContactName', ice.contactName, { maxlength: 80, placeholder: 'es. Laura (moglie)' }),
   field('Telefono del contatto di emergenza', 'iceContactPhone', ice.contactPhone, { type: 'tel', maxlength: 30 }),
   h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Salva'));
+  return form;
+}
+
+function viewIce() {
+  const acc = S.state?.account;
+  const form = iceForm();
   return h('div', { class: 'stack ice-page' },
     offGameStripe(),
     h('h2', null, 'ICE · In Case of Emergency'),

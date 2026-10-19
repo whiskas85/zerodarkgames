@@ -504,4 +504,7 @@ CREATE TABLE IF NOT EXISTS notice_votes (
 );
 `);
 
+// Avviso di sicurezza pre-gara (EMERGENZA e ICE): quando la persona ha confermato «Ho letto e ho compreso».
+addColumn('players', 'safetyAckAt', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };
