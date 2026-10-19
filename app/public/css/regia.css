@@ -584,3 +584,11 @@ tr.gift-row-claimed td { opacity: .6; }
 .cat-ico { font-size: 22px; }
 /* Dati ICE dentro un'emergenza */
 .ice-box { display: grid; gap: 4px; padding: 10px 12px; border: 2px solid #c0392b; background: rgba(192, 57, 43, .12); border-radius: 4px; }
+/* Sondaggi negli avvisi */
+.poll-res { display: grid; gap: 6px; margin-top: 6px; }
+.poll-counts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.poll-chip-si { border-color: #2f8f4e; color: #6fd08e; }
+.poll-chip-no { border-color: #c0392b; color: #ff8a7a; }
+.poll-chip-forse { border-color: #c9a227; color: #e9c75a; }
+.poll-voters { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 13px; }
+label.check { display: flex; align-items: center; gap: 8px; }

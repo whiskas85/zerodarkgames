@@ -771,7 +771,7 @@ const ROLE_TEXT = {
 function viewLobbyHome(st) {
   const pl = st.player || {};
   const pending = pl.status === 'pending';
-  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice).length;
+  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const partner = st.team.members.find((m) => m.name !== pl.name);
   return h('div', { class: 'home' },
@@ -803,7 +803,7 @@ function viewElectHome(st) {
   const c = st.clock;
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
-  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice).length;
+  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const lastAnn = st.announcements[0];
   return h('div', { class: 'home' },
     h('div', { class: 'phase' },
@@ -843,7 +843,7 @@ function viewHome() {
   if (!st) return h('p', { class: 'empty' }, 'Caricamento…');
   if (isElect()) return viewElectHome(st);
   if (isLobby()) return viewLobbyHome(st);
-  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice).length;
+  const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const c = st.clock;
   const total = st.fragments.length;
   const owned = st.fragments.filter((f) => f.text).length;
@@ -2183,6 +2183,18 @@ function viewTimers() {
 
 const ANN_LABEL = { gift: 'Dono', gift_taken: 'Dono preso', gift_expired: 'Dono svanito', start: 'Via', hunt_open: 'Caccia', revelation: 'Tradimento', supply: 'Armamenti', supply_end: 'Armamenti chiusi', last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', free: 'Consiglio' };
 
+// Mini sondaggio dell'avviso: Sì / No / Forse. La risposta si può cambiare; la regia vede chi ha risposto cosa.
+const POLL = [['si', 'Sì'], ['no', 'No'], ['forse', 'Forse']];
+function pollButtons(n) {
+  const vote = async (choice) => {
+    try { await api('POST', `/api/team/notices/${n.id}/vote`, { choice }); n.myVote = choice; vibrate(40); toast('Risposta inviata al Consiglio', 'ok'); render(); refresh(); }
+    catch (e) { toast(e.offline ? 'Serve la rete per rispondere' : e.message, 'error'); }
+  };
+  return h('div', { class: 'poll' },
+    h('div', { class: 'poll-btns' }, POLL.map(([k, label]) => h('button', { type: 'button', class: `btn poll-${k} ${n.myVote === k ? 'on' : ''}`, 'aria-pressed': n.myVote === k ? 'true' : 'false', onclick: () => vote(k) }, label))),
+    h('p', { class: 'tiny muted' }, n.myVote ? `Avete risposto «${POLL.find(([k]) => k === n.myVote)[1]}». Potete cambiare idea.` : 'Rispondete: il Consiglio vede le risposte.'));
+}
+
 function viewNotices() {
   const list = S.state?.notices || [];
   const forLabel = (n) => (n.target === 'team' ? 'Solo per voi' : n.target === 'elect' ? 'Per gli Eletti' : n.target === 'couples' ? 'Per le coppie' : 'Per tutti');
@@ -2192,8 +2204,9 @@ function viewNotices() {
     pushInvite(),
     list.length ? h('ul', { class: 'feed' }, list.map((n) => h('li', { class: `ann notice ${n.id > S.seenNotice ? 'new' : ''}` },
       h('div', { class: 'ann-head' }, h('span', { class: `chip ${n.target === 'team' ? 'chip-blood' : 'chip-brass'}` }, forLabel(n)), h('span', { class: 'mono muted small' }, `${new Date(n.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · ${fmtTime(n.createdAt)}`)),
-      h('h3', { class: 'notice-title' }, n.title),
-      n.body ? h('p', null, n.body) : null)))
+      h('h3', { class: 'notice-title' }, n.poll ? '📊 ' : '', n.title),
+      n.body ? h('p', null, n.body) : null,
+      n.poll ? pollButtons(n) : null)))
       : h('p', { class: 'empty' }, 'Nessun avviso, per ora.'));
 }
 

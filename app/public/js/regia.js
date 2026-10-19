@@ -2624,12 +2624,27 @@ function viewPushReport() {
       show(rep.staff).length ? table(show(rep.staff), true) : h('p', { class: 'empty' }, 'Tutti hanno le notifiche attive.')));
 }
 
+// Risultati di un sondaggio: conteggi e, aprendo, chi ha risposto cosa.
+const POLL_LABEL = { si: 'Sì', no: 'No', forse: 'Forse' };
+function pollResultsView(res) {
+  const total = res.votes.length;
+  return h('div', { class: 'poll-res' },
+    h('div', { class: 'poll-counts' }, Object.entries(POLL_LABEL).map(([k, l]) => h('span', { class: `chip poll-chip-${k}` }, `${l}: ${res.counts[k] || 0}`)),
+      h('span', { class: 'tiny muted' }, `${total} ${total === 1 ? 'risposta' : 'risposte'}`)),
+    total ? h('details', null, h('summary', { class: 'tiny' }, 'Chi ha risposto'),
+      h('ul', { class: 'poll-voters' }, Object.keys(POLL_LABEL).map((k) => {
+        const list = res.votes.filter((v) => v.choice === k);
+        return list.length ? h('li', null, h('strong', null, `${POLL_LABEL[k]}: `), list.map((v) => v.name).join(', ')) : null;
+      }))) : null);
+}
+
 function viewNotices() {
   const ms = R.ms;
   const title = h('input', { class: 'input', 'data-keep': 'nt-title', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
   const body = h('textarea', { class: 'input', rows: 4, 'data-keep': 'nt-body', placeholder: 'Testo dell\'avviso', maxlength: 1000 });
   const teamSel = h('select', { class: 'input', 'data-keep': 'nt-team' }, ms.teams.map((t) => h('option', { value: t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` (${t.displayName})` : ''}`)));
   const teamWrap = h('label', { class: 'field hidden' }, h('span', null, 'Coppia'), teamSel);
+  const poll = h('input', { type: 'checkbox', 'data-keep': 'nt-poll' });
   const target = h('select', { class: 'input', 'data-keep': 'nt-target', onchange: () => teamWrap.classList.toggle('hidden', target.value !== 'team') },
     Object.entries(ms.noticeTargets).map(([k, v]) => h('option', { value: k }, v)));
   queueMicrotask(() => teamWrap.classList.toggle('hidden', target.value !== 'team'));
@@ -2646,7 +2661,7 @@ function viewNotices() {
           const dest = target.value === 'team' ? `Settore ${ms.teams.find((t) => String(t.id) === teamSel.value)?.sectorName}` : ms.noticeTargets[target.value];
           if (!(await dialog({ title: 'Inviare l\'avviso?', text: `«${title.value}» a: ${dest}.`, okLabel: 'Invia' }))) return;
           try {
-            const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null });
+            const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null, poll: poll.checked });
             toast(`Avviso inviato · notifica a ${r.devices} dispositivi`, 'ok', 6000);
             title.value = '';
             body.value = '';
@@ -2657,6 +2672,7 @@ function viewNotices() {
         h('label', { class: 'field' }, h('span', null, 'Testo'), body),
         h('label', { class: 'field' }, h('span', null, 'Destinatari'), target),
         teamWrap,
+        h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Invia avviso'))),
       section('Notifiche sui telefoni',
         h('div', { class: 'big' }, `${devices} dispositivi`),
@@ -2668,7 +2684,8 @@ function viewNotices() {
       ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', null,
         h('div', { class: 'grow' },
           h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
-          n.body ? h('p', null, n.body) : null),
+          n.body ? h('p', null, n.body) : null,
+          n.results ? pollResultsView(n.results) : null),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato.')));
 }
 

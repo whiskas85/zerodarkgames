@@ -1653,3 +1653,23 @@ test('ICE: dati facoltativi del profilo, alla regia solo dentro l\'emergenza chi
   assert.equal(e.ice.conditions, 'asma');
   assert.equal(e.ice.contactPhone, '333 1234567');
 });
+
+test('avvisi: visti anche da chi si iscrive dopo; sondaggi Sì / No / Forse con risposta modificabile', () => {
+  const g = setupGame(3);
+  const [T] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const n = G.createNotice(g.id, { title: 'Pizza dopo i Giochi?', target: 'all', poll: true }, 'test');
+  // Iscritto dopo l'avviso, ancora senza Settore: lo vede e risponde.
+  const pid = Number(q.run('INSERT INTO players (gameId, name, status, createdAt) VALUES (?, ?, ?, ?)', g.id, 'Tardivo', 'pending', Date.now()).lastInsertRowid);
+  const late = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const seen = G.lobbyState(late).notices.find((x) => x.id === n.id);
+  assert.ok(seen && seen.poll && seen.myVote === null);
+  G.voteNotice(null, late, n.id, 'forse');
+  G.voteNotice(null, late, n.id, 'si');
+  G.voteNotice(T, null, n.id, 'no');
+  assert.equal(G.lobbyState(late).notices.find((x) => x.id === n.id).myVote, 'si');
+  assert.throws(() => G.voteNotice(T, null, n.id, 'boh'), /Risposta/);
+  const res = G.masterState(g.id).notices.find((x) => x.id === n.id).results;
+  assert.deepEqual(res.counts, { si: 1, no: 1, forse: 0 });
+  const plain = G.createNotice(g.id, { title: 'Solo un avviso' }, 'test');
+  assert.throws(() => G.voteNotice(T, null, plain.id, 'si'), /non è un sondaggio/);
+});

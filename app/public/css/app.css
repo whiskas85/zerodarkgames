@@ -614,3 +614,10 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .gift-expired { display: grid; gap: 6px; padding: 18px; text-align: center; border: 2px dashed var(--line); background: var(--paper-2); }
 .gift-expired strong { font-family: var(--f-display); font-size: 34px; text-transform: uppercase; color: var(--blood); }
 .gift-expired p { margin: 0; }
+/* Mini sondaggi negli avvisi */
+.poll { display: grid; gap: 6px; margin-top: 8px; }
+.poll-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.poll-btns .btn { font-weight: 700; }
+.poll-btns .btn.on.poll-si { background: #2f8f4e; border-color: #2f8f4e; color: #fff; }
+.poll-btns .btn.on.poll-no { background: var(--blood); border-color: var(--blood); color: #fff; }
+.poll-btns .btn.on.poll-forse { background: #c9a227; border-color: #c9a227; color: #1a1206; }

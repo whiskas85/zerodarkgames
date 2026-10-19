@@ -494,4 +494,14 @@ addColumn('accounts', 'iceContactPhone', 'TEXT');
 // L'emergenza porta con sé i dati ICE di chi l'ha chiamata (copiati al momento della chiamata).
 addColumn('emergencies', 'ice', 'TEXT');
 
+// Mini sondaggi negli avvisi: Sì / No / Forse, una risposta per persona (o per accesso di coppia), modificabile.
+addColumn('notices', 'poll', 'INTEGER NOT NULL DEFAULT 0');
+db.exec(`
+CREATE TABLE IF NOT EXISTS notice_votes (
+  noticeId INTEGER NOT NULL REFERENCES notices(id) ON DELETE CASCADE, voterKey TEXT NOT NULL,
+  playerId INTEGER, teamId INTEGER, name TEXT, choice TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY (noticeId, voterKey)
+);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

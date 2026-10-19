@@ -403,6 +403,11 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
   return { serverUrl: `${baseUrl(req)}/api/traccar`, ...F.verifyTracking(req.player, req.body?.since) };
 }));
 // EMERGENZA reale (OFF GAME): da qualunque telefono della partita, anche prima della coppia.
+// Risposta a un sondaggio negli avvisi (anche da chi è ancora in anteprima, senza Settore).
+app.post('/api/team/notices/:id/vote', needMember, wrap((req) => {
+  if (!req.team && !req.player) throw new HttpError(403, 'Iscriviti a una partita per rispondere');
+  return G.voteNotice(req.team, req.player, req.params.id, String(req.body?.choice || ''));
+}));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});
