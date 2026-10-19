@@ -612,3 +612,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .md-btn { display: inline-flex; margin: 4px 4px 0 0; text-decoration: none; }
 .sidebar-ext { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); display: grid; }
 .app-cell { display: grid; gap: 2px; justify-items: start; } .warn-text { color: #e9c75a; }
+
+/* Skill e Doni: tag nelle descrizioni e anteprima */
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag-chip { font-family: var(--f-mono, monospace); }
+.cat-preview-box { padding: 8px 10px; border: 1px dashed var(--line); border-radius: 4px; }
+.cat-preview { margin: 4px 0 0; }

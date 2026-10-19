@@ -1627,6 +1627,13 @@ test('regia: testi e tempi di Skill e Doni modificabili in preparazione, poi blo
   assert.equal(cat.editable, true);
   assert.equal(cat.skills.find((x) => x.id === 'ombra').current.name, 'Ombra Lunga');
   assert.equal(F.giftTypes(G.getGame(g.id)).find((x) => x.id === 'scudo').name, 'Scudo d\'oro');
+  // Tag nelle descrizioni: la regia vede {durata}, le coppie il numero della partita.
+  S.editCatalog(g.id, 'skill', 'tracker', { durationMin: 7 }, 'test');
+  const tr = S.editableCatalog(g.id).skills.find((x) => x.id === 'tracker');
+  assert.match(tr.current.description, /\{durata\} minuti/);
+  assert.match(tr.preview, /per 7 minuti/);
+  assert.ok(tr.tags.some((t) => t.tag === '{durata}' && t.value === 7));
+  assert.match(F.giftTypes(G.getGame(g.id)).find((x) => x.id === 'scudo').description, /^Per 5 minuti/);
   assert.throws(() => S.editCatalog(g.id, 'skill', 'ombra', { durationMin: -3 }, 'test'), /Minuti/);
   S.chooseSkill(A, 'ombra', true);
   G.control(g.id, 'ready', 'test');

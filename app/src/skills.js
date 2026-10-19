@@ -16,20 +16,20 @@ const POS_FRESH_MS = 3 * MIN;
 // kind: active | ultimate | passive. target: team | altar | seal | expiredAltar | null.
 // phase > 1: non ancora disponibile (compare nel catalogo come «in arrivo»).
 const SKILLS = [
-  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 10, target: null, description: 'Mostra sulla mappa tutte le coppie vicine a voi per qualche minuto. Le coppie viste lo scoprono dopo 1 minuto.' },
-  { id: 'ombra', name: 'Ombra', icon: '🥷', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, description: 'Per 15 minuti la vostra posizione non compare a nessuna coppia, qualunque Skill o Dono usino.' },
+  { id: 'occhio', name: 'Occhio del Consiglio', icon: '👁️', kind: 'active', cooldownMin: 60, durationMin: 10, target: null, description: 'Mostra sulla mappa tutte le coppie entro {raggio} m da voi per {durata} minuti. Le coppie viste lo scoprono dopo 1 minuto.' },
+  { id: 'ombra', name: 'Ombra', icon: '🥷', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, description: 'Per {durata} minuti la vostra posizione non compare a nessuna coppia, qualunque Skill o Dono usino.' },
   { id: 'intercettazione', name: 'Intercettazione', icon: '📡', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: scoprite di quali Settori conosce il Sigillo (il codice resta sfocato).' },
   { id: 'segugio', name: 'Segugio', icon: '🦅', kind: 'active', cooldownMin: 30, target: 'team', description: 'Scegliete una coppia: vi arriva una notifica alla prossima volta che conquista un Altare.' },
-  { id: 'custode', name: 'Custode', icon: '🛡️', kind: 'active', cooldownMin: 90, durationMin: 20, target: 'seal', description: 'Proteggete un Sigillo per 20 minuti: le altre coppie che lo conoscono lo vedono coperto, con il conto alla rovescia.' },
-  { id: 'tracker', name: 'Tracker', icon: '⚡', kind: 'active', cooldownMin: 30, durationMin: 5, target: 'team', description: 'Seguite una coppia sulla mappa per 5 minuti. Lei se ne accorge dopo 1 minuto.' },
+  { id: 'custode', name: 'Custode', icon: '🛡️', kind: 'active', cooldownMin: 90, durationMin: 20, target: 'seal', description: 'Proteggete un Sigillo per {durata} minuti: le altre coppie che lo conoscono lo vedono coperto, con il conto alla rovescia.' },
+  { id: 'tracker', name: 'Tracker', icon: '⚡', kind: 'active', cooldownMin: 30, durationMin: 5, target: 'team', description: 'Seguite una coppia sulla mappa per {durata} minuti. Lei se ne accorge dopo 1 minuto.' },
   { id: 'memoria', name: 'Memoria', icon: '🧩', kind: 'active', cooldownMin: 60, target: 'expiredAltar', description: 'Riaprite un Altare già inquadrato la cui scansione è scaduta: potete di nuovo pronunciarne il Sigillo.' },
-  { id: 'confusione', name: 'Confusione', icon: '🌀', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, auto: true, description: 'Automatica: quando qualcuno vede la vostra posizione, per 15 minuti vede anche una posizione falsa.' },
+  { id: 'confusione', name: 'Confusione', icon: '🌀', kind: 'active', cooldownMin: 45, durationMin: 15, target: null, auto: true, description: 'Automatica: quando qualcuno vede la vostra posizione, per {durata} minuti vede anche una posizione falsa.' },
   { id: 'diplomatico', name: 'Diplomatico', icon: '🤝', kind: 'active', cooldownMin: 60, where: 'alleanze', description: 'Proponendo o accettando un\'alleanza, stringetela senza mostrare il vostro Sigillo agli alleati.' },
   { id: 'velenoso', name: 'Velenoso', icon: '☠️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Subito dopo uno scontro (vinto o perso), rompete l\'alleanza della parte avversaria.' },
   { id: 'maestria', name: 'Maestria delle armi', icon: '⚔️', kind: 'active', cooldownMin: 60, where: 'scontri', description: 'Trasformate uno scontro perso in una vittoria, qualunque esito dichiari l\'avversario.' },
   { id: 'immunita', name: 'Immunità', icon: '🧿', kind: 'active', cooldownMin: 45, where: 'scontri', description: 'Perdendo uno scontro, il vostro Sigillo resta coperto ai vincitori.' },
   { id: 'caccia', name: 'Maestro della caccia', icon: '🎯', kind: 'active', cooldownMin: 30, target: 'team', description: 'Mandate gli Eletti a dare la caccia a una coppia: il Consiglio assegna la missione a una squadra, che vede il bersaglio finché la caccia dura. Il bersaglio lo scopre 1 minuto dopo.' },
-  { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per 3 minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
+  { id: 'rete', name: 'Rete del Consiglio', icon: '🌐', kind: 'ultimate', cooldownMin: 90, durationMin: 3, target: null, description: 'Per {durata} minuti vedete sulla mappa tutte le coppie. Se ne accorgono dopo 1 minuto.' },
   { id: 'veggenza', name: 'Veggenza', icon: '🔮', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Scegliete uno degli Altari che conoscete (già inquadrati) e prendete subito il suo frammento, senza Sigillo e senza tornarci.' },
   { id: 'intuizione', name: 'Intuizione', icon: '🧠', kind: 'ultimate', cooldownMin: 90, target: 'altar', description: 'Aprite un Altare a scelta da lontano, come se l\'aveste appena inquadrato: poi serve il suo Sigillo.' },
   { id: 'autorita', name: 'Autorità', icon: '👑', kind: 'ultimate', cooldownMin: 90, target: null, description: 'Ricevete subito un Dono a caso.' },
@@ -37,7 +37,7 @@ const SKILLS = [
   { id: 'velo', name: 'Velo di Ceneri', icon: '🌫️', kind: 'passive', description: 'Tracciamenti e taglie contro di voi durano la metà.' },
   { id: 'allarme', name: 'Allarme di Prossimità', icon: '📳', kind: 'passive', description: 'Una vibrazione silenziosa vi avvisa quando una coppia non alleata arriva entro 80 m.' },
   { id: 'presagio', name: 'Presagio del Dono', icon: '✨', kind: 'passive', description: 'Quando compare un Dono vedete subito un cerchio di 100 m che lo contiene; le altre coppie lo vedono 5 minuti dopo. Potete prendere anche un Dono trovato prima che venga annunciato.' },
-  { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale più a lungo.' },
+  { id: 'memoria_nodo', name: 'Memoria del Nodo', icon: '⏳', kind: 'passive', description: 'Una scansione di Altare vi vale {nodo} minuti invece di {scansione}: potete allontanarvi prima di pronunciare il Sigillo.' },
   { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura (e la notifica vi arriva subito) e 5 minuti dopo la chiusura.' },
   { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
   { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
@@ -48,16 +48,16 @@ const GIFTS = [
   { id: 'maestro', name: 'Maestro', icon: '🎓', color: '#d1ad62', target: 'newSkill', description: 'Aggiungete alle vostre Skill una Skill a scelta, pronta da usare.' },
   { id: 'chiave', name: 'Chiave Maestra', icon: '🗝️', color: '#e0b04f', target: 'scannedAltar', description: 'Aprite un Altare senza il suo Sigillo. Dovete averlo appena inquadrato (scansione valida).' },
   { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde. Nessuno viene avvisato.' },
-  { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per 20 minuti. Se ne accorge dopo 1 minuto.' },
+  { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per {durata} minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'archivio', name: 'Archivio Proibito', icon: '📚', color: '#9b6cf0', target: null, description: 'Ricevete un Sigillo che non conoscete ancora.' },
-  { id: 'scudo', name: 'Immunità', icon: '🛡️', color: '#6fbf73', target: null, durationMin: 15, description: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce (tracciamenti, taglie, furti, scansioni).' },
+  { id: 'scudo', name: 'Immunità', icon: '🛡️', color: '#6fbf73', target: null, durationMin: 15, description: 'Per {durata} minuti nessuna Skill o Dono avversario vi colpisce (tracciamenti, taglie, furti, scansioni).' },
   { id: 'seconda', name: 'Seconda Possibilità', icon: '🔄', color: '#4fc1c1', target: 'cooldownSkill', description: 'Ricaricate subito una Skill in ricarica.' },
   { id: 'sovraccarico', name: 'Sovraccarico', icon: '⚡', color: '#facc15', target: null, description: 'Ricaricate subito tutte le vostre Skill.' },
-  { id: 'taglia', name: 'Taglia', icon: '🚨', color: '#e5484d', target: 'team', durationMin: 15, description: 'Una coppia a scelta compare sulla mappa di tutti per 15 minuti. Se ne accorge dopo 1 minuto.' },
+  { id: 'taglia', name: 'Taglia', icon: '🚨', color: '#e5484d', target: 'team', durationMin: 15, description: 'Una coppia a scelta compare sulla mappa di tutti per {durata} minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'dossier', name: 'Dossier Segreto', icon: '🕵️', color: '#a0703c', target: 'team', description: 'Vedete tutti i Sigilli che conosce una coppia a scelta.' },
   { id: 'benedizione', name: 'Benedizione del Consiglio', icon: '✨', color: '#f0e3b0', target: 'swap', description: 'Sostituite una vostra Skill con un\'altra, pronta da usare.' },
   { id: 'sporche', name: 'Alleanze sporche', icon: '🤝', color: '#7a7a7a', target: null, description: 'Una squadra di Eletti vi raggiunge (la vedete sulla mappa): quando siete vicini, siete alleati per 30 minuti. Poi gli Eletti se ne vanno, qualunque cosa stia succedendo.' },
-  { id: 'reliquia', name: 'Reliquia Antica', icon: '💎', color: '#22c3e6', target: null, durationMin: 30, description: 'Per 30 minuti i vostri Sigilli non si perdono: perdendo uno scontro il vostro resta coperto e nessuno ve li ruba.' },
+  { id: 'reliquia', name: 'Reliquia Antica', icon: '💎', color: '#22c3e6', target: null, durationMin: 30, description: 'Per {durata} minuti i vostri Sigilli non si perdono: perdendo uno scontro il vostro resta coperto e nessuno ve li ruba.' },
 ];
 
 const skillById = (id) => SKILLS.find((s) => s.id === id);
@@ -336,7 +336,7 @@ function endNow(gameId, teamId, code) {
 
 // Un Dono senza QR (Autorità): finisce subito tra i doni della coppia.
 function grantVirtualGift(me, label) {
-  const type = shuffle(GIFTS.filter(available))[0];
+  const type = giftForGame(shuffle(GIFTS.filter(available))[0], G.getGame(me.gameId));
   const now = Date.now();
   const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 'manual', ?, ?, ?)`,
@@ -671,7 +671,21 @@ function catalogEdits(g) {
   try { return JSON.parse(g?.catalogEdits || '{}') || {}; } catch { return {}; }
 }
 const applyEdits = (x, e) => (e ? { ...x, ...Object.fromEntries(EDITABLE.filter((k) => e[k] != null && e[k] !== '').map((k) => [k, e[k]])) } : x);
-const giftForGame = (t, g) => (t ? applyEdits(t, catalogEdits(g).gifts?.[t.id]) : t);
+// Tag nelle descrizioni ({durata}, {ricarica}…): diventano i valori della partita, e seguono i tempi se cambiano.
+const TAGS = {
+  durata: { label: 'Durata (minuti)', of: (x) => x.durationMin },
+  ricarica: { label: 'Ricarica (minuti)', of: (x) => x.cooldownMin },
+  raggio: { label: 'Raggio dell\'Occhio (m)', of: (x, g) => eyeOf(g).radius, only: ['occhio'] },
+  scansione: { label: 'Validità della scansione di un Altare (minuti)', of: (x, g) => g.altarScanMin || 0 },
+  nodo: { label: 'Scansione con Memoria del Nodo (minuti)', of: (x, g) => Math.max(g.nodeScanMin || 0, g.altarScanMin || 0), only: ['memoria_nodo'] },
+};
+const fillTags = (text, x, g) => String(text || '').replace(/\{(\w+)\}/g, (m, k) => { const v = TAGS[k]?.of(x, g); return v == null ? m : String(v); });
+const withTags = (x, g) => ({ ...x, description: fillTags(x.description, x, g) });
+// Tag che hanno senso per questa Skill o questo Dono, con il valore attuale.
+const tagsFor = (x, g) => Object.entries(TAGS).filter(([, t]) => (!t.only || t.only.includes(x.id)) && t.of(x, g) != null)
+  .map(([k, t]) => ({ tag: `{${k}}`, label: t.label, value: t.of(x, g) }));
+const giftTemplate = (t, g) => applyEdits(t, catalogEdits(g).gifts?.[t.id]);
+const giftForGame = (t, g) => (t ? withTags(giftTemplate(t, g), g) : t);
 const skillFor = (id, gameId) => { const s = skillById(id); return s ? forGame(s, G.getGame(gameId)) : s; };
 const giftFor = (id, gameId) => giftForGame(giftById(id), G.getGame(gameId));
 
@@ -679,13 +693,14 @@ const giftFor = (id, gameId) => giftForGame(giftById(id), G.getGame(gameId));
 function editableCatalog(gameId) {
   const g = G.getGame(gameId);
   const ed = catalogEdits(g);
+  // Descrizioni con i tag (come si scrivono); «preview» è il testo che leggono le coppie.
   const row = (base, cur, kind, edits) => ({ kind, id: base.id, icon: base.icon, color: base.color || null, type: base.kind || null,
     base: Object.fromEntries(EDITABLE.map((k) => [k, base[k] ?? null])), current: Object.fromEntries(EDITABLE.map((k) => [k, cur[k] ?? null])),
-    edited: !!edits, durationFromParams: base.id === 'occhio' && kind === 'skill' });
+    edited: !!edits, durationFromParams: base.id === 'occhio' && kind === 'skill', tags: tagsFor(cur, g), preview: fillTags(cur.description, cur, g) });
   return {
     editable: g.status === 'draft',
-    skills: SKILLS.filter(available).map((s) => row(s, forGame(s, g), 'skill', ed.skills?.[s.id])),
-    gifts: GIFTS.filter(available).map((t) => row(t, giftForGame(t, g), 'gift', ed.gifts?.[t.id])),
+    skills: SKILLS.filter(available).map((s) => row(s, skillTemplate(s, g), 'skill', ed.skills?.[s.id])),
+    gifts: GIFTS.filter(available).map((t) => row(t, giftTemplate(t, g), 'gift', ed.gifts?.[t.id])),
   };
 }
 
@@ -726,18 +741,15 @@ function editCatalog(gameId, kind, id, data, actor) {
 
 // Skill con valori che dipendono dai parametri della partita (Occhio del Consiglio, Memoria del Nodo), poi le modifiche della regia.
 function forGame(s, g) {
-  return applyEdits(forGameBase(s, g), catalogEdits(g).skills?.[s.id]);
+  const t = skillTemplate(s, g);
+  // Memoria del Nodo senza scadenza delle scansioni: non serve (salvo testo scritto dalla regia).
+  if (s.id === 'memoria_nodo' && !g.altarScanMin && !catalogEdits(g).skills?.[s.id]?.description) return { ...t, description: 'In questa partita le scansioni degli Altari non scadono: questa Skill non serve.' };
+  return withTags(t, g);
 }
-function forGameBase(s, g) {
-  if (s.id === 'occhio') { const eye = eyeOf(g); return { ...s, durationMin: eye.min, description: `Mostra sulla mappa tutte le coppie entro ${eye.radius} m da voi per ${eye.min} minuti. Le coppie viste lo scoprono dopo 1 minuto.` }; }
-  return { ...s, description: describe(s, g) };
-}
-
-// Descrizioni che dipendono dai parametri della partita (Memoria del Nodo: minuti configurabili).
-function describe(s, g) {
-  if (s.id !== 'memoria_nodo') return s.description;
-  if (!g.altarScanMin) return 'In questa partita le scansioni degli Altari non scadono: questa Skill non serve.';
-  return `Una scansione di Altare vi vale ${Math.max(g.nodeScanMin || 0, g.altarScanMin)} minuti invece di ${g.altarScanMin}: potete allontanarvi prima di pronunciare il Sigillo.`;
+// Con le modifiche della regia, descrizione ancora con i tag. Occhio: la durata viene dai parametri della partita.
+function skillTemplate(s, g) {
+  const base = s.id === 'occhio' ? { ...s, durationMin: eyeOf(g).min } : s;
+  return applyEdits(base, catalogEdits(g).skills?.[s.id]);
 }
 
 // ---------------------------------------------------------------- stato per l'app

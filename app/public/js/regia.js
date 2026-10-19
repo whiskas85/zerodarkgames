@@ -2134,15 +2134,32 @@ async function editCatalogDialog(x) {
   const dur = x.base.durationMin != null && !x.durationFromParams ? h('input', { class: 'input', type: 'number', min: 1, step: 1, value: x.current.durationMin }) : null;
   const cd = x.base.cooldownMin != null ? h('input', { class: 'input', type: 'number', min: 1, step: 1, value: x.current.cooldownMin }) : null;
   const save = (body, msg) => api('PUT', G(`/catalog/${x.kind}/${x.id}`), body).then((c) => { catalogData = { gameId: R.gameId, status: R.ms?.clock.status, ...c }; toast(msg, 'ok'); render(); return true; });
+  // Tag al posto dei numeri configurabili: si inseriscono con un tocco, l'anteprima mostra il testo per le coppie.
+  const values = () => Object.fromEntries((x.tags || []).map((t) => [t.tag, t.tag === '{durata}' && dur ? dur.value : t.tag === '{ricarica}' && cd ? cd.value : t.value]));
+  const preview = h('p', { class: 'small cat-preview' });
+  const update = () => { const v = values(); preview.textContent = desc.value.replace(/\{\w+\}/g, (m) => (v[m] != null && v[m] !== '' ? String(v[m]) : m)); };
+  const insert = (tag) => {
+    const a = desc.selectionStart ?? desc.value.length;
+    const b = desc.selectionEnd ?? a;
+    desc.value = desc.value.slice(0, a) + tag + desc.value.slice(b);
+    desc.focus();
+    desc.selectionStart = desc.selectionEnd = a + tag.length;
+    update();
+  };
+  for (const el of [desc, dur, cd]) el?.addEventListener('input', update);
+  update();
   const r = await modal({ title: `${x.icon} ${x.current.name}`, okLabel: 'Salva', cancelLabel: x.edited ? 'Ripristina originale' : 'Annulla',
     body: h('div', { class: 'stack-sm' },
       h('label', { class: 'field' }, h('span', null, 'Nome'), name),
       h('label', { class: 'field' }, h('span', null, 'Descrizione (quella che leggono le coppie)'), desc),
+      x.tags?.length ? h('div', { class: 'tag-row' }, h('span', { class: 'tiny muted' }, 'Inserisci:'),
+        x.tags.map((t) => h('button', { class: 'btn btn-sm tag-chip', type: 'button', title: t.label, onclick: () => insert(t.tag) }, t.tag, h('span', { class: 'tiny muted' }, ` ${t.label}`)))) : null,
+      h('div', { class: 'cat-preview-box' }, h('div', { class: 'eyebrow' }, 'Anteprima per le coppie'), preview),
       dur || cd ? h('div', { class: 'form-grid' },
         dur ? h('label', { class: 'field' }, h('span', null, 'Durata dell\'effetto (minuti)'), dur) : null,
         cd ? h('label', { class: 'field' }, h('span', null, 'Ricarica (minuti)'), cd) : null) : null,
       x.durationFromParams ? h('p', { class: 'tiny muted' }, 'Durata e raggio dell\'Occhio si cambiano nei parametri della partita (Impostazioni).') : null,
-      h('p', { class: 'tiny muted' }, `Originale: ${x.base.name}${x.base.durationMin ? ` · durata ${x.base.durationMin}′` : ''}${x.base.cooldownMin ? ` · ricarica ${x.base.cooldownMin}′` : ''}. Se cambi i tempi, ricordati di cambiarli anche nella descrizione.`)),
+      h('p', { class: 'tiny muted' }, `Originale: ${x.base.name}${x.base.durationMin ? ` · durata ${x.base.durationMin}′` : ''}${x.base.cooldownMin ? ` · ricarica ${x.base.cooldownMin}′` : ''}. Con i tag (es. {durata}) il testo segue da solo i tempi impostati.`)),
     onOk: () => save({ name: name.value, description: desc.value, durationMin: dur?.value ?? '', cooldownMin: cd?.value ?? '' }, 'Salvato') });
   if (r === null && x.edited && await dialog({ title: 'Ripristinare l\'originale?', text: `${x.base.name}: testi e tempi tornano quelli di partenza.`, okLabel: 'Ripristina' })) {
     try { await save({ reset: true }, 'Ripristinato'); } catch (e) { toast(e.message, 'error'); }
@@ -2156,7 +2173,7 @@ function viewCatalog() {
   const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
       x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
-    h('p', { class: 'small' }, x.current.description),
+    h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
     c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
   return h('div', { class: 'stack' },

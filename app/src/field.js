@@ -18,7 +18,7 @@ const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'we
 // Tipi di dono: il catalogo fisso dei Doni con effetto (skills.js). Quelli non ancora disponibili non si creano.
 function giftTypes(game = null) {
   const S = require('./skills');
-  return S.GIFTS.filter((t) => !t.phase || t.phase <= 1).map((t) => (game ? S.giftForGame(t, game) : t))
+  return S.GIFTS.filter((t) => !t.phase || t.phase <= 1).map((t) => S.giftForGame(t, game || {}))
     .map((t) => ({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description }));
 }
 
