@@ -592,3 +592,4 @@ tr.gift-row-claimed td { opacity: .6; }
 .poll-chip-forse { border-color: #c9a227; color: #e9c75a; }
 .poll-voters { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 13px; }
 label.check { display: flex; align-items: center; gap: 8px; }
+.row-ready td { background: rgba(70, 196, 106, .07); }

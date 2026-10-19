@@ -1933,7 +1933,9 @@ function pushReport(gameId) {
   const own = Object.fromEntries(q.all('SELECT playerId, COUNT(*) AS n FROM push_subs WHERE playerId IS NOT NULL GROUP BY playerId').map((r) => [r.playerId, r.n]));
   const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
-  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt,
+  // ICE: alla regia arriva solo se è compilato (sì/no), mai il contenuto.
+  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt, p.safetyAckAt, p.accountId,
+                               (a.iceBlood IS NOT NULL OR a.iceConditions IS NOT NULL OR a.iceContactName IS NOT NULL OR a.iceContactPhone IS NOT NULL) AS iceFilled,
                                t.kind AS teamKind, t.status AS teamStatus, s.name AS sectorName, s.roman, s.ord
                         FROM players p LEFT JOIN accounts a ON a.id = p.accountId LEFT JOIN teams t ON t.id = p.teamId
                         LEFT JOIN sectors s ON s.id = t.sectorId
@@ -1947,8 +1949,14 @@ function pushReport(gameId) {
       sectorOrd: p.ord ?? 999, devices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
       // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
       traccar: trackStateOf(p, g, p.teamId ? { kind: p.teamKind, status: p.teamStatus } : null).state, trackSeenAt: p.trackSeenAt || null,
+      ice: p.accountId ? !!p.iceFilled : null, safetyAckAt: p.safetyAckAt || null,
     };
-  }).sort((a, b) => a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
+  }).map((p) => {
+    // Cosa manca a ognuno: notifiche, Traccar (coppie ed Eletti), ICE (chi ha l'account), avviso di sicurezza letto.
+    const todo = [p.state !== 'on' ? 'notifiche' : null, ['couple', 'elect'].includes(p.group) && p.traccar !== 'ok' ? 'Traccar' : null,
+      p.ice === false ? 'ICE' : null, !p.safetyAckAt ? 'sicurezza' : null].filter(Boolean);
+    return { ...p, todo, ready: !todo.length };
+  }).sort((a, b) => b.ready - a.ready || a.todo.length - b.todo.length || a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
   const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
                        FROM users u ORDER BY u.role = 'master' DESC, u.username`).map((u) => ({ ...u, state: u.devices ? 'on' : 'off' }));
   return { people, staff };
@@ -1997,7 +2005,7 @@ function masterState(gameId) {
                      AND type IN ('status_draft', 'status_ready', 'status_circle', 'game_started', 'phase_hunt', 'phase_last_half_hour', 'game_paused', 'game_resumed', 'game_ended') ORDER BY id`, g.id, g.id),
     canWarp: canWarp(g),
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
-    pushOff: pushReport(g.id).people.filter((p) => (p.state === 'off' || p.traccar !== 'ok') && ['couple', 'elect'].includes(p.group)).length,
+    pushOff: pushReport(g.id).people.filter((p) => !p.ready && ['couple', 'elect'].includes(p.group)).length,
     next: nextEvents(g),
     sectors: sectors(),
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize

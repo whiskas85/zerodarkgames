@@ -30,7 +30,7 @@ const TABS = [
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
-  ['notifiche', 'Notifiche e Traccar'],
+  ['notifiche', 'Notifiche, Traccar e ICE'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['regolamento', 'Regolamento'],
@@ -371,7 +371,7 @@ function sidebar() {
     id === 'squadre' && pendingTasks ? h('span', { class: 'badge badge-alert badge-task', title: 'Incarichi da assegnare (Maestro della caccia…)' }, `🎯 ${pendingTasks}`) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,
-    id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Persone senza notifiche o senza Traccar verificato' }, R.ms.pushOff) : null))));
+    id === 'notifiche' && R.ms?.pushOff ? h('span', { class: 'badge', title: 'Coppie ed Eletti con qualcosa da sistemare (notifiche, Traccar, ICE, avviso di sicurezza)' }, R.ms.pushOff) : null))));
 }
 
 function tick() {
@@ -2573,9 +2573,9 @@ function viewPushReport() {
   const rep = R.pushRep;
   if (!rep || rep.gameId !== R.gameId || Date.now() - rep.at > 60000) { if (!R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }
   if (!rep || rep.gameId !== R.gameId) return h('p', { class: 'empty' }, 'Caricamento…');
-  const onlyMissing = R.pushOnlyMissing !== false;
-  const todo = (x) => x.state !== 'on' || (x.traccar && x.traccar !== 'ok');
-  const show = (list) => (onlyMissing ? list.filter(todo) : list);
+  // Sempre tutti: in alto chi è a posto, poi chi ha meno cose da sistemare.
+  const todo = (x) => !x.ready;
+  const show = (list) => list;
   const groups = [
     ['couple', 'Coppie'], ['elect', 'Eletti del Consiglio'], ['free', 'Accettati senza coppia'], ['pending', 'Iscrizioni in attesa'],
   ].map(([key, label]) => ({ key, label, all: rep.people.filter((p) => p.group === key) }));
@@ -2588,10 +2588,11 @@ function viewPushReport() {
     navigator.clipboard?.writeText(text).then(() => toast('Elenco copiato: incollalo nel gruppo WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
   };
   const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
-    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar', 'Ultimo ping']).map((x) => h('th', null, x)))),
+    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
     h('tbody', null, list.map((p) => (staff
       ? h('tr', null, h('td', null, h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
-      : h('tr', null,
+      : h('tr', { class: p.ready ? 'row-ready' : '' },
+        h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓') : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.todo.length)),
         h('td', null, personLine(p)),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
@@ -2599,25 +2600,29 @@ function viewPushReport() {
         h('td', null, TRACCAR_STATE[p.traccar](p)),
         h('td', { class: 'mono tiny' }, p.trackSeenAt
           ? [h('span', { 'data-ago': p.trackSeenAt, class: clock.serverNow() - p.trackSeenAt > 10 * 60000 ? 'bad' : '' }, agoText(p.trackSeenAt)), h('div', { class: 'muted' }, fmtTime(p.trackSeenAt))]
-          : h('span', { class: 'muted' }, 'mai'))))))));
+          : h('span', { class: 'muted' }, 'mai')),
+        h('td', null, p.ice == null ? h('span', { class: 'tiny muted', title: 'Entra senza account personale: niente ICE' }, 'senza account') : p.ice ? h('span', { class: 'chip chip-ok' }, 'compilato') : h('span', { class: 'chip chip-warn' }, 'non compilato')),
+        h('td', null, p.safetyAckAt ? h('span', { class: 'chip chip-ok', title: `Letto e compreso alle ${fmtTime(p.safetyAckAt)}` }, 'letto') : h('span', { class: 'chip chip-blood' }, 'non letto'))))))));
   return h('div', { class: 'stack' },
-    sectionActions('Notifiche e Traccar da sistemare', [
-      h('button', { class: `btn btn-sm ${onlyMissing ? 'on' : ''}`, onclick: () => { R.pushOnlyMissing = !onlyMissing; render(); } }, onlyMissing ? 'Mostra tutti' : 'Solo chi non le ha'),
+    sectionActions('Pronti per la gara: notifiche, Traccar, ICE e sicurezza', [
       h('button', { class: 'btn btn-sm', onclick: loadPushReport }, '↻ Aggiorna'),
       missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
       h('p', { class: 'muted tiny' }, 'Traccar: «verificato» = ha fatto la prova a schermo spento nell\'app (pagina Traccar); «non manda» = a partita in corso non arriva niente da 10 minuti. Senza Traccar la posizione si perde appena chiude l\'app.'),
+      h('p', { class: 'muted tiny' }, 'In alto chi è a posto (✓), poi chi ha meno cose da sistemare (il numero dice quante). ICE: solo se è compilato, il contenuto la regia non lo vede mai (arriva solo con un\'emergenza). Sicurezza: ha letto e compreso l\'avviso pre-gara su EMERGENZA e ICE.'),
       h('p', { class: 'muted tiny' }, 'Senza notifiche una persona non riceve tradimenti, annunci, messaggi e avvisi quando l\'app è chiusa. Si attivano dall\'app con «Attiva le notifiche», su ogni telefono. «Solo telefono della coppia»: le riceve il telefono entrato con il codice della coppia, non quello personale.'),
       h('div', { class: 'row-actions' },
         h('span', { class: `chip ${off.length ? 'chip-blood' : 'chip-ok'}` }, `${off.length} senza notifiche`),
         h('span', { class: 'chip chip-warn' }, `${missing.length - off.length} solo sul telefono della coppia`),
         h('span', { class: 'chip chip-ok' }, `${rep.people.length - missing.length} con notifiche`),
         h('span', { class: `chip ${noTrk.length ? 'chip-warn' : 'chip-ok'}` }, `${noTrk.length} senza Traccar verificato`),
+        h('span', { class: 'chip chip-ok' }, `${rep.people.filter((p) => p.ready).length} su ${rep.people.length} a posto`),
+        h('span', { class: `chip ${rep.people.some((p) => p.ice === false) ? 'chip-warn' : 'chip-ok'}` }, `${rep.people.filter((p) => p.ice).length} ICE compilati`),
+        h('span', { class: `chip ${rep.people.some((p) => !p.safetyAckAt) ? 'chip-blood' : 'chip-ok'}` }, `${rep.people.filter((p) => !p.safetyAckAt).length} senza avviso letto`),
         h('span', { class: 'tiny muted' }, `aggiornato ${fmtTime(rep.at)}`))),
     ...groups.filter((g) => g.all.length).map((g) => {
       const list = show(g.all);
       const n = g.all.filter(todo).length;
-      return section(`${g.label} · ${n ? `${n} su ${g.all.length} da sistemare` : 'tutto a posto'}`,
-        list.length ? table(list) : h('p', { class: 'empty' }, 'Tutti hanno notifiche e Traccar a posto.'));
+      return section(`${g.label} · ${n ? `${g.all.length - n} su ${g.all.length} a posto` : 'tutti a posto'}`, table(list));
     }),
     section(`Organizzazione · ${rep.staff.filter((u) => u.state === 'off').length} senza`,
       h('p', { class: 'muted tiny' }, 'Master e validatori: si attivano dalla regia con il pulsante 🔔 in alto.'),
