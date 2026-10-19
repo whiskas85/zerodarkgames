@@ -175,7 +175,12 @@ function setState(st, offset) {
     store.set('zdg_visits', S.visits);
   }
   // Allinea gli Altari visitati del server con quelli locali.
-  for (const v of st.visited) rememberVisit(v.qrToken, { label: v.label, sectorName: v.sectorName });
+  for (const v of st.visited) {
+    rememberVisit(v.qrToken, { label: v.label, sectorName: v.sectorName });
+    // Scansione rinnovata dal server (Memoria): la nuova scadenza vale anche qui.
+    const loc = S.visits[v.qrToken];
+    if (v.visitedAt && loc && (!loc.scannedAt || v.visitedAt > loc.scannedAt)) { loc.scannedAt = v.visitedAt; loc.expiresAt = v.expiresAt || null; store.set('zdg_visits', S.visits); }
+  }
   if (prev && prev.clock.status !== st.clock.status && st.clock.status === 'paused') vibrate([600, 200, 600]);
   if (prev && (prev.team.id !== st.team.id || prev.team.kind !== st.team.kind)) {
     if (sse) { sse.close(); sse = null; connect(); }
@@ -1888,6 +1893,24 @@ const scanExpired = (v) => !!(v?.expiresAt && v.expiresAt < clock.serverNow());
 const CODE_SOURCE = { own: 'è il vostro', revealed: 'rivelato dal Consiglio', note: 'annotato da voi', won: 'vinto in uno scontro', alliance: 'ricevuto dall\'alleanza' };
 const manualAltar = new Set();
 
+// Memoria (Skill attiva, pronta): riapre da qui l'Altare scaduto, senza tornare a inquadrarlo.
+function memoryBtn(v, token) {
+  const st = S.state;
+  const mem = (st?.skills?.mine || []).find((s) => s.id === 'memoria');
+  const pointId = v.pointId || (st?.visited || []).find((x) => x.qrToken === token)?.pointId;
+  if (!mem || !pointId || !ACTIVE.includes(st.clock.status)) return null;
+  if (mem.readyAt) return h('p', { class: 'small muted' }, '🧩 Memoria in ricarica: pronta tra ', h('span', { class: 'mono', 'data-abs': mem.readyAt }, '—'));
+  return h('button', { class: 'btn btn-key btn-xl btn-block', type: 'button', onclick: async () => {
+    if (!(await dialog({ title: 'Usare Memoria?', text: `Riaprite ${v.label || 'questo Altare'} senza tornare a inquadrarlo: potrete di nuovo pronunciarne il Sigillo. Memoria va in ricarica.`, okLabel: 'Usa Memoria' }))) return;
+    try {
+      const r = await api('POST', '/api/team/skill/memoria/use', { pointId });
+      delete S.altarResults[token];
+      await refresh();
+      showEffectResult('Memoria', r);
+    } catch (e) { toast(e.offline ? 'Serve la rete per usare una Skill' : e.message, 'error', 7000); refresh(); }
+  } }, '🧩 Usa Memoria');
+}
+
 function viewAltar(token, query) {
   if (!token) return h('p', { class: 'empty' }, 'Altare non valido');
   const st = S.state;
@@ -1928,7 +1951,8 @@ function viewAltar(token, query) {
     action = h('div', { class: 'scan-expired' },
       h('strong', null, 'Scansione scaduta'),
       h('p', null, `La scansione vale ${st?.game.altarScanMin || '?'} minuti${v.expiresAt ? ` ed è scaduta alle ${fmtTime(v.expiresAt)}` : ''}. Tornate all'Altare e inquadratelo di nuovo.`),
-      h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: openScanner }, '⌖ Riscansiona l\'Altare'));
+      h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: openScanner }, '⌖ Riscansiona l\'Altare'),
+      memoryBtn(v, token));
   } else if (known && !manualAltar.has(token) && !query.get('code')) {
     // Sigillo già nel taccuino: niente da scrivere, basta confermarlo.
     action = h('div', { class: 'known-seal' },
