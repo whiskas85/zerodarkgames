@@ -824,7 +824,10 @@ function pushInvite() {
 function latestNotice(st) {
   const n = st.notices?.[0];
   if (!n || n.id <= S.seenNotice) return null;
-  return h('a', { class: 'last-ann new notice-card', href: '#/avvisi' }, h('div', { class: 'eyebrow' }, `Avviso · ${fmtTime(n.createdAt)}`), h('strong', null, n.title), n.body ? h('p', null, n.body) : null);
+  // Il testo è in markdown (con pulsanti): la scheda non è un link unico, il tocco fuori dai pulsanti apre gli Avvisi.
+  return h('div', { class: 'last-ann new notice-card', role: 'link', tabindex: 0, onclick: (e) => { if (!e.target.closest('a, button')) location.hash = '#/avvisi'; } },
+    h('div', { class: 'eyebrow' }, `${n.poll ? 'Sondaggio' : 'Avviso'} · ${fmtTime(n.createdAt)}`), h('strong', null, n.title), n.body ? h('div', { class: 'md' }, md(n.body)) : null,
+    n.poll && !n.myVote ? h('p', { class: 'tiny' }, 'Rispondete nella pagina Avvisi.') : null);
 }
 
 const ROLE_TEXT = {

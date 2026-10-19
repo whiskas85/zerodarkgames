@@ -666,3 +666,7 @@ button.banner-safety strong { letter-spacing: .08em; }
 .safety-sim .sim-bar strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .safety-sim .sim-tag { right: 6px; }
 .safety-sim .sim-tag { top: -10px; left: 10px; right: auto; transform: rotate(-4deg); }
+.notice-card { cursor: pointer; }
+/* Testo degli avvisi: il grassetto resta nel testo (non prende lo stile del titolo della scheda) */
+.md strong, .md em { display: inline; font-family: inherit; font-size: inherit; text-transform: none; letter-spacing: normal; line-height: inherit; margin: 0; }
+.md strong { font-weight: 700; }

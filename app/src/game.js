@@ -529,7 +529,9 @@ function createNotice(gameId, data, actor) {
   rt.toTeams(g.id, 'notice', n);
   const subs = rt.gameSubs(g.id).filter((s) => target === 'all' || (target === 'couples' && s.teamKind === 'couple')
     || (target === 'elect' && s.teamKind === 'elect') || (target === 'team' && s.effTeamId === teamId));
-  rt.pushSubs(subs, { title: `${poll ? 'Sondaggio' : 'Avviso'} · ${title}`, body: body || (poll ? 'Rispondete nell\'app: Sì, No o Forse.' : 'Toccate per leggere l\'avviso del Consiglio.'), tag: `notice-${id}`, url: '/#/avvisi' });
+  // Nella notifica il testo va senza i segni del markdown: [testo](link) → testo, niente asterischi.
+  const plain = body ? body.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\*\*?([^*]+)\*\*?/g, '$1').replace(/\s*\n+\s*/g, ' ').trim() : '';
+  rt.pushSubs(subs, { title: `${poll ? 'Sondaggio' : 'Avviso'} · ${title}`, body: plain || (poll ? 'Rispondete nell\'app: Sì, No o Forse.' : 'Toccate per leggere l\'avviso del Consiglio.'), tag: `notice-${id}`, url: '/#/avvisi' });
   log(g.id, actor, 'notice', { title, target });
   return { ...n, devices: subs.length };
 }
