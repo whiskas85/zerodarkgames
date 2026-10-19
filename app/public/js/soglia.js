@@ -37,7 +37,20 @@ function render() {
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
     h('main', { class: 'content soglia' },
       h('div', { class: 'reminder' }, h('strong', null, 'Si presenta una sola coppia: le alleanze vanno sciolte prima.'), ' Alla Soglia non si combatte.'),
-      !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita avviata.') : V.team ? teamView() : teamList()));
+      !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita avviata.')
+        : h('div', { class: 'soglia-cols' }, h('div', { class: 'soglia-main' }, V.team ? teamView() : teamList()), exitPanel())));
+}
+
+// A fianco: il QR del codice di uscita, da far inquadrare alla coppia con la Parola intera (come il cartello).
+function exitPanel() {
+  const d = V.data;
+  if (!d) return null;
+  const box = h('div', { class: 'exit-qr' });
+  if (d.exitSvg) box.innerHTML = d.exitSvg; // SVG generato dal server
+  return h('aside', { class: 'panel exit-panel' },
+    h('div', { class: 'eyebrow' }, 'La Soglia · codice di uscita'),
+    d.exitSvg ? box : h('p', { class: 'muted' }, 'Codice di uscita non ancora creato: si crea quando la Soglia è segnata sulla mappa.'),
+    h('p', { class: 'small' }, 'Con la Parola intera la coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'));
 }
 
 // Niente login proprio: tutto passa dal login principale.

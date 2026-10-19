@@ -751,9 +751,13 @@ app.use('/api/m', m);
 const v = express.Router();
 v.use(needStaff);
 v.get('/games', (_req, res) => res.json(q.all("SELECT id, name, status FROM games WHERE status NOT IN ('draft') ORDER BY id DESC")));
-v.get('/games/:id/teams', wrap((req) => {
+v.get('/games/:id/teams', wrap(async (req) => {
   const g = G.getGame(Number(req.params.id));
-  return { clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
+  // Codice di uscita della Soglia: il QR da mostrare a schermo accanto all'elenco (lo stesso del cartello stampato).
+  const soglia = q.get("SELECT exitToken FROM landmarks WHERE gameId = ? AND kind = 'soglia' AND exitToken IS NOT NULL", g.id);
+  const exitUrl = soglia ? `${baseUrl(req)}/u/${soglia.exitToken}` : null;
+  const exitSvg = exitUrl ? await QRCode.toString(exitUrl, { type: 'svg', margin: 1, errorCorrectionLevel: 'Q' }) : null;
+  return { exitUrl, exitSvg, clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
 }));
 v.get('/teams/:tid', wrap((req) => G.validatorView(Number(req.params.tid))));
 v.post('/teams/:tid/check', wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));

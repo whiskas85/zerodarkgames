@@ -14,7 +14,12 @@
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/regia.css">
   <style>
-    .soglia { max-width: 760px; margin: 0 auto; }
+    .soglia { max-width: 1180px; margin: 0 auto; }
+    .soglia-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+    .exit-panel { position: sticky; top: 16px; display: grid; gap: 10px; text-align: center; }
+    .exit-qr { background: #fff; padding: 12px; border-radius: 6px; }
+    .exit-qr svg { display: block; width: 100%; height: auto; }
+    @media (max-width: 900px) { .soglia-cols { grid-template-columns: 1fr; } .exit-panel { position: static; max-width: 420px; margin: 0 auto; } }
     .reminder { border: 2px solid var(--brass); background: var(--paper); padding: 12px 14px; margin-bottom: 16px; }
     .soglia-teams { display: grid; gap: 8px; }
     .soglia-team { all: unset; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 56px; border: 2px solid var(--line); background: var(--paper); }
