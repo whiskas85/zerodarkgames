@@ -1609,3 +1609,30 @@ test('doni: «resta attivo» lo prende ogni coppia una volta; chi rilegge un don
   assert.throws(() => F.claimGift(A, tok(single)), /Dono scaduto/);
   assert.throws(() => F.claimGift(B, tok(single)), /Dono scaduto: l'ha già preso/);
 });
+
+test('regia: testi e tempi di Skill e Doni modificabili in preparazione, poi bloccati e usati nel gioco', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.editCatalog(g.id, 'skill', 'ombra', { name: 'Ombra Lunga', description: 'Sparite per 25 minuti.', durationMin: 25, cooldownMin: 50 }, 'test');
+  S.editCatalog(g.id, 'gift', 'scudo', { name: 'Scudo d\'oro', durationMin: 5 }, 'test');
+  const cat = S.editableCatalog(g.id);
+  assert.equal(cat.editable, true);
+  assert.equal(cat.skills.find((x) => x.id === 'ombra').current.name, 'Ombra Lunga');
+  assert.equal(F.giftTypes(G.getGame(g.id)).find((x) => x.id === 'scudo').name, 'Scudo d\'oro');
+  assert.throws(() => S.editCatalog(g.id, 'skill', 'ombra', { durationMin: -3 }, 'test'), /Minuti/);
+  S.chooseSkill(A, 'ombra', true);
+  G.control(g.id, 'ready', 'test');
+  assert.throws(() => S.editCatalog(g.id, 'skill', 'ombra', { name: 'X' }, 'test'), /preparazione/);
+  assert.equal(S.editableCatalog(g.id).editable, false);
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  S.useSkill(A, 'ombra', {});
+  const e = q.get("SELECT * FROM skill_effects WHERE teamId = ? AND code = 'ombra'", A.id);
+  assert.equal(Math.round((e.endsAt - e.startedAt) / 60000), 25);
+  const ready = q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'ombra'", A.id).readyAt;
+  assert.ok(Math.abs(ready - Date.now() - 50 * 60000) < 5000);
+  assert.equal(S.skillsState(A).mine.find((x) => x.id === 'ombra').name, 'Ombra Lunga');
+});

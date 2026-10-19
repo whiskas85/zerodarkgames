@@ -26,6 +26,7 @@ const TABS = [
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
   ['doniqr', 'Doni QR'],
+  ['catalogo', 'Skill e Doni'],
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
@@ -220,7 +221,7 @@ function render() {
   preserve(() => {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
-      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, squadre: viewSquads,
+      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
@@ -714,7 +715,7 @@ const EVENT_LABELS = {
   team_sector_changed: 'Settore cambiato', team_members_changed: 'Membri cambiati', player_updated: 'Giocatore modificato', player_deleted: 'Giocatore eliminato',
   free_announcement: 'Annuncio libero', squad_created: 'Squadra creata', squad_updated: 'Squadra modificata', squad_deleted: 'Squadra eliminata',
   squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_move: 'Spostamento richiesto', squad_unassigned: 'Incarico annullato',
-  point_moved: 'Altare spostato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
+  point_moved: 'Altare spostato', catalog_edited: 'Skill o Dono modificato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
   supply_closed: 'Armamenti chiusi', supply_shifted: 'Armamenti spostati', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
@@ -2103,6 +2104,55 @@ function actionDialog(title, text, actions) {
         list.length ? h('div', { class: 'action-list' }, list.map(([k, label]) => h('button', { type: 'button', class: `btn ${k === 'delete' || k === 'skip' || k === 'close' ? 'btn-ghost' : ''}`, onclick: (ev) => { picked = k; ev.target.closest('dialog').querySelector('.btn-primary').click(); } }, label))) : null),
     }).then(() => resolve(picked));
   });
+}
+
+// ---------------------------------------------------------------- SKILL E DONI: testi e tempi della partita
+
+let catalogData = null;
+async function loadCatalog() {
+  try { catalogData = { gameId: R.gameId, status: R.ms?.clock.status, ...(await api('GET', G('/catalog'))) }; } catch (e) { toast(e.message, 'error'); }
+  render();
+}
+const SKILL_TYPE = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
+
+async function editCatalogDialog(x) {
+  const name = h('input', { class: 'input', maxlength: 40, value: x.current.name });
+  const desc = h('textarea', { class: 'input', rows: 4, maxlength: 400 });
+  desc.value = x.current.description || '';
+  const dur = x.base.durationMin != null && !x.durationFromParams ? h('input', { class: 'input', type: 'number', min: 1, step: 1, value: x.current.durationMin }) : null;
+  const cd = x.base.cooldownMin != null ? h('input', { class: 'input', type: 'number', min: 1, step: 1, value: x.current.cooldownMin }) : null;
+  const save = (body, msg) => api('PUT', G(`/catalog/${x.kind}/${x.id}`), body).then((c) => { catalogData = { gameId: R.gameId, status: R.ms?.clock.status, ...c }; toast(msg, 'ok'); render(); return true; });
+  const r = await modal({ title: `${x.icon} ${x.current.name}`, okLabel: 'Salva', cancelLabel: x.edited ? 'Ripristina originale' : 'Annulla',
+    body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Nome'), name),
+      h('label', { class: 'field' }, h('span', null, 'Descrizione (quella che leggono le coppie)'), desc),
+      dur || cd ? h('div', { class: 'form-grid' },
+        dur ? h('label', { class: 'field' }, h('span', null, 'Durata dell\'effetto (minuti)'), dur) : null,
+        cd ? h('label', { class: 'field' }, h('span', null, 'Ricarica (minuti)'), cd) : null) : null,
+      x.durationFromParams ? h('p', { class: 'tiny muted' }, 'Durata e raggio dell\'Occhio si cambiano nei parametri della partita (Impostazioni).') : null,
+      h('p', { class: 'tiny muted' }, `Originale: ${x.base.name}${x.base.durationMin ? ` · durata ${x.base.durationMin}′` : ''}${x.base.cooldownMin ? ` · ricarica ${x.base.cooldownMin}′` : ''}. Se cambi i tempi, ricordati di cambiarli anche nella descrizione.`)),
+    onOk: () => save({ name: name.value, description: desc.value, durationMin: dur?.value ?? '', cooldownMin: cd?.value ?? '' }, 'Salvato') });
+  if (r === null && x.edited && await dialog({ title: 'Ripristinare l\'originale?', text: `${x.base.name}: testi e tempi tornano quelli di partenza.`, okLabel: 'Ripristina' })) {
+    try { await save({ reset: true }, 'Ripristinato'); } catch (e) { toast(e.message, 'error'); }
+  }
+}
+
+function viewCatalog() {
+  // Cambia lo stato della partita (preparazione ↔ pronta): si ricarica per sapere se è ancora modificabile.
+  if (!catalogData || catalogData.gameId !== R.gameId || catalogData.status !== R.ms?.clock.status) { if (!loadCatalog.busy) { loadCatalog.busy = true; loadCatalog().finally(() => { loadCatalog.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const c = catalogData;
+  const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
+    h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
+      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
+    h('p', { class: 'small' }, x.current.description),
+    h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
+    c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
+  return h('div', { class: 'stack' },
+    h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
+      ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
+      : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
+    section(`Skill (${c.skills.length})`, h('div', { class: 'cat-grid' }, c.skills.map(card))),
+    section(`Doni (${c.gifts.length})`, h('div', { class: 'cat-grid' }, c.gifts.map(card))));
 }
 
 // ---------------------------------------------------------------- DONI QR

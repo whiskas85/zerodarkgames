@@ -183,7 +183,7 @@ function chooseSkill(me, skillId, on) {
 function useSkill(me, skillId, params = {}) {
   requireCouple(me);
   const g = requirePlaying(me);
-  const s = skillById(skillId);
+  const s = skillFor(skillId, me.gameId);
   const own = s && q.get('SELECT * FROM team_skills WHERE teamId = ? AND skillId = ?', me.id, s.id);
   if (!own) throw err(404, 'Non avete questa Skill');
   if (!available(s)) throw err(409, `${s.name} non è ancora disponibile`);
@@ -300,7 +300,7 @@ function applySkill(g, me, s, p) {
 
 // Skill usate da alleanze e scontri (Diplomatico, Maestria, Immunità, Velenoso): controlla e fa partire la ricarica.
 function checkSkill(t, skillId) {
-  const s = skillById(skillId);
+  const s = skillFor(skillId, t.gameId);
   const own = s && q.get('SELECT * FROM team_skills WHERE teamId = ? AND skillId = ?', t.id, s.id);
   if (!own) throw err(403, `Non avete ${s ? s.name : 'questa Skill'}`);
   if (own.readyAt && own.readyAt > Date.now()) throw err(409, `${s.name} è in ricarica: pronta tra ${Math.ceil((own.readyAt - Date.now()) / MIN)} minuti`);
@@ -348,7 +348,7 @@ function grantVirtualGift(me, label) {
 // ---------------------------------------------------------------- uso dei Doni
 
 function useGift(me, gift, params = {}) {
-  const type = giftById(gift.typeId);
+  const type = giftFor(gift.typeId, me.gameId);
   if (!type) return null; // dono senza effetto automatico (tipi vecchi): si segna solo come usato
   requireCouple(me);
   const g = requirePlaying(me);
@@ -534,7 +534,7 @@ function confusionFor(t, couples, now) {
   let e = effectOn(t.gameId, t.id, 'confusione', now);
   if (!e) {
     if (own.readyAt && own.readyAt > now) return null;
-    const s = skillById('confusione');
+    const s = skillFor('confusione', t.gameId);
     const others = couples.filter((x) => x.id !== t.id).map((x) => x.id);
     const pos = latestPos(t.id, now);
     const a = Math.random() * 2 * Math.PI;
@@ -663,8 +663,72 @@ function supplyFor(me, g, now = Date.now()) {
 // Occhio del Consiglio: durata e raggio dai parametri della partita.
 const eyeOf = (g) => ({ min: g.eyeMin > 0 ? g.eyeMin : 10, radius: g.eyeRadiusM > 0 ? g.eyeRadiusM : 500 });
 
-// Skill con valori che dipendono dai parametri della partita (Occhio del Consiglio, Memoria del Nodo).
+// ---------------------------------------------------------------- testi e tempi modificati dalla regia
+
+// La regia può cambiare nome, descrizione, durata e ricarica di Skill e Doni finché la partita è in preparazione.
+const EDITABLE = ['name', 'description', 'durationMin', 'cooldownMin'];
+function catalogEdits(g) {
+  try { return JSON.parse(g?.catalogEdits || '{}') || {}; } catch { return {}; }
+}
+const applyEdits = (x, e) => (e ? { ...x, ...Object.fromEntries(EDITABLE.filter((k) => e[k] != null && e[k] !== '').map((k) => [k, e[k]])) } : x);
+const giftForGame = (t, g) => (t ? applyEdits(t, catalogEdits(g).gifts?.[t.id]) : t);
+const skillFor = (id, gameId) => { const s = skillById(id); return s ? forGame(s, G.getGame(gameId)) : s; };
+const giftFor = (id, gameId) => giftForGame(giftById(id), G.getGame(gameId));
+
+// Catalogo per la regia: valori di base e valori della partita, e se si possono ancora cambiare.
+function editableCatalog(gameId) {
+  const g = G.getGame(gameId);
+  const ed = catalogEdits(g);
+  const row = (base, cur, kind, edits) => ({ kind, id: base.id, icon: base.icon, color: base.color || null, type: base.kind || null,
+    base: Object.fromEntries(EDITABLE.map((k) => [k, base[k] ?? null])), current: Object.fromEntries(EDITABLE.map((k) => [k, cur[k] ?? null])),
+    edited: !!edits, durationFromParams: base.id === 'occhio' && kind === 'skill' });
+  return {
+    editable: g.status === 'draft',
+    skills: SKILLS.filter(available).map((s) => row(s, forGame(s, g), 'skill', ed.skills?.[s.id])),
+    gifts: GIFTS.filter(available).map((t) => row(t, giftForGame(t, g), 'gift', ed.gifts?.[t.id])),
+  };
+}
+
+function editCatalog(gameId, kind, id, data, actor) {
+  const g = G.getGame(gameId);
+  if (g.status !== 'draft') throw err(409, 'Testi e tempi di Skill e Doni si cambiano solo con la partita in preparazione');
+  const list = kind === 'skill' ? SKILLS : kind === 'gift' ? GIFTS : null;
+  const base = list?.find((x) => x.id === id);
+  if (!base) throw err(404, 'Skill o Dono non trovato');
+  const ed = catalogEdits(g);
+  const group = kind === 'skill' ? 'skills' : 'gifts';
+  ed[group] = ed[group] || {};
+  if (data.reset) delete ed[group][id];
+  else {
+    const e = {};
+    const name = String(data.name ?? '').trim().slice(0, 40);
+    const description = String(data.description ?? '').trim().slice(0, 400);
+    if (name && name !== base.name) e.name = name;
+    if (description && description !== base.description) e.description = description;
+    for (const k of ['durationMin', 'cooldownMin']) {
+      if (data[k] === undefined || data[k] === null || data[k] === '') continue;
+      if (base[k] == null) continue; // solo i tempi che la Skill o il Dono ha davvero
+      const m = parseFloat(data[k]);
+      if (!Number.isFinite(m) || m <= 0 || m > 600) throw err(400, 'Minuti non validi');
+      if (m !== base[k]) e[k] = m;
+    }
+    if (Object.keys(e).length) ed[group][id] = e; else delete ed[group][id];
+  }
+  q.run('UPDATE games SET catalogEdits = ? WHERE id = ?', JSON.stringify(ed), g.id);
+  // I doni già creati (non ancora presi) prendono il nuovo nome e la nuova descrizione.
+  if (kind === 'gift') {
+    const t = giftForGame(base, G.getGame(g.id));
+    q.run("UPDATE gifts SET name = ?, description = ? WHERE gameId = ? AND typeId = ? AND status NOT IN ('claimed', 'expired')", t.name, t.description, g.id, id);
+  }
+  G.log(g.id, actor, 'catalog_edited', { kind, id, reset: !!data.reset });
+  return editableCatalog(g.id);
+}
+
+// Skill con valori che dipendono dai parametri della partita (Occhio del Consiglio, Memoria del Nodo), poi le modifiche della regia.
 function forGame(s, g) {
+  return applyEdits(forGameBase(s, g), catalogEdits(g).skills?.[s.id]);
+}
+function forGameBase(s, g) {
   if (s.id === 'occhio') { const eye = eyeOf(g); return { ...s, durationMin: eye.min, description: `Mostra sulla mappa tutte le coppie entro ${eye.radius} m da voi per ${eye.min} minuti. Le coppie viste lo scoprono dopo 1 minuto.` }; }
   return { ...s, description: describe(s, g) };
 }
@@ -689,14 +753,14 @@ function skillsState(me, now = Date.now()) {
     limits: limitsOf(g),
     canChoose: C.PRE_START.includes(g.status),
     catalog: SKILLS.map((s) => ({ ...forGame(s, g), available: available(s) })),
-    giftCatalog: GIFTS.map((x) => ({ ...x, available: available(x) })),
+    giftCatalog: GIFTS.map((x) => ({ ...giftForGame(x, g), available: available(x) })),
     mine: own.map((r) => {
       const s = skillById(r.skillId);
       const eff = live.find((e) => e.code === r.skillId);
       return s ? { ...forGame(s, g), source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null, activeUntil: eff ? eff.endsAt : null, active: !!eff, targetName: eff ? name(eff.targetTeamId) : null } : null;
     }).filter(Boolean),
     // Effetti in corso sulla coppia (Immunità del Dono, tracciamenti in corso…).
-    effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, from: e.startedAt, until: e.endsAt, targetName: name(e.targetTeamId), targetRoman: e.targetTeamId ? team(e.targetTeamId)?.roman : null, name: (e.kind === 'gift' ? giftById(e.code) : skillById(e.code))?.name })),
+    effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, from: e.startedAt, until: e.endsAt, targetName: name(e.targetTeamId), targetRoman: e.targetTeamId ? team(e.targetTeamId)?.roman : null, name: (e.kind === 'gift' ? giftFor(e.code, me.gameId) : skillFor(e.code, me.gameId))?.name })),
     // Ultimi risultati (Intercettazione, Dossier, Segugio).
     results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),
@@ -870,4 +934,5 @@ function resetGame(gameId) {
 module.exports = {
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
+  editableCatalog, editCatalog, giftForGame,
 };

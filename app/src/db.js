@@ -483,4 +483,7 @@ addColumn('gifts', 'removeSign', 'INTEGER NOT NULL DEFAULT 1');
 addColumn('gifts', 'multi', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('gifts', 'parentGiftId', 'INTEGER');
 
+// Testi e tempi di Skill e Doni modificati dalla regia per questa partita (JSON: { skills: {id: {...}}, gifts: {id: {...}} }).
+addColumn('games', 'catalogEdits', 'TEXT');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

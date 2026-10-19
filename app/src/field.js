@@ -16,8 +16,9 @@ const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'we
 // ---------------------------------------------------------------- catalogo dei tipi di dono
 
 // Tipi di dono: il catalogo fisso dei Doni con effetto (skills.js). Quelli non ancora disponibili non si creano.
-function giftTypes() {
-  return require('./skills').GIFTS.filter((t) => !t.phase || t.phase <= 1)
+function giftTypes(game = null) {
+  const S = require('./skills');
+  return S.GIFTS.filter((t) => !t.phase || t.phase <= 1).map((t) => (game ? S.giftForGame(t, game) : t))
     .map((t) => ({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description }));
 }
 
@@ -55,7 +56,7 @@ function getGift(id) {
 function createGifts(gameId, data, actor) {
   const game = G.getGame(gameId);
   if (game.status === 'ended') throw err(409, 'La partita è terminata');
-  const type = giftTypes().find((t) => t.id === data.typeId);
+  const type = giftTypes(game).find((t) => t.id === data.typeId);
   if (!type) throw err(400, 'Scegli il tipo di dono');
   const count = Math.max(1, Math.min(50, parseInt(data.count, 10) || 1));
   const revealMode = ['manual', 'onplace', 'time'].includes(data.revealMode) ? data.revealMode : 'manual';
@@ -359,7 +360,7 @@ function fieldState(gameId) {
     points,
     // Alla regia anche il token del QR: il cartello si vede (e si stampa) dalla tabella.
     gifts: q.all('SELECT * FROM gifts WHERE gameId = ? AND parentGiftId IS NULL ORDER BY id', game.id).map((g) => ({ ...giftOut(g), qrToken: g.qrToken })),
-    giftTypes: giftTypes(),
+    giftTypes: giftTypes(game),
     squads: squadsOf(game.id),
     // Incarichi generati da Skill e Doni (o creati senza squadra): da assegnare.
     openTasks: q.all('SELECT * FROM squad_tasks WHERE gameId = ? AND squadId IS NULL AND doneAt IS NULL AND cancelledAt IS NULL ORDER BY id', game.id),
