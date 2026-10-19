@@ -792,11 +792,11 @@ function viewLobbyHome(st) {
     h('nav', { class: 'grid' },
       h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app')),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙')),
+      tile('#/impostazioni', 'Impostazioni', '⚙'),
+      iceTile()),
     accountBar(st),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
@@ -831,12 +831,12 @@ function viewElectHome(st) {
       tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
       tile('#/mappa', 'Mappa del campo', '⛰'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙')),
+      tile('#/impostazioni', 'Impostazioni', '⚙'),
+      iceTile()),
     accountBar(st),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
       h('ul', { class: 'elect-members' }, st.team.members.map((m) => h('li', null, m.name, m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null)))));
@@ -898,12 +898,12 @@ function viewHome() {
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
       tile('#/codici', 'Codici', '✱'),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      iceTile(),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙')),
+      tile('#/impostazioni', 'Impostazioni', '⚙'),
+      iceTile()),
     accountBar(st));
 }
 
