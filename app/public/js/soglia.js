@@ -40,10 +40,13 @@ function render() {
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'La Soglia'), h('div', { class: 'eyebrow' }, `Ufficiale del Consiglio · ${V.me.username}`))),
       h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
-      V.data?.clock ? h('div', { class: 'top-clock' }, h('span', { class: `chip status-${V.data.clock.status}` }, STATUS_LABELS[V.data.clock.status]),
-        h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, clock.snap?.startedAt ? fmtDuration(clock.remaining()) : '—')) : null,
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
     h('main', { class: 'content soglia' },
+      // Countdown di gara ben visibile, sopra a tutto.
+      V.data?.clock ? h('div', { class: 'race-clock' },
+        h('div', { class: 'eyebrow' }, 'Tempo di gara rimanente'),
+        h('div', { class: 'mono race-time', 'data-clock': 'remaining' }, clock.snap?.startedAt ? fmtDuration(clock.remaining()) : fmtDuration(V.data.clock.durationMs)),
+        h('span', { class: `chip status-${V.data.clock.status}` }, STATUS_LABELS[V.data.clock.status])) : null,
       h('div', { class: 'reminder' }, h('strong', null, 'Si presenta una sola coppia: le alleanze vanno sciolte prima.'), ' Alla Soglia non si combatte.'),
       !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita avviata.')
         : h('div', { class: 'soglia-cols' }, h('div', { class: 'soglia-main' }, V.team ? teamView() : teamList()), exitPanel())));
