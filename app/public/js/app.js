@@ -2221,6 +2221,12 @@ function iceTile() {
   return h('a', { class: 'tile tile-ice', href: '#/ice' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '✚'), h('span', null, 'ICE'),
     h('span', { class: 'tiny muted' }, 'In Case of Emergency'), empty ? h('span', { class: 'badge badge-alert' }, '!') : null);
 }
+// Gruppo sanguigno: scelta da elenco (un valore scritto a mano in passato resta tra le opzioni).
+const BLOOD_GROUPS = ['0 Rh+', '0 Rh-', 'A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-'];
+function bloodSelect(value) {
+  const opts = value && !BLOOD_GROUPS.includes(value) ? [...BLOOD_GROUPS, value] : BLOOD_GROUPS;
+  return h('select', { class: 'input', name: 'iceBlood' }, h('option', { value: '' }, 'Non indicato'), opts.map((g) => h('option', { value: g, selected: g === value }, g)));
+}
 const offGameStripe = () => h('div', { class: 'offgame-stripe', 'aria-hidden': 'true' }, h('span', null, 'OFF GAME'));
 function viewIce() {
   const acc = S.state?.account;
@@ -2233,7 +2239,7 @@ function viewIce() {
     const fd = Object.fromEntries(new FormData(form).entries());
     try { await api('PATCH', '/api/account', fd); toast('Dati ICE salvati', 'ok'); refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per salvare' : err.message, 'error', 6000); }
   } },
-  field('Gruppo sanguigno', 'iceBlood', ice.blood, { maxlength: 12, placeholder: 'es. 0 Rh+' }),
+  h('label', { class: 'field' }, h('span', null, 'Gruppo sanguigno'), bloodSelect(ice.blood)),
   h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'), cond),
   field('Nome del contatto di emergenza', 'iceContactName', ice.contactName, { maxlength: 80, placeholder: 'es. Laura (moglie)' }),
   field('Telefono del contatto di emergenza', 'iceContactPhone', ice.contactPhone, { type: 'tel', maxlength: 30 }),

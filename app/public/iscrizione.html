@@ -343,7 +343,12 @@
       h('fieldset', { class: 'ice' }, h('legend', null, 'ICE · In Case of Emergency (facoltativo)'),
         h('p', { class: 'small' }, 'Per la tua sicurezza. Questa è una sezione ', h('strong', null, 'OFF GAME'), ', fuori dal gioco.'),
         h('p', { class: 'small' }, h('strong', null, 'Questi dati non sono visibili in regia.'), ' Arrivano alla Direzione solo ed esclusivamente se premi il pulsante EMERGENZA nell\'app (o l\'SOS di Traccar Client), insieme alla tua posizione, perché i soccorritori sappiano cosa fare.'),
-        field('Gruppo sanguigno', { name: 'iceBlood', maxlength: 12, placeholder: 'es. 0 Rh+', value: a.ice?.blood || '' }),
+        h('label', { class: 'field' }, h('span', null, 'Gruppo sanguigno'), (() => {
+          const groups = ['0 Rh+', '0 Rh-', 'A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-'];
+          const v = a.ice?.blood || '';
+          const opts = v && !groups.includes(v) ? [...groups, v] : groups;
+          return h('select', { class: 'input', name: 'iceBlood' }, h('option', { value: '' }, 'Non indicato'), opts.map((g) => h('option', { value: g, selected: g === v }, g)));
+        })()),
         h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'),
           h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' }, a.ice?.conditions || '')),
         field('Nome del contatto di emergenza', { name: 'iceContactName', maxlength: 80, placeholder: 'es. Laura (moglie)', value: a.ice?.contactName || '' }),
