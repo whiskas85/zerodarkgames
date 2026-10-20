@@ -264,6 +264,15 @@ addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('landmarks', 'exitToken', 'TEXT');
 // Testo per le coppie prima della gara (markdown): test armi, partenza, cose da fare.
 addColumn('games', 'prepInfo', 'TEXT');
+// Accettazione a inizio evento (presenza di iscritti e coppie) e test armi (sotto 1 joule) sul singolo.
+addColumn('players', 'checkinAt', 'INTEGER');
+addColumn('players', 'checkinBy', 'TEXT');
+addColumn('teams', 'checkinAt', 'INTEGER');
+addColumn('teams', 'checkinBy', 'TEXT');
+addColumn('players', 'chronoMain', 'INTEGER');
+addColumn('players', 'chronoBackup', 'INTEGER');
+addColumn('players', 'chronoSecondary', 'INTEGER');
+addColumn('players', 'chronoBy', 'TEXT');
 // Skill delle coppie (scelte prima del via o vinte con i Doni) ed effetti in corso di Skill e Doni.
 db.exec(`
 CREATE TABLE IF NOT EXISTS team_skills (

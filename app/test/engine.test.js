@@ -1693,3 +1693,25 @@ test('avvisi: visti anche da chi si iscrive dopo; sondaggi Sì / No / Forse con 
   const plain = G.createNotice(g.id, { title: 'Solo un avviso' }, 'test');
   assert.throws(() => G.voteNotice(T, null, plain.id, 'si'), /non è un sondaggio/);
 });
+
+test('accettazione e test armi: presenza, conferma coppia, armi sotto 1 joule solo per chi è presente', () => {
+  const CK = require('../src/checkin');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [p1, p2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  q.run("UPDATE players SET status = 'accepted' WHERE teamId = ?", A.id);
+  assert.throws(() => CK.setChrono(g.id, p1.id, 'main', true, 'test'), /accettato/);
+  CK.setPlayerCheckin(g.id, p1.id, true, 'test');
+  assert.throws(() => CK.setTeamCheckin(g.id, A.id, true, 'test'), /Manca la presenza/);
+  CK.setPlayerCheckin(g.id, p2.id, true, 'test');
+  CK.setTeamCheckin(g.id, A.id, true, 'test');
+  assert.ok(G.masterState(g.id).teams.find((t) => t.id === A.id).checkinAt);
+  CK.setChrono(g.id, p1.id, 'main', true, 'test');
+  CK.setChrono(g.id, p1.id, 'secondary', true, 'test');
+  const row = q.get('SELECT chronoMain, chronoBackup, chronoSecondary FROM players WHERE id = ?', p1.id);
+  assert.ok(row.chronoMain && !row.chronoBackup && row.chronoSecondary);
+  assert.throws(() => CK.setChrono(g.id, p1.id, 'bazooka', true, 'test'), /Arma non valida/);
+  // Tolta la presenza, la coppia torna da confermare.
+  CK.setPlayerCheckin(g.id, p2.id, false, 'test');
+  assert.equal(q.get('SELECT checkinAt FROM teams WHERE id = ?', A.id).checkinAt, null);
+});

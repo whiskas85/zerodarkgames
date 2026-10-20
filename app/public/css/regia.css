@@ -631,3 +631,24 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .sidebar a.on { border-bottom-color: transparent; border-left-color: var(--blood); }
   body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .55); }
 }
+
+/* Accettazione e test armi */
+.ck-counts { display: flex; gap: 16px; flex-wrap: wrap; }
+.ck-count { display: grid; }
+.ck-count strong { font-size: 26px; line-height: 1; }
+.ck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.ck-group { display: grid; gap: 8px; border-left: 5px solid var(--c, var(--line)); }
+.ck-group.ck-done { border-color: #46c46a; }
+.ck-head { display: grid; gap: 2px; }
+.ck-person, .chrono-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-radius: 4px; cursor: pointer; text-align: left; font: inherit; }
+.ck-person .grow { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.ck-person.on, .chrono-btn.on { border-color: #46c46a; background: color-mix(in srgb, #46c46a 14%, var(--paper)); }
+.ck-box { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--muted); border-radius: 4px; font-weight: 800; color: #fff; }
+.on > .ck-box { background: #46c46a; border-color: #46c46a; }
+.btn-ok { background: #2f7d43; color: #fff; border-color: #46c46a; }
+.chrono-person { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.chrono-person:first-of-type { border-top: 0; padding-top: 0; }
+.chrono-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chrono-btn { flex-direction: column; align-items: flex-start; gap: 6px; font-size: 13px; font-weight: 600; }
+.chrono-btn > span:last-child { display: grid; gap: 2px; }
+@media (max-width: 420px) { .chrono-row { grid-template-columns: 1fr; } .chrono-btn { flex-direction: row; align-items: center; } }

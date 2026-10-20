@@ -20,6 +20,8 @@ const TABS = [
   ['live', 'Regia'],
   ['emergenze', '🚨 Emergenze'],
   ['coppie', 'Iscrizioni e coppie'],
+  ['accettazione', 'Accettazione'],
+  ['armi', 'Test armi'],
   ['squadre', 'Squadre Eletti'],
   ['settori', 'Settori e Altari'],
   ['altari', 'Altari e Parola'],
@@ -221,7 +223,7 @@ function render() {
   preserve(() => {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
-      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, squadre: viewSquads,
+      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
@@ -742,7 +744,7 @@ const EVENT_LABELS = {
   team_sector_changed: 'Settore cambiato', team_members_changed: 'Membri cambiati', player_updated: 'Giocatore modificato', player_deleted: 'Giocatore eliminato',
   free_announcement: 'Annuncio libero', squad_created: 'Squadra creata', squad_updated: 'Squadra modificata', squad_deleted: 'Squadra eliminata',
   squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_move: 'Spostamento richiesto', squad_unassigned: 'Incarico annullato',
-  point_moved: 'Altare spostato', catalog_edited: 'Skill o Dono modificato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
+  point_moved: 'Altare spostato', checkin_player: 'Presente all\'accettazione', checkin_player_undo: 'Presenza annullata', checkin_team: 'Coppia confermata', checkin_team_undo: 'Conferma coppia annullata', chrono_ok: 'Arma sotto 1 joule', chrono_undo: 'Prova arma annullata', catalog_edited: 'Skill o Dono modificato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
   supply_closed: 'Armamenti chiusi', supply_shifted: 'Armamenti spostati', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
@@ -2200,6 +2202,79 @@ function viewCatalog() {
       return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
     }),
     section(`Doni (${c.gifts.length})`, h('div', { class: 'cat-grid' }, c.gifts.map(card))));
+}
+
+// ---------------------------------------------------------------- ACCETTAZIONE E TEST ARMI
+
+let ckFilter = '';
+const personLabel = (p) => [p.name, p.nickname ? `«${p.nickname}»` : null].filter(Boolean).join(' ');
+// Persone accettate raggruppate per squadra: coppie (per Settore), Eletti (per squadra), chi è ancora senza coppia.
+function peopleGroups(only = () => true) {
+  const ms = R.ms;
+  const f = ckFilter.trim().toLowerCase();
+  const match = (p) => !f || [p.name, p.nickname, p.username, p.softairTeam].some((x) => String(x || '').toLowerCase().includes(f));
+  const people = ms.players.filter((p) => p.status === 'accepted' && only(p));
+  const out = ms.teams.map((t) => ({ team: t, title: `${t.roman || '—'} · Settore ${t.sectorName || 'da assegnare'}`, sub: t.displayName, people: people.filter((p) => p.teamId === t.id) }));
+  const elect = people.filter((p) => p.teamId === ms.elect?.id);
+  for (const sq of ms.squads || []) out.push({ title: `Eletti · Squadra ${sq.name}`, people: elect.filter((p) => p.squadId === sq.id), color: sq.color });
+  out.push({ title: 'Eletti senza squadra', people: elect.filter((p) => !p.squadId || !(ms.squads || []).some((x) => x.id === p.squadId)) });
+  const inTeam = new Set([...ms.teams.map((t) => t.id), ms.elect?.id]);
+  out.push({ title: 'Senza coppia', people: people.filter((p) => !inTeam.has(p.teamId)) });
+  return out.map((g) => ({ ...g, all: g.people, people: g.people.filter(match) })).filter((g) => g.people.length);
+}
+const ckSearch = () => h('input', { class: 'input input-sm', type: 'search', placeholder: 'Cerca per nome, soprannome, team softair…', value: ckFilter, 'data-keep': 'ck-filter', oninput: (e) => { ckFilter = e.target.value; render(); } });
+const ckCount = (n, tot, label) => h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, `${n}/${tot}`), h('span', { class: 'tiny muted' }, label));
+
+function viewCheckin() {
+  const ms = R.ms;
+  const accepted = ms.players.filter((p) => p.status === 'accepted');
+  const present = accepted.filter((p) => p.checkinAt).length;
+  const teamsOk = ms.teams.filter((t) => t.checkinAt).length;
+  const pending = ms.players.filter((p) => p.status === 'pending').length;
+  const toggle = (p) => call('POST', G(`/checkin/player/${p.id}`), { on: !p.checkinAt }, p.checkinAt ? null : `${p.nickname || p.name}: presente`);
+  const teamToggle = async (t) => {
+    if (t.checkinAt && !(await dialog({ title: 'Annullare la conferma?', text: `${t.roman} · Settore ${t.sectorName}: la coppia torna da confermare.`, okLabel: 'Annulla conferma' }))) return;
+    call('POST', G(`/checkin/team/${t.id}`), { on: !t.checkinAt }, t.checkinAt ? 'Conferma annullata' : 'Coppia confermata');
+  };
+  return h('div', { class: 'stack' },
+    section('Accettazione',
+      h('p', { class: 'muted tiny' }, 'All\'arrivo al campo: segna chi è presente, poi conferma la coppia quando ci sono tutti e due. Solo gli iscritti già approvati; chi è presente compare nel Test armi.'),
+      h('div', { class: 'ck-counts' }, ckCount(present, accepted.length, 'presenti'), ckCount(teamsOk, ms.teams.length, 'coppie confermate')),
+      pending ? h('p', { class: 'small warn-text' }, `${pending} iscrizioni ancora da approvare: le trovi in «Iscrizioni e coppie».`) : null,
+      ckSearch()),
+    h('div', { class: 'ck-grid' }, peopleGroups().map((g) => {
+      const allIn = g.all.every((p) => p.checkinAt);
+      return h('div', { class: `panel ck-group ${g.team?.checkinAt ? 'ck-done' : ''}`, style: { '--c': g.team?.color || g.color || 'var(--line)' } },
+        h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
+        g.people.map((p) => h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
+          h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p.checkinAt ? '✓' : ''),
+          h('span', { class: 'grow' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · '))),
+          h('span', { class: 'tiny' }, p.checkinAt ? `presente ${fmtTime(p.checkinAt)}` : 'presente?'))),
+        g.team ? h('button', { class: `btn btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: !g.team.checkinAt && !allIn, onclick: () => teamToggle(g.team) },
+          g.team.checkinAt ? `✓ Coppia confermata · ${fmtTime(g.team.checkinAt)}` : allIn ? 'Conferma la coppia' : 'Conferma la coppia (manca qualcuno)') : null);
+    })));
+}
+
+const CHRONO = [['main', 'chronoMain', 'Arma principale'], ['backup', 'chronoBackup', 'Principale di riserva'], ['secondary', 'chronoSecondary', 'Arma secondaria']];
+function viewChrono() {
+  const ms = R.ms;
+  const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
+  const mainOk = present.filter((p) => p.chronoMain).length;
+  const toggle = (p, weapon, col) => call('POST', G(`/chrono/${p.id}`), { weapon, on: !p[col] });
+  const groups = peopleGroups((p) => !!p.checkinAt);
+  return h('div', { class: 'stack' },
+    section('Test armi',
+      h('p', { class: 'muted tiny' }, 'Prova al cronografo, persona per persona. Segnare un\'arma vuol dire che è stata provata ed è minore di 1 joule. Compare solo chi è stato accettato all\'ingresso.'),
+      h('div', { class: 'ck-counts' }, ckCount(mainOk, present.length, 'con l\'arma principale provata')),
+      ckSearch()),
+    groups.length ? h('div', { class: 'ck-grid' }, groups.map((g) => h('div', { class: 'panel ck-group', style: { '--c': g.team?.color || g.color || 'var(--line)' } },
+      h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
+      g.people.map((p) => h('div', { class: 'chrono-person' },
+        h('strong', null, personLabel(p)),
+        h('div', { class: 'chrono-row' }, CHRONO.map(([weapon, col, label]) => h('button', { class: `chrono-btn ${p[col] ? 'on' : ''}`, type: 'button', title: p[col] ? `Provata alle ${fmtTime(p[col])}` : 'Tocca se è minore di 1 joule', onclick: () => toggle(p, weapon, col) },
+          h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : ''),
+          h('span', null, label, h('span', { class: 'tiny' }, 'minore di 1 joule'))))))))))
+      : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'));
 }
 
 // ---------------------------------------------------------------- DONI QR

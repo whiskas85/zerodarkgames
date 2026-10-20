@@ -2021,7 +2021,7 @@ function masterState(gameId) {
                      FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id),
     teams: teams.map((t) => ({
       id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor,
-      status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken,
+      status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken, checkinAt: t.checkinAt || null,
       members: membersOf(t.id), fragments: tfStats[t.id]?.n || 0, fragmentsTotal: fragCount,
       lastUnlock: lastUnlock[t.id] || null, online: online[t.id] || 0, unread: unread[t.id] || 0, owned: owned[t.id] || [], pushDevices: pushDevices[t.id] || 0,
     })),

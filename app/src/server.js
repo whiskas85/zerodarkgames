@@ -14,6 +14,7 @@ const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
 const S = require('./skills');
+const CK = require('./checkin');
 const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
@@ -567,6 +568,10 @@ m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.para
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
 m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.body || {}, { actor: actor(req) }) })));
+// Accettazione a inizio evento e test armi.
+m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
+m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
+m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req))));
 m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
