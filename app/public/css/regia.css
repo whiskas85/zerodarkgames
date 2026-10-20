@@ -792,3 +792,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .cs-over { grid-column: 1 / -1; color: #fff; background: #e5484d; border-radius: 4px; padding: 6px; }
 .chrono-wbtn.over { border-color: #e5484d; }
 .w-over { color: #e5484d; font-weight: 700; }
+/* Riquadro risultato: pallino in grande, 4 valori */
+.cs-sum { grid-template-columns: repeat(4, 1fr); }
+.cs-sum.wait { border: 2px dashed var(--line); }
+.cs-bb strong.mono { font-size: 26px; color: var(--brass, #d1ad62); }
+@media (max-width: 640px) {
+  .cs-sum { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .cs-sum strong.mono { font-size: 16px; }
+  .cs-bb { grid-column: 1 / -1; }
+  .cs-bb strong.mono { font-size: 30px; }
+}
