@@ -101,9 +101,14 @@ const CHRONO = [['main', 'chronoMain', 'Arma principale'], ['backup', 'chronoBac
 // Prima fase: ci si collega al cronografo (Web Bluetooth, Chrome su Android o computer), si ascoltano tutti i canali e si
 // registrano i byte di ogni tiro accanto al valore letto sul display. Dal registro esportato si ricava il formato.
 const BT = { device: null, server: null, log: [], status: 'Non collegato', panel: null, listEl: null, statusEl: null };
-const KNOWN = ['6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb', 'battery_service', 'device_information', 'generic_access', 'generic_attribute'];
-// Servizi «proprietari» più usati (0xFE00–0xFFFF): il browser lascia leggere solo quelli dichiarati qui.
-const SHORT = [...Array(512).keys()].map((i) => 0xfe00 + i);
+// Il browser lascia leggere solo i servizi dichiarati qui: quelli standard, le «seriali BLE» dei moduli più diffusi
+// (Nordic, HM-10, Microchip/ISSC, Telink, Dialog, TI, Silabs…) e i codici corti proprietari più usati.
+const KNOWN = ['battery_service', 'device_information', 'generic_access', 'generic_attribute',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e', '6e40fff0-b5a3-f393-e0a9-e50e24dcca9e', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000d0ff-3c17-d293-8e48-14fe2e4da212',
+  '00010203-0405-0607-0809-0a0b0c0d1910', '0783b03e-8535-b5a0-7140-a304d2495cb7', 'f000c0e0-0451-4000-b000-000000000000',
+  '1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0000fff0-0000-1000-8000-00805f9b34fb', '0000ffe0-0000-1000-8000-00805f9b34fb'];
+const range = (from, n) => [...Array(n).keys()].map((i) => from + i);
+const SHORT = [...range(0xfe00, 512), ...range(0xae00, 256), ...range(0xa000, 64), ...range(0xb000, 64), ...range(0x0000 + 0xf000, 64), ...range(0xd000, 16), ...range(0xe000, 16)];
 const hex = (dv) => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
 const ascii = (dv) => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : '·')).join('');
 const shortId = (uuid) => (/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.test(uuid) ? `0x${uuid.slice(4, 8)}` : uuid);
@@ -133,7 +138,7 @@ function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textCon
 async function btConnect(extraUuid) {
   if (!navigator.bluetooth) { btStatus('Questo browser non supporta il Bluetooth: usa Chrome su Android o su computer (non iPhone).'); return; }
   try {
-    const extra = String(extraUuid || '').split(/[\s,]+/).filter(Boolean).map((u) => (/^[0-9a-f]{4}$/i.test(u) ? parseInt(u, 16) : u.toLowerCase()));
+    const extra = String(extraUuid || '').split(/[\s,]+/).filter(Boolean).map((u) => u.replace(/^0x/i, '')).map((u) => (/^[0-9a-f]{4}$/i.test(u) ? parseInt(u, 16) : u.toLowerCase()));
     const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
     BT.device = device;
     device.addEventListener('gattserverdisconnected', () => { btStatus(`Scollegato da ${device.name || 'cronografo'}`); btAdd({ kind: 'info', text: 'Scollegato' }); });
@@ -141,12 +146,12 @@ async function btConnect(extraUuid) {
     BT.server = await device.gatt.connect();
     btAdd({ kind: 'info', text: `Collegato a «${device.name || '(senza nome)'}» · id ${device.id}` });
     const services = await BT.server.getPrimaryServices();
-    if (!services.length) btAdd({ kind: 'info', text: 'Nessun servizio leggibile: scrivi il codice del servizio (UUID) nel campo e ricollega.' });
+    if (!services.some((x) => !/^0000180[01]-/.test(x.uuid))) btAdd({ kind: 'info', text: 'Solo i servizi standard: il canale dei tiri ha un codice che il browser non conosce. Trovalo (vedi istruzioni sopra), scrivilo in «Servizio extra» e ricollega.' });
     for (const sv of services) {
       const chars = await sv.getCharacteristics().catch(() => []);
       btAdd({ kind: 'info', text: `Servizio ${shortId(sv.uuid)} · ${chars.length} caratteristiche` });
       for (const c of chars) {
-        const pr = Object.entries(c.properties).filter(([, v]) => v === true).map(([k]) => k).join(', ');
+        const pr = ['broadcast', 'read', 'writeWithoutResponse', 'write', 'notify', 'indicate', 'authenticatedSignedWrites', 'reliableWrite', 'writableAuxiliaries'].filter((k) => c.properties[k]).join(', ');
         btAdd({ kind: 'info', text: `  ↳ ${shortId(c.uuid)} [${pr}]` });
         const rec = (dv, via) => btAdd({ kind: 'data', via, service: shortId(sv.uuid), char: shortId(c.uuid), hex: hex(dv), ascii: ascii(dv), guess: guesses(dv) });
         if (c.properties.read) await c.readValue().then((dv) => rec(dv, 'lettura')).catch(() => {});
@@ -173,7 +178,7 @@ function btExport() {
 function btPanel() {
   if (BT.panel) return BT.panel;
   try { BT.log = JSON.parse(localStorage.getItem('zdg_bt_log') || '[]'); } catch { BT.log = []; }
-  const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)' });
+  const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)', value: localStorage.getItem('zdg_bt_uuid') || '', oninput: (e) => { try { localStorage.setItem('zdg_bt_uuid', e.target.value); } catch { /* */ } } });
   const shot = h('input', { class: 'input input-sm', placeholder: 'Valore sul display, es. 92,4 m/s · pallino 0,20 g' });
   BT.statusEl = h('p', { class: 'small bt-status' }, BT.status);
   BT.listEl = h('div', { class: 'bt-log' }, [...BT.log].reverse().map(btRow));
@@ -181,6 +186,8 @@ function btPanel() {
   BT.panel = h('details', { class: 'panel bt-panel' },
     h('summary', null, h('strong', null, '📶 Cronografo Bluetooth · registrazione'), h('span', { class: 'tiny muted' }, ' (prova: per capire cosa trasmette)')),
     h('p', { class: 'tiny muted' }, 'Chrome su Android o computer (non iPhone). Chiudi l\'app del produttore, poi: 1) Collega e scegli il cronografo; 2) spara; 3) scrivi il valore del display e premi «Segna»; ripeti 5–10 volte a velocità diverse; 4) «Esporta» e manda il file.'),
+    h('details', { class: 'tiny muted' }, h('summary', null, 'Se compaiono solo i servizi 0x1800/0x1801: come trovare il codice del canale'),
+      h('p', null, 'Su computer con Chrome: apri una nuova scheda, scrivi chrome://bluetooth-internals → «Devices» → «Start scan», premi «Inspect» sul cronografo: compare l\'elenco dei servizi. Su Android: app nRF Connect → Scan → Connect sul cronografo. Copia i codici lunghi (UUID) dei servizi diversi da 1800/1801, incollali in «Servizio extra» (anche più di uno, separati da spazio) e ricollega.')),
     h('div', { class: 'row-actions' },
       h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => btConnect(uuid.value) }, 'Collega cronografo'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { try { BT.device?.gatt?.disconnect(); } catch { /* già scollegato */ } } }, 'Scollega'),
