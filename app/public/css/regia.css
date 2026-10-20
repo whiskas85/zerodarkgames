@@ -799,6 +799,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 640px) {
   .cs-sum { grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .cs-sum strong.mono { font-size: 16px; }
-  .cs-bb { grid-column: 1 / -1; }
   .cs-bb strong.mono { font-size: 30px; }
 }
+/* Pallino e ultima lettura: due riquadri uguali in cima al risultato */
+.cs-top { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cs-big { display: grid; gap: 2px; align-content: center; justify-items: center; padding: 8px; border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.cs-big strong.mono { font-size: 28px; line-height: 1.1; }
+.cs-bb strong.mono { color: var(--brass, #d1ad62); }
+.cs-lastread.over { background: #e5484d; border-color: #e5484d; color: #fff; }
+.cs-lastread.over .eyebrow, .cs-lastread.over .tiny { color: #fff; }
+@media (max-width: 640px) { .cs-big strong.mono { font-size: 26px; } }

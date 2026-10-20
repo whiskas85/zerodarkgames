@@ -402,7 +402,12 @@ function chronoSession(ctx) {
       h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
     // Riquadro del risultato in cima (col pallino in grande), poi le letture, poi le istruzioni.
     h('div', { class: `cs-sum ${r.length ? (ok ? 'ok' : 'bad') : 'wait'}` },
-      h('div', { class: 'cs-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'), h('strong', { class: 'mono' }, `${num(bbGrams())} g`)),
+      // Pallino e ultima lettura affiancati, stessa forma; l'ultima lettura diventa rossa solo se sopra 1 J.
+      h('div', { class: 'cs-top' },
+        h('div', { class: 'cs-big cs-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'), h('strong', { class: 'mono' }, `${num(bbGrams())} g`)),
+        h('div', { class: `cs-big cs-lastread ${r.length && r[r.length - 1].j >= 1 ? 'over' : ''}` }, h('span', { class: 'eyebrow' }, 'Ultima lettura'),
+          h('strong', { class: 'mono' }, r.length ? fmtJ(r[r.length - 1].j) : '—'),
+          r.length ? h('span', { class: 'tiny mono' }, fmtV(r[r.length - 1].v)) : null)),
       h('div', null, h('span', { class: 'eyebrow' }, r.length ? `Media di ${r.length}` : 'Media'), h('strong', { class: 'mono' }, r.length ? fmtJ(mj) : '—')),
       h('div', null, h('span', { class: 'eyebrow' }, 'Vel. media'), h('strong', { class: 'mono' }, r.length ? fmtV(mv) : '—')),
       h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, r.length ? fmtJ(max) : '—')),
