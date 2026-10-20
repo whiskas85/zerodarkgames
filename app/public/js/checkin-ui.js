@@ -225,12 +225,33 @@ async function acStart(server) {
   return false;
 }
 
-async function btConnect(extraUuid) {
-  if (!navigator.bluetooth) { btStatus('Questo browser non supporta il Bluetooth: usa Chrome su Android o su computer (non iPhone).'); return; }
+// Dove gira la pagina: Bluetooth via browser c'è su Chrome (Android, computer) e su iPhone solo con app come Bluefy.
+const IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function btSupportNote() {
+  if (navigator.bluetooth) return null;
+  if (IOS) return 'Su iPhone Safari non usa il Bluetooth: installa l\'app gratuita «Bluefy – Web BLE Browser», aprila su questa pagina, accedi e collega il cronografo. Intanto puoi spuntare a mano.';
+  return 'Questo browser non usa il Bluetooth: apri la pagina con Chrome (Android o computer). Intanto puoi spuntare a mano.';
+}
+// Errori del Bluetooth spiegati (Android: Bluetooth spento, permesso «Dispositivi nelle vicinanze», ecc.).
+function btErrText(err) {
+  if (err.name === 'NotFoundError') return /cancel/i.test(err.message) ? 'Nessun cronografo scelto' : 'Nessun cronografo trovato: è acceso e vicino? Chiudi l\'app AceSoft sul telefono (il cronografo accetta un solo collegamento).';
+  if (err.name === 'NotAllowedError' || err.name === 'SecurityError') return 'Permesso negato: su Android consenti a Chrome «Dispositivi nelle vicinanze» e la posizione, poi riprova.';
+  if (err.name === 'NetworkError') return 'Collegamento non riuscito: spegni e riaccendi il cronografo, avvicinati e riprova.';
+  if (/adapter|bluetooth.*(off|unavailable)/i.test(err.message)) return 'Bluetooth spento: attivalo sul telefono e riprova.';
+  return `Errore: ${err.message}`;
+}
+
+// mode 'ac6000': elenco con i soli AC6000 e pochi servizi (più veloce, va bene anche su Android e Bluefy);
+// altrimenti (diagnostica) tutti i dispositivi e tutti i servizi noti.
+async function btConnect(extraUuid, mode = 'all') {
+  if (!navigator.bluetooth) { btStatus(btSupportNote()); return; }
   try {
+    if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability().catch(() => true))) { btStatus('Bluetooth spento o non disponibile: attivalo e riprova.'); return; }
     BT.extra = extraUuid;
     const extra = String(extraUuid || '').split(/[\s,]+/).filter(Boolean).map((u) => u.replace(/^0x/i, '')).map((u) => (/^[0-9a-f]{4}$/i.test(u) ? parseInt(u, 16) : u.toLowerCase()));
-    const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
+    const device = await navigator.bluetooth.requestDevice(mode === 'ac6000'
+      ? { filters: [{ namePrefix: 'AC6000' }], optionalServices: [AC.svcNotify, AC.svcWrite, 'generic_access'] }
+      : { acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
     if (BT.device !== device) {
       BT.device = device;
       // Se il cronografo chiude la connessione (inattività, segnale), ci si ricollega da soli qualche volta.
@@ -241,14 +262,14 @@ async function btConnect(extraUuid) {
         if (BT.manual || BT.retries >= 5) { btStatus(`Scollegato da ${device.name || 'cronografo'}`); return; }
         BT.retries++;
         btStatus(`Connessione persa: mi ricollego (${BT.retries}/5)…`);
-        setTimeout(() => btOpen(device).catch((err) => btStatus(`Errore: ${err.message}`)), 1000);
+        setTimeout(() => btOpen(device).catch((err) => btStatus(btErrText(err))), 1000);
       });
     }
     BT.manual = false;
     BT.retries = 0;
     await btOpen(device);
   } catch (err) {
-    btStatus(err.name === 'NotFoundError' ? 'Nessun dispositivo scelto' : `Errore: ${err.message}`);
+    btStatus(btErrText(err));
   }
 }
 
@@ -321,6 +342,7 @@ function btDiag() {
   return BT.panel;
 }
 
+const SHORT_LABEL = { main: 'Primaria', backup: 'Backup', secondary: 'Secondaria' };
 const shotsOf = (p) => { try { return JSON.parse(p.chronoShots || '{}') || {}; } catch { return {}; } };
 const num = (x, d = 2) => Number(x).toFixed(d).replace('.', ',');
 const fmtJ = (j) => `${num(j)} J`;
@@ -337,10 +359,10 @@ function chronoDash() {
     h('div', { class: 'dash-top' },
       h('div', { class: 'dash-conn' },
         h('span', { class: `chip ${live ? 'chip-ok' : ''}` }, live ? `📶 ${BT.device?.name || 'Cronografo'}` : '📶 Cronografo non collegato'),
-        h('span', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : navigator.bluetooth ? BT.status : 'Bluetooth non disponibile: Chrome su Android o computer (non iPhone). Si spunta a mano.')),
+        h('span', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : btSupportNote() || BT.status)),
       navigator.bluetooth ? (live
         ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* */ } } }, 'Scollega')
-        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect(localStorage.getItem('zdg_bt_uuid') || '') }, 'Collega cronografo')) : null),
+        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect('', 'ac6000') }, 'Collega cronografo')) : null),
     h('div', { class: 'dash-grid' },
       h('label', { class: 'dash-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'),
         h('span', { class: 'dash-bb-in' }, h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
@@ -414,7 +436,9 @@ export function viewChrono(ctx) {
     h('strong', null, title), h('span', { class: 'mono small' }, `${done}/${tot}`), h('span', { class: 'tiny muted' }, 'chiuse'));
   return h('div', { class: 'stack' },
     section('Test armi',
-      h('p', { class: 'muted tiny' }, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma: spara uno o più tiri, guarda la media e dai «OK, salva» (passa se la media è sotto 1 joule). Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
+      h('details', { class: 'muted tiny chrono-help' }, h('summary', null, 'Come funziona'),
+        h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma: spara uno o più tiri, guarda la media e dai «OK, salva» (passa se la media è sotto 1 joule). Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
+        h('p', null, 'Cronografo Bluetooth (Acetech AC6000-BT): Chrome su Android o computer; su iPhone con l\'app Bluefy. Chiudi l\'app AceSoft prima di collegarlo.')),
       h('div', { class: 'ck-counts' }, ckCount(closed, present.length, 'persone chiuse'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate')))),
     chronoDash(),
     chronoSession(ctx),
@@ -432,9 +456,10 @@ export function viewChrono(ctx) {
           const cur = BT.session?.playerId === p.id && BT.session.weapon === weapon;
           const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? `✗ ${fmtJ(s.j)}` : 'da provare';
           return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${cur ? 'cur' : ''}`, disabled: !!p.chronoDoneAt, onclick: () => open(p, weapon, label) },
-            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, label, h('span', { class: 'tiny' }, sub)));
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub)));
         })),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
     })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
-    btDiag());
+    btDiag(),
+    BT.session ? h('div', { class: 'chrono-sheet-pad' }) : null);
 }

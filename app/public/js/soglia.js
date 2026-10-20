@@ -48,7 +48,7 @@ async function load() {
 function render() {
   if (!V.me) return mount($root, login());
   mount($root,
-    h('header', { class: 'topbar' },
+    h('header', { class: 'topbar soglia-top' },
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'La Soglia'), h('div', { class: 'eyebrow' }, `Ufficiale del Consiglio · ${V.me.username}`))),
       h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; V.ck = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),

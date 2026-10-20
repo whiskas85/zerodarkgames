@@ -736,3 +736,53 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .dash-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 420px) { .chrono-weapons { grid-template-columns: 1fr; } .cs-sum { grid-template-columns: 1fr 1fr; } }
+.chrono-help summary { cursor: pointer; }
+.chrono-help p { margin: 6px 0 0; }
+.w-short { display: none; }
+.chrono-sheet-pad { display: none; }
+
+/* Test armi su smartphone */
+@media (max-width: 640px) {
+  .soglia-tabs { position: sticky; top: 0; z-index: 30; background: var(--bg); padding: 4px 8px 0; }
+  .soglia-tabs a { padding: 10px; }
+  .chrono-dash { padding: 10px; gap: 8px; }
+  .dash-top .btn-primary { width: 100%; }
+  .dash-grid { grid-template-columns: auto 1fr; }
+  .dash-bb { padding: 8px; }
+  .bt-bb { width: 72px; }
+  .dash-j { font-size: 26px; }
+  /* Squadre: striscia scorrevole invece della griglia */
+  .chrono-tiles { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; scroll-snap-type: x proximity; }
+  .chrono-tile { flex: 0 0 auto; min-width: 118px; padding: 8px 10px; scroll-snap-align: start; }
+  .chrono-tools { gap: 6px; }
+  .chrono-tools .input { min-width: 0; flex: 1 1 100%; }
+  /* Righe compatte: nome + Chiudi, sotto le tre armi affiancate con nomi corti */
+  .chrono-tr { grid-template-columns: 1fr auto; padding: 8px; gap: 6px; }
+  .chrono-weapons { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .chrono-wbtn { flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 4px; text-align: center; font-size: 12px; min-height: 64px; }
+  .chrono-wbtn .ck-box { width: 22px; height: 22px; margin: 0 auto; }
+  .chrono-wbtn > span:last-child { justify-items: center; }
+  .w-long { display: none; }
+  .w-short { display: inline; }
+  .chrono-close { padding: 8px 10px; }
+  /* Prova in corso: pannello dal basso, sempre a portata di pollice */
+  .chrono-session { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 60; max-height: 72vh; overflow-y: auto; margin: 0;
+    border-radius: 14px 14px 0 0; border-width: 3px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .chrono-session .row-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .chrono-session .row-actions .btn { width: 100%; padding: 12px 8px; }
+  .chrono-session .row-actions .btn:first-child { grid-column: 1 / -1; font-size: 17px; }
+  .cs-sum { grid-template-columns: repeat(3, 1fr); padding: 8px; }
+  .cs-sum strong.mono { font-size: 18px; }
+  .chrono-sheet-pad { display: block; height: 60vh; }
+}
+@media (max-width: 360px) { .chrono-wbtn { font-size: 11px; } .cs-sum { grid-template-columns: 1fr 1fr; } }
+
+/* Soglia su smartphone: marchio ed Esci sulla stessa riga, partita sotto */
+@media (max-width: 640px) {
+  .soglia-top { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 10px; }
+  .soglia-top .brand .eyebrow { display: none; }
+  .soglia-top .game-select { grid-column: 1 / -1; grid-row: 2; order: 0; }
+  .soglia-top .top-actions { order: 0; flex: none; }
+  .soglia-top .top-actions .btn { width: auto; }
+  .content.soglia { padding: 8px; }
+}
