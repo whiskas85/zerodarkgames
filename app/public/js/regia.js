@@ -2180,7 +2180,10 @@ function viewCatalog() {
     h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
       ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
       : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
-    section(`Skill (${c.skills.length})`, h('div', { class: 'cat-grid' }, c.skills.map(card))),
+    ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
+      const list = c.skills.filter((x) => x.type === type);
+      return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
+    }),
     section(`Doni (${c.gifts.length})`, h('div', { class: 'cat-grid' }, c.gifts.map(card))));
 }
 
