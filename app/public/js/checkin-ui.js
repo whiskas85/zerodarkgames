@@ -202,8 +202,16 @@ async function acStart(server) {
   const wait = (ms) => new Promise((res) => { acked = () => { acked = null; res(true); }; setTimeout(() => res(false), ms); });
   let token = [0xdf, 0x02];
   try { const t = JSON.parse(localStorage.getItem('zdg_ac_token') || 'null'); if (Array.isArray(t) && t.length === 2) token = t; } catch { /* */ }
+  // Comandi: AA LEN CMD payload CS, con CS = (somma da LEN all'ultimo byte + chiave) & FF. La chiave dipende dal
+  // cronografo: è il primo byte del suo codice di abbinamento + 0xAC (0xDF→0x8B nel progetto originale, 0x48→0xF4).
+  const cmd = (c, payload) => {
+    let tk = token;
+    try { const t = JSON.parse(localStorage.getItem('zdg_ac_token') || 'null'); if (Array.isArray(t) && t.length === 2) tk = t; } catch { /* */ }
+    const body = [3 + payload.length + 1, c, ...payload];
+    return Uint8Array.from([0xaa, ...body, (body.reduce((a, b) => a + b, 0) + tk[0] + 0xac) & 0xff]);
+  };
   // Dopo il saluto si chiede lo slot attivo (0x5A) per avere subito il peso del pallino impostato.
-  const askSlot = () => send(Uint8Array.from([0xaa, 0x05, 0x5a, 0x00, 0xea])).catch(() => {});
+  const askSlot = () => send(cmd(0x5a, [0x00])).catch(() => {});
   await send(acHello(token));
   if (await wait(3000)) { await askSlot(); return true; }
   for (let i = 0; i < 8; i++) { await send(acHello([0, 0])); if (await wait(3000)) { await askSlot(); return true; } }
