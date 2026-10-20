@@ -1826,6 +1826,8 @@ function lobbyState(player) {
     team: { id: null, kind: 'lobby', displayName: player.requestedTeamName, status: player.status, sector: null,
       members: [player, partner].filter(Boolean).map((m) => ({ nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: m === player })) },
     player: playerInfo(player),
+    // Coppia iscritta e compagno non ancora unito: il codice da dargli (si vede in home, si copia toccandolo).
+    pairCode: player.requestedRole === 'pair' && !partner ? player.regGroup || null : null,
     seal: null, fragments: [], notebook: [], visited: [], messages: [], standings: null,
     announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
     notices: noticesFor({ gameId: g.id, kind: 'lobby', id: null }, player),

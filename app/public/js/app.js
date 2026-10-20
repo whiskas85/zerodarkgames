@@ -906,6 +906,25 @@ const ROLE_TEXT = {
   elect: 'Candidato agli Eletti del Consiglio',
 };
 
+// Codice della coppia (iscrizione come coppia, compagno non ancora unito): toccandolo si copia.
+function pairCodeCard(code) {
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(code); toast('Codice della coppia copiato', 'ok'); }
+    catch {
+      const t = h('textarea', { style: { position: 'fixed', opacity: '0' } }, code);
+      document.body.append(t); t.select();
+      try { document.execCommand('copy'); toast('Codice della coppia copiato', 'ok'); } catch { toast(`Codice: ${code}`, 'ok', 8000); }
+      t.remove();
+    }
+    vibrate(40);
+  };
+  return h('div', { class: 'card pair-code-card' },
+    h('div', { class: 'eyebrow' }, 'Il codice della vostra coppia'),
+    h('button', { type: 'button', class: 'pair-code mono', onclick: copy, 'aria-label': `Copia il codice ${code}` }, code),
+    h('span', { class: 'tiny muted' }, 'Tocca per copiare'),
+    h('p', { class: 'small' }, 'Dallo al tuo compagno: lo inserisce nell\'iscrizione («Ho il codice del compagno») per unirsi alla coppia.'));
+}
+
 // Il compagno di squadra: solo soprannome (e squadra softair), mai nome e cognome.
 // «Letto» lo nasconde; se il compagno cambia, il riquadro torna (fino al prossimo «Letto»).
 const partnerKey = (m) => `${m.id ?? ''}|${m.nickname ?? ''}|${m.softairTeam ?? ''}`;
@@ -951,6 +970,7 @@ function viewLobbyHome(st) {
         ? 'Il Consiglio sta valutando la vostra candidatura. Intanto esplorate l\'app: quando sarete accettati e avrete il vostro Settore, questo telefono si aggiornerà da solo.'
         : pl.role === 'single' ? 'Il Consiglio sta estraendo il vostro compagno e il Settore. L\'app si aggiornerà da sola.' : 'Il Consiglio sta formando le coppie e assegnando i Settori. L\'app si aggiornerà da sola.'),
       null),
+    st.pairCode ? pairCodeCard(st.pairCode) : null,
     partner ? partnerCard(partner) : null,
     prepCard(st),
     trackFlag(st),
