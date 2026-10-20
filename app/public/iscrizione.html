@@ -61,6 +61,9 @@
     .spots-low { border-color: var(--warn); color: var(--warn); }
     .spots-full { border-color: var(--blood); color: var(--blood); }
     .path-full { opacity: .55; cursor: not-allowed; }
+    .profile-tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--line); margin: 4px 0 12px; overflow-x: auto; }
+    .profile-tabs a { padding: 10px 12px; color: var(--ink); text-decoration: none; font-weight: 700; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .profile-tabs a.on { border-bottom-color: var(--blood); }
   </style>
 </head>
 <body>
@@ -325,46 +328,69 @@
       ];
     }
 
-    // ---- profilo e password
+    // ---- profilo, diviso in pagine: Account e dati · Test armi · ICE
+    const PROFILE_TABS = [['profilo', 'Account e dati'], ['profilo-armi', 'Test armi'], ['profilo-ice', 'ICE']];
+    function profileHead(key) {
+      return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'),
+        h('nav', { class: 'profile-tabs' }, PROFILE_TABS.map(([k, label]) => h('a', { href: `#${k}`, class: k === key ? 'on' : '' }, label)))];
+    }
+    const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
+    const saveProfile = async (fd, msg = 'Profilo aggiornato') => {
+      try { await api('PATCH', '/api/account', fd); toast(msg, 'ok'); await loadAccount(); render(); } catch (err) { toast(err.message, 'error', 6000); }
+    };
+
     function pageProfile() {
       const a = S.account;
-      const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
       const form = h('form', { onsubmit: async (e) => {
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(form).entries());
         if (fd.password && fd.password !== fd.password2) return toast('Le due password nuove non coincidono', 'error');
         if (!fd.password) { delete fd.password; delete fd.currentPassword; }
-        try { await api('PATCH', '/api/account', fd); toast('Profilo aggiornato', 'ok'); await loadAccount(); location.hash = 'scelta'; } catch (err) { toast(err.message, 'error', 6000); }
+        delete fd.password2;
+        saveProfile(fd);
       } },
       h('fieldset', null, h('legend', null, 'I tuoi dati'),
+        h('p', { class: 'muted small' }, `Account @${a.username}`),
         field('Nome e cognome', { name: 'name', required: true, value: a.name }),
         field('Nome di battaglia', { name: 'nickname', value: a.nickname || '' }),
         field('Team di softair di appartenenza', { name: 'softairTeam', required: true, value: a.softairTeam || '' }),
         field('Telefono', { name: 'phone', type: 'tel', value: a.phone || '' })),
-      // ICE: facoltativo, OFF GAME. Lo legge la Direzione solo se la persona preme EMERGENZA (o l'SOS di Traccar).
-      h('fieldset', { class: 'ice' }, h('legend', null, 'ICE · In Case of Emergency (facoltativo)'),
-        h('p', { class: 'small' }, 'Per la tua sicurezza. Questa è una sezione ', h('strong', null, 'OFF GAME'), ', fuori dal gioco.'),
-        h('p', { class: 'small' }, h('strong', null, 'Questi dati non sono visibili in regia.'), ' Arrivano alla Direzione solo ed esclusivamente se premi il pulsante EMERGENZA nell\'app (o l\'SOS di Traccar Client), insieme alla tua posizione, perché i soccorritori sappiano cosa fare.'),
-        h('label', { class: 'field' }, h('span', null, 'Gruppo sanguigno'), (() => {
-          const groups = ['0 Rh+', '0 Rh-', 'A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-'];
-          const v = a.ice?.blood || '';
-          const opts = v && !groups.includes(v) ? [...groups, v] : groups;
-          return h('select', { class: 'input', name: 'iceBlood' }, h('option', { value: '' }, 'Non indicato'), opts.map((g) => h('option', { value: g, selected: g === v }, g)));
-        })()),
-        h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'),
-          h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' }, a.ice?.conditions || '')),
-        field('Nome del contatto di emergenza', { name: 'iceContactName', maxlength: 80, placeholder: 'es. Laura (moglie)', value: a.ice?.contactName || '' }),
-        field('Telefono del contatto di emergenza', { name: 'iceContactPhone', type: 'tel', maxlength: 30, value: a.ice?.contactPhone || '' })),
       h('fieldset', null, h('legend', null, a.hasPassword ? 'Cambia password (facoltativo)' : 'Imposta una password (facoltativo)'),
         a.hasPassword ? field('Password attuale', { name: 'currentPassword', type: 'password', autocomplete: 'current-password' })
           : h('p', { class: 'muted small' }, `Entri con il gestionale. Con una password potrai entrare anche come @${a.username}.`),
         field('Nuova password', { name: 'password', type: 'password', minlength: 8, autocomplete: 'new-password' }),
         field('Ripeti la nuova password', { name: 'password2', type: 'password', minlength: 8, autocomplete: 'new-password' })),
       h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Salva'));
-      return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'),
-        // Stato all'evento per le partite non ancora finite: iscrizione, accettazione, test armi (joule e pallino).
-        ...S.enrollments.filter((e) => e.gameStatus !== 'ended').map((e) => eventStatusCard(e.event, { gameName: e.gameName })),
-        form, opsSection()];
+      return [...profileHead('profilo'), form, opsSection()];
+    }
+
+    // Test armi (e il resto dello stato all'evento) per le partite non ancora finite.
+    function pageProfileArmi() {
+      const list = S.enrollments.filter((e) => e.gameStatus !== 'ended');
+      return [...profileHead('profilo-armi'),
+        h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test armi al cronografo: per ogni arma i joule misurati e il pallino usato.'),
+        list.length ? list.map((e) => eventStatusCard(e.event, { gameName: e.gameName })) : h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.')];
+    }
+
+    // ICE: facoltativo, OFF GAME. Lo legge la Direzione solo se la persona preme EMERGENZA (o l'SOS di Traccar).
+    function pageProfileIce() {
+      const a = S.account;
+      const form = h('form', { class: 'stack', onsubmit: (e) => { e.preventDefault(); saveProfile(Object.fromEntries(new FormData(form).entries()), 'Dati ICE salvati'); } },
+        h('fieldset', { class: 'ice' }, h('legend', null, 'ICE · In Case of Emergency (facoltativo)'),
+          h('p', { class: 'small' }, 'Per la tua sicurezza. Questa è una sezione ', h('strong', null, 'OFF GAME'), ', fuori dal gioco.'),
+          h('p', { class: 'small' }, h('strong', null, 'Questi dati non sono visibili in regia.'), ' Arrivano alla Direzione solo ed esclusivamente se premi il pulsante EMERGENZA nell\'app (o l\'SOS di Traccar Client), insieme alla tua posizione, perché i soccorritori sappiano cosa fare.'),
+          h('label', { class: 'field' }, h('span', null, 'Gruppo sanguigno'), (() => {
+            const groups = ['0 Rh+', '0 Rh-', 'A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-'];
+            const v = a.ice?.blood || '';
+            const opts = v && !groups.includes(v) ? [...groups, v] : groups;
+            return h('select', { class: 'input', name: 'iceBlood' }, h('option', { value: '' }, 'Non indicato'), opts.map((g) => h('option', { value: g, selected: g === v }, g)));
+          })()),
+          h('label', { class: 'field' }, h('span', null, 'Patologie, allergie o farmaci che i soccorritori devono conoscere'),
+            h('textarea', { class: 'input', name: 'iceConditions', rows: 3, maxlength: 600, placeholder: 'es. asma, allergia alle punture d\'ape, diabete…' }, a.ice?.conditions || '')),
+          field('Nome del contatto di emergenza', { name: 'iceContactName', maxlength: 80, placeholder: 'es. Laura (moglie)', value: a.ice?.contactName || '' }),
+          field('Telefono del contatto di emergenza', { name: 'iceContactPhone', type: 'tel', maxlength: 30, value: a.ice?.contactPhone || '' })),
+        h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Salva i dati ICE'));
+      return [...profileHead('profilo-ice'), form];
     }
     // Gestionali collegati all'account: entrare da lì, collegarne uno, scollegarlo.
     function opsSection() {
@@ -388,7 +414,9 @@
     function render() {
       const key = location.hash.slice(1);
       if (!S.account) return mount(root, pageAccount());
-      if (key === 'profilo') return mount(root, pageProfile());
+      if (key === 'profilo') return mount(root, ...pageProfile());
+      if (key === 'profilo-armi') return mount(root, ...pageProfileArmi());
+      if (key === 'profilo-ice') return mount(root, ...pageProfileIce());
       if (!S.games.length && !S.enrollments.length) {
         return mount(root, ...brand(), whoBar(), h('h1', null, 'I Giochi', h('br'), 'del ', h('em', null, 'Buio')),
           h('div', { class: 'card' }, h('strong', null, 'Le iscrizioni sono chiuse.'), h('p', { class: 'muted' }, 'Non ci sono partite aperte alle iscrizioni in questo momento. Il tuo account resta valido per le prossime.')));
