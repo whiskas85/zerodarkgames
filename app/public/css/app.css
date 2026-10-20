@@ -720,3 +720,8 @@ button.banner-safety strong { letter-spacing: .08em; }
 .cd-lbl { font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .start-cd .cd-row.no-sec { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .start-cd .cd-row.no-sec .cd-box:last-child { display: none; }
+
+/* Compagno di squadra e cose da fare prima della gara */
+.partner-card { display: grid; gap: 4px; border-color: var(--brass); }
+.partner-name { font-family: var(--f-display); font-weight: 900; font-size: 26px; text-transform: uppercase; line-height: 1.05; }
+.prep-card { display: grid; gap: 6px; border-left: 4px solid var(--brass); }

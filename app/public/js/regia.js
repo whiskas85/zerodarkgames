@@ -3075,6 +3075,44 @@ function viewNewGame(first) {
       h('button', { class: 'btn btn-primary', onclick: createDemo }, 'Crea partita di prova')));
 }
 
+// Prima della gara: testo in markdown (test armi, partenza…) che le coppie vedono nell'app finché la partita è in preparazione.
+function prepSection(g) {
+  const body = h('textarea', { class: 'input', rows: 12, maxlength: 8000, 'data-keep': 'prep-info', placeholder: '**Test armi** alle 8:30 al cronografo…' });
+  body.value = g.prepInfo || '';
+  const preview = h('div', { class: 'np-card' });
+  const draw = () => mount(preview, body.value.trim() ? h('div', { class: 'md' }, md(body.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui, come nell\'app.'));
+  const wrap = (before, after = before, sample = 'testo') => {
+    const a = body.selectionStart ?? body.value.length;
+    const b = body.selectionEnd ?? body.value.length;
+    const sel = body.value.slice(a, b) || sample;
+    body.value = body.value.slice(0, a) + before + sel + after + body.value.slice(b);
+    body.focus();
+    body.setSelectionRange(a + before.length, a + before.length + sel.length);
+    draw();
+  };
+  const link = async () => {
+    const url = await dialog({ title: 'Link', text: 'Indirizzo (https://…) o pagina dell\'app (#/ice, #/skill, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
+    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
+  };
+  const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm', title, onclick: fn }, label);
+  body.addEventListener('input', draw);
+  queueMicrotask(draw);
+  return h('div', { class: 'cols-2' },
+    section('Prima della gara · cosa fare',
+      h('p', { class: 'muted tiny' }, 'Le coppie (e gli Eletti) lo vedono in home finché la partita è in preparazione: test armi, ritrovo, partenza, cosa portare. Al via sparisce.'),
+      h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { prepInfo: body.value }, 'Testo salvato'); } },
+        h('div', { class: 'md-toolbar' },
+          tool(h('strong', null, 'B'), 'Grassetto', () => wrap('**')),
+          tool(h('em', null, 'I'), 'Corsivo', () => wrap('*')),
+          tool('🔗 Link', 'Link come pulsante', link),
+          tool('✚ ICE', 'Pulsante per compilare i dati ICE', () => wrap('[', '](#/ice)', 'Compila i dati ICE')),
+          tool('¶', 'Nuovo paragrafo', () => wrap('\n\n', '', ''))),
+        body,
+        h('p', { class: 'tiny muted' }, 'Formattazione: **grassetto**, *corsivo*, riga vuota per un nuovo paragrafo; [testo](https://…) diventa un pulsante.'),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva'))),
+    section('Anteprima nell\'app', h('div', { class: 'eyebrow' }, 'Prima della gara · cosa fare'), preview));
+}
+
 function viewSettings() {
   const ms = R.ms;
   const g = ms.game;
@@ -3085,6 +3123,7 @@ function viewSettings() {
     publicUrlSection(),
     opsSection(),
     section('Parametri della partita', gameForm(g, false)),
+    prepSection(g),
     accountsSection(),
     h('div', { class: 'cols-2' },
       section('Testi degli annunci',

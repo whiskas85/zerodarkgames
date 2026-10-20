@@ -513,7 +513,7 @@ function header(view) {
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? `Settore ${sec.name}` : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
-        : st?.team.displayName || st?.team.members.map((m) => m.nickname || m.name).join(' · ') || '')),
+        : st?.team.displayName || st?.team.members.map((m) => m.nickname || (m.me ? 'Tu' : m.name) || 'Legato').join(' · ') || '')),
     h('div', { class: `top-clock ${glow.length ? 'fx-on' : ''}`, style: glow.length ? { '--fx-grad': fxGradient(glow), '--fx-a': glow[0].color, '--fx-b': (glow[1] || glow[0]).color } : null },
       fx.length ? h('button', { type: 'button', class: 'fx-icons', 'aria-label': 'Effetti attivi: cosa significano', onclick: () => perksModal(fx) },
         fx.map((x) => h('span', { class: `fx-ico ${x.covered ? 'covered' : ''} ${x.quiet ? 'quiet' : ''}`, 'aria-hidden': 'true', title: x.label, style: { '--c': x.color } }, x.icon,
@@ -906,6 +906,22 @@ const ROLE_TEXT = {
   elect: 'Candidato agli Eletti del Consiglio',
 };
 
+// Il compagno di squadra: solo soprannome (e squadra softair), mai nome e cognome.
+function partnerCard(m) {
+  return h('div', { class: 'card partner-card' },
+    h('div', { class: 'eyebrow' }, 'Il tuo compagno di squadra'),
+    h('div', { class: 'partner-name' }, m.nickname ? `«${m.nickname}»` : 'Legato senza soprannome'),
+    m.softairTeam ? h('p', { class: 'small muted' }, `Squadra softair: ${m.softairTeam}`) : null,
+    h('p', { class: 'tiny muted' }, 'Cercatevi al ritrovo: da qui in poi giocate in coppia.'));
+}
+
+// Prima della gara: le cose da fare (test armi, partenza…), scritte dalla regia in markdown.
+function prepCard(st) {
+  const text = st.game?.prepInfo;
+  if (!text || !PRE.includes(st.clock?.status)) return null;
+  return h('div', { class: 'card prep-card' }, h('div', { class: 'eyebrow' }, 'Prima della gara · cosa fare'), h('div', { class: 'md' }, md(text)));
+}
+
 // In preparazione: conto alla rovescia al via, grande, con giorni, ore, minuti e secondi.
 function startCountdown(st) {
   const box = (k, label) => h('div', { class: 'cd-box' }, h('span', { class: 'cd-num mono', 'data-cd': k }, '--'), h('span', { class: 'cd-lbl' }, label));
@@ -921,7 +937,7 @@ function viewLobbyHome(st) {
   const pending = pl.status === 'pending';
   const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
-  const partner = st.team.members.find((m) => m.name !== pl.name);
+  const partner = st.team.members.find((m) => !m.me);
   return h('div', { class: 'home' },
     startAt() > clock.serverNow() ? startCountdown(st) : null,
     h('div', { class: 'phase' },
@@ -930,7 +946,9 @@ function viewLobbyHome(st) {
       h('p', { class: 'muted' }, pending
         ? 'Il Consiglio sta valutando la vostra candidatura. Intanto esplorate l\'app: quando sarete accettati e avrete il vostro Settore, questo telefono si aggiornerà da solo.'
         : pl.role === 'single' ? 'Il Consiglio sta estraendo il vostro compagno e il Settore. L\'app si aggiornerà da sola.' : 'Il Consiglio sta formando le coppie e assegnando i Settori. L\'app si aggiornerà da sola.'),
-      partner ? h('p', { class: 'small' }, 'Il vostro Legato: ', h('strong', null, partner.name), partner.nickname ? ` «${partner.nickname}»` : '') : null),
+      null),
+    partner ? partnerCard(partner) : null,
+    prepCard(st),
     trackFlag(st),
     locationInvite(st),
     pushInvite(),
@@ -956,6 +974,7 @@ function viewElectHome(st) {
   const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const lastAnn = st.announcements[0];
   return h('div', { class: 'home' },
+    prepCard(st),
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, STATUS_LABELS[c.status]),
       c.running || c.status === 'paused' ? h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—') : h('div', { class: 'phase-big' }, c.status === 'ended' ? 'I Giochi sono finiti' : 'Al servizio del Consiglio'),
@@ -1013,6 +1032,8 @@ function viewHome() {
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
+    prepCard(st),
+    PRE.includes(c.status) && st.team.members.find((m) => !m.me) ? partnerCard(st.team.members.find((m) => !m.me)) : null,
     supplyCard(st),
     trackFlag(st),
     locationInvite(st),
@@ -2862,7 +2883,7 @@ function viewSettings() {
       h('button', { class: `btn ${S.settings.sound ? 'btn-primary' : ''}`, onclick: () => { set('sound', !S.settings.sound); if (S.settings.sound) beep(true); } }, S.settings.sound ? 'Attivo' : 'Spento')),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
       h('button', { class: `btn ${S.settings.sun ? 'btn-primary' : ''}`, onclick: () => set('sun', !S.settings.sun) }, S.settings.sun ? 'Attiva' : 'Spenta')),
-    st ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? 'Iscrizione' : 'Coppia'), h('p', null, st.team.members.map((m) => m.name + (m.nickname ? ` «${m.nickname}»` : '')).join(isElect() ? ', ' : ' e ')), h('p', { class: 'muted small' }, st.game.name)) : null,
+    st ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? 'Iscrizione' : 'Coppia'), h('p', null, st.team.members.map((m) => (m.name ? m.name + (m.nickname ? ` «${m.nickname}»` : '') : m.nickname ? `«${m.nickname}»` : m.me ? 'Tu' : 'Legato')).join(isElect() ? ', ' : ' e ')), h('p', { class: 'muted small' }, st.game.name)) : null,
     st?.account ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo account'), h('p', null, h('strong', null, st.account.username), ` · ${st.account.name}`),
       h('a', { class: 'btn btn-sm', href: '/iscrizione#profilo' }, 'Profilo e password')) : null,
     st?.player?.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, st.player.accessCode), h('p', { class: 'muted small' }, 'Con questo codice entri da qualsiasi telefono e segui sempre la tua coppia.')) : null,

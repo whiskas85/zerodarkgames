@@ -99,7 +99,7 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
@@ -133,6 +133,7 @@ function updateGame(id, data, actor) {
     if (f === 'codeLength' && (v < 4 || v > 12)) throw err(400, 'La lunghezza del Sigillo deve essere tra 4 e 12');
     if (f === 'durationMin' && v < 40) throw err(400, 'Durata troppo breve');
     if (f === 'registrationOpen') v = v ? 1 : 0;
+    if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
     sets.push(`${f} = ?`);
     vals.push(v === '' ? null : v);
   }
@@ -1797,7 +1798,7 @@ function electState(team, player = null) {
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart },
+    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: team.id, kind: 'elect', displayName: team.displayName || 'Eletti del Consiglio', status: team.status, sector: null, members: membersOf(team.id).map((m) => ({ name: m.name, nickname: m.nickname })) },
     seal: null, fragments: [], notebook: [], visited: [],
     announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
@@ -1817,12 +1818,12 @@ function playerInfo(player) {
 // Anteprima: iscritto (anche in attesa di approvazione) che non è ancora in una coppia né tra gli Eletti.
 function lobbyState(player) {
   const g = getGame(player.gameId);
-  const partner = player.regGroup ? q.get('SELECT name, nickname FROM players WHERE gameId = ? AND regGroup = ? AND id != ?', g.id, player.regGroup, player.id) : null;
+  const partner = player.regGroup ? q.get('SELECT nickname, softairTeam FROM players WHERE gameId = ? AND regGroup = ? AND id != ?', g.id, player.regGroup, player.id) : null;
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart },
+    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: null, kind: 'lobby', displayName: player.requestedTeamName, status: player.status, sector: null,
-      members: [player, partner].filter(Boolean).map((m) => ({ name: m.name, nickname: m.nickname })) },
+      members: [player, partner].filter(Boolean).map((m) => ({ nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: m === player })) },
     player: playerInfo(player),
     seal: null, fragments: [], notebook: [], visited: [], messages: [], standings: null,
     announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
@@ -1887,11 +1888,13 @@ function teamStateCore(team, player = null) {
     game: {
       id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html',
       codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin,
+      prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },
     team: {
       id: team.id, kind: 'couple', displayName: team.displayName, status: team.status, finishPosition: team.finishPosition,
       sector: s ? { id: s.id, name: s.name, roman: s.roman, motto: s.motto, element: s.element } : null,
-      members: membersOf(team.id).map((m) => ({ name: m.name, nickname: m.nickname })),
+      // Niente nomi e cognomi nell'app delle coppie: solo soprannome (e squadra softair).
+      members: membersOf(team.id).map((m) => ({ id: m.id, nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: !!player && m.id === player.id })),
     },
     seal: own ? own.code : null,
     fragments: board.map((f) => ({

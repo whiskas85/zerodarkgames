@@ -630,7 +630,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .sidebar a, .sidebar span.off { white-space: normal; border-bottom: 0; border-left: 4px solid transparent; }
   .sidebar a.on { border-bottom-color: transparent; border-left-color: var(--blood); }
   body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .55); }
-  /* Pagine a parte: affiancate, non una sotto l'altra */
-  .sidebar-ext { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .sidebar-ext a, .sidebar-ext span.off { justify-content: center; padding: 10px 6px; border: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 4px; font-size: 13px; text-align: center; }
 }

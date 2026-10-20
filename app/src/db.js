@@ -262,6 +262,8 @@ for (const t of ['points', 'gifts', 'landmarks']) addColumn(t, 'provisional', 'I
 addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
 // Codice di uscita della Soglia: il QR che le coppie inquadrano per esfiltrare con la Parola intera.
 addColumn('landmarks', 'exitToken', 'TEXT');
+// Testo per le coppie prima della gara (markdown): test armi, partenza, cose da fare.
+addColumn('games', 'prepInfo', 'TEXT');
 // Skill delle coppie (scelte prima del via o vinte con i Doni) ed effetti in corso di Skill e Doni.
 db.exec(`
 CREATE TABLE IF NOT EXISTS team_skills (
