@@ -758,7 +758,7 @@ app.use('/api/m', m);
 // ---- API validatore (regia o validatore)
 const v = express.Router();
 v.use(needStaff);
-v.get('/games', (_req, res) => res.json(q.all("SELECT id, name, status FROM games WHERE status NOT IN ('draft') ORDER BY id DESC")));
+v.get('/games', (_req, res) => res.json(q.all('SELECT id, name, status FROM games ORDER BY id DESC')));
 v.get('/games/:id/teams', wrap(async (req) => {
   const g = G.getGame(Number(req.params.id));
   // Codice di uscita della Soglia: il QR da mostrare a schermo accanto all'elenco (lo stesso del cartello stampato).
@@ -770,6 +770,14 @@ v.get('/games/:id/teams', wrap(async (req) => {
   return { exitUrl, exitSvg, exitCode, clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
 }));
 v.get('/teams/:tid', wrap((req) => G.validatorView(Number(req.params.tid))));
+// Accettazione e test armi anche per lo staff (validatori), dalla pagina Soglia.
+const sActor = (req) => req.user?.username || 'staff';
+v.get('/games/:id/checkin', wrap((req) => CK.checkinData(Number(req.params.id))));
+v.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
+v.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/squads', wrap((req) => F.createSquad(Number(req.params.id), req.body || {}, sActor(req))));
 v.post('/teams/:tid/check', wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
 v.post('/teams/:tid/validate', wrap((req) => G.validate(Number(req.params.tid), req.body || {}, req.user)));
 v.get('/board/:id', wrap((req) => G.boardState(Number(req.params.id))));

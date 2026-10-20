@@ -1,4 +1,5 @@
 // La Soglia: validazione finale dei frammenti (validatore o regia).
+import * as CKUI from './checkin-ui.js';
 import { h, mount, api, fmtTime, fmtDuration, makeClock, toast, dialog, stream, store, STATUS_LABELS } from './lib.js';
 
 const $root = document.getElementById('root');
@@ -7,7 +8,11 @@ const clock = makeClock();
 setInterval(() => {
   for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
 }, 1000);
-const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
+// Schede: la Soglia (validazione), l'Accettazione all'arrivo e il Test armi.
+const TABS = [['', 'Soglia'], ['accettazione', 'Accettazione'], ['armi', 'Test armi']];
+const tab = () => (TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : '');
+window.addEventListener('hashchange', () => load());
+const V = { ck: null, me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 
 (async function boot() {
   // Service worker: serve anche per installare la pagina come app (telefono, tablet, computer).
@@ -28,6 +33,10 @@ async function start() {
 
 async function load() {
   if (!V.gameId) return render();
+  if (tab()) {
+    try { V.ck = await api('GET', `/api/v/games/${V.gameId}/checkin`); } catch (e) { toast(e.message, 'error'); }
+    return render();
+  }
   try {
     V.data = await api('GET', `/api/v/games/${V.gameId}/teams`);
     clock.set(V.data.clock);
@@ -41,9 +50,12 @@ function render() {
   mount($root,
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'La Soglia'), h('div', { class: 'eyebrow' }, `Ufficiale del Consiglio · ${V.me.username}`))),
-      h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; load(); } },
+      h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; V.ck = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
+    h('nav', { class: 'soglia-tabs' }, TABS.map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label))),
+    tab() ? h('main', { class: 'content soglia' }, !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !V.ck ? h('p', { class: 'empty' }, 'Caricamento…')
+      : (tab() === 'armi' ? CKUI.viewChrono : CKUI.viewCheckin)(ckCtx())) :
     h('main', { class: 'content soglia' },
       // Countdown di gara ben visibile, sopra a tutto.
       V.data?.clock ? h('div', { class: 'race-clock' },
@@ -53,6 +65,22 @@ function render() {
       h('div', { class: 'reminder' }, h('strong', null, 'Si presenta una sola coppia: le alleanze vanno sciolte prima.'), ' Alla Soglia non si combatte.'),
       !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita avviata.')
         : h('div', { class: 'soglia-cols' }, h('div', { class: 'soglia-main' }, V.team ? teamView() : teamList()), exitPanel())));
+}
+
+// Accettazione e test armi: stesse pagine della regia, con le API dello staff.
+function ckCtx() {
+  return {
+    data: V.ck,
+    render,
+    call: async (method, path, body, okMsg) => {
+      try {
+        await api(method, `/api/v/games/${V.gameId}${path}`, body);
+        if (okMsg) toast(okMsg, 'ok');
+        await load();
+        return true;
+      } catch (e) { toast(e.message, 'error', 7000); return null; }
+    },
+  };
 }
 
 // A fianco: il QR del codice di uscita, da far inquadrare alla coppia con la Parola intera (come il cartello).

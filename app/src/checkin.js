@@ -93,4 +93,19 @@ function placePlayer(gameId, playerId, dest = {}, actor) {
   return { ok: true };
 }
 
-module.exports = { setPlayerCheckin, setTeamCheckin, setChrono, placePlayer, WEAPONS };
+// Dati per le pagine di accettazione e test armi dello staff (stessa forma dello stato della regia).
+function checkinData(gameId) {
+  const g = G.getGame(gameId);
+  const elect = G.electOf(g.id);
+  return {
+    game: { id: g.id, name: g.name, status: g.status },
+    clock: G.clockOf(g),
+    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, a.username
+                    FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id),
+    teams: G.teamsOf(g.id).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName, color: t.sectorColor, status: t.status, checkinAt: t.checkinAt || null })),
+    elect: elect ? { id: elect.id } : null,
+    squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id),
+  };
+}
+
+module.exports = { setPlayerCheckin, setTeamCheckin, setChrono, placePlayer, checkinData, WEAPONS };
