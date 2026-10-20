@@ -677,3 +677,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .bt-data code { font-family: var(--f-mono, monospace); overflow-wrap: anywhere; }
 .bt-guess { overflow-wrap: anywhere; }
 .bt-note { background: color-mix(in srgb, var(--brass, #d1ad62) 15%, transparent); padding: 2px 4px; border-radius: 3px; }
+.bt-live { display: grid; gap: 4px; padding: 12px; border: 2px dashed var(--line); border-radius: 6px; text-align: center; }
+.bt-live.ok { border: 3px solid #46c46a; background: color-mix(in srgb, #46c46a 14%, transparent); }
+.bt-live.bad { border: 3px solid #e5484d; background: color-mix(in srgb, #e5484d 16%, transparent); }
+.bt-live-j { font-size: 40px; font-weight: 700; line-height: 1; }
+.bt-bb-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bt-bb { width: 90px; }
+.bt-row .ok-text { color: #46c46a; } .bt-row .bad-text { color: #e5484d; }
