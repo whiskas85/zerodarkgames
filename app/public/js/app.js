@@ -520,8 +520,8 @@ function header(view) {
           x.covered ? h('i', { class: 'fx-conf' }, '🌀') : null))) : null,
       h('div', { class: 'top-time' },
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
-        h('span', { class: 'mono big', 'data-clock': 'remaining' }, '—')),
-      veglia ? h('a', { class: 'top-veglia', href: '#/timer', title: veglia.reason || 'Veglia' }, '⛓ Veglia ', h('span', { class: 'mono', 'data-timer': veglia.uid }, '—'))
+        h('span', { class: 'mono big', 'data-clock': startAt() ? 'start' : 'remaining' }, '—')),
+      startAt() && !veglia ? h('div', { class: 'top-phase' }, 'al via') : veglia ? h('a', { class: 'top-veglia', href: '#/timer', title: veglia.reason || 'Veglia' }, '⛓ Veglia ', h('span', { class: 'mono', 'data-timer': veglia.uid }, '—'))
         : h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')));
 }
 
@@ -691,6 +691,26 @@ function emergencyModal() {
 }
 
 const dueDone = new Set();
+// Conto alla rovescia al via (partita in preparazione con data e ora previste).
+const PRE = ['draft', 'ready', 'circle'];
+function startAt() {
+  const st = S.state;
+  if (!st || !PRE.includes(st.clock?.status) || !st.game?.scheduledStart) return null;
+  const t = new Date(st.game.scheduledStart).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+const pad = (n) => String(n).padStart(2, '0');
+function startParts(ms) {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return { d: Math.floor(sec / 86400), h: Math.floor(sec / 3600) % 24, m: Math.floor(sec / 60) % 60, s: sec % 60 };
+}
+// Compatto per la barra in alto: «2g 03:14:05», senza secondi se non c'è spazio.
+function fmtStart(ms, noSec) {
+  const p = startParts(ms);
+  const hms = noSec ? `${pad(p.h)}:${pad(p.m)}` : `${pad(p.h)}:${pad(p.m)}:${pad(p.s)}`;
+  return p.d ? `${p.d}g ${hms}` : hms;
+}
+
 function updateClocks() {
   const c = clock.snap;
   for (const el of document.querySelectorAll('[data-clock]')) {
@@ -702,8 +722,20 @@ function updateClocks() {
       else if (kind === 'elapsed') txt = fmtDuration(clock.elapsed());
       else if (kind === 'hunt') txt = fmtDuration(Math.max(0, c.huntAtMs - clock.elapsed()), false);
     }
+    if (kind === 'start') { const at = startAt(); txt = at ? fmtStart(at - clock.serverNow(), el.classList.contains('no-sec')) : '—'; }
     if (el.textContent !== txt) el.textContent = txt;
   }
+  // Riquadro grande in home: giorni, ore, minuti, secondi.
+  const at = startAt();
+  for (const el of document.querySelectorAll('[data-cd]')) {
+    const v = at ? pad(startParts(at - clock.serverNow())[el.dataset.cd]) : '--';
+    if (el.textContent !== v) el.textContent = v;
+  }
+  for (const row of document.querySelectorAll('.cd-row:not(.no-sec)')) if (row.scrollWidth > row.clientWidth + 1) row.classList.add('no-sec');
+  // Barra in alto: se il conto alla rovescia non ci sta, via i secondi.
+  const top = document.querySelector('.top');
+  const sc = top?.querySelector('[data-clock="start"]');
+  if (sc && !sc.classList.contains('no-sec') && top.scrollWidth > top.clientWidth + 1) { sc.classList.add('no-sec'); sc.textContent = fmtStart(at - clock.serverNow(), true); }
   let due = false;
   for (const el of document.querySelectorAll('[data-abs]')) {
     const left = Number(el.dataset.abs) - clock.serverNow();
@@ -874,6 +906,16 @@ const ROLE_TEXT = {
   elect: 'Candidato agli Eletti del Consiglio',
 };
 
+// In preparazione: conto alla rovescia al via, grande, con giorni, ore, minuti e secondi.
+function startCountdown(st) {
+  const box = (k, label) => h('div', { class: 'cd-box' }, h('span', { class: 'cd-num mono', 'data-cd': k }, '--'), h('span', { class: 'cd-lbl' }, label));
+  return h('div', { class: 'phase start-cd' },
+    h('div', { class: 'eyebrow' }, 'Si parte tra'),
+    h('div', { class: 'cd-row' }, box('d', 'giorni'), box('h', 'ore'), box('m', 'minuti'), box('s', 'secondi')),
+    h('p', { class: 'muted' }, `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. `,
+      st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
+}
+
 function viewLobbyHome(st) {
   const pl = st.player || {};
   const pending = pl.status === 'pending';
@@ -881,6 +923,7 @@ function viewLobbyHome(st) {
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const partner = st.team.members.find((m) => m.name !== pl.name);
   return h('div', { class: 'home' },
+    startAt() > clock.serverNow() ? startCountdown(st) : null,
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, 'Anteprima · ', ROLE_TEXT[pl.role] || 'Iscritto'),
       h('div', { class: 'phase-big' }, pending ? 'Candidatura in attesa' : 'Il Consiglio vi ha accettati'),
@@ -960,7 +1003,8 @@ function viewHome() {
   const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
 
   let phase;
-  if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
+  if (startAt() && startAt() > clock.serverNow()) phase = startCountdown(st);
+  else if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
   else if (c.status === 'circle') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Nel cerchio'), h('div', { class: 'phase-big' }, 'In attesa del via'), h('p', { class: 'muted' }, 'Il vostro Sigillo è svelato. Memorizzatelo e non mostratelo a nessuno.'));
   else if (c.status === 'ended') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, st.team.finishPosition ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][st.team.finishPosition] || st.team.finishPosition + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le armi e tornate al Cuore.'));
   else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));

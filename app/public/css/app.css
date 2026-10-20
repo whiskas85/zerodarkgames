@@ -712,3 +712,11 @@ button.banner-safety strong { letter-spacing: .08em; }
   .main-chat { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   body.chat-open .toasts { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
+
+/* Conto alla rovescia al via (partita in preparazione) */
+.start-cd .cd-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0 10px; }
+.cd-box { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); }
+.cd-num { font-size: clamp(22px, 9vw, 34px); font-weight: 600; line-height: 1; }
+.cd-lbl { font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.start-cd .cd-row.no-sec { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.start-cd .cd-row.no-sec .cd-box:last-child { display: none; }
