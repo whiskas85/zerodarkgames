@@ -108,6 +108,16 @@ const AC = {
   svcWrite: '53c47fe1-6c22-4ea6-99c7-7b6325ec75b9', chWrite: '9c6aa1ee-b4b9-44a1-ba45-1558c9109b4c',
 };
 const acHello = (token) => { const f = [0xaa, 6, 0x4b, ...token]; return Uint8Array.from([...f, f.reduce((a, b) => a + b, 0) & 0xff]); };
+// Peso del pallino letto dal cronografo (slot attivo): byte 7-8 in centesimi di grammo. Il record 0x47 di alcuni
+// firmware usa i millesimi (200 = 0,20 g): un pallino non pesa più di 1 g, quindi oltre si divide per 1000.
+function acWeight(raw) { const g = raw / 100; return g > 1 ? raw / 1000 : g; }
+function setBb(grams, from) {
+  if (!(grams > 0 && grams < 1)) return;
+  try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); } catch { /* */ }
+  if (BT.bbEl) BT.bbEl.value = grams.toFixed(2);
+  if (BT.bbSrcEl) BT.bbSrcEl.textContent = from;
+  btArmedNote();
+}
 const bbGrams = () => { const v = parseFloat(String(localStorage.getItem('zdg_bt_bb') || '0.20').replace(',', '.')); return v > 0 && v < 2 ? v : 0.2; };
 // Il browser lascia leggere solo i servizi dichiarati qui: quelli standard, le «seriali BLE» dei moduli più diffusi
 // (Nordic, HM-10, Microchip/ISSC, Telink, Dialog, TI, Silabs…) e i codici corti proprietari più usati.
@@ -144,7 +154,7 @@ const btRow = (e) => h('div', { class: `bt-row bt-${e.kind}` },
       : h('span', { class: 'bt-data' }, h('span', { class: 'tiny muted' }, `${e.service} › ${e.char}${e.via ? ` (${e.via})` : ''}`), h('code', null, e.hex), h('span', { class: 'tiny muted' }, `«${e.ascii}»`), h('span', { class: 'tiny muted bt-guess' }, e.guess)));
 // Il cronografo è collegato e pronto (AC6000 abbinato)?
 const btLive = () => !!(BT.ready && BT.device?.gatt?.connected);
-function btArmedNote() { if (BT.armedEl) BT.armedEl.textContent = BT.armed ? `🎯 Prossimo tiro: ${BT.armed.label}` : (btLive() ? 'Tocca un\'arma qui sotto per provarla.' : ''); }
+function btArmedNote() { if (BT.armedEl) BT.armedEl.textContent = BT.armed ? `🎯 Prossimo tiro: ${BT.armed.label} · pallino ${bbGrams().toFixed(2).replace('.', ',')} g` : (btLive() ? 'Tocca un\'arma qui sotto per provarla.' : ''); }
 function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; }
 
 // Un tiro: velocità → joule con il peso del pallino scelto; verde sotto 1 J, rosso da 1 J in su.
@@ -182,6 +192,9 @@ async function acStart(server) {
     if (f[0] !== 0xaa) return;
     if (f[2] === 0x4b) { try { localStorage.setItem('zdg_ac_token', JSON.stringify(f.slice(3, -1))); } catch { /* */ } acked?.(); }
     if (f[2] === 0x41) acked?.();
+    // Slot attivo (0x5A, anche quando lo si cambia sul cronografo) o record letto (0x47): aggiorna il peso del pallino.
+    if (f[2] === 0x5a && f.length >= 10) setBb(acWeight(f[7] | (f[8] << 8)), `dal cronografo · slot ${f[4]}`);
+    if (f[2] === 0x47 && f.length >= 11) setBb(acWeight(f[8] | (f[9] << 8)), `dal cronografo · slot ${f[5]}`);
     if (f[2] === 0x52 && f.length >= 10) { const raw = f[5] | (f[6] << 8) | (f[7] << 16) | (f[8] << 24); btShot(raw / 100); }
   });
   await nCh.startNotifications();
@@ -189,9 +202,11 @@ async function acStart(server) {
   const wait = (ms) => new Promise((res) => { acked = () => { acked = null; res(true); }; setTimeout(() => res(false), ms); });
   let token = [0xdf, 0x02];
   try { const t = JSON.parse(localStorage.getItem('zdg_ac_token') || 'null'); if (Array.isArray(t) && t.length === 2) token = t; } catch { /* */ }
+  // Dopo il saluto si chiede lo slot attivo (0x5A) per avere subito il peso del pallino impostato.
+  const askSlot = () => send(Uint8Array.from([0xaa, 0x05, 0x5a, 0x00, 0xea])).catch(() => {});
   await send(acHello(token));
-  if (await wait(3000)) return true;
-  for (let i = 0; i < 8; i++) { await send(acHello([0, 0])); if (await wait(3000)) return true; }
+  if (await wait(3000)) { await askSlot(); return true; }
+  for (let i = 0; i < 8; i++) { await send(acHello([0, 0])); if (await wait(3000)) { await askSlot(); return true; } }
   return false;
 }
 
@@ -278,7 +293,9 @@ function btPanel() {
   BT.armedEl = h('p', { class: 'small bt-armed' });
   BT.liveEl = h('div', { class: 'bt-live' }, h('span', { class: 'tiny muted' }, 'Ultimo tiro: compare qui appena il cronografo lo manda.'));
   const bb = h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
-    oninput: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } } });
+    oninput: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } if (BT.bbSrcEl) BT.bbSrcEl.textContent = 'scritto a mano'; } });
+  BT.bbEl = bb;
+  BT.bbSrcEl = h('span', { class: 'tiny muted' }, 'scritto a mano');
   BT.listEl = h('div', { class: 'bt-log' }, [...BT.log].reverse().map(btRow));
   const note = () => { if (!shot.value.trim()) return; btAdd({ kind: 'note', text: shot.value.trim() }); shot.value = ''; shot.focus(); };
   BT.panel = h('details', { class: 'panel bt-panel' },
@@ -291,7 +308,7 @@ function btPanel() {
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* già scollegato */ } } }, 'Scollega'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: btExport }, '⇩ Esporta registro'),
       h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { if (!confirm('Cancellare il registro?')) return; BT.log = []; try { localStorage.removeItem('zdg_bt_log'); } catch { /* */ } BT.listEl.replaceChildren(); } }, 'Svuota')),
-    h('label', { class: 'bt-bb-row' }, h('span', { class: 'small' }, 'Peso del pallino (g) per i joule'), bb),
+    h('label', { class: 'bt-bb-row' }, h('span', { class: 'small' }, 'Peso del pallino (g) per i joule'), bb, BT.bbSrcEl),
     BT.statusEl,
     BT.armedEl,
     BT.liveEl,
