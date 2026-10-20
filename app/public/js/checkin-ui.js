@@ -111,11 +111,26 @@ const acHello = (token) => { const f = [0xaa, 6, 0x4b, ...token]; return Uint8Ar
 // Peso del pallino letto dal cronografo (slot attivo): byte 7-8 in centesimi di grammo. Il record 0x47 di alcuni
 // firmware usa i millesimi (200 = 0,20 g): un pallino non pesa più di 1 g, quindi oltre si divide per 1000.
 function acWeight(raw) { const g = raw / 100; return g > 1 ? raw / 1000 : g; }
+// Peso dal cronografo: si usa, salvo che sia stato scritto a mano (allora vale quello scritto, e i joule si
+// ricalcolano con quello: il cronografo manda la velocità, la formula la facciamo noi).
+const bbManual = () => { try { return localStorage.getItem('zdg_bt_bb_manual') === '1'; } catch { return false; } };
 function setBb(grams, from) {
   if (!(grams > 0 && grams < 1)) return;
-  try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); } catch { /* */ }
-  BT.bbSrc = from;
+  BT.chronoG = grams;
+  BT.chronoSrc = from;
+  if (!bbManual()) {
+    try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); } catch { /* */ }
+    BT.bbSrc = from;
+  }
   btRefresh();
+}
+function setBbManual(grams) {
+  try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); localStorage.setItem('zdg_bt_bb_manual', '1'); } catch { /* */ }
+  BT.bbSrc = 'scritto a mano';
+}
+function bbUseChrono() {
+  try { localStorage.removeItem('zdg_bt_bb_manual'); if (BT.chronoG) localStorage.setItem('zdg_bt_bb', BT.chronoG.toFixed(2)); } catch { /* */ }
+  BT.bbSrc = BT.chronoSrc || 'dal cronografo';
 }
 const bbGrams = () => { const v = parseFloat(String(localStorage.getItem('zdg_bt_bb') || '0.20').replace(',', '.')); return v > 0 && v < 2 ? v : 0.2; };
 // Il browser lascia leggere solo i servizi dichiarati qui: quelli standard, le «seriali BLE» dei moduli più diffusi
@@ -351,27 +366,48 @@ const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
 let chronoGroup = null;
 let showClosed = false;
 
-// Cruscotto del cronografo: collegamento, peso del pallino, ultimo tiro.
-function chronoDash() {
+// Cruscotto del cronografo: collegamento e stato (pallino verde se collegato), peso del pallino e ultimo tiro
+// in due riquadri uguali. Toccando il peso lo si scrive a mano.
+let bbEditing = false;
+function bbTile(ctx, where) {
+  const manual = bbManual();
+  const g = bbGrams();
+  const save = (v) => {
+    if (bbEditing !== where) return; // già salvato (l'uscita dal campo arriva anche mentre si ridisegna)
+    const x = parseFloat(String(v).replace(',', '.'));
+    bbEditing = false;
+    if (x > 0 && x < 1) setBbManual(x); else if (String(v).trim()) toast('Peso non valido: es. 0,25', 'error');
+    ctx.render();
+  };
+  const editing = bbEditing === where;
+  return h('div', { class: 'cs-big cs-bb dash-tile', title: 'Tocca per scrivere il peso a mano', onclick: () => { if (!editing) { bbEditing = where; ctx.render(); setTimeout(() => document.querySelector('.bb-edit')?.select(), 30); } } },
+    h('span', { class: 'eyebrow' }, 'Pallino'),
+    editing
+      ? h('input', { class: 'input bb-edit mono', type: 'text', inputmode: 'decimal', value: num(g), onkeydown: (e) => { if (e.key === 'Enter') save(e.target.value); if (e.key === 'Escape') { bbEditing = false; ctx.render(); } }, onblur: (e) => save(e.target.value) })
+      : h('strong', { class: 'mono' }, `${num(g)} g`),
+    h('span', { class: 'tiny' }, manual ? `✎ a mano${BT.chronoG ? ` · cronografo ${num(BT.chronoG)} g` : ''}` : (BT.bbSrc || 'tocca per scriverlo')),
+    manual && BT.chronoG ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost bb-reset', onclick: (e) => { e.stopPropagation(); bbUseChrono(); ctx.render(); } }, '↺ usa cronografo') : null);
+}
+
+function chronoDash(ctx) {
   const live = btLive();
   const last = BT.last;
+  const note = btSupportNote();
   return h('div', { class: 'panel chrono-dash' },
     h('div', { class: 'dash-top' },
-      h('div', { class: 'dash-conn' },
-        h('span', { class: `chip ${live ? 'chip-ok' : ''}` }, live ? `📶 ${BT.device?.name || 'Cronografo'}` : '📶 Cronografo non collegato'),
-        h('span', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : btSupportNote() || BT.status)),
       navigator.bluetooth ? (live
         ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* */ } } }, 'Scollega')
-        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect('', 'ac6000') }, 'Collega cronografo')) : null),
-    h('div', { class: 'dash-grid' },
-      h('label', { class: 'dash-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'),
-        h('span', { class: 'dash-bb-in' }, h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
-          onchange: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } BT.bbSrc = 'scritto a mano'; btRefresh(); } }), ' g'),
-        h('span', { class: 'tiny muted' }, BT.bbSrc || 'scritto a mano')),
-      h('div', { class: `dash-last ${last ? (last.ok ? 'ok' : 'bad') : ''}` },
+        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect('', 'ac6000') }, 'Collega cronografo')) : null,
+      h('div', { class: 'dash-state' },
+        h('span', { class: `dot ${live ? 'on' : ''}`, 'aria-hidden': 'true' }),
+        h('div', null, h('strong', { class: 'small' }, live ? (BT.device?.name || 'Cronografo collegato') : 'Cronografo non collegato'),
+          h('div', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : note || BT.status)))),
+    h('div', { class: 'dash-grid2' },
+      bbTile(ctx, 'dash'),
+      h('div', { class: `cs-big dash-tile ${last && last.j >= 1 ? 'over' : ''}` },
         h('span', { class: 'eyebrow' }, 'Ultimo tiro'),
-        last ? [h('strong', { class: 'mono dash-j' }, fmtJ(last.j)), h('span', { class: 'tiny mono' }, `${fmtV(last.v)} · ${Math.round(last.v * 3.28084)} fps`)]
-          : h('span', { class: 'tiny muted' }, '—'))));
+        h('strong', { class: 'mono' }, last ? fmtJ(last.j) : '—'),
+        h('span', { class: 'tiny mono' }, last ? `${fmtV(last.v)} · ${Math.round(last.v * 3.28084)} fps` : ' '))));
 }
 
 // Sessione di prova: persona + arma; i tiri si sommano, la media decide. OK salva tutto.
@@ -404,7 +440,7 @@ function chronoSession(ctx) {
     h('div', { class: `cs-sum ${r.length ? (ok ? 'ok' : 'bad') : 'wait'}` },
       // Pallino e ultima lettura affiancati, stessa forma; l'ultima lettura diventa rossa solo se sopra 1 J.
       h('div', { class: 'cs-top' },
-        h('div', { class: 'cs-big cs-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'), h('strong', { class: 'mono' }, `${num(bbGrams())} g`)),
+        bbTile(ctx, 'session'),
         h('div', { class: `cs-big cs-lastread ${r.length && r[r.length - 1].j >= 1 ? 'over' : ''}` }, h('span', { class: 'eyebrow' }, 'Ultima lettura'),
           h('strong', { class: 'mono' }, r.length ? fmtJ(r[r.length - 1].j) : '—'),
           r.length ? h('span', { class: 'tiny mono' }, fmtV(r[r.length - 1].v)) : null)),
@@ -449,7 +485,7 @@ export function viewChrono(ctx) {
         h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma: spara uno o più tiri, guarda la media e dai «OK, salva» (passa se la media è sotto 1 joule). Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
         h('p', null, 'Cronografo Bluetooth (Acetech AC6000-BT): Chrome su Android o computer; su iPhone con l\'app Bluefy. Chiudi l\'app AceSoft prima di collegarlo.')),
       h('div', { class: 'ck-counts' }, ckCount(closed, present.length, 'persone chiuse'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate')))),
-    chronoDash(),
+    chronoDash(ctx),
     chronoSession(ctx),
     h('div', { class: 'chrono-tiles' },
       tile(null, 'Tutte', closed, present.length),

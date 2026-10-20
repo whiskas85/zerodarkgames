@@ -809,3 +809,17 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .cs-lastread.over { background: #e5484d; border-color: #e5484d; color: #fff; }
 .cs-lastread.over .eyebrow, .cs-lastread.over .tiny { color: #fff; }
 @media (max-width: 640px) { .cs-big strong.mono { font-size: 26px; } }
+/* Cruscotto: stato col pallino verde, pallino e ultimo tiro in due riquadri uguali */
+.dash-top { justify-content: flex-start; }
+.dash-state { display: flex; align-items: center; gap: 8px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #6b6f6a; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, #6b6f6a 25%, transparent); }
+.dot.on { background: #46c46a; box-shadow: 0 0 0 3px color-mix(in srgb, #46c46a 30%, transparent), 0 0 10px #46c46a; }
+.dash-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dash-tile { min-height: 96px; }
+.cs-bb { cursor: pointer; }
+.cs-bb:hover { border-color: var(--brass, #d1ad62); }
+.dash-tile.over { background: #e5484d; border-color: #e5484d; color: #fff; }
+.dash-tile.over .eyebrow, .dash-tile.over .tiny { color: #fff; }
+.bb-edit { width: 110px; font-size: 24px; text-align: center; padding: 4px; }
+.bb-reset { padding: 2px 8px; font-size: 12px; }
+@media (max-width: 640px) { .dash-top { display: grid; grid-template-columns: 1fr; } .dash-top .btn-primary { width: 100%; } }

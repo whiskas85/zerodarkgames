@@ -22,7 +22,6 @@ const TABS = [
   ['emergenze', '🚨 Emergenze'],
   ['coppie', 'Iscrizioni e coppie'],
   ['accettazione', 'Accettazione'],
-  ['armi', 'Test armi'],
   ['squadre', 'Squadre Eletti'],
   ['settori', 'Settori e Altari'],
   ['altari', 'Altari e Parola'],
@@ -394,7 +393,8 @@ function sidebar() {
   h('div', { class: 'sidebar-ext' },
     R.gameId ? h('a', { href: `/tabellone?g=${R.gameId}`, target: '_blank', rel: 'noopener' }, 'Tabellone ↗') : h('span', { class: 'off' }, 'Tabellone ↗'),
     h('a', { href: '/soglia', target: '_blank', rel: 'noopener' }, 'Soglia ↗'),
-    h('a', { href: '/campo', target: '_blank', rel: 'noopener', title: 'Strumento di campo: piazzare Altari e Doni dal telefono' }, 'Campo ↗')))];
+    h('a', { href: '/campo', target: '_blank', rel: 'noopener', title: 'Strumento di campo: piazzare Altari e Doni dal telefono' }, 'Campo ↗'),
+    R.gameId ? h('a', { href: `/armi?g=${R.gameId}`, target: '_blank', rel: 'noopener', title: 'Test armi col cronografo' }, 'Test armi ↗') : h('span', { class: 'off' }, 'Test armi ↗')))];
 }
 const installedApp = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 

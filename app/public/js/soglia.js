@@ -9,7 +9,7 @@ setInterval(() => {
   for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
 }, 1000);
 // Schede: la Soglia (validazione), l'Accettazione all'arrivo e il Test armi.
-const TABS = [['', 'Soglia'], ['accettazione', 'Accettazione'], ['armi', 'Test armi']];
+const TABS = [['', 'Soglia'], ['accettazione', 'Accettazione']];
 const tab = () => (TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : '');
 window.addEventListener('hashchange', () => load());
 const V = { ck: null, me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
@@ -53,9 +53,10 @@ function render() {
       h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; V.ck = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
-    h('nav', { class: 'soglia-tabs' }, TABS.map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label))),
+    h('nav', { class: 'soglia-tabs' }, TABS.map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label)),
+      h('a', { href: `/armi${V.gameId ? `?g=${V.gameId}` : ''}` }, 'Test armi ↗')),
     tab() ? h('main', { class: 'content soglia' }, !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !V.ck ? h('p', { class: 'empty' }, 'Caricamento…')
-      : (tab() === 'armi' ? CKUI.viewChrono : CKUI.viewCheckin)(ckCtx())) :
+      : CKUI.viewCheckin(ckCtx())) :
     h('main', { class: 'content soglia' },
       // Countdown di gara ben visibile, sopra a tutto.
       V.data?.clock ? h('div', { class: 'race-clock' },

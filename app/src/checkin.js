@@ -120,7 +120,7 @@ function checkinData(gameId) {
   const g = G.getGame(gameId);
   const elect = G.electOf(g.id);
   return {
-    game: { id: g.id, name: g.name, status: g.status },
+    game: { id: g.id, name: g.name, status: g.status, scheduledStart: g.scheduledStart || null },
     clock: G.clockOf(g),
     players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, p.chronoShots, p.chronoDoneAt, a.username
                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id),
