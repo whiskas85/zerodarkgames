@@ -723,5 +723,6 @@ button.banner-safety strong { letter-spacing: .08em; }
 
 /* Compagno di squadra e cose da fare prima della gara */
 .partner-card { display: grid; gap: 4px; border-color: var(--brass); }
+.partner-card .btn { justify-self: start; margin-top: 4px; }
 .partner-name { font-family: var(--f-display); font-weight: 900; font-size: 26px; text-transform: uppercase; line-height: 1.05; }
 .prep-card { display: grid; gap: 6px; border-left: 4px solid var(--brass); }

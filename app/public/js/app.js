@@ -907,12 +907,16 @@ const ROLE_TEXT = {
 };
 
 // Il compagno di squadra: solo soprannome (e squadra softair), mai nome e cognome.
+// «Letto» lo nasconde; se il compagno cambia, il riquadro torna (fino al prossimo «Letto»).
+const partnerKey = (m) => `${m.id ?? ''}|${m.nickname ?? ''}|${m.softairTeam ?? ''}`;
 function partnerCard(m) {
+  if (store.get('zdg_partner_seen') === partnerKey(m)) return null;
   return h('div', { class: 'card partner-card' },
     h('div', { class: 'eyebrow' }, 'Il tuo compagno di squadra'),
     h('div', { class: 'partner-name' }, m.nickname ? `«${m.nickname}»` : 'Legato senza soprannome'),
     m.softairTeam ? h('p', { class: 'small muted' }, `Squadra softair: ${m.softairTeam}`) : null,
-    h('p', { class: 'tiny muted' }, 'Cercatevi al ritrovo: da qui in poi giocate in coppia.'));
+    h('p', { class: 'tiny muted' }, 'Cercatevi al ritrovo: da qui in poi giocate in coppia.'),
+    h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { store.set('zdg_partner_seen', partnerKey(m)); render(); } }, 'Letto'));
 }
 
 // Prima della gara: le cose da fare (test armi, partenza…), scritte dalla regia in markdown.
