@@ -827,3 +827,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .phone-links { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .phone-links a { color: inherit; }
 .wa-link { padding: 1px 7px; border-radius: 10px; background: #25d366; color: #052e14 !important; font-weight: 700; text-decoration: none; }
+.os-tag { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.os-ios { color: #c9d1d9; } .os-android { color: #46c46a; }
+.phone-links a { white-space: nowrap; }

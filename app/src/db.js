@@ -526,5 +526,7 @@ addColumn('players', 'safetyAckAt', 'INTEGER');
 addColumn('players', 'appInstalled', 'INTEGER');
 addColumn('players', 'appVersion', 'TEXT');
 addColumn('players', 'appSeenAt', 'INTEGER');
+// Sistema del telefono (ios, android, desktop) letto dal browser all'apertura dell'app.
+addColumn('players', 'appOs', 'TEXT');
 
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

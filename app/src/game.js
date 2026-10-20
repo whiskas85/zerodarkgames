@@ -1943,7 +1943,7 @@ function pushReport(gameId) {
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   const live = rt.onlineNow();
   // ICE: alla regia arriva solo se è compilato (sì/no), mai il contenuto.
-  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt, p.safetyAckAt, p.accountId, p.appInstalled, p.appVersion, p.appSeenAt,
+  const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt, p.safetyAckAt, p.accountId, p.appInstalled, p.appVersion, p.appSeenAt, p.appOs,
                                (a.iceBlood IS NOT NULL OR a.iceConditions IS NOT NULL OR a.iceContactName IS NOT NULL OR a.iceContactPhone IS NOT NULL) AS iceFilled,
                                t.kind AS teamKind, t.status AS teamStatus, s.name AS sectorName, s.roman, s.ord
                         FROM players p LEFT JOIN accounts a ON a.id = p.accountId LEFT JOIN teams t ON t.id = p.teamId
@@ -1959,7 +1959,7 @@ function pushReport(gameId) {
       // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
       traccar: trackStateOf(p, g, p.teamId ? { kind: p.teamKind, status: p.teamStatus } : null).state, trackSeenAt: p.trackSeenAt || null,
       ice: p.accountId ? !!p.iceFilled : null, safetyAckAt: p.safetyAckAt || null,
-      app: p.appSeenAt ? { installed: !!p.appInstalled, version: p.appVersion, at: p.appSeenAt } : null,
+      app: p.appSeenAt ? { installed: !!p.appInstalled, version: p.appVersion, at: p.appSeenAt, os: p.appOs || null } : null,
       // App aperta adesso: con il suo accesso personale, oppure (solo) dal telefono della coppia.
       online: live.players.has(p.id) ? 'on' : p.teamId && live.teams.has(p.teamId) ? 'team' : 'off',
     };

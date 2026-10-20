@@ -466,7 +466,11 @@ app.get('/api/stream', (req, res, next) => {
   else {
     const gameId = req.team?.gameId ?? req.player.gameId;
     // L'app dice se è installata e con quale versione (pagina Notifiche, Traccar e ICE della regia).
-    if (req.player && req.query.v) q.run('UPDATE players SET appVersion = ?, appInstalled = ?, appSeenAt = ? WHERE id = ?', String(req.query.v).slice(0, 20), req.query.inst === '1' ? 1 : 0, Date.now(), req.player.id);
+    if (req.player && req.query.v) {
+      const ua = String(req.headers['user-agent'] || '');
+      const os = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && /Mobile/i.test(ua)) ? 'ios' : /Android/i.test(ua) ? 'android' : ua ? 'desktop' : null;
+      q.run('UPDATE players SET appVersion = ?, appInstalled = ?, appSeenAt = ?, appOs = ? WHERE id = ?', String(req.query.v).slice(0, 20), req.query.inst === '1' ? 1 : 0, Date.now(), os, req.player.id);
+    }
     rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null });
     rt.toStaff(gameId, 'online');
     res.on('close', () => rt.toStaff(gameId, 'online'));

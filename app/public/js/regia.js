@@ -2639,7 +2639,10 @@ const TRACCAR_STATE = {
 function appCell(app, current) {
   if (!app) return h('span', { class: 'tiny muted', title: 'Non ha ancora aperto l\'app con il suo accesso personale' }, '—');
   const old = current && app.version && app.version !== current;
+  const OS = { ios: ['🍎 iPhone', 'iPhone o iPad (Safari): niente cronografo Bluetooth, le notifiche solo con l\'app installata'], android: ['🤖 Android', 'Android'], desktop: ['💻 computer', 'Computer'] };
+  const os = OS[app.os];
   return h('div', { class: 'app-cell' },
+    os ? h('span', { class: `os-tag os-${app.os}`, title: os[1] }, os[0]) : null,
     h('span', { class: `chip ${app.installed ? 'chip-ok' : ''}`, title: app.installed ? 'Installata nella schermata Home' : 'Aperta dal browser, non installata' }, app.installed ? 'installata' : 'browser'),
     h('div', { class: `mono tiny ${old ? 'warn-text' : 'muted'}`, title: old ? `Versione vecchia: l'ultima è ${current}. Deve chiudere e riaprire l'app.` : `Vista ${fmtTime(app.at)}` },
       (app.version || '?').replace('zdg-', ''), old ? ' · vecchia' : ''));
