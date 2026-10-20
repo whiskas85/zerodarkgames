@@ -26,6 +26,7 @@ setInterval(() => { for (const el of document.querySelectorAll('[data-cd]')) el.
 (async function boot() {
   try { A.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
   if (!A.me) { location.replace('/'); return; }
+  if (A.me.role !== 'master' && !A.me.perms?.includes('armi')) { location.replace('/consiglio'); return; }
   A.games = await api('GET', '/api/v/games');
   const live = A.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'draft'].includes(g.status));
   if (!A.games.some((g) => g.id === A.gameId)) A.gameId = (live || A.games[0])?.id || null;
@@ -63,7 +64,7 @@ function render() {
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Test armi'), h('div', { class: 'eyebrow' }, `Consiglio Zero · ${A.me?.username || ''}`))),
       h('select', { class: 'input game-select', onchange: (e) => { A.gameId = Number(e.target.value); store.set('zdg_armi_game', A.gameId); A.data = null; load(); } },
         A.games.map((g) => h('option', { value: g.id, selected: g.id === A.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
-      h('div', { class: 'top-actions' }, h('a', { class: 'btn btn-sm btn-ghost', href: A.me?.role === 'master' ? '/regia' : '/soglia' }, A.me?.role === 'master' ? 'Regia' : 'Soglia'))),
+      h('div', { class: 'top-actions' }, h('a', { class: 'btn btn-sm btn-ghost', href: A.me?.role === 'master' ? '/regia' : '/consiglio' }, A.me?.role === 'master' ? 'Regia' : 'Consiglio'))),
     h('main', { class: 'content armi' },
       d ? h('div', { class: 'event-cd' },
         h('div', { class: 'eyebrow' }, pre ? 'Inizio dell\'evento tra' : 'Tempo di gara rimanente'),

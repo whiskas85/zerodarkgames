@@ -55,3 +55,35 @@ test('gli account dell\'organizzazione non si cancellano per sbaglio', () => {
   assert.equal(A.deleteOrphanAccounts('test').deleted, 0);
   assert.ok(q.get('SELECT 1 FROM accounts WHERE id = ?', mario.id));
 });
+
+test('Consiglio Zero: chi entra con Zero Dark Ops chiede, il master sceglie le azioni', () => {
+  const anna = A.register({ username: 'anna', password: 'password1', name: 'Anna Verdi', softairTeam: 'Zero Dark Team' });
+  // Senza gestionale collegato la richiesta non si fa.
+  assert.equal(St.councilStatus(anna).canRequest, false);
+  assert.throws(() => St.requestCouncil(anna), /Zero Dark Ops/);
+  q.run("INSERT INTO account_identities (accountId, iss, sub, providerName, opsName, squadra, createdAt, lastLoginAt) VALUES (?, 'https://ops', 'a1', 'Zero Dark Ops', 'Anna', 'Alfa', 0, 0)", anna.id);
+  const st = St.requestCouncil(anna);
+  assert.ok(st.requestedAt);
+  assert.equal(St.pendingCount(), 1);
+  assert.equal(St.councilList().requests[0].ops[0].squadra, 'Alfa');
+  // Accettata con Test armi e Lancio doni (le chiavi sconosciute si scartano).
+  const u = St.acceptCouncil(anna.id, ['armi', 'doni', 'boh'], 'master');
+  assert.equal(u.role, 'validator');
+  assert.deepEqual(u.perms, ['armi', 'doni']);
+  assert.equal(St.pendingCount(), 0);
+  assert.equal(St.can(u, 'armi'), true);
+  assert.equal(St.can(u, 'soglia'), false);
+  // Il master cambia le azioni; poi le dà la regia completa.
+  const me = St.staffOf(mario.id);
+  assert.deepEqual(St.setCouncilPerms(u.id, { perms: ['soglia'] }, me, 'master').perms, ['soglia']);
+  assert.equal(St.setCouncilPerms(u.id, { master: true }, me, 'master').role, 'master');
+  assert.equal(St.can(St.staffOf(anna.id), 'campo'), true);
+  assert.throws(() => St.setCouncilPerms(me.id, { master: false }, me, 'master'), /da solo/);
+  assert.throws(() => St.requestCouncil(anna), /già nel Consiglio/);
+});
+
+test('i validatori di prima restano con Soglia, Accettazione e Test armi', () => {
+  assert.deepEqual(St.permsOf({ role: 'validator', perms: null }).sort(), ['accettazione', 'armi', 'soglia']);
+  assert.deepEqual(St.permsOf({ role: 'validator', perms: '[]' }), []);
+  assert.equal(St.homeOf('validator'), '/consiglio');
+});

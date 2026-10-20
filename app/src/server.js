@@ -112,7 +112,7 @@ function loadAuth(req, _res, next) {
   const c = cookies(req);
   if (c[COOKIE_USER]) {
     const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind = 'user'", c[COOKIE_USER]);
-    if (s) req.user = q.get('SELECT id, username, role, displayName FROM users WHERE id = ?', s.refId);
+    if (s) req.user = St.withPerms(q.get('SELECT id, username, role, displayName, perms FROM users WHERE id = ?', s.refId));
   }
   if (c[COOKIE_TEAM]) {
     const s = q.get("SELECT * FROM sessions WHERE token = ? AND kind IN ('team','player','account')", c[COOKIE_TEAM]);
@@ -146,6 +146,9 @@ function acceptPendingInvite(req, res, account) {
 
 const needMaster = (req, _res, next) => (req.user?.role === 'master' ? next() : next(new HttpError(401, 'Accesso riservato alla regia')));
 const needStaff = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Accesso riservato all\'organizzazione')));
+// Azione del Consiglio Zero: il master le ha tutte, gli altri quelle che il master ha aperto loro (una basta).
+const needPerm = (...perms) => (req, _res, next) => (!req.user ? next(new HttpError(401, 'Accesso riservato all\'organizzazione'))
+  : perms.some((p) => St.can(req.user, p)) ? next() : next(new HttpError(403, 'Questa azione non ti è stata aperta dal Consiglio')));
 const needTeam = (req, _res, next) => (req.team ? next() : next(new HttpError(req.player ? 403 : 401, req.player ? 'Disponibile quando il Consiglio vi avrà assegnato il Settore' : 'Accesso coppia richiesto')));
 const needMember = (req, _res, next) => (req.team || req.player || req.account ? next() : next(new HttpError(401, 'Accesso richiesto')));
 const actor = (req) => req.user?.username || 'regia';
@@ -193,7 +196,7 @@ app.post('/api/auth/login', loginLimit, wrap((req, res) => {
   if (u && verifyPassword(req.body.password || '', u.passHash)) {
     setCookie(req, res, COOKIE_USER, newSession('user', u.id), 30 * 24 * 3600);
     G.log(null, u.username, 'login');
-    return { id: u.id, username: u.username, role: u.role, displayName: u.displayName, home: u.role === 'master' ? '/regia' : '/soglia' };
+    return { id: u.id, username: u.username, role: u.role, displayName: u.displayName, home: St.homeOf(u.role) };
   }
   const a = A.authenticate(name, req.body.password);
   if (!a) throw new HttpError(401, 'Username o password non validi');
@@ -236,6 +239,10 @@ app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.accou
 app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
 // Gestionali collegati: il giocatore toglie un collegamento dal profilo.
 app.delete('/api/account/ops/:iid', needAccount, wrap((req) => { O.unlink(req.account, req.params.iid); return { ok: true }; }));
+// Consiglio Zero: chi è entrato con Zero Dark Ops chiede l'accesso; il master sceglie dalla regia cosa può fare.
+app.get('/api/council', needAccount, (req, res) => res.json(St.councilStatus(req.account)));
+app.post('/api/council/request', needAccount, wrap((req) => St.requestCouncil(req.account)));
+app.delete('/api/council/request', needAccount, wrap((req) => St.withdrawCouncil(req.account)));
 
 // ---- «Accedi con Zero Dark Ops» (OpenID Connect): /auth/ops/<gestionale> → gestionale → /auth/ops/callback
 // ritorno: 'app' (/) o 'iscrizione'; collega=1 aggiunge il gestionale all'account già aperto.
@@ -343,16 +350,19 @@ app.post('/api/team/logout', wrap((req, res) => {
 // ---- API coppia
 // La mappa della coppia per ATAK / Google Earth: solo ciò che vede nell'app.
 app.get('/api/team/map.kmz', needTeam, (req, res, next) => { try { sendKmz(res, F.teamKmz(req.team)); } catch (e) { next(e); } });
+// Voce «Consiglio Zero» nell'app: per chi è entrato con Zero Dark Ops o è già nell'organizzazione.
+const councilFlag = (req) => !!req.account && (!!St.staffOf(req.account.id) || St.councilStatus(req.account).canRequest);
 app.get('/api/team/state', needMember, wrap((req) => {
-  if (!req.player && !req.team) return { noEnrollment: true, account: A.publicAccount(req.account) };
+  if (!req.player && !req.team) return { noEnrollment: true, account: A.publicAccount(req.account), council: councilFlag(req) };
   // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
   const openNew = req.account && G.getGame(req.player?.gameId ?? req.team.gameId).status === 'ended'
     && q.get("SELECT 1 FROM games g WHERE g.registrationOpen = 1 AND g.status = 'draft' AND NOT EXISTS (SELECT 1 FROM players p WHERE p.gameId = g.id AND p.accountId = ?)", req.account.id);
-  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
+  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), council: councilFlag(req), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
   const st = G.teamState(req.team, req.player);
   st.map = F.teamMap(req.team);
   // Stato di Traccar Client per questa persona (il «flag» resta finché la prova non riesce).
   st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
+  st.council = councilFlag(req);
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team);
   st.skills = S.skillsState(req.team);
@@ -478,17 +488,19 @@ app.get('/api/stream', (req, res, next) => {
 });
 
 // ---- strumento di campo (/campo): Master o Eletti, dal telefono
-const needField = (req, _res, next) => (req.user?.role === 'master' || req.team?.kind === 'elect' ? next() : next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio')));
+// Regia sul campo: il master e chi nel Consiglio Zero ha l'azione «Campo».
+const fieldStaff = (req) => St.can(req.user, 'campo');
+const needField = (req, _res, next) => (fieldStaff(req) || req.team?.kind === 'elect' ? next() : next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio')));
 const fieldGame = (req) => {
-  if (req.team?.kind === 'elect' && !req.user) return req.team.gameId;
+  if (req.team?.kind === 'elect' && !fieldStaff(req)) return req.team.gameId;
   const id = Number(req.query.gameId || req.body?.gameId);
   if (!id) throw new HttpError(400, 'Partita non indicata');
   return id;
 };
-const fieldWho = (req) => (req.user ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
+const fieldWho = (req) => (fieldStaff(req) ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
 const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
 app.get('/api/field/whoami', (req, res) => {
-  if (req.user?.role === 'master') return res.json({ role: 'master', name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
+  if (fieldStaff(req)) return res.json({ role: 'master', name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
   if (req.team?.kind === 'elect') {
     const squad = req.player?.squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', req.player.squadId) : null;
     return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', personal: !!req.player, squad, gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
@@ -507,7 +519,7 @@ app.post('/api/field/pois', needField, wrap((req) => F.createPoi(fieldGame(req),
 app.patch('/api/field/pois/:id', needField, wrap((req) => F.updatePoi(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
 // Agli Eletti: gli altri Eletti e, finché un incarico della loro squadra è aperto, la coppia bersaglio.
-app.get('/api/field/positions', needField, wrap((req) => (req.user?.role === 'master' ? F.positionsOf(fieldGame(req), 'master')
+app.get('/api/field/positions', needField, wrap((req) => (fieldStaff(req) ? F.positionsOf(fieldGame(req), 'master')
   : [...F.positionsOf(fieldGame(req), 'elect'), ...(req.player?.squadId ? F.taskTargetPositions(req.player.squadId) : [])])));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
@@ -567,7 +579,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => ({ ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)) })));
+m.get('/games/:id/state', wrap((req) => ({ ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), councilPending: St.pendingCount() })));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
@@ -708,6 +720,11 @@ m.get('/users', (_req, res) => res.json(q.all(`SELECT u.id, u.username, u.role, 
     (SELECT group_concat(i.providerName, ' · ') FROM account_identities i WHERE i.accountId = u.accountId) AS ops
   FROM users u LEFT JOIN accounts a ON a.id = u.accountId ORDER BY u.role, u.username`)));
 // Inviti del Consiglio: link monouso (24 ore) per diventare master o validatore con il proprio account.
+// Consiglio Zero: richieste d'accesso e azioni di ciascuno.
+m.get('/council', (_req, res) => res.json(St.councilList()));
+m.post('/council/requests/:aid/accept', wrap((req) => St.acceptCouncil(req.params.aid, req.body?.perms, actor(req))));
+m.delete('/council/requests/:aid', wrap((req) => { St.rejectCouncil(req.params.aid, actor(req)); return { ok: true }; }));
+m.patch('/council/:uid', wrap((req) => St.setCouncilPerms(req.params.uid, req.body || {}, req.user, actor(req))));
 m.get('/invites', (req, res) => res.json(St.pendingInvites().map((i) => ({ ...i, url: `${baseUrl(req)}/invito/${i.token}` }))));
 m.post('/invites', wrap((req) => { const i = St.createInvite(req.body?.role, actor(req)); return { ...i, url: `${baseUrl(req)}/invito/${i.token}` }; }));
 m.delete('/invites/:token', wrap((req) => { St.cancelInvite(req.params.token, actor(req)); return { ok: true }; }));
@@ -764,7 +781,7 @@ app.use('/api/m', m);
 const v = express.Router();
 v.use(needStaff);
 v.get('/games', (_req, res) => res.json(q.all('SELECT id, name, status FROM games ORDER BY id DESC')));
-v.get('/games/:id/teams', wrap(async (req) => {
+v.get('/games/:id/teams', needPerm('soglia'), wrap(async (req) => {
   const g = G.getGame(Number(req.params.id));
   // Codice di uscita della Soglia: il QR da mostrare a schermo accanto all'elenco (lo stesso del cartello stampato).
   const soglia = q.get("SELECT exitToken FROM landmarks WHERE gameId = ? AND kind = 'soglia' AND exitToken IS NOT NULL", g.id);
@@ -774,19 +791,26 @@ v.get('/games/:id/teams', wrap(async (req) => {
   const exitCode = soglia ? soglia.exitToken.slice(-6).toUpperCase() : null;
   return { exitUrl, exitSvg, exitCode, clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
 }));
-v.get('/teams/:tid', wrap((req) => G.validatorView(Number(req.params.tid))));
+v.get('/teams/:tid', needPerm('soglia'), wrap((req) => G.validatorView(Number(req.params.tid))));
 // Accettazione e test armi anche per lo staff (validatori), dalla pagina Soglia.
 const sActor = (req) => req.user?.username || 'staff';
-v.get('/games/:id/checkin', wrap((req) => CK.checkinData(Number(req.params.id))));
-v.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
-v.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
-v.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
-v.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
-v.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null)));
-v.post('/games/:id/squads', wrap((req) => F.createSquad(Number(req.params.id), req.body || {}, sActor(req))));
-v.post('/teams/:tid/check', wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
-v.post('/teams/:tid/validate', wrap((req) => G.validate(Number(req.params.tid), req.body || {}, req.user)));
+v.get('/games/:id/checkin', needPerm('accettazione', 'armi'), wrap((req) => CK.checkinData(Number(req.params.id))));
+v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/checkin/team/:tid', needPerm('accettazione'), wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/place/:pid', needPerm('accettazione'), wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
+v.post('/games/:id/chrono/:pid/done', needPerm('armi'), wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/chrono/:pid', needPerm('armi'), wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null)));
+v.post('/games/:id/squads', needPerm('accettazione'), wrap((req) => F.createSquad(Number(req.params.id), req.body || {}, sActor(req))));
+v.post('/teams/:tid/check', needPerm('soglia'), wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
+v.post('/teams/:tid/validate', needPerm('soglia'), wrap((req) => G.validate(Number(req.params.tid), req.body || {}, req.user)));
 v.get('/board/:id', wrap((req) => G.boardState(Number(req.params.id))));
+// Lancio doni e annunci dal Consiglio Zero.
+v.get('/games/:id/gifts', needPerm('doni'), wrap((req) => {
+  const g = G.getGame(Number(req.params.id));
+  return { clock: G.clockOf(g), gifts: F.fieldState(g.id).gifts.map(({ id, label, name, icon, color, status, revealMode, revealAtMin, revealAt, revealedAt, claimedAt }) => ({ id, label, name, icon, color, status, revealMode, revealAtMin, revealAt, revealedAt, claimedAt })) };
+}));
+v.post('/gifts/:gid/reveal', needPerm('doni'), wrap((req) => { F.revealGift(req.params.gid, sActor(req)); return { ok: true }; }));
+v.post('/games/:id/announce', needPerm('comunicazioni'), wrap((req) => G.freeAnnouncement(Number(req.params.id), req.body?.text, sActor(req))));
 app.use('/api/v', v);
 
 // ---- pagine stampabili
@@ -818,6 +842,7 @@ app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve
 app.get('/regia', sendPage('regia.html'));
 app.get('/soglia', sendPage('soglia.html'));
 app.get('/armi', sendPage('armi.html'));
+app.get('/consiglio', sendPage('consiglio.html'));
 app.get('/iscrizione', sendPage('iscrizione.html'));
 app.get('/tabellone', sendPage('tabellone.html'));
 app.use(express.static(PUBLIC_DIR, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));

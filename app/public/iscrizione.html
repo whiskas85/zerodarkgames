@@ -332,7 +332,9 @@
     const PROFILE_TABS = [['profilo', 'Account e dati'], ['profilo-armi', 'Test armi'], ['profilo-ice', 'ICE']];
     function profileHead(key) {
       return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'),
-        h('nav', { class: 'profile-tabs' }, PROFILE_TABS.map(([k, label]) => h('a', { href: `#${k}`, class: k === key ? 'on' : '' }, label)))];
+        h('nav', { class: 'profile-tabs' }, PROFILE_TABS.map(([k, label]) => h('a', { href: `#${k}`, class: k === key ? 'on' : '' }, label)),
+          // Consiglio Zero: chi entra con Zero Dark Ops può chiedere di far parte dell'organizzazione.
+          S.account?.ops?.length || S.account?.staff ? h('a', { href: '/consiglio' }, 'Consiglio Zero ↗') : null)];
     }
     const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
     const saveProfile = async (fd, msg = 'Profilo aggiornato') => {

@@ -319,6 +319,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS track_pings (
   id INTEGER PRIMARY KEY, playerId INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE, at INTEGER NOT NULL, acc REAL
 );
 CREATE INDEX IF NOT EXISTS ix_track_pings ON track_pings(playerId, at);`);
+addColumn('users', 'perms', 'TEXT');
+db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
+  accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL
+)`);
 addColumn('users', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE CASCADE');
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_account ON users(accountId);

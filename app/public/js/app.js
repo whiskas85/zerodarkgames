@@ -985,6 +985,7 @@ function viewLobbyHome(st) {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙'),
+      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
       iceTile()),
     accountBar(st),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
@@ -1026,6 +1027,7 @@ function viewElectHome(st) {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙'),
+      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
       iceTile()),
     accountBar(st),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
@@ -1096,6 +1098,7 @@ function viewHome() {
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙'),
+      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
       iceTile()),
     accountBar(st));
 }

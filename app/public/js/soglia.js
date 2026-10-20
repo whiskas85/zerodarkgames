@@ -9,8 +9,11 @@ setInterval(() => {
   for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
 }, 1000);
 // Schede: la Soglia (validazione), l'Accettazione all'arrivo e il Test armi.
-const TABS = [['', 'Soglia'], ['accettazione', 'Accettazione']];
-const tab = () => (TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : '');
+// Solo le schede che il Consiglio ha aperto a questa persona (il master le vede tutte).
+const ALL_TABS = [['', 'Soglia', 'soglia'], ['accettazione', 'Accettazione', 'accettazione']];
+const can = (p) => V.me?.role === 'master' || !!V.me?.perms?.includes(p);
+const tabs = () => ALL_TABS.filter(([, , p]) => can(p));
+const tab = () => { const t = tabs(); return t.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : t[0]?.[0] ?? ''; };
 window.addEventListener('hashchange', () => load());
 const V = { ck: null, me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 
@@ -18,6 +21,8 @@ const V = { ck: null, me: null, games: [], gameId: store.get('zdg_soglia_game'),
   // Service worker: serve anche per installare la pagina come app (telefono, tablet, computer).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try { V.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
+  // Né Soglia né Accettazione: le sue azioni sono nella pagina del Consiglio.
+  if (V.me && !tabs().length) { location.replace('/consiglio'); return; }
   if (V.me) await start(); else render();
 })();
 
@@ -53,8 +58,9 @@ function render() {
       h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; V.ck = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
-    h('nav', { class: 'soglia-tabs' }, TABS.map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label)),
-      h('a', { href: `/armi${V.gameId ? `?g=${V.gameId}` : ''}` }, 'Test armi ↗')),
+    h('nav', { class: 'soglia-tabs' }, tabs().map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label)),
+      can('armi') ? h('a', { href: `/armi${V.gameId ? `?g=${V.gameId}` : ''}` }, 'Test armi ↗') : null,
+      V.me.role === 'master' ? null : h('a', { href: '/consiglio' }, 'Consiglio ↗')),
     tab() ? h('main', { class: 'content soglia' }, !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !V.ck ? h('p', { class: 'empty' }, 'Caricamento…')
       : CKUI.viewCheckin(ckCtx())) :
     h('main', { class: 'content soglia' },

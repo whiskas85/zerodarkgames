@@ -36,6 +36,7 @@ const TABS = [
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['regolamento', 'Regolamento'],
+  ['consiglio', 'Consiglio Zero'],
   ['impostazioni', 'Impostazioni'],
 ];
 // Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
@@ -68,7 +69,7 @@ async function start() {
   await loadGames();
   stream('/api/stream?as=staff', {
     open: () => load(),
-    refresh: (d) => { if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
+    refresh: (d) => { if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
     // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
     emergency: async (d) => {
       if (d.gameId && d.gameId !== R.gameId) { R.gameId = d.gameId; store.set('zdg_regia_game', R.gameId); R.ms = null; }
@@ -239,7 +240,7 @@ function render() {
   if (tab() === 'regolamento' && frame && frame.getAttribute('src') === (R.ms?.game?.bookUrl || '/regolamento.html')) return tick();
   preserve(() => {
     const ms = R.ms;
-    const body = tab() === 'settori' ? viewSectors() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
+    const body = tab() === 'settori' ? viewSectors() : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
@@ -392,12 +393,13 @@ function sidebar() {
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
-  const always = ['settori', 'regolamento', 'impostazioni'];
+  const always = ['settori', 'regolamento', 'consiglio', 'impostazioni'];
   return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
     h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
+    id === 'consiglio' && R.ms?.councilPending ? h('span', { class: 'badge badge-alert', title: 'Richieste d\'accesso al Consiglio Zero' }, R.ms.councilPending) : null,
     id === 'emergenze' && openEmergencies().length ? h('span', { class: 'badge badge-alert' }, openEmergencies().length) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
     id === 'squadre' && pendingTasks ? h('span', { class: 'badge badge-alert badge-task', title: 'Incarichi da assegnare (Maestro della caccia…)' }, `🎯 ${pendingTasks}`) : null,
@@ -3036,6 +3038,57 @@ function accountsSection() {
         h('td', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => reset(a) }, 'Password'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(a) }, 'Elimina'))))))) : h('p', { class: 'empty' }, f ? 'Nessun account trovato.' : 'Nessun account registrato.'));
+}
+
+// ---------------------------------------------------------------- CONSIGLIO ZERO
+// Chi entra con Zero Dark Ops chiede l'accesso; qui il master lo accetta e sceglie le azioni che può fare.
+let council = null;
+const loadCouncil = () => api('GET', '/api/m/council').then((c) => { council = c; if (tab() === 'consiglio') render(); }).catch((e) => toast(e.message, 'error'));
+const opsLine = (ops) => (ops || []).map((o) => [o.providerName, o.opsName, o.squadra].filter(Boolean).join(' · ')).join(' — ');
+async function councilCall(method, url, body, okMsg) {
+  try { await api(method, url, body); if (okMsg) toast(okMsg, 'ok'); } catch (e) { toast(e.message, 'error', 7000); }
+  R.users = [];
+  await loadCouncil();
+  load();
+}
+
+function viewCouncil() {
+  if (!council) { loadCouncil(); return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const { perms, requests, members } = council;
+  const permBoxes = (on, onchange, disabled = false) => h('div', { class: 'council-perms' }, perms.map((p) => h('label', { class: 'council-perm', title: p.hint },
+    h('input', { type: 'checkbox', value: p.key, checked: on.includes(p.key), disabled, onchange }), h('span', null, p.label))));
+  const who = (x) => [h('strong', null, x.name || x.displayName || x.username), x.nickname ? h('span', { class: 'muted' }, ` «${x.nickname}»`) : null,
+    h('div', { class: 'tiny muted' }, [x.accountUsername || x.username ? `@${x.accountUsername || x.username}` : null, x.softairTeam, opsLine(x.ops)].filter(Boolean).join(' · ')),
+    phoneLinks(x.phone)];
+  const reqCard = (r) => {
+    const box = permBoxes(['accettazione', 'armi'], null);
+    const chosen = () => [...box.querySelectorAll('input:checked')].map((i) => i.value);
+    return h('li', { class: 'council-card' }, h('div', null, ...who(r), h('div', { class: 'tiny muted' }, `Chiesto il ${new Date(r.createdAt).toLocaleDateString('it-IT')} alle ${fmtTime(r.createdAt)}`)),
+      h('div', { class: 'eyebrow' }, 'Cosa può fare'), box,
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-sm btn-primary', onclick: () => councilCall('POST', `/api/m/council/requests/${r.accountId}/accept`, { perms: chosen() }, `${r.name} è nel Consiglio Zero`) }, 'Accetta'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await dialog({ title: 'Rifiutare la richiesta?', text: r.name, okLabel: 'Rifiuta', danger: true })) councilCall('DELETE', `/api/m/council/requests/${r.accountId}`, undefined, 'Richiesta rifiutata'); } }, 'Rifiuta')));
+  };
+  const memberCard = (u) => {
+    const me = u.id === R.me.id;
+    const master = u.role === 'master';
+    const box = permBoxes(u.perms, () => councilCall('PATCH', `/api/m/council/${u.id}`, { perms: [...box.querySelectorAll('input:checked')].map((i) => i.value) }, 'Azioni aggiornate'), master);
+    const name = u.displayName || u.username;
+    return h('li', { class: 'council-card' }, h('div', null, ...who(u), master ? h('span', { class: 'chip chip-warn' }, 'regia completa') : null, me ? h('span', { class: 'tiny muted' }, ' · tu') : null),
+      master ? h('p', { class: 'tiny muted' }, 'Il master vede e fa tutto.') : box,
+      me ? null : h('div', { class: 'row' },
+        master ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => councilCall('PATCH', `/api/m/council/${u.id}`, { master: false }, `${name} non è più master`) }, 'Togli la regia')
+          : h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialog({ title: `Dare la regia completa a ${name}?`, text: 'Potrà fare tutto, anche cambiare le azioni degli altri.', okLabel: 'Dai la regia' })) councilCall('PATCH', `/api/m/council/${u.id}`, { master: true }, `${name} è master`); } }, 'Dai la regia completa'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await dialog({ title: 'Togliere dal Consiglio?', text: u.accountId ? `${name} non avrà più azioni; il suo account dei Giochi resta.` : `L'utente ${u.username} viene eliminato.`, okLabel: 'Togli', danger: true })) councilCall('DELETE', `/api/m/users/${u.id}`, undefined, 'Tolto dal Consiglio'); } }, 'Togli')));
+  };
+  const url = `${R.baseUrl || location.origin}/consiglio`;
+  return h('div', { class: 'stack' },
+    section(`Richieste d'accesso${requests.length ? ` · ${requests.length}` : ''}`,
+      h('p', { class: 'muted small' }, 'Chi entra con Zero Dark Ops trova «Consiglio Zero» nell\'app e nel profilo (o apre ', h('a', { href: '/consiglio', target: '_blank', rel: 'noopener' }, url), ') e chiede di entrare. Scegli le azioni e accetta.'),
+      requests.length ? h('ul', { class: 'council-list' }, requests.map(reqCard)) : h('p', { class: 'empty' }, 'Nessuna richiesta in attesa.')),
+    section(`Membri · ${members.length}`,
+      h('p', { class: 'muted small' }, 'Le spunte valgono subito, per tutte le partite. ', ...perms.map((p, i) => [i ? ' · ' : '', h('strong', null, p.label), `: ${p.hint.toLowerCase()}`])),
+      h('ul', { class: 'council-list' }, members.map(memberCard))));
 }
 
 // Organizzazione: master e validatori (con password o entrati con un invito dal loro account).

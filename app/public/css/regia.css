@@ -830,3 +830,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .os-tag { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .os-ios { color: #c9d1d9; } .os-android { color: #46c46a; }
 .phone-links a { white-space: nowrap; }
+
+/* Consiglio Zero: richieste e membri con le azioni da spuntare */
+.council-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.council-card { display: grid; gap: 8px; padding: 12px; border: 2px solid var(--line); background: var(--paper); }
+.council-perms { display: flex; flex-wrap: wrap; gap: 6px; }
+.council-perm { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 2px solid var(--line); cursor: pointer; font-weight: 600; }
+.council-perm:has(input:checked) { border-color: var(--ok); }
+.council-perm:has(input:disabled) { opacity: .6; cursor: default; }
+.council-card .row { display: flex; flex-wrap: wrap; gap: 8px; }
