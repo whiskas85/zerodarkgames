@@ -786,3 +786,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .soglia-top .top-actions .btn { width: auto; }
   .content.soglia { padding: 8px; }
 }
+/* Colpi sopra 1 joule: sempre in rosso */
+.cs-read.bad { background: #e5484d; border-color: #e5484d; color: #fff; font-weight: 700; }
+.cs-read.bad .cs-del { color: #fff; }
+.cs-over { grid-column: 1 / -1; color: #fff; background: #e5484d; border-radius: 4px; padding: 6px; }
+.chrono-wbtn.over { border-color: #e5484d; }
+.w-over { color: #e5484d; font-weight: 700; }

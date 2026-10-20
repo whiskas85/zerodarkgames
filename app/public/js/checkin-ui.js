@@ -385,6 +385,7 @@ function chronoSession(ctx) {
   const mv = avg(r.map((x) => x.v));
   const max = r.length ? Math.max(...r.map((x) => x.j)) : 0;
   const ok = r.length && mj < 1;
+  const over = r.filter((x) => x.j >= 1).length;
   const close = () => { BT.session = null; ctx.render(); };
   const save = async () => {
     const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v })) } }, ok ? `${ss.label}: media ${fmtJ(mj)} ✓` : null);
@@ -406,7 +407,8 @@ function chronoSession(ctx) {
       h('div', null, h('span', { class: 'eyebrow' }, `Media di ${r.length}`), h('strong', { class: 'mono' }, fmtJ(mj))),
       h('div', null, h('span', { class: 'eyebrow' }, 'Velocità media'), h('strong', { class: 'mono' }, fmtV(mv))),
       h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, fmtJ(max))),
-      h('strong', { class: 'cs-verdict' }, ok ? '✓ Minore di 1 joule' : '✗ 1 joule o più: non passa')) : null,
+      h('strong', { class: 'cs-verdict' }, ok ? '✓ Media minore di 1 joule' : '✗ Media da 1 joule in su: non passa'),
+      over ? h('strong', { class: 'cs-over' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${fmtJ(max)})`) : null) : null,
     h('div', { class: 'row-actions' },
       h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: !r.length, onclick: save }, ok ? 'OK, salva' : 'Salva (non passa)'),
       h('button', { class: 'btn', type: 'button', onclick: manual }, 'Spunta a mano'),
@@ -455,8 +457,11 @@ export function viewChrono(ctx) {
           const s = shots[weapon];
           const cur = BT.session?.playerId === p.id && BT.session.weapon === weapon;
           const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? `✗ ${fmtJ(s.j)}` : 'da provare';
-          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${cur ? 'cur' : ''}`, disabled: !!p.chronoDoneAt, onclick: () => open(p, weapon, label) },
-            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub)));
+          // Colpi sopra 1 J tra le letture salvate (anche se la media passa): in rosso.
+          const overN = (s?.readings || []).filter((x) => x.j >= 1).length || (s && s.max >= 1 ? 1 : 0);
+          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${overN && p[col] ? 'over' : ''} ${cur ? 'cur' : ''}`, disabled: !!p.chronoDoneAt, onclick: () => open(p, weapon, label) },
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub),
+              overN && s ? h('span', { class: 'tiny w-over' }, `⚠ ${overN} sopra 1 J · max ${fmtJ(s.max ?? s.j)}`) : null));
         })),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
     })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
