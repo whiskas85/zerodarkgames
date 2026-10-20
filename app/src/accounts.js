@@ -84,10 +84,12 @@ function currentPlayer(account) {
 }
 
 function enrollments(account) {
-  return q.all(`SELECT p.id, p.gameId, g.name AS gameName, g.status AS gameStatus, p.status, p.requestedRole, p.regGroup, p.teamId,
+  const ES = require('./eventstatus');
+  return q.all(`SELECT p.*, g.name AS gameName, g.status AS gameStatus,
                   (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
                 FROM players p JOIN games g ON g.id = p.gameId WHERE p.accountId = ? ORDER BY p.id DESC`, account.id)
-    .map((e) => ({ ...e, pairCode: e.requestedRole === 'pair' && e.groupSize < 2 ? e.regGroup : null }));
+    .map((e) => ({ id: e.id, gameId: e.gameId, gameName: e.gameName, gameStatus: e.gameStatus, status: e.status, requestedRole: e.requestedRole, regGroup: e.regGroup, teamId: e.teamId, groupSize: e.groupSize,
+      pairCode: e.requestedRole === 'pair' && e.groupSize < 2 ? e.regGroup : null, event: ES.eventStatus(e) }));
 }
 
 const PAIR_CODE = () => randomCode(6);

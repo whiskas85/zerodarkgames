@@ -1812,7 +1812,8 @@ function electState(team, player = null) {
 }
 
 function playerInfo(player) {
-  return player ? { id: player.id, name: player.name, nickname: player.nickname, accessCode: player.accessCode, status: player.status, role: player.requestedRole, safetyAckAt: player.safetyAckAt || null } : null;
+  return player ? { id: player.id, name: player.name, nickname: player.nickname, accessCode: player.accessCode, status: player.status, role: player.requestedRole, safetyAckAt: player.safetyAckAt || null,
+    event: require('./eventstatus').eventStatus(q.get('SELECT * FROM players WHERE id = ?', player.id) || player) } : null;
 }
 
 // Anteprima: iscritto (anche in attesa di approvazione) che non è ancora in una coppia né tra gli Eletti.

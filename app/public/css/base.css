@@ -215,3 +215,19 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
   .md-full-edit { border-right: 0; border-bottom: 2px solid var(--line); }
 }
 body.no-scroll { overflow: hidden; }
+
+/* Stato all'evento (profilo) */
+.ev-card { display: grid; gap: 10px; }
+.ev-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ev-step { display: flex; align-items: center; gap: 10px; }
+.ev-dot { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--muted); font-weight: 800; color: #fff; }
+.ev-step.done .ev-dot { background: #46c46a; border-color: #46c46a; }
+.ev-step.warn .ev-dot { border-color: #e9c75a; }
+.ev-weapons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ev-weapon { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
+.ev-weapon.ok { border-color: #46c46a; }
+.ev-weapon.bad { border-color: #e5484d; }
+.ev-over { color: #e5484d; font-weight: 700; }
+@media (max-width: 520px) { .ev-weapons { grid-template-columns: 1fr; } }
+.ev-card ol.ev-steps > li.ev-step { display: flex; flex-direction: row; align-items: center; gap: 10px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.ev-card ol.ev-steps > li.ev-step::before { content: none; }

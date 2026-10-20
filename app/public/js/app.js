@@ -1,7 +1,7 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { createField } from './field-ui.js';
-import { h, mount, md, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
+import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -2879,6 +2879,7 @@ function viewSettings() {
   const st = S.state;
   return h('div', { class: 'stack' },
     h('h2', null, 'Impostazioni'),
+    eventStatusCard(st?.player?.event, { gameName: st?.game?.name }),
     h('div', { class: 'card stack' },
       h('strong', null, 'Notifiche del Consiglio'),
       h('p', { class: 'muted small' }, perm === 'granted' ? 'Attive. Riceverete gli annunci anche a schermo spento.' : 'Attivatele per ricevere annunci e rivelazioni con vibrazione anche a schermo spento.'),

@@ -66,7 +66,7 @@
 <body>
   <main id="root"><p class="muted">Caricamento…</p></main>
   <script type="module">
-    import { h, mount, api, toast } from '/js/lib.js';
+    import { h, mount, api, toast, eventStatusCard } from '/js/lib.js';
 
     // Le tre strade, presentate come sfide. La chiave è anche l'indirizzo della pagina (#legati, #temerario, #eletti).
     const PATHS = {
@@ -257,6 +257,7 @@
           h('h2', null, 'Sei già iscritto'),
           h('p', null, `${c.title || 'Iscrizione'} · ${STATUS[e.status] || e.status}${e.teamId ? ' · sei già nella tua squadra' : ''}.`),
           h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
+        eventStatusCard(e.event, { gameName: e.gameName }),
         e.pairCode ? pairCodeCard(e.pairCode) : null);
     }
 
@@ -318,6 +319,7 @@
           h('p', null, r.partner ? `Sei Legato con ${r.partner}. ${c.done}` : c.done),
           h('p', null, 'Non serve aspettare il giorno dei Giochi: entra subito nell\'app per conoscerla, con il giro guidato. Da qualsiasi telefono entri con username e password.'),
           h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
+        eventStatusCard(e.event, { gameName: e.gameName }),
         r.pairCode ? pairCodeCard(r.pairCode) : null,
         h('a', { class: 'btn btn-ghost', href: '/regolamento.html' }, 'Leggi il regolamento'),
       ];
@@ -359,7 +361,10 @@
         field('Nuova password', { name: 'password', type: 'password', minlength: 8, autocomplete: 'new-password' }),
         field('Ripeti la nuova password', { name: 'password2', type: 'password', minlength: 8, autocomplete: 'new-password' })),
       h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Salva'));
-      return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'), form, opsSection()];
+      return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'),
+        // Stato all'evento per le partite non ancora finite: iscrizione, accettazione, test armi (joule e pallino).
+        ...S.enrollments.filter((e) => e.gameStatus !== 'ended').map((e) => eventStatusCard(e.event, { gameName: e.gameName })),
+        form, opsSection()];
     }
     // Gestionali collegati all'account: entrare da lì, collegarne uno, scollegarlo.
     function opsSection() {

@@ -706,3 +706,32 @@ export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8
   home.append(toolbar, ta);
   return { el: home, textarea: ta, get value() { return ta.value; }, set value(v) { ta.value = v; changed(); } };
 }
+
+// Stato della persona all'evento (profilo): iscrizione, accettazione, test armi e joule per arma col pallino usato.
+export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameName = null } = {}) {
+  if (!ev) return null;
+  const n2 = (x) => Number(x).toFixed(2).replace('.', ',');
+  const t = (ms) => new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const step = (done, label, sub, warn = false) => h('li', { class: `ev-step ${done ? 'done' : warn ? 'warn' : ''}` },
+    h('span', { class: 'ev-dot', 'aria-hidden': 'true' }, done ? '✓' : ''), h('div', null, h('strong', null, label), sub ? h('div', { class: 'tiny muted' }, sub) : null));
+  const enrolled = ev.enrolled === 'accepted';
+  const chronoSub = ev.chronoDoneAt ? `Chiuso alle ${t(ev.chronoDoneAt)}` : ev.chronoStarted ? 'In corso' : 'Da fare al cronografo';
+  const W = [['main', 'Arma primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Arma secondaria']];
+  const weapon = ([k, label]) => {
+    const w = ev.weapons?.[k] || {};
+    const val = w.ok ? (w.manual ? 'provata · spunta manuale' : `${n2(w.j)} J${w.n > 1 ? ` (media di ${w.n})` : ''}`) : w.failed ? `${n2(w.j)} J · non passa` : 'da provare';
+    const over = w.max != null && w.max >= 1;
+    return h('div', { class: `ev-weapon ${w.ok ? 'ok' : w.failed ? 'bad' : ''}` },
+      h('span', { class: 'small' }, label),
+      h('strong', { class: 'mono' }, val),
+      w.g ? h('span', { class: 'tiny muted' }, `pallino ${n2(w.g)} g${w.v ? ` · ${n2(w.v)} m/s` : ''}`) : null,
+      over ? h('span', { class: 'tiny ev-over' }, `⚠ un colpo sopra 1 J (max ${n2(w.max)} J)`) : null);
+  };
+  return h('div', { class: 'card ev-card' },
+    h('div', { class: 'eyebrow' }, gameName ? `${title} · ${gameName}` : title),
+    h('ol', { class: 'ev-steps' },
+      step(enrolled, enrolled ? 'Iscritto' : 'Iscrizione inviata', enrolled ? 'Approvato dal Consiglio' : 'In attesa di approvazione', !enrolled),
+      step(!!ev.checkinAt, 'Accettazione', ev.checkinAt ? `Fatta alle ${t(ev.checkinAt)}` : 'Da fare all\'arrivo al campo'),
+      step(!!ev.chronoDoneAt, 'Test armi', chronoSub, ev.chronoStarted && !ev.chronoDoneAt)),
+    ev.chronoStarted || ev.chronoDoneAt ? h('div', { class: 'ev-weapons' }, W.map(weapon)) : null);
+}
