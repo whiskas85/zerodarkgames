@@ -1634,6 +1634,18 @@ function skillCard(s, ...actions) {
       acts.length ? h('div', { class: 'row-actions' }, ...acts) : null));
 }
 
+// Cosa sono i tre tipi di Skill (spiegato ai concorrenti). Ricarica delle Ultimate dal catalogo della partita.
+function kindInfo(kind, catalog = []) {
+  const cds = [...new Set(catalog.filter((s) => s.kind === 'ultimate' && s.cooldownMin).map((s) => s.cooldownMin))];
+  const ult = cds.length === 1 ? ` (${cds[0]} minuti)` : '';
+  return {
+    active: 'Le usate voi, quando volete, con il pulsante «Usa». Dopo l\'uso vanno in ricarica e tornano pronte dopo qualche minuto.',
+    ultimate: `Skill attive più forti: cambiano la partita, ma dopo l'uso ci mettono molto più tempo a ricaricarsi${ult}. Sceglietele con cura e usatele al momento giusto.`,
+    passive: 'Non si usano: sono sempre attive e lavorano da sole per tutta la partita.',
+  }[kind];
+}
+const KIND_TITLE = { active: 'Skill attive', ultimate: 'Skill Ultimate', passive: 'Skill passive' };
+
 function viewSkills() {
   const st = S.state;
   const sk = st?.skills;
@@ -1646,7 +1658,7 @@ function viewSkills() {
     const toggle = async (s, on) => {
       try { await api('POST', `/api/team/skill/${s.id}/choose`, { on }); refresh(); } catch (e) { toast(e.offline ? 'Serve la rete per scegliere le Skill' : e.message, 'error', 6000); }
     };
-    const group = (title, list, full) => [h('h3', null, title), ...list.map((s) => skillCard(s,
+    const group = (title, list, full, kind) => [h('h3', null, title), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map((s) => skillCard(s,
       mineIds.has(s.id) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => toggle(s, false) }, '✓ Scelta · togli')
         : h('button', { class: 'btn btn-sm', disabled: !s.available || full, onclick: () => toggle(s, true) }, 'Scegli')))];
     const many = (n, one, more) => (n === 1 ? one : `${n} ${more}`);
@@ -1656,9 +1668,9 @@ function viewSkills() {
       h('div', { class: 'skill-count' },
         h('span', { class: `chip ${nAct >= sk.limits.active ? 'chip-ok' : 'chip-brass'}` }, `Attive/Ultimate ${nAct}/${sk.limits.active}`),
         h('span', { class: `chip ${nPas >= sk.limits.passive ? 'chip-ok' : 'chip-brass'}` }, `Passive ${nPas}/${sk.limits.passive}`)),
-      group('Skill attive', sk.catalog.filter((s) => s.kind === 'active'), nAct >= sk.limits.active),
-      group('Ultimate · ricarica 90′', sk.catalog.filter((s) => s.kind === 'ultimate'), nAct >= sk.limits.active),
-      group('Passive · sempre attive', sk.catalog.filter((s) => s.kind === 'passive'), nPas >= sk.limits.passive));
+      group('Skill attive', sk.catalog.filter((s) => s.kind === 'active'), nAct >= sk.limits.active, 'active'),
+      group('Skill Ultimate', sk.catalog.filter((s) => s.kind === 'ultimate'), nAct >= sk.limits.active, 'ultimate'),
+      group('Skill passive · sempre attive', sk.catalog.filter((s) => s.kind === 'passive'), nPas >= sk.limits.passive, 'passive'));
   }
   const playing = ACTIVE.includes(st.clock.status) && st.team.status === 'active';
   const left = (until) => h('span', { class: 'mono', 'data-abs': until }, '—');
@@ -1680,7 +1692,10 @@ function viewSkills() {
   return h('div', { class: 'stack' },
     h('h2', null, 'Le vostre Skill'),
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
-    sk.mine.length ? sk.mine.map(card) : h('p', { class: 'empty' }, 'Nessuna Skill: si scelgono prima del via o si vincono con i Doni.'),
+    sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
+      const list = sk.mine.filter((s) => s.kind === kind);
+      return list.length ? [h('h3', null, KIND_TITLE[kind]), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map(card)] : null;
+    }) : h('p', { class: 'empty' }, 'Nessuna Skill: si scelgono prima del via o si vincono con i Doni.'),
     sk.results.length ? [h('h3', null, 'Ultimi risultati'), ...sk.results.map(resultCard)] : null,
     others.length ? h('details', { class: 'card' }, h('summary', null, 'Tutte le altre Skill'), h('div', { class: 'stack-sm' }, others.map((s) => skillCard(s)))) : null);
 }
