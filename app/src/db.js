@@ -275,6 +275,8 @@ addColumn('players', 'chronoSecondary', 'INTEGER');
 addColumn('players', 'chronoBy', 'TEXT');
 // Misure del cronografo per arma: { main: { j, v, g, at, by }, … } (assenti se la spunta è manuale).
 addColumn('players', 'chronoShots', 'TEXT');
+// Persona «chiusa» al test armi (finito con tutte le sue repliche): sparisce dalla lista.
+addColumn('players', 'chronoDoneAt', 'INTEGER');
 // Skill delle coppie (scelte prima del via o vinte con i Doni) ed effetti in corso di Skill e Doni.
 db.exec(`
 CREATE TABLE IF NOT EXISTS team_skills (

@@ -53,13 +53,24 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null) {
   if (shot && !(Number.isFinite(j) && j >= 0)) throw err(400, 'Misura non valida');
   const fail = shot && j >= 1;
   const passed = shot ? !fail : on;
-  if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, at: Date.now(), by: actor, ok: !fail };
+  // Più letture: si salva la media (che decide se passa), il massimo e le singole letture.
+  const readings = Array.isArray(shot?.readings) ? shot.readings.slice(0, 50).map((r) => ({ j: Math.round(Number(r.j) * 1000) / 1000, v: Math.round(Number(r.v) * 100) / 100 })).filter((r) => Number.isFinite(r.j)) : null;
+  if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, max: readings?.length ? Math.max(...readings.map((r) => r.j)) : null, n: readings?.length || 1, readings, at: Date.now(), by: actor, ok: !fail };
   else delete shots[weapon];
   q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);
-  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2) } : { manuale: true }) };
+  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
   G.log(gameId, actor, fail ? 'chrono_fail' : passed ? 'chrono_ok' : 'chrono_undo', data);
   G.notifyState(gameId);
   return { ok: !fail, joule: shot ? j : null };
+}
+
+// Persona finita al test armi: si chiude (sparisce dalla lista) o si riapre.
+function setChronoDone(gameId, playerId, on, actor) {
+  const p = playerOf(gameId, playerId);
+  q.run('UPDATE players SET chronoDoneAt = ? WHERE id = ?', on ? Date.now() : null, p.id);
+  G.log(gameId, actor, on ? 'chrono_closed' : 'chrono_reopened', { name: p.name });
+  G.notifyState(gameId);
+  return { ok: true };
 }
 
 // Spostamento all'accettazione (trascina e rilascia): in una coppia con un posto libero, in una squadra di Eletti
@@ -111,7 +122,7 @@ function checkinData(gameId) {
   return {
     game: { id: g.id, name: g.name, status: g.status },
     clock: G.clockOf(g),
-    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, p.chronoShots, a.username
+    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, p.chronoShots, p.chronoDoneAt, a.username
                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id),
     teams: G.teamsOf(g.id).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName, color: t.sectorColor, status: t.status, checkinAt: t.checkinAt || null })),
     elect: elect ? { id: elect.id } : null,
@@ -119,4 +130,4 @@ function checkinData(gameId) {
   };
 }
 
-module.exports = { setPlayerCheckin, setTeamCheckin, setChrono, placePlayer, checkinData, WEAPONS };
+module.exports = { setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };

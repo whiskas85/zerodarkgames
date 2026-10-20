@@ -114,9 +114,8 @@ function acWeight(raw) { const g = raw / 100; return g > 1 ? raw / 1000 : g; }
 function setBb(grams, from) {
   if (!(grams > 0 && grams < 1)) return;
   try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); } catch { /* */ }
-  if (BT.bbEl) BT.bbEl.value = grams.toFixed(2);
-  if (BT.bbSrcEl) BT.bbSrcEl.textContent = from;
-  btArmedNote();
+  BT.bbSrc = from;
+  btRefresh();
 }
 const bbGrams = () => { const v = parseFloat(String(localStorage.getItem('zdg_bt_bb') || '0.20').replace(',', '.')); return v > 0 && v < 2 ? v : 0.2; };
 // Il browser lascia leggere solo i servizi dichiarati qui: quelli standard, le «seriali BLE» dei moduli più diffusi
@@ -154,30 +153,21 @@ const btRow = (e) => h('div', { class: `bt-row bt-${e.kind}` },
       : h('span', { class: 'bt-data' }, h('span', { class: 'tiny muted' }, `${e.service} › ${e.char}${e.via ? ` (${e.via})` : ''}`), h('code', null, e.hex), h('span', { class: 'tiny muted' }, `«${e.ascii}»`), h('span', { class: 'tiny muted bt-guess' }, e.guess)));
 // Il cronografo è collegato e pronto (AC6000 abbinato)?
 const btLive = () => !!(BT.ready && BT.device?.gatt?.connected);
-function btArmedNote() { if (BT.armedEl) BT.armedEl.textContent = BT.armed ? `🎯 Prossimo tiro: ${BT.armed.label} · pallino ${bbGrams().toFixed(2).replace('.', ',')} g` : (btLive() ? 'Tocca un\'arma qui sotto per provarla.' : ''); }
-function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; }
+// Ridisegna la pagina (cruscotto, sessione) quando cambia qualcosa del cronografo; non mentre si scrive.
+function btRefresh() { if (BT.ctx && !document.activeElement?.matches?.('input, textarea')) BT.ctx.render(); }
+function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; btRefresh(); }
 
-// Un tiro: velocità → joule con il peso del pallino scelto; verde sotto 1 J, rosso da 1 J in su.
+// Un tiro: velocità → joule con il peso del pallino scelto. Con una sessione aperta (persona + arma) si aggiunge
+// alle sue letture; la media decide se l'arma passa (sotto 1 J).
 function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
   const ok = j < 1;
-  const target = BT.armed;
+  const target = BT.session;
   btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
-  // Arma armata: il tiro va registrato su di lei (spuntata se sotto 1 J, altrimenti resta da provare).
-  if (target && BT.ctx) {
-    BT.armed = null;
-    btArmedNote();
-    BT.ctx.call('POST', `/chrono/${target.playerId}`, { weapon: target.weapon, shot: { joule: j, mps, grams: g } }, ok ? `${target.label}: ${j.toFixed(2)} J ✓` : null)
-      .then((r) => { if (r && r.ok === false) toast(`${target.label}: ${j.toFixed(2)} J, non passa`, 'error', 8000); });
-  }
-  if (BT.liveEl) {
-    BT.liveEl.className = `bt-live ${ok ? 'ok' : 'bad'}`;
-    BT.liveEl.replaceChildren(
-      h('div', { class: 'bt-live-j mono' }, `${j.toFixed(2).replace('.', ',')} J`),
-      h('div', { class: 'small mono' }, `${mps.toFixed(2).replace('.', ',')} m/s · ${(mps * 3.28084).toFixed(0)} fps · pallino ${g.toFixed(2).replace('.', ',')} g`),
-      h('strong', null, ok ? '✓ Minore di 1 joule' : '✗ 1 joule o più: non passa'));
-  }
+  BT.last = { j, v: mps, g, ok, at: Date.now() };
+  if (target) target.readings.push({ j, v: mps, g });
+  if (BT.ctx) BT.ctx.render();
 }
 
 // AC6000: notifiche, poi il saluto (token ricordato, altrimenti abbinamento con 00 00, fino a 8 tentativi).
@@ -247,7 +237,6 @@ async function btConnect(extraUuid) {
       device.addEventListener('gattserverdisconnected', () => {
         btAdd({ kind: 'info', text: 'Scollegato' });
         BT.ready = false;
-        BT.armed = null;
         BT.ctx?.render();
         if (BT.manual || BT.retries >= 5) { btStatus(`Scollegato da ${device.name || 'cronografo'}`); return; }
         BT.retries++;
@@ -274,8 +263,6 @@ async function btOpen(device) {
     const ok = await acStart(BT.server);
     BT.retries = 0;
     BT.ready = ok;
-    if (BT.panel) BT.panel.open = true;
-    btArmedNote();
     BT.ctx?.render();
     btStatus(ok ? `AC6000 pronto: spara, il risultato compare qui sotto (pallino ${bbGrams().toFixed(2)} g)` : 'AC6000 collegato ma non risponde al saluto: spegni e riaccendi il cronografo e ricollega');
     return;
@@ -309,90 +296,145 @@ function btExport() {
   a.remove();
 }
 
-function btPanel() {
+// Diagnostica (dati grezzi): registro di tutto quello che passa, esportabile; per i cronografi non ancora supportati.
+function btDiag() {
   if (BT.panel) return BT.panel;
   try { BT.log = JSON.parse(localStorage.getItem('zdg_bt_log') || '[]'); } catch { BT.log = []; }
   const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)', value: localStorage.getItem('zdg_bt_uuid') || '', oninput: (e) => { try { localStorage.setItem('zdg_bt_uuid', e.target.value); } catch { /* */ } } });
   const shot = h('input', { class: 'input input-sm', placeholder: 'Valore sul display, es. 92,4 m/s · pallino 0,20 g' });
   BT.statusEl = h('p', { class: 'small bt-status' }, BT.status);
-  BT.armedEl = h('p', { class: 'small bt-armed' });
-  BT.liveEl = h('div', { class: 'bt-live' }, h('span', { class: 'tiny muted' }, 'Ultimo tiro: compare qui appena il cronografo lo manda.'));
-  const bb = h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
-    oninput: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } if (BT.bbSrcEl) BT.bbSrcEl.textContent = 'scritto a mano'; } });
-  BT.bbEl = bb;
-  BT.bbSrcEl = h('span', { class: 'tiny muted' }, 'scritto a mano');
   BT.listEl = h('div', { class: 'bt-log' }, [...BT.log].reverse().map(btRow));
   const note = () => { if (!shot.value.trim()) return; btAdd({ kind: 'note', text: shot.value.trim() }); shot.value = ''; shot.focus(); };
   BT.panel = h('details', { class: 'panel bt-panel' },
-    h('summary', null, h('strong', null, '📶 Cronografo Bluetooth'), h('span', { class: 'tiny muted' }, ' · Acetech AC6000-BT letto in automatico; altri modelli: registrazione')),
-    h('p', { class: 'tiny muted' }, 'Chrome su Android o computer (non iPhone). Chiudi l\'app del produttore, poi: 1) Collega e scegli il cronografo; 2) spara; 3) scrivi il valore del display e premi «Segna»; ripeti 5–10 volte a velocità diverse; 4) «Esporta» e manda il file.'),
+    h('summary', null, h('strong', null, '🔧 Diagnostica cronografo'), h('span', { class: 'tiny muted' }, ' · dati grezzi, per i modelli non ancora supportati')),
+    h('p', { class: 'tiny muted' }, 'Collega, spara, scrivi il valore del display e premi «Segna»; ripeti 5–10 volte a velocità diverse; «Esporta» e manda il file.'),
     h('details', { class: 'tiny muted' }, h('summary', null, 'Se compaiono solo i servizi 0x1800/0x1801: come trovare il codice del canale'),
-      h('p', null, 'Su computer con Chrome: apri una nuova scheda, scrivi chrome://bluetooth-internals → «Devices» → «Start scan», premi «Inspect» sul cronografo: compare l\'elenco dei servizi. Su Android: app nRF Connect → Scan → Connect sul cronografo. Copia i codici lunghi (UUID) dei servizi diversi da 1800/1801, incollali in «Servizio extra» (anche più di uno, separati da spazio) e ricollega.')),
+      h('p', null, 'Su computer con Chrome: apri una nuova scheda, scrivi chrome://bluetooth-internals → «Devices» → «Start scan», premi «Inspect» sul cronografo: compare l\'elenco dei servizi. Su Android: app nRF Connect → Scan → Connect sul cronografo. Copia i codici lunghi (UUID) dei servizi diversi da 1800/1801, incollali in «Servizio extra» e ricollega.')),
+    uuid,
     h('div', { class: 'row-actions' },
-      h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => btConnect(uuid.value) }, 'Collega cronografo'),
-      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* già scollegato */ } } }, 'Scollega'),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => btConnect(uuid.value) }, 'Collega (diagnostica)'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: btExport }, '⇩ Esporta registro'),
       h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { if (!confirm('Cancellare il registro?')) return; BT.log = []; try { localStorage.removeItem('zdg_bt_log'); } catch { /* */ } BT.listEl.replaceChildren(); } }, 'Svuota')),
-    h('label', { class: 'bt-bb-row' }, h('span', { class: 'small' }, 'Peso del pallino (g) per i joule'), bb, BT.bbSrcEl),
     BT.statusEl,
-    BT.armedEl,
-    BT.liveEl,
-    h('details', { class: 'tiny muted' }, h('summary', null, 'Altri cronografi: servizio extra'), uuid),
     h('form', { class: 'row-actions', onsubmit: (e) => { e.preventDefault(); note(); } }, shot, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Segna')),
     BT.listEl);
   return BT.panel;
 }
 
-// Arma «armata» col cronografo collegato: il prossimo tiro va a lei.
 const shotsOf = (p) => { try { return JSON.parse(p.chronoShots || '{}') || {}; } catch { return {}; } };
-const fmtJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
-const fmtV = (v) => (v ? `${Number(v).toFixed(2).replace('.', ',')} m/s` : '');
+const num = (x, d = 2) => Number(x).toFixed(d).replace('.', ',');
+const fmtJ = (j) => `${num(j)} J`;
+const fmtV = (v) => (v ? `${num(v)} m/s` : '');
+const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+let chronoGroup = null;
+let showClosed = false;
+
+// Cruscotto del cronografo: collegamento, peso del pallino, ultimo tiro.
+function chronoDash() {
+  const live = btLive();
+  const last = BT.last;
+  return h('div', { class: 'panel chrono-dash' },
+    h('div', { class: 'dash-top' },
+      h('div', { class: 'dash-conn' },
+        h('span', { class: `chip ${live ? 'chip-ok' : ''}` }, live ? `📶 ${BT.device?.name || 'Cronografo'}` : '📶 Cronografo non collegato'),
+        h('span', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : navigator.bluetooth ? BT.status : 'Bluetooth non disponibile: Chrome su Android o computer (non iPhone). Si spunta a mano.')),
+      navigator.bluetooth ? (live
+        ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* */ } } }, 'Scollega')
+        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect(localStorage.getItem('zdg_bt_uuid') || '') }, 'Collega cronografo')) : null),
+    h('div', { class: 'dash-grid' },
+      h('label', { class: 'dash-bb' }, h('span', { class: 'eyebrow' }, 'Pallino'),
+        h('span', { class: 'dash-bb-in' }, h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
+          onchange: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } BT.bbSrc = 'scritto a mano'; btRefresh(); } }), ' g'),
+        h('span', { class: 'tiny muted' }, BT.bbSrc || 'scritto a mano')),
+      h('div', { class: `dash-last ${last ? (last.ok ? 'ok' : 'bad') : ''}` },
+        h('span', { class: 'eyebrow' }, 'Ultimo tiro'),
+        last ? [h('strong', { class: 'mono dash-j' }, fmtJ(last.j)), h('span', { class: 'tiny mono' }, `${fmtV(last.v)} · ${Math.round(last.v * 3.28084)} fps`)]
+          : h('span', { class: 'tiny muted' }, '—'))));
+}
+
+// Sessione di prova: persona + arma; i tiri si sommano, la media decide. OK salva tutto.
+function chronoSession(ctx) {
+  const ss = BT.session;
+  if (!ss) return null;
+  const p = ctx.data.players.find((x) => x.id === ss.playerId);
+  if (!p) { BT.session = null; return null; }
+  const r = ss.readings;
+  const mj = avg(r.map((x) => x.j));
+  const mv = avg(r.map((x) => x.v));
+  const max = r.length ? Math.max(...r.map((x) => x.j)) : 0;
+  const ok = r.length && mj < 1;
+  const close = () => { BT.session = null; ctx.render(); };
+  const save = async () => {
+    const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v })) } }, ok ? `${ss.label}: media ${fmtJ(mj)} ✓` : null);
+    if (res && res.ok === false) toast(`${ss.label}: media ${fmtJ(mj)}, non passa`, 'error', 8000);
+    if (res) close();
+  };
+  const manual = async () => {
+    if (!(await dialog({ title: 'Spuntare a mano?', text: `${ss.label}: provata e minore di 1 joule, senza letture del cronografo.`, okLabel: 'Spunta' }))) return;
+    if (await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, on: true }, `${ss.label}: spuntata a mano`)) close();
+  };
+  const col = CHRONO.find(([w]) => w === ss.weapon)[1];
+  return h('div', { class: 'panel chrono-session' },
+    h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Prova in corso'), h('strong', null, ss.label)),
+      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
+    h('p', { class: 'small muted' }, btLive() ? `Spara: ogni tiro si aggiunge qui (pallino ${num(bbGrams())} g). Poi «OK, salva».` : 'Cronografo non collegato: collegalo in alto, oppure spunta a mano.'),
+    r.length ? h('div', { class: 'cs-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)} · ${fmtV(x.v)}`,
+      h('button', { type: 'button', class: 'cs-del', title: 'Togli questa lettura', onclick: () => { r.splice(i, 1); ctx.render(); } }, '✕')))) : h('p', { class: 'tiny muted' }, 'Nessuna lettura ancora.'),
+    r.length ? h('div', { class: `cs-sum ${ok ? 'ok' : 'bad'}` },
+      h('div', null, h('span', { class: 'eyebrow' }, `Media di ${r.length}`), h('strong', { class: 'mono' }, fmtJ(mj))),
+      h('div', null, h('span', { class: 'eyebrow' }, 'Velocità media'), h('strong', { class: 'mono' }, fmtV(mv))),
+      h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, fmtJ(max))),
+      h('strong', { class: 'cs-verdict' }, ok ? '✓ Minore di 1 joule' : '✗ 1 joule o più: non passa')) : null,
+    h('div', { class: 'row-actions' },
+      h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: !r.length, onclick: save }, ok ? 'OK, salva' : 'Salva (non passa)'),
+      h('button', { class: 'btn', type: 'button', onclick: manual }, 'Spunta a mano'),
+      p[col] ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => { if (await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, on: false }, 'Spunta tolta')) close(); } }, 'Togli spunta') : null,
+      h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
+}
 
 export function viewChrono(ctx) {
   BT.ctx = ctx;
   const ms = ctx.data;
   const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
-  const mainOk = present.filter((p) => p.chronoMain).length;
+  const closed = present.filter((p) => p.chronoDoneAt).length;
   const tested = present.reduce((n, p) => n + CHRONO.filter(([, col]) => p[col]).length, 0);
-  const live = btLive();
-  // Senza cronografo: il tocco spunta a mano. Con il cronografo collegato: il primo tocco arma la casella
-  // (il prossimo tiro va lì), il secondo la spunta a mano se il cronografo non legge.
-  const tap = async (p, weapon, col, label) => {
-    if (p[col]) {
-      if (!(await dialog({ title: 'Togliere la spunta?', text: `${personLabel(p)} · ${label}: l'arma torna da provare.`, okLabel: 'Togli' }))) return;
-      BT.armed = null;
-      return ctx.call('POST', `/chrono/${p.id}`, { weapon, on: false });
-    }
-    const armed = BT.armed && BT.armed.playerId === p.id && BT.armed.weapon === weapon;
-    if (live && !armed) { BT.armed = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}` }; btArmedNote(); return ctx.render(); }
-    BT.armed = null;
-    btArmedNote();
-    return ctx.call('POST', `/chrono/${p.id}`, { weapon, on: true }, `${p.nickname || p.name}: ${label} spuntata a mano`);
+  const groups = peopleGroups(ctx, (p) => !!p.checkinAt).map((g) => ({ ...g, key: JSON.stringify(g.dest) }));
+  if (chronoGroup && !groups.some((g) => g.key === chronoGroup)) chronoGroup = null;
+  const shown = groups.filter((g) => !chronoGroup || g.key === chronoGroup)
+    .flatMap((g) => g.people.map((p) => ({ p, g })))
+    .filter(({ p }) => showClosed || !p.chronoDoneAt);
+  const open = (p, weapon, label) => { BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [] }; ctx.render(); };
+  const closeP = async (p) => {
+    if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
+    if (!p.chronoMain && !(await dialog({ title: 'Chiudere senza arma principale?', text: `${personLabel(p)} non ha l'arma principale provata.`, okLabel: 'Chiudi comunque' }))) return;
+    if (BT.session?.playerId === p.id) BT.session = null;
+    return ctx.call('POST', `/chrono/${p.id}/done`, { on: true }, `${p.nickname || p.name}: chiusa`);
   };
-  const groups = peopleGroups(ctx, (p) => !!p.checkinAt);
+  const tile = (key, title, done, tot, color) => h('button', { type: 'button', class: `chrono-tile ${chronoGroup === key ? 'on' : ''} ${tot && done === tot ? 'full' : ''}`, style: { '--c': color || 'var(--line)' }, onclick: () => { chronoGroup = chronoGroup === key ? null : key; ctx.render(); } },
+    h('strong', null, title), h('span', { class: 'mono small' }, `${done}/${tot}`), h('span', { class: 'tiny muted' }, 'chiuse'));
   return h('div', { class: 'stack' },
     section('Test armi',
-      h('p', { class: 'muted tiny' }, 'Ogni replica va provata al cronografo, persona per persona: arma principale, principale di riserva, secondaria. Spuntata = provata e minore di 1 joule. Con il cronografo collegato tocca l\'arma (si illumina), spara: si spunta da sola se il tiro è sotto 1 J. Se il cronografo non legge, tocca di nuovo per spuntarla a mano.'),
-      h('div', { class: 'ck-counts' }, ckCount(mainOk, present.length, 'con l\'arma principale provata'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate'))),
-      ckSearch(ctx)),
-    btPanel(),
-    groups.length ? h('div', { class: 'ck-grid' }, groups.map((g) => h('div', { class: 'panel ck-group', style: { '--c': g.team?.color || g.color || 'var(--line)' } },
-      h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
-      g.people.map((p) => {
-        const shots = shotsOf(p);
-        return h('div', { class: 'chrono-person' },
-          h('strong', null, personLabel(p)),
-          h('div', { class: 'chrono-row' }, CHRONO.map(([weapon, col, label]) => {
-            const s = shots[weapon];
-            const armed = BT.armed && BT.armed.playerId === p.id && BT.armed.weapon === weapon;
-            const sub = p[col] ? (s ? `${fmtJ(s.j)} · ${fmtV(s.v)}` : 'spuntata a mano')
-              : s && s.ok === false ? `✗ ${fmtJ(s.j)}: non passa`
-                : armed ? 'Spara ora… (tocca di nuovo: a mano)' : 'minore di 1 joule';
-            return h('button', { class: `chrono-btn ${p[col] ? 'on' : ''} ${armed ? 'armed' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''}`, type: 'button',
-              title: p[col] ? `Provata alle ${fmtTime(p[col])}` : live ? 'Tocca per provarla col cronografo' : 'Tocca se è minore di 1 joule', onclick: () => tap(p, weapon, col, label) },
-            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : armed ? '🎯' : ''),
-            h('span', null, label, h('span', { class: 'tiny' }, sub)));
-          })));
-      }))))
-      : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'));
+      h('p', { class: 'muted tiny' }, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma: spara uno o più tiri, guarda la media e dai «OK, salva» (passa se la media è sotto 1 joule). Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
+      h('div', { class: 'ck-counts' }, ckCount(closed, present.length, 'persone chiuse'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate')))),
+    chronoDash(),
+    chronoSession(ctx),
+    h('div', { class: 'chrono-tiles' },
+      tile(null, 'Tutte', closed, present.length),
+      groups.map((g) => tile(g.key, g.title, g.all.filter((p) => p.chronoDoneAt).length, g.all.length, g.team?.color || g.color))),
+    h('div', { class: 'chrono-tools' }, ckSearch(ctx),
+      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showClosed, onchange: (e) => { showClosed = e.target.checked; ctx.render(); } }), ` Mostra anche le chiuse (${closed})`)),
+    shown.length ? h('div', { class: 'chrono-table' }, shown.map(({ p, g }) => {
+      const shots = shotsOf(p);
+      return h('div', { class: `chrono-tr ${p.chronoDoneAt ? 'closed' : ''} ${BT.session?.playerId === p.id ? 'active' : ''}`, style: { '--c': g.team?.color || g.color || 'var(--line)' } },
+        h('div', { class: 'chrono-who' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, g.title)),
+        h('div', { class: 'chrono-weapons' }, CHRONO.map(([weapon, col, label]) => {
+          const s = shots[weapon];
+          const cur = BT.session?.playerId === p.id && BT.session.weapon === weapon;
+          const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? `✗ ${fmtJ(s.j)}` : 'da provare';
+          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${cur ? 'cur' : ''}`, disabled: !!p.chronoDoneAt, onclick: () => open(p, weapon, label) },
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, label, h('span', { class: 'tiny' }, sub)));
+        })),
+        h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
+    })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
+    btDiag());
 }

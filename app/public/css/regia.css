@@ -688,3 +688,51 @@ label.check { display: flex; align-items: center; gap: 8px; }
 @keyframes armed-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--brass, #d1ad62) 15%, transparent); } }
 .chrono-btn.fail { border-color: #e5484d; background: color-mix(in srgb, #e5484d 14%, var(--paper)); }
 .bt-armed { margin: 0; font-weight: 700; }
+
+/* Test armi: cruscotto cronografo, filtri per squadra, tabella persone, sessione di prova */
+.chrono-dash { gap: 10px; }
+.dash-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dash-conn { display: grid; gap: 4px; }
+.dash-grid { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: stretch; }
+.dash-bb { display: grid; gap: 4px; align-content: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.dash-bb-in { display: flex; align-items: center; gap: 4px; font-weight: 700; }
+.dash-last { display: grid; gap: 2px; align-content: center; justify-items: center; padding: 10px; border: 2px dashed var(--line); border-radius: 6px; text-align: center; }
+.dash-last.ok { border: 3px solid #46c46a; background: color-mix(in srgb, #46c46a 14%, transparent); }
+.dash-last.bad { border: 3px solid #e5484d; background: color-mix(in srgb, #e5484d 16%, transparent); }
+.dash-j { font-size: 34px; line-height: 1; }
+.chrono-session { position: sticky; top: 8px; z-index: 20; border: 3px solid var(--brass, #d1ad62); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.cs-head { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.cs-reads { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-read { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; font-family: var(--f-mono, monospace); font-size: 13px; border: 1px solid var(--line); }
+.cs-read.ok { border-color: #46c46a; } .cs-read.bad { border-color: #e5484d; color: #e5484d; }
+.cs-del { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.cs-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; border-radius: 6px; text-align: center; }
+.cs-sum > div { display: grid; gap: 2px; }
+.cs-sum strong.mono { font-size: 22px; }
+.cs-sum.ok { background: color-mix(in srgb, #46c46a 16%, transparent); border: 2px solid #46c46a; }
+.cs-sum.bad { background: color-mix(in srgb, #e5484d 16%, transparent); border: 2px solid #e5484d; }
+.cs-verdict { grid-column: 1 / -1; }
+.chrono-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.chrono-tile { display: grid; gap: 2px; justify-items: start; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-left: 6px solid var(--c); border-radius: 6px; cursor: pointer; font: inherit; text-align: left; }
+.chrono-tile.on { border-color: var(--brass, #d1ad62); border-left-color: var(--c); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brass, #d1ad62) 50%, transparent); }
+.chrono-tile.full { opacity: .7; }
+.chrono-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.chrono-tools .input { flex: 1; min-width: 200px; }
+.chrono-table { display: grid; gap: 6px; }
+.chrono-tr { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr) auto; gap: 10px; align-items: center; padding: 8px 10px; background: var(--paper); border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 6px; }
+.chrono-tr.active { border-color: var(--brass, #d1ad62); border-left-color: var(--c); }
+.chrono-tr.closed { opacity: .6; }
+.chrono-who { display: grid; gap: 2px; min-width: 0; }
+.chrono-weapons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chrono-wbtn { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--bg); color: var(--ink); border: 2px solid var(--line); border-radius: 4px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; text-align: left; }
+.chrono-wbtn > span:last-child { display: grid; gap: 2px; }
+.chrono-wbtn.on { border-color: #46c46a; background: color-mix(in srgb, #46c46a 14%, var(--bg)); }
+.chrono-wbtn.fail { border-color: #e5484d; background: color-mix(in srgb, #e5484d 14%, var(--bg)); }
+.chrono-wbtn.cur { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass, #d1ad62) 40%, transparent); }
+.chrono-wbtn:disabled { cursor: default; }
+@media (max-width: 760px) {
+  .chrono-tr { grid-template-columns: 1fr auto; }
+  .chrono-weapons { grid-column: 1 / -1; grid-row: 2; }
+  .dash-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 420px) { .chrono-weapons { grid-template-columns: 1fr; } .cs-sum { grid-template-columns: 1fr 1fr; } }

@@ -1763,3 +1763,21 @@ test('test armi col cronografo: sotto 1 J spunta e salva la misura, da 1 J in su
   assert.equal(JSON.parse(row.chronoShots).secondary, undefined);
   assert.throws(() => CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 'x' }), /Misura non valida/);
 });
+
+test('test armi: più letture salvano media e massimo; la persona si chiude e si riapre', () => {
+  const CK = require('../src/checkin');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  q.run("UPDATE players SET status = 'accepted' WHERE gameId = ?", g.id);
+  const [p] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  CK.setPlayerCheckin(g.id, p.id, true, 'test');
+  const readings = [{ j: 0.94, v: 96.97 }, { j: 0.91, v: 95.5 }, { j: 0.96, v: 98.1 }];
+  assert.equal(CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 0.937, mps: 96.86, grams: 0.2, readings }).ok, true);
+  const s = JSON.parse(q.get('SELECT chronoShots FROM players WHERE id = ?', p.id).chronoShots).main;
+  assert.equal(s.n, 3);
+  assert.equal(s.max, 0.96);
+  CK.setChronoDone(g.id, p.id, true, 'test');
+  assert.ok(q.get('SELECT chronoDoneAt FROM players WHERE id = ?', p.id).chronoDoneAt);
+  CK.setChronoDone(g.id, p.id, false, 'test');
+  assert.equal(q.get('SELECT chronoDoneAt FROM players WHERE id = ?', p.id).chronoDoneAt, null);
+});

@@ -572,6 +572,7 @@ m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.b
 m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
+m.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req), req.body?.shot || null)));
 m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
@@ -776,6 +777,7 @@ v.get('/games/:id/checkin', wrap((req) => CK.checkinData(Number(req.params.id)))
 v.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
+v.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null)));
 v.post('/games/:id/squads', wrap((req) => F.createSquad(Number(req.params.id), req.body || {}, sActor(req))));
 v.post('/teams/:tid/check', wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
