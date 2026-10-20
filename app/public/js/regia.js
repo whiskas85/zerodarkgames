@@ -336,7 +336,11 @@ function viewEmergencies() {
 function topbar() {
   const ms = R.ms;
   const st = ms?.clock.status;
+  const alerts = navAlerts();
   return h('header', { class: 'topbar' },
+    // Telefono: il menu delle sezioni si apre con l'hamburger.
+    h('button', { class: 'nav-toggle', type: 'button', 'aria-label': 'Menu', onclick: () => document.body.classList.toggle('nav-open') }, '☰',
+      alerts ? h('span', { class: 'badge badge-alert' }, alerts) : null),
     h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Consiglio Zero'), h('div', { class: 'eyebrow' }, 'Regia · Zero Dark Games'))),
     h('select', { class: 'input game-select', 'aria-label': 'Partita', onchange: (e) => { if (e.target.value === 'new') { location.hash = 'impostazioni'; R.gameId = null; render(); return; } R.gameId = Number(e.target.value); store.set('zdg_regia_game', R.gameId); R.ms = null; R.seenRevealed = null; load(); } },
       R.games.map((g) => h('option', { value: g.id, selected: g.id === R.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`)),
@@ -351,6 +355,15 @@ function topbar() {
       h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
 }
 
+// Avvisi da guardare (messaggi, emergenze, iscrizioni, incarichi): il numero sull'hamburger.
+function navAlerts() {
+  const ms = R.ms;
+  if (!ms) return 0;
+  const unread = ms.teams.reduce((a, t) => a + t.unread, 0) + (ms.elect?.unread || 0) + (ms.squads?.reduce((a, s) => a + s.unread, 0) || 0);
+  const pending = ms.players.filter((p) => p.status === 'pending').length;
+  return unread + openEmergencies().length + pending + (ms.pendingTasks?.length || 0);
+}
+
 function sidebar() {
   const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0) + (R.ms?.squads?.reduce((a, s) => a + s.unread, 0) || 0);
   const pending = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect').length || 0;
@@ -361,7 +374,8 @@ function sidebar() {
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
   const always = ['settori', 'regolamento', 'impostazioni'];
-  return h('nav', { class: 'sidebar' }, TABS.map(([id, label]) => (noGame && !always.includes(id)
+  return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
+    h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
@@ -374,7 +388,8 @@ function sidebar() {
   // Pagine a parte (si aprono in una nuova scheda).
   h('div', { class: 'sidebar-ext' },
     R.gameId ? h('a', { href: `/tabellone?g=${R.gameId}`, target: '_blank', rel: 'noopener' }, 'Tabellone ↗') : h('span', { class: 'off' }, 'Tabellone ↗'),
-    h('a', { href: '/soglia', target: '_blank', rel: 'noopener' }, 'Soglia ↗')));
+    h('a', { href: '/soglia', target: '_blank', rel: 'noopener' }, 'Soglia ↗'),
+    h('a', { href: '/campo', target: '_blank', rel: 'noopener', title: 'Strumento di campo: piazzare Altari e Doni dal telefono' }, 'Campo ↗')))];
 }
 const installedApp = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 
