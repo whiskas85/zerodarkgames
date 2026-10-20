@@ -186,6 +186,21 @@ async function call(method, url, body, okMsg) {
   }
 }
 const G = (path) => `/api/m/games/${R.gameId}${path}`;
+// Numeri di telefono: chiamata e chat WhatsApp (wa.me). Senza prefisso internazionale si assume l'Italia (+39).
+function waNumber(phone) {
+  let d = String(phone || '').replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) d = d.slice(1);
+  else if (d.startsWith('00')) d = d.slice(2);
+  else if (/^3\d{8,9}$/.test(d) || /^0\d{5,10}$/.test(d)) d = `39${d}`;
+  return d.replace(/\D/g, '');
+}
+const waUrl = (phone) => `https://wa.me/${waNumber(phone)}`;
+function phoneLinks(phone, { cls = 'tiny' } = {}) {
+  if (!phone) return null;
+  return h('span', { class: `phone-links ${cls}` },
+    h('a', { href: `tel:${String(phone).replace(/\s/g, '')}`, title: 'Chiama' }, `☎ ${phone}`),
+    h('a', { class: 'wa-link', href: waUrl(phone), target: '_blank', rel: 'noopener', title: 'Scrivi su WhatsApp' }, 'WhatsApp'));
+}
 const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function confirmCall(title, text, method, url, body, okMsg, danger = false) {
@@ -287,7 +302,7 @@ const sosMap = createMapView({ className: 'regia-map sos-map' });
 function emergencyItems() {
   return (R.ms?.emergencies || []).flatMap((e) => {
     const open = !e.closedAt;
-    const label = `<strong>🚨 ${escHtml(e.who)}</strong><br>${fmtTime(e.createdAt)} · ${e.source === 'traccar' ? 'SOS da Traccar' : 'pulsante dell\'app'}${e.phone ? `<br>☎ ${escHtml(e.phone)}` : ''}`;
+    const label = `<strong>🚨 ${escHtml(e.who)}</strong><br>${fmtTime(e.createdAt)} · ${e.source === 'traccar' ? 'SOS da Traccar' : 'pulsante dell\'app'}${e.phone ? `<br>☎ <a href="tel:${escHtml(e.phone.replace(/\s/g, ''))}">${escHtml(e.phone)}</a> · <a href="${escHtml(waUrl(e.phone))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}`;
     const out = [];
     if (e.lat != null) out.push({ key: `sos${e.id}`, kind: 'emergency', lat: e.lat, lng: e.lng, text: '!', state: open ? '' : 'closed', title: e.who, popup: `${label}<br><small>Posizione della chiamata${e.acc ? ` · ±${e.acc} m` : ''}</small>` });
     if (open && e.live) out.push({ key: `sosl${e.id}`, kind: 'emergency', lat: e.live.lat, lng: e.live.lng, text: '◉', state: 'live', title: `${e.who} adesso`, popup: `${label}<br><small>Ultima posizione ${fmtTime(e.live.at)}</small>` });
@@ -310,7 +325,7 @@ function viewEmergencies() {
       h('strong', null, `🚨 ${e.who}`),
       h('span', { class: 'chip' }, e.source === 'traccar' ? 'SOS Traccar' : 'pulsante app'),
       h('span', { class: `chip ${e.closedAt ? '' : e.ackAt ? 'chip-warn' : 'chip-blood'}` }, e.closedAt ? `chiusa ${fmtTime(e.closedAt)}` : e.ackAt ? `in carico (${e.ackBy})` : 'DA PRENDERE IN CARICO')),
-    h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ☎ ', h('a', { href: `tel:${e.phone.replace(/\s/g, '')}` }, e.phone)] : null),
+    h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ', phoneLinks(e.phone, { cls: '' })] : null),
     e.lat != null ? h('div', { class: 'small mono' }, `Posizione: ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${e.acc ? ` (±${e.acc} m)` : ''} · `, h('a', { href: gmaps(e.lat, e.lng), target: '_blank', rel: 'noopener' }, 'Apri in Google Maps'))
       : h('div', { class: 'small bad' }, 'Posizione sconosciuta: chiedetela via radio.'),
     // ICE: i dati sanitari arrivano solo con l'emergenza che la persona ha chiamato.
@@ -319,7 +334,7 @@ function viewEmergencies() {
       e.ice.blood ? h('div', null, h('span', { class: 'muted small' }, 'Gruppo sanguigno: '), h('strong', null, e.ice.blood)) : null,
       e.ice.conditions ? h('div', null, h('span', { class: 'muted small' }, 'Per i soccorritori: '), h('strong', null, e.ice.conditions)) : null,
       e.ice.contactName || e.ice.contactPhone ? h('div', null, h('span', { class: 'muted small' }, 'Contatto di emergenza: '), h('strong', null, e.ice.contactName || ''),
-        e.ice.contactPhone ? [' · ☎ ', h('a', { href: `tel:${e.ice.contactPhone.replace(/\s/g, '')}` }, e.ice.contactPhone)] : null) : null)
+        e.ice.contactPhone ? [' · ', phoneLinks(e.ice.contactPhone, { cls: '' })] : null) : null)
       : h('div', { class: 'tiny muted' }, 'Nessun dato ICE nel profilo di chi ha chiamato.'),
     e.live && !e.closedAt ? h('div', { class: 'small mono' }, `Ultima posizione ${fmtTime(e.live.at)}: ${e.live.lat.toFixed(5)}, ${e.live.lng.toFixed(5)} · `, h('a', { href: gmaps(e.live.lat, e.live.lng), target: '_blank', rel: 'noopener' }, 'Maps')) : null,
     e.note ? h('div', { class: 'small' }, `Nota: ${e.note}`) : null,
@@ -942,7 +957,7 @@ function viewTeams() {
       h('p', { class: 'muted tiny' }, 'Arrivate dal modulo online. Accetta chi vuoi far giocare: solo dopo potrai accoppiarli. Le candidature agli Eletti si gestiscono in Squadre Eletti. Rifiutando, l\'iscrizione viene cancellata.'),
       h('div', { class: 'players' }, pendingGroups.map((grp) => h('div', { class: `player ${grp.length === 2 ? 'grouped' : ''}` },
         h('div', { class: 'player-main' },
-          grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? h('span', { class: 'tiny muted' }, ` · ${p.phone}`) : null)),
+          grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? [' · ', phoneLinks(p.phone)] : null)),
           h('div', null, h('span', { class: `chip ${grp[0].requestedRole === 'elect' ? 'chip-blood' : grp[0].requestedRole === 'single' ? 'chip-brass' : 'chip-ok'}` }, ROLE_LABELS[grp[0].requestedRole] || (grp.length === 2 ? 'Coppia' : 'Singolo'))),
           grp[0].note ? h('div', { class: 'tiny' }, `«${grp[0].note}»`) : null,
           grp[0].requestedRole === 'pair' && grp.length < 2 ? h('div', { class: 'tiny bad' }, `In attesa del compagno (codice coppia ${grp[0].regGroup})`) : null,
@@ -1003,7 +1018,8 @@ function viewTeams() {
         return h('div', { class: `player ${sel ? 'sel' : ''} ${grp?.length === 2 ? 'grouped' : ''}` },
           h('button', { class: 'player-main', disabled: !editable, onclick: () => { if (sel) pairSel.delete(p.id); else { if (pairSel.size >= 2) pairSel.delete([...pairSel][0]); pairSel.add(p.id); } render(); } },
             personLine(p),
-            h('div', { class: 'tiny muted' }, [p.softairTeam, p.phone, p.requestedRole === 'single' ? 'temerario solitario: da accoppiare a caso' : p.selfRegistered ? 'iscritto online' : 'aggiunto dalla regia', p.requestedTeamName ? `coppia «${p.requestedTeamName}»` : null].filter(Boolean).join(' · ')),
+            p.phone ? phoneLinks(p.phone) : null,
+            h('div', { class: 'tiny muted' }, [p.softairTeam, p.requestedRole === 'single' ? 'temerario solitario: da accoppiare a caso' : p.selfRegistered ? 'iscritto online' : 'aggiunto dalla regia', p.requestedTeamName ? `coppia «${p.requestedTeamName}»` : null].filter(Boolean).join(' · ')),
             grp?.length === 2 ? h('div', { class: 'tiny brass' }, `Iscritto con ${grp.find((x) => x.id !== p.id).name}`) : null),
           h('div', { class: 'row-actions' },
             grp?.length === 2 && editable && grp[0].id === p.id ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/teams'), { playerIds: grp.map((x) => x.id) }, 'Coppia formata') }, 'Accoppia come richiesto') : null,
@@ -1029,7 +1045,7 @@ function teamCard(t, editable) {
           : h('strong', { class: 'team-sector' }, `Settore ${t.sectorName}`),
         h('input', { class: 'input input-sm', 'data-keep': `tname-${t.id}`, value: t.displayName || '', placeholder: 'Nome della coppia', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { displayName: e.target.value }) })),
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
-    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? h('span', { class: 'tiny muted' }, ` · ${m.phone}`) : null, resetBtn(m),
+    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? [' · ', phoneLinks(m.phone)] : null, resetBtn(m),
       R.ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Sposta tra gli Eletti, da solo o in scambio', onclick: () => moveToElectDialog(m, t) }, '→ Eletti…') : null))),
     teamSkills(t),
     h('div', { class: 'team-access' },
@@ -1655,7 +1671,7 @@ function viewSquads() {
         h('tbody', null, candidates.map((p) => {
           const sel = h('select', { class: 'input input-sm', 'aria-label': `Squadra per ${p.name}` }, squadOptions(null));
           return h('tr', null,
-            h('td', null, personLine(p), h('div', { class: 'tiny muted' }, [p.phone, fmtTime(p.createdAt)].filter(Boolean).join(' · '))),
+            h('td', null, personLine(p), phoneLinks(p.phone), h('div', { class: 'tiny muted' }, fmtTime(p.createdAt))),
             h('td', null, p.softairTeam || h('span', { class: 'muted' }, '—')),
             h('td', { class: 'tiny' }, p.note ? `«${p.note}»` : h('span', { class: 'muted' }, '—')),
             h('td', null, sel),
@@ -1706,7 +1722,7 @@ function viewSquads() {
           const p = byId[m.id] || m;
           const loginUrl = `${R.baseUrl}/login/${p.loginToken}`;
           return h('tr', null,
-            h('td', null, personLine(m), m.phone ? h('div', { class: 'tiny muted' }, m.phone) : null),
+            h('td', null, personLine(m), m.phone ? h('div', null, phoneLinks(m.phone)) : null),
             h('td', null, m.softairTeam || h('span', { class: 'muted' }, '—')),
             h('td', null, d.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
               : h('span', { class: 'tiny muted' }, 'crea una squadra')),
@@ -2660,7 +2676,7 @@ function viewPushReport() {
         h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓') : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.todo.length)),
         h('td', null, h('div', { class: 'who-online' }, onlineDot(p.online), personLine(p))),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
-        h('td', null, p.phone ? h('a', { href: `tel:${p.phone.replace(/\s/g, '')}` }, p.phone) : h('span', { class: 'muted' }, '—')),
+        h('td', null, p.phone ? phoneLinks(p.phone, { cls: '' }) : h('span', { class: 'muted' }, '—')),
         h('td', null, appCell(p.app, rep.currentVersion)),
         h('td', null, PUSH_STATE[p.state](p)),
         h('td', null, TRACCAR_STATE[p.traccar](p)),

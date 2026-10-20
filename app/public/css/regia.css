@@ -823,3 +823,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .bb-edit { width: 110px; font-size: 24px; text-align: center; padding: 4px; }
 .bb-reset { padding: 2px 8px; font-size: 12px; }
 @media (max-width: 640px) { .dash-top { display: grid; grid-template-columns: 1fr; } .dash-top .btn-primary { width: 100%; } }
+/* Telefono: chiamata e WhatsApp */
+.phone-links { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.phone-links a { color: inherit; }
+.wa-link { padding: 1px 7px; border-radius: 10px; background: #25d366; color: #052e14 !important; font-weight: 700; text-decoration: none; }
