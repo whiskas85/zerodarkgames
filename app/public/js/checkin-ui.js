@@ -97,6 +97,102 @@ function ckDrag(ctx, e, p) {
 }
 
 const CHRONO = [['main', 'chronoMain', 'Arma principale'], ['backup', 'chronoBackup', 'Principale di riserva'], ['secondary', 'chronoSecondary', 'Arma secondaria']];
+// ---------------------------------------------------------------- cronografo Bluetooth: registrazione dei dati grezzi
+// Prima fase: ci si collega al cronografo (Web Bluetooth, Chrome su Android o computer), si ascoltano tutti i canali e si
+// registrano i byte di ogni tiro accanto al valore letto sul display. Dal registro esportato si ricava il formato.
+const BT = { device: null, server: null, log: [], status: 'Non collegato', panel: null, listEl: null, statusEl: null };
+const KNOWN = ['6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb', 'battery_service', 'device_information', 'generic_access', 'generic_attribute'];
+// Servizi «proprietari» più usati (0xFE00–0xFFFF): il browser lascia leggere solo quelli dichiarati qui.
+const SHORT = [...Array(512).keys()].map((i) => 0xfe00 + i);
+const hex = (dv) => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+const ascii = (dv) => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : '·')).join('');
+const shortId = (uuid) => (/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.test(uuid) ? `0x${uuid.slice(4, 8)}` : uuid);
+// Letture possibili dei byte: se uno di questi numeri coincide col display, il formato è trovato.
+function guesses(dv) {
+  const out = [];
+  const n = dv.byteLength;
+  for (let i = 0; i + 2 <= n; i++) out.push(`u16le@${i}=${dv.getUint16(i, true)}`, `u16be@${i}=${dv.getUint16(i, false)}`);
+  for (let i = 0; i + 4 <= n; i++) { const f = dv.getFloat32(i, true); if (Number.isFinite(f) && Math.abs(f) > 0.01 && Math.abs(f) < 10000) out.push(`f32le@${i}=${f.toFixed(3)}`); }
+  const nums = ascii(dv).match(/\d+[.,]?\d*/g);
+  if (nums) out.push(`testo=${nums.join('|')}`);
+  return out.join('  ');
+}
+function btAdd(entry) {
+  const e = { t: new Date().toISOString(), ...entry };
+  BT.log.push(e);
+  try { localStorage.setItem('zdg_bt_log', JSON.stringify(BT.log.slice(-2000))); } catch { /* spazio pieno */ }
+  if (BT.listEl) BT.listEl.prepend(btRow(e));
+}
+const btRow = (e) => h('div', { class: `bt-row bt-${e.kind}` },
+  h('span', { class: 'mono tiny muted' }, e.t.slice(11, 23)),
+  e.kind === 'note' ? h('strong', null, `📝 Display: ${e.text}`)
+    : e.kind === 'info' ? h('span', { class: 'small' }, e.text)
+      : h('span', { class: 'bt-data' }, h('span', { class: 'tiny muted' }, `${e.service} › ${e.char}${e.via ? ` (${e.via})` : ''}`), h('code', null, e.hex), h('span', { class: 'tiny muted' }, `«${e.ascii}»`), h('span', { class: 'tiny muted bt-guess' }, e.guess)));
+function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; }
+
+async function btConnect(extraUuid) {
+  if (!navigator.bluetooth) { btStatus('Questo browser non supporta il Bluetooth: usa Chrome su Android o su computer (non iPhone).'); return; }
+  try {
+    const extra = String(extraUuid || '').split(/[\s,]+/).filter(Boolean).map((u) => (/^[0-9a-f]{4}$/i.test(u) ? parseInt(u, 16) : u.toLowerCase()));
+    const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
+    BT.device = device;
+    device.addEventListener('gattserverdisconnected', () => { btStatus(`Scollegato da ${device.name || 'cronografo'}`); btAdd({ kind: 'info', text: 'Scollegato' }); });
+    btStatus(`Collegamento a ${device.name || device.id}…`);
+    BT.server = await device.gatt.connect();
+    btAdd({ kind: 'info', text: `Collegato a «${device.name || '(senza nome)'}» · id ${device.id}` });
+    const services = await BT.server.getPrimaryServices();
+    if (!services.length) btAdd({ kind: 'info', text: 'Nessun servizio leggibile: scrivi il codice del servizio (UUID) nel campo e ricollega.' });
+    for (const sv of services) {
+      const chars = await sv.getCharacteristics().catch(() => []);
+      btAdd({ kind: 'info', text: `Servizio ${shortId(sv.uuid)} · ${chars.length} caratteristiche` });
+      for (const c of chars) {
+        const pr = Object.entries(c.properties).filter(([, v]) => v === true).map(([k]) => k).join(', ');
+        btAdd({ kind: 'info', text: `  ↳ ${shortId(c.uuid)} [${pr}]` });
+        const rec = (dv, via) => btAdd({ kind: 'data', via, service: shortId(sv.uuid), char: shortId(c.uuid), hex: hex(dv), ascii: ascii(dv), guess: guesses(dv) });
+        if (c.properties.read) await c.readValue().then((dv) => rec(dv, 'lettura')).catch(() => {});
+        if (c.properties.notify || c.properties.indicate) {
+          c.addEventListener('characteristicvaluechanged', (ev) => rec(ev.target.value, 'notifica'));
+          await c.startNotifications().catch((err) => btAdd({ kind: 'info', text: `    notifiche non attivabili: ${err.message}` }));
+        }
+      }
+    }
+    btStatus(`In ascolto su ${device.name || 'cronografo'}: spara e segna il valore del display`);
+  } catch (err) {
+    btStatus(err.name === 'NotFoundError' ? 'Nessun dispositivo scelto' : `Errore: ${err.message}`);
+  }
+}
+
+function btExport() {
+  const blob = new Blob([JSON.stringify({ device: BT.device?.name || null, userAgent: navigator.userAgent, log: BT.log }, null, 2)], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: `cronografo-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+function btPanel() {
+  if (BT.panel) return BT.panel;
+  try { BT.log = JSON.parse(localStorage.getItem('zdg_bt_log') || '[]'); } catch { BT.log = []; }
+  const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)' });
+  const shot = h('input', { class: 'input input-sm', placeholder: 'Valore sul display, es. 92,4 m/s · pallino 0,20 g' });
+  BT.statusEl = h('p', { class: 'small bt-status' }, BT.status);
+  BT.listEl = h('div', { class: 'bt-log' }, [...BT.log].reverse().map(btRow));
+  const note = () => { if (!shot.value.trim()) return; btAdd({ kind: 'note', text: shot.value.trim() }); shot.value = ''; shot.focus(); };
+  BT.panel = h('details', { class: 'panel bt-panel' },
+    h('summary', null, h('strong', null, '📶 Cronografo Bluetooth · registrazione'), h('span', { class: 'tiny muted' }, ' (prova: per capire cosa trasmette)')),
+    h('p', { class: 'tiny muted' }, 'Chrome su Android o computer (non iPhone). Chiudi l\'app del produttore, poi: 1) Collega e scegli il cronografo; 2) spara; 3) scrivi il valore del display e premi «Segna»; ripeti 5–10 volte a velocità diverse; 4) «Esporta» e manda il file.'),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => btConnect(uuid.value) }, 'Collega cronografo'),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { try { BT.device?.gatt?.disconnect(); } catch { /* già scollegato */ } } }, 'Scollega'),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: btExport }, '⇩ Esporta registro'),
+      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { if (!confirm('Cancellare il registro?')) return; BT.log = []; try { localStorage.removeItem('zdg_bt_log'); } catch { /* */ } BT.listEl.replaceChildren(); } }, 'Svuota')),
+    uuid,
+    BT.statusEl,
+    h('form', { class: 'row-actions', onsubmit: (e) => { e.preventDefault(); note(); } }, shot, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Segna')),
+    BT.listEl);
+  return BT.panel;
+}
+
 export function viewChrono(ctx) {
   const ms = ctx.data;
   const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
@@ -108,6 +204,7 @@ export function viewChrono(ctx) {
       h('p', { class: 'muted tiny' }, 'Prova al cronografo, persona per persona. Segnare un\'arma vuol dire che è stata provata ed è minore di 1 joule. Compare solo chi è stato accettato all\'ingresso.'),
       h('div', { class: 'ck-counts' }, ckCount(mainOk, present.length, 'con l\'arma principale provata')),
       ckSearch(ctx)),
+    btPanel(),
     groups.length ? h('div', { class: 'ck-grid' }, groups.map((g) => h('div', { class: 'panel ck-group', style: { '--c': g.team?.color || g.color || 'var(--line)' } },
       h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
       g.people.map((p) => h('div', { class: 'chrono-person' },
