@@ -1715,3 +1715,27 @@ test('accettazione e test armi: presenza, conferma coppia, armi sotto 1 joule so
   CK.setPlayerCheckin(g.id, p2.id, false, 'test');
   assert.equal(q.get('SELECT checkinAt FROM teams WHERE id = ?', A.id).checkinAt, null);
 });
+
+test('accettazione: spostare persone tra coppie e squadre di Eletti (anche nuove), le coppie toccate tornano da confermare', () => {
+  const CK = require('../src/checkin');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  q.run('UPDATE players SET status = \'accepted\' WHERE gameId = ?', g.id);
+  const [a1, a2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const [b1] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', B.id);
+  for (const p of q.all('SELECT id FROM players WHERE teamId = ?', A.id)) CK.setPlayerCheckin(g.id, p.id, true, 'test');
+  CK.setTeamCheckin(g.id, A.id, true, 'test');
+  // Coppia piena: non entra nessuno.
+  assert.throws(() => CK.placePlayer(g.id, b1.id, { teamId: A.id }, 'test'), /completa/);
+  // a2 non è venuto: va fuori; A torna da confermare e accoglie b1.
+  CK.placePlayer(g.id, a2.id, { none: true }, 'test');
+  assert.equal(q.get('SELECT checkinAt FROM teams WHERE id = ?', A.id).checkinAt, null);
+  CK.placePlayer(g.id, b1.id, { teamId: A.id }, 'test');
+  assert.equal(q.get('SELECT teamId FROM players WHERE id = ?', b1.id).teamId, A.id);
+  // Nuova squadra di Eletti trascinandoci qualcuno.
+  CK.placePlayer(g.id, a2.id, { newSquad: 'Corvi' }, 'test');
+  const row = q.get('SELECT p.teamId, s.name FROM players p JOIN elect_squads s ON s.id = p.squadId WHERE p.id = ?', a2.id);
+  assert.equal(row.name, 'Corvi');
+  assert.equal(row.teamId, G.electOf(g.id).id);
+  assert.equal(a1.teamId, A.id);
+});

@@ -571,6 +571,7 @@ m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.b
 // Accettazione a inizio evento e test armi.
 m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
+m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req))));
 m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
