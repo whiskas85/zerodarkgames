@@ -1,5 +1,5 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
-import { h, mount, md, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
+import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions } from './map.js';
 
 const $root = document.getElementById('root');
@@ -38,6 +38,8 @@ const TABS = [
   ['regolamento', 'Regolamento'],
   ['impostazioni', 'Impostazioni'],
 ];
+// Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
+const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const PRE = ['draft', 'ready', 'circle'];
 
@@ -2818,7 +2820,8 @@ function pollResultsView(res) {
 function viewNotices() {
   const ms = R.ms;
   const title = h('input', { class: 'input', 'data-keep': 'nt-title', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
-  const body = h('textarea', { class: 'input', rows: 4, 'data-keep': 'nt-body', placeholder: 'Testo dell\'avviso', maxlength: 1000 });
+  const editor = mdEditor({ rows: 6, maxlength: 4000, keep: 'nt-body', placeholder: 'Testo dell\'avviso', extra: ICE_TOOL });
+  const body = editor.textarea;
   const teamSel = h('select', { class: 'input', 'data-keep': 'nt-team' }, ms.teams.map((t) => h('option', { value: t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` (${t.displayName})` : ''}`)));
   const teamWrap = h('label', { class: 'field hidden' }, h('span', null, 'Coppia'), teamSel);
   const poll = h('input', { type: 'checkbox', 'data-keep': 'nt-poll' });
@@ -2834,27 +2837,6 @@ function viewNotices() {
       body.value.trim() ? h('div', { class: 'md' }, md(body.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui.'),
       poll.checked ? h('div', { class: 'np-poll' }, ['Sì', 'No', 'Forse'].map((x) => h('span', { class: 'btn btn-sm' }, x))) : null));
   };
-  // Barra di formattazione: avvolge la selezione (o inserisce un esempio) con i segni del markdown.
-  const wrap = (before, after = before, sample = 'testo') => {
-    const a = body.selectionStart ?? body.value.length;
-    const b = body.selectionEnd ?? body.value.length;
-    const sel = body.value.slice(a, b) || sample;
-    body.value = body.value.slice(0, a) + before + sel + after + body.value.slice(b);
-    body.focus();
-    body.setSelectionRange(a + before.length, a + before.length + sel.length);
-    drawPreview();
-  };
-  const link = async () => {
-    const url = await dialog({ title: 'Link', text: 'Indirizzo (https://…) o pagina dell\'app (#/ice, #/skill, #/mappa, #/doni, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
-    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
-  };
-  const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm', title, onclick: fn }, label);
-  const toolbar = h('div', { class: 'md-toolbar' },
-    tool(h('strong', null, 'B'), 'Grassetto', () => wrap('**')),
-    tool(h('em', null, 'I'), 'Corsivo', () => wrap('*')),
-    tool('🔗 Link', 'Link come pulsante', link),
-    tool('✚ ICE', 'Pulsante per compilare i dati ICE', () => wrap('[', '](#/ice)', 'Compila i dati ICE')),
-    tool('¶', 'Nuovo paragrafo', () => wrap('\n\n', '', '')));
   for (const el of [title, body]) el.addEventListener('input', drawPreview);
   target.addEventListener('change', drawPreview);
   poll.addEventListener('change', drawPreview);
@@ -2878,8 +2860,8 @@ function viewNotices() {
           } catch (err) { toast(err.message, 'error', 6000); }
         } },
         h('label', { class: 'field' }, h('span', null, 'Titolo'), title),
-        h('label', { class: 'field' }, h('span', null, 'Testo'), toolbar, body),
-        h('p', { class: 'tiny muted' }, 'Formattazione: **grassetto**, *corsivo*, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante; anche gli indirizzi https://… diventano link. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento.'),
+        h('div', { class: 'field' }, h('span', null, 'Testo'), editor.el),
+        h('p', { class: 'tiny muted' }, 'Markdown: # titolo, **grassetto**, *corsivo*, - elenco, > citazione, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento. «Schermo intero» apre l\'editor grande con l\'anteprima.'),
         h('label', { class: 'field' }, h('span', null, 'Destinatari'), target),
         teamWrap,
         h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse'),
@@ -3195,38 +3177,17 @@ function viewNewGame(first) {
 
 // Prima della gara: testo in markdown (test armi, partenza…) che le coppie vedono nell'app finché la partita è in preparazione.
 function prepSection(g) {
-  const body = h('textarea', { class: 'input', rows: 12, maxlength: 8000, 'data-keep': 'prep-info', placeholder: '**Test armi** alle 8:30 al cronografo…' });
-  body.value = g.prepInfo || '';
+  const editor = mdEditor({ value: g.prepInfo || '', rows: 12, maxlength: 8000, keep: 'prep-info', placeholder: '## Test armi\nAlle 8:30 al cronografo…', extra: ICE_TOOL });
   const preview = h('div', { class: 'np-card' });
-  const draw = () => mount(preview, body.value.trim() ? h('div', { class: 'md' }, md(body.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui, come nell\'app.'));
-  const wrap = (before, after = before, sample = 'testo') => {
-    const a = body.selectionStart ?? body.value.length;
-    const b = body.selectionEnd ?? body.value.length;
-    const sel = body.value.slice(a, b) || sample;
-    body.value = body.value.slice(0, a) + before + sel + after + body.value.slice(b);
-    body.focus();
-    body.setSelectionRange(a + before.length, a + before.length + sel.length);
-    draw();
-  };
-  const link = async () => {
-    const url = await dialog({ title: 'Link', text: 'Indirizzo (https://…) o pagina dell\'app (#/ice, #/skill, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
-    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
-  };
-  const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm', title, onclick: fn }, label);
-  body.addEventListener('input', draw);
+  const draw = () => mount(preview, editor.value.trim() ? h('div', { class: 'md' }, md(editor.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui, come nell\'app.'));
+  editor.textarea.addEventListener('input', draw);
   queueMicrotask(draw);
   return h('div', { class: 'cols-2' },
     section('Prima della gara · cosa fare',
       h('p', { class: 'muted tiny' }, 'Le coppie (e gli Eletti) lo vedono in home finché la partita è in preparazione: test armi, ritrovo, partenza, cosa portare. Al via sparisce.'),
-      h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { prepInfo: body.value }, 'Testo salvato'); } },
-        h('div', { class: 'md-toolbar' },
-          tool(h('strong', null, 'B'), 'Grassetto', () => wrap('**')),
-          tool(h('em', null, 'I'), 'Corsivo', () => wrap('*')),
-          tool('🔗 Link', 'Link come pulsante', link),
-          tool('✚ ICE', 'Pulsante per compilare i dati ICE', () => wrap('[', '](#/ice)', 'Compila i dati ICE')),
-          tool('¶', 'Nuovo paragrafo', () => wrap('\n\n', '', ''))),
-        body,
-        h('p', { class: 'tiny muted' }, 'Formattazione: **grassetto**, *corsivo*, riga vuota per un nuovo paragrafo; [testo](https://…) diventa un pulsante.'),
+      h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { prepInfo: editor.value }, 'Testo salvato'); } },
+        editor.el,
+        h('p', { class: 'tiny muted' }, 'Markdown: # titolo, **grassetto**, *corsivo*, - elenco, 1. elenco numerato, > citazione, --- linea; [testo](https://…) diventa un pulsante. «Schermo intero» apre l\'editor grande con l\'anteprima.'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva'))),
     section('Anteprima nell\'app', h('div', { class: 'eyebrow' }, 'Prima della gara · cosa fare'), preview));
 }

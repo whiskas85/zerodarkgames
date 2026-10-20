@@ -514,7 +514,7 @@ function pollResults(noticeId) {
 function createNotice(gameId, data, actor) {
   const g = getGame(gameId);
   const title = String(data.title || '').trim().slice(0, 80);
-  const body = String(data.body || '').trim().slice(0, 1000);
+  const body = String(data.body || '').trim().slice(0, 4000);
   if (!title) throw err(400, 'Il titolo dell\'avviso è obbligatorio');
   const target = NOTICE_TARGETS[data.target] ? data.target : 'all';
   let teamId = null;

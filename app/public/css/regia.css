@@ -601,7 +601,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .online-dot.team { background: #d1ad62; }
 
 /* Avvisi: barra di formattazione e anteprima */
-.md-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
 .notice-preview { position: sticky; top: 12px; }
 .np-card { border: 1px solid var(--line, #333); border-left: 4px solid var(--brass, #d1ad62); padding: 14px; display: grid; gap: 8px; background: var(--bg, #111); max-width: 420px; }
 .np-head { display: flex; justify-content: space-between; align-items: center; }

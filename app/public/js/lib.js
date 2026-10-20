@@ -560,13 +560,14 @@ try {
   }).catch(() => {});
 } catch { /* niente rete */ }
 
-// Avvisi in markdown ridotto: **grassetto**, *corsivo*, [testo](link) come pulsante, link nudi, paragrafi e a capo.
+// Markdown per avvisi e testi della regia: titoli (#, ##, ###), elenchi (- e 1.), citazioni (>), linea (---),
+// **grassetto**, *corsivo*, ~~barrato~~, `codice`, [testo](link) come pulsante, link nudi, paragrafi e a capo.
 // Si costruiscono nodi DOM (niente HTML dal testo): i link ammessi sono http(s), pagine del sito (/…) e pagine dell'app (#/…).
 export function md(text) {
   const safeUrl = (u) => (/^(https?:\/\/|\/|#\/)/i.test(u) ? u : null);
   const inline = (line) => {
     const out = [];
-    const re = /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
+    const re = /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~|`([^`]+)`/g;
     let last = 0;
     let m;
     while ((m = re.exec(line))) {
@@ -577,10 +578,131 @@ export function md(text) {
       } else if (m[3]) out.push(h('a', { href: m[3], target: '_blank', rel: 'noopener' }, m[3]));
       else if (m[4]) out.push(h('strong', null, ...inline(m[4])));
       else if (m[5]) out.push(h('em', null, ...inline(m[5])));
+      else if (m[6]) out.push(h('s', null, ...inline(m[6])));
+      else if (m[7]) out.push(h('code', null, m[7]));
       last = re.lastIndex;
     }
     if (last < line.length) out.push(line.slice(last));
     return out;
   };
-  return String(text).split(/\n{2,}/).map((para) => h('p', null, para.split('\n').flatMap((l, i) => (i ? [h('br'), ...inline(l)] : inline(l)))));
+  const lines = (arr) => arr.flatMap((l, i) => (i ? [h('br'), ...inline(l)] : inline(l)));
+  const out = [];
+  let para = [];
+  let list = null;
+  let quote = [];
+  const flush = () => {
+    if (para.length) out.push(h('p', null, lines(para)));
+    if (quote.length) out.push(h('blockquote', null, lines(quote)));
+    if (list) out.push(h(list.tag, null, list.items.map((x) => h('li', null, inline(x)))));
+    para = []; quote = []; list = null;
+  };
+  for (const raw of String(text ?? '').replace(/\r/g, '').split('\n')) {
+    const l = raw.trimEnd();
+    let m;
+    if (!l.trim()) { flush(); continue; }
+    if ((m = /^(#{1,3})\s+(.*)$/.exec(l))) { flush(); out.push(h(`h${m[1].length + 2}`, { class: 'md-h' }, inline(m[2]))); continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)) { flush(); out.push(h('hr')); continue; }
+    if ((m = /^\s*>\s?(.*)$/.exec(l))) { if (para.length || list) flush(); quote.push(m[1]); continue; }
+    if ((m = /^\s*[-*•]\s+(.*)$/.exec(l))) { if (list?.tag !== 'ul') flush(); list = list || { tag: 'ul', items: [] }; list.items.push(m[1]); continue; }
+    if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(l))) { if (list?.tag !== 'ol') flush(); list = list || { tag: 'ol', items: [] }; list.items.push(m[1]); continue; }
+    if (list || quote.length) flush();
+    para.push(l);
+  }
+  flush();
+  return out;
+}
+
+// Editor markdown completo: barra (titoli, grassetto, corsivo, barrato, elenchi, citazione, linea, link come
+// pulsante, strumenti extra) e «Schermo intero» con l'anteprima di fianco (sotto, se lo schermo è stretto).
+export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8000, extra = [], onInput = null, keep = null } = {}) {
+  const ta = h('textarea', { class: 'input md-input', rows, maxlength, placeholder, ...(keep ? { 'data-keep': keep } : {}) });
+  ta.value = value;
+  const changed = () => { ta.dispatchEvent(new Event('input', { bubbles: true })); };
+  const sel = () => [ta.selectionStart ?? ta.value.length, ta.selectionEnd ?? ta.value.length];
+  const wrap = (before, after = before, sample = 'testo') => {
+    const [a, b] = sel();
+    const t = ta.value.slice(a, b) || sample;
+    ta.value = ta.value.slice(0, a) + before + t + after + ta.value.slice(b);
+    ta.focus();
+    ta.setSelectionRange(a + before.length, a + before.length + t.length);
+    changed();
+  };
+  // Prefisso a ogni riga selezionata (titoli, elenchi, citazione); ripremuto lo toglie.
+  const prefix = (fn, strip) => {
+    const [a0, b0] = sel();
+    const a = ta.value.lastIndexOf('\n', a0 - 1) + 1;
+    let b = ta.value.indexOf('\n', b0);
+    if (b < 0) b = ta.value.length;
+    const ls = ta.value.slice(a, b).split('\n');
+    const all = ls.every((l) => strip.test(l));
+    const next = ls.map((l, i) => (all ? l.replace(strip, '') : fn(l.replace(/^(#{1,3}\s+|\s*>\s?|\s*[-*•]\s+|\s*\d+[.)]\s+)/, ''), i))).join('\n');
+    ta.value = ta.value.slice(0, a) + next + ta.value.slice(b);
+    ta.focus();
+    ta.setSelectionRange(a, a + next.length);
+    changed();
+  };
+  const insertBlock = (block) => {
+    const [a] = sel();
+    const pre = a && ta.value[a - 1] !== '\n' ? '\n\n' : '';
+    ta.value = ta.value.slice(0, a) + pre + block + '\n' + ta.value.slice(a);
+    ta.focus();
+    const at = a + pre.length + block.length + 1;
+    ta.setSelectionRange(at, at);
+    changed();
+  };
+  const link = async () => {
+    const url = await dialog({ title: 'Link (diventa un pulsante)', text: 'Indirizzo https://… o pagina dell\'app (#/ice, #/skill, #/mappa, #/doni, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
+    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
+  };
+  const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm md-tool', title, 'aria-label': title, onmousedown: (e) => e.preventDefault(), onclick: fn }, label);
+  const preview = h('div', { class: 'md md-preview' });
+  const draw = () => { preview.replaceChildren(...(ta.value.trim() ? md(ta.value) : [h('p', { class: 'muted tiny' }, 'L\'anteprima comparirà qui.')])); };
+  let full = null;
+  const home = h('div', { class: 'md-editor' });
+  const toolbar = h('div', { class: 'md-toolbar' },
+    tool('H1', 'Titolo', () => prefix((l) => `# ${l}`, /^#\s+/)),
+    tool('H2', 'Sottotitolo', () => prefix((l) => `## ${l}`, /^##\s+/)),
+    tool('H3', 'Titoletto', () => prefix((l) => `### ${l}`, /^###\s+/)),
+    h('span', { class: 'md-sep' }),
+    tool(h('strong', null, 'B'), 'Grassetto (Ctrl+B)', () => wrap('**')),
+    tool(h('em', null, 'I'), 'Corsivo (Ctrl+I)', () => wrap('*')),
+    tool(h('s', null, 'S'), 'Barrato', () => wrap('~~')),
+    h('span', { class: 'md-sep' }),
+    tool('• Elenco', 'Elenco puntato', () => prefix((l) => `- ${l}`, /^\s*[-*•]\s+/)),
+    tool('1. Elenco', 'Elenco numerato', () => prefix((l, i) => `${i + 1}. ${l}`, /^\s*\d+[.)]\s+/)),
+    tool('❝', 'Citazione', () => prefix((l) => `> ${l}`, /^\s*>\s?/)),
+    tool('―', 'Linea di separazione', () => insertBlock('---')),
+    h('span', { class: 'md-sep' }),
+    tool('🔗 Link', 'Link come pulsante', link),
+    ...extra.map((x) => tool(x.label, x.title, () => wrap(x.before, x.after, x.sample))),
+    tool('¶', 'Nuovo paragrafo', () => insertBlock('')),
+    h('span', { class: 'md-grow' }),
+    tool('⛶ Schermo intero', 'Scrivi a schermo intero, con l\'anteprima', () => (full ? close() : open())));
+  const close = () => {
+    if (!full) return;
+    home.append(toolbar, ta);
+    full.remove();
+    full = null;
+    document.body.classList.remove('no-scroll');
+    toolbar.lastChild.textContent = '⛶ Schermo intero';
+    ta.focus();
+  };
+  const open = () => {
+    full = h('div', { class: 'md-full', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Editor a schermo intero' },
+      h('div', { class: 'md-full-head' }, h('strong', null, 'Editor'), h('span', { class: 'tiny muted' }, 'Esc per tornare'), h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: close }, 'Fine')),
+      h('div', { class: 'md-full-body' }, h('div', { class: 'md-full-edit' }, toolbar, ta), h('div', { class: 'md-full-prev' }, h('div', { class: 'eyebrow' }, 'Anteprima'), preview)));
+    document.body.append(full);
+    document.body.classList.add('no-scroll');
+    toolbar.lastChild.textContent = '⤡ Riduci';
+    draw();
+    ta.focus();
+  };
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && full) { e.preventDefault(); close(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); wrap('**'); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); wrap('*'); }
+  });
+  ta.addEventListener('input', () => { if (full) draw(); onInput?.(ta.value); });
+  home.append(toolbar, ta);
+  return { el: home, textarea: ta, get value() { return ta.value; }, set value(v) { ta.value = v; changed(); } };
 }
