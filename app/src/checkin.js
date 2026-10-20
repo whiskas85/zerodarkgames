@@ -40,15 +40,26 @@ function setTeamCheckin(gameId, teamId, on, actor) {
   return { ok: true };
 }
 
-function setChrono(gameId, playerId, weapon, on, actor) {
+// Spunta di un'arma: manuale (on/off) oppure dal cronografo (misura con joule, velocità e peso del pallino).
+// Una misura da 1 joule in su non passa: l'arma resta (o torna) da provare e il tentativo finisce nel registro.
+function setChrono(gameId, playerId, weapon, on, actor, shot = null) {
   const col = WEAPONS[weapon];
   if (!col) throw err(400, 'Arma non valida');
   const p = playerOf(gameId, playerId);
   if (!p.checkinAt) throw err(409, 'Prima va accettato all\'ingresso');
-  q.run(`UPDATE players SET ${col} = ?, chronoBy = ? WHERE id = ?`, on ? Date.now() : null, actor, p.id);
-  G.log(gameId, actor, on ? 'chrono_ok' : 'chrono_undo', { name: p.name, arma: WEAPON_LABELS[weapon] });
+  let shots = {};
+  try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
+  const j = shot && Number(shot.joule);
+  if (shot && !(Number.isFinite(j) && j >= 0)) throw err(400, 'Misura non valida');
+  const fail = shot && j >= 1;
+  const passed = shot ? !fail : on;
+  if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, at: Date.now(), by: actor, ok: !fail };
+  else delete shots[weapon];
+  q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);
+  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2) } : { manuale: true }) };
+  G.log(gameId, actor, fail ? 'chrono_fail' : passed ? 'chrono_ok' : 'chrono_undo', data);
   G.notifyState(gameId);
-  return { ok: true };
+  return { ok: !fail, joule: shot ? j : null };
 }
 
 // Spostamento all'accettazione (trascina e rilascia): in una coppia con un posto libero, in una squadra di Eletti
@@ -100,7 +111,7 @@ function checkinData(gameId) {
   return {
     game: { id: g.id, name: g.name, status: g.status },
     clock: G.clockOf(g),
-    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, a.username
+    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, p.chronoShots, a.username
                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id),
     teams: G.teamsOf(g.id).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName, color: t.sectorColor, status: t.status, checkinAt: t.checkinAt || null })),
     elect: elect ? { id: elect.id } : null,

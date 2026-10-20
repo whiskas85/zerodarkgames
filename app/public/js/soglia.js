@@ -74,10 +74,10 @@ function ckCtx() {
     render,
     call: async (method, path, body, okMsg) => {
       try {
-        await api(method, `/api/v/games/${V.gameId}${path}`, body);
+        const r = await api(method, `/api/v/games/${V.gameId}${path}`, body);
         if (okMsg) toast(okMsg, 'ok');
         await load();
-        return true;
+        return r ?? true;
       } catch (e) { toast(e.message, 'error', 7000); return null; }
     },
   };

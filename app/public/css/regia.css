@@ -684,3 +684,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .bt-bb-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bt-bb { width: 90px; }
 .bt-row .ok-text { color: #46c46a; } .bt-row .bad-text { color: #e5484d; }
+.chrono-btn.armed { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass, #d1ad62) 45%, transparent); animation: armed-pulse 1.2s ease-in-out infinite; }
+@keyframes armed-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--brass, #d1ad62) 15%, transparent); } }
+.chrono-btn.fail { border-color: #e5484d; background: color-mix(in srgb, #e5484d 14%, var(--paper)); }
+.bt-armed { margin: 0; font-weight: 700; }

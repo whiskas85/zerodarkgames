@@ -1739,3 +1739,27 @@ test('accettazione: spostare persone tra coppie e squadre di Eletti (anche nuove
   assert.equal(row.teamId, G.electOf(g.id).id);
   assert.equal(a1.teamId, A.id);
 });
+
+test('test armi col cronografo: sotto 1 J spunta e salva la misura, da 1 J in su non passa', () => {
+  const CK = require('../src/checkin');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  q.run("UPDATE players SET status = 'accepted' WHERE gameId = ?", g.id);
+  const [p] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  CK.setPlayerCheckin(g.id, p.id, true, 'test');
+  assert.equal(CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 0.94, mps: 96.97, grams: 0.2 }).ok, true);
+  let row = q.get('SELECT chronoMain, chronoShots FROM players WHERE id = ?', p.id);
+  assert.ok(row.chronoMain);
+  assert.equal(JSON.parse(row.chronoShots).main.j, 0.94);
+  // Ritestata sopra 1 J: torna da provare.
+  assert.equal(CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 1.34, mps: 115.93, grams: 0.2 }).ok, false);
+  row = q.get('SELECT chronoMain, chronoShots FROM players WHERE id = ?', p.id);
+  assert.equal(row.chronoMain, null);
+  assert.equal(JSON.parse(row.chronoShots).main.ok, false);
+  // Spunta manuale (cronografo non disponibile): nessuna misura.
+  CK.setChrono(g.id, p.id, 'secondary', true, 'test');
+  row = q.get('SELECT chronoSecondary, chronoShots FROM players WHERE id = ?', p.id);
+  assert.ok(row.chronoSecondary);
+  assert.equal(JSON.parse(row.chronoShots).secondary, undefined);
+  assert.throws(() => CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 'x' }), /Misura non valida/);
+});

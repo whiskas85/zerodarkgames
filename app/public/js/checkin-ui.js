@@ -1,6 +1,6 @@
 // Accettazione a inizio evento e Test armi: condivisi tra la regia e lo staff (pagina Soglia).
 // ctx = { data: { players, teams, elect, squads }, call(method, path, body, okMsg), render() }.
-import { h, fmtTime, dialog } from './lib.js';
+import { h, fmtTime, dialog, toast } from './lib.js';
 
 const section = (title, ...children) => h('div', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', null, title)), ...children);
 
@@ -142,6 +142,9 @@ const btRow = (e) => h('div', { class: `bt-row bt-${e.kind}` },
     : e.kind === 'shot' ? h('strong', { class: e.ok ? 'ok-text' : 'bad-text' }, `🎯 ${e.text}`)
     : e.kind === 'info' ? h('span', { class: 'small' }, e.text)
       : h('span', { class: 'bt-data' }, h('span', { class: 'tiny muted' }, `${e.service} › ${e.char}${e.via ? ` (${e.via})` : ''}`), h('code', null, e.hex), h('span', { class: 'tiny muted' }, `«${e.ascii}»`), h('span', { class: 'tiny muted bt-guess' }, e.guess)));
+// Il cronografo è collegato e pronto (AC6000 abbinato)?
+const btLive = () => !!(BT.ready && BT.device?.gatt?.connected);
+function btArmedNote() { if (BT.armedEl) BT.armedEl.textContent = BT.armed ? `🎯 Prossimo tiro: ${BT.armed.label}` : (btLive() ? 'Tocca un\'arma qui sotto per provarla.' : ''); }
 function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; }
 
 // Un tiro: velocità → joule con il peso del pallino scelto; verde sotto 1 J, rosso da 1 J in su.
@@ -149,7 +152,15 @@ function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
   const ok = j < 1;
-  btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)`, ok });
+  const target = BT.armed;
+  btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
+  // Arma armata: il tiro va registrato su di lei (spuntata se sotto 1 J, altrimenti resta da provare).
+  if (target && BT.ctx) {
+    BT.armed = null;
+    btArmedNote();
+    BT.ctx.call('POST', `/chrono/${target.playerId}`, { weapon: target.weapon, shot: { joule: j, mps, grams: g } }, ok ? `${target.label}: ${j.toFixed(2)} J ✓` : null)
+      .then((r) => { if (r && r.ok === false) toast(`${target.label}: ${j.toFixed(2)} J, non passa`, 'error', 8000); });
+  }
   if (BT.liveEl) {
     BT.liveEl.className = `bt-live ${ok ? 'ok' : 'bad'}`;
     BT.liveEl.replaceChildren(
@@ -195,6 +206,9 @@ async function btConnect(extraUuid) {
       // Se il cronografo chiude la connessione (inattività, segnale), ci si ricollega da soli qualche volta.
       device.addEventListener('gattserverdisconnected', () => {
         btAdd({ kind: 'info', text: 'Scollegato' });
+        BT.ready = false;
+        BT.armed = null;
+        BT.ctx?.render();
         if (BT.manual || BT.retries >= 5) { btStatus(`Scollegato da ${device.name || 'cronografo'}`); return; }
         BT.retries++;
         btStatus(`Connessione persa: mi ricollego (${BT.retries}/5)…`);
@@ -219,6 +233,10 @@ async function btOpen(device) {
     btStatus('Acetech AC6000: abbinamento…');
     const ok = await acStart(BT.server);
     BT.retries = 0;
+    BT.ready = ok;
+    if (BT.panel) BT.panel.open = true;
+    btArmedNote();
+    BT.ctx?.render();
     btStatus(ok ? `AC6000 pronto: spara, il risultato compare qui sotto (pallino ${bbGrams().toFixed(2)} g)` : 'AC6000 collegato ma non risponde al saluto: spegni e riaccendi il cronografo e ricollega');
     return;
   }
@@ -257,6 +275,7 @@ function btPanel() {
   const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)', value: localStorage.getItem('zdg_bt_uuid') || '', oninput: (e) => { try { localStorage.setItem('zdg_bt_uuid', e.target.value); } catch { /* */ } } });
   const shot = h('input', { class: 'input input-sm', placeholder: 'Valore sul display, es. 92,4 m/s · pallino 0,20 g' });
   BT.statusEl = h('p', { class: 'small bt-status' }, BT.status);
+  BT.armedEl = h('p', { class: 'small bt-armed' });
   BT.liveEl = h('div', { class: 'bt-live' }, h('span', { class: 'tiny muted' }, 'Ultimo tiro: compare qui appena il cronografo lo manda.'));
   const bb = h('input', { class: 'input input-sm bt-bb', type: 'number', step: '0.01', min: '0.10', max: '1', value: bbGrams().toFixed(2),
     oninput: (e) => { try { localStorage.setItem('zdg_bt_bb', e.target.value); } catch { /* */ } } });
@@ -274,6 +293,7 @@ function btPanel() {
       h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { if (!confirm('Cancellare il registro?')) return; BT.log = []; try { localStorage.removeItem('zdg_bt_log'); } catch { /* */ } BT.listEl.replaceChildren(); } }, 'Svuota')),
     h('label', { class: 'bt-bb-row' }, h('span', { class: 'small' }, 'Peso del pallino (g) per i joule'), bb),
     BT.statusEl,
+    BT.armedEl,
     BT.liveEl,
     h('details', { class: 'tiny muted' }, h('summary', null, 'Altri cronografi: servizio extra'), uuid),
     h('form', { class: 'row-actions', onsubmit: (e) => { e.preventDefault(); note(); } }, shot, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Segna')),
@@ -281,25 +301,56 @@ function btPanel() {
   return BT.panel;
 }
 
+// Arma «armata» col cronografo collegato: il prossimo tiro va a lei.
+const shotsOf = (p) => { try { return JSON.parse(p.chronoShots || '{}') || {}; } catch { return {}; } };
+const fmtJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
+const fmtV = (v) => (v ? `${Number(v).toFixed(2).replace('.', ',')} m/s` : '');
+
 export function viewChrono(ctx) {
+  BT.ctx = ctx;
   const ms = ctx.data;
   const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
   const mainOk = present.filter((p) => p.chronoMain).length;
-  const toggle = (p, weapon, col) => ctx.call('POST', (`/chrono/${p.id}`), { weapon, on: !p[col] });
+  const tested = present.reduce((n, p) => n + CHRONO.filter(([, col]) => p[col]).length, 0);
+  const live = btLive();
+  // Senza cronografo: il tocco spunta a mano. Con il cronografo collegato: il primo tocco arma la casella
+  // (il prossimo tiro va lì), il secondo la spunta a mano se il cronografo non legge.
+  const tap = async (p, weapon, col, label) => {
+    if (p[col]) {
+      if (!(await dialog({ title: 'Togliere la spunta?', text: `${personLabel(p)} · ${label}: l'arma torna da provare.`, okLabel: 'Togli' }))) return;
+      BT.armed = null;
+      return ctx.call('POST', `/chrono/${p.id}`, { weapon, on: false });
+    }
+    const armed = BT.armed && BT.armed.playerId === p.id && BT.armed.weapon === weapon;
+    if (live && !armed) { BT.armed = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}` }; btArmedNote(); return ctx.render(); }
+    BT.armed = null;
+    btArmedNote();
+    return ctx.call('POST', `/chrono/${p.id}`, { weapon, on: true }, `${p.nickname || p.name}: ${label} spuntata a mano`);
+  };
   const groups = peopleGroups(ctx, (p) => !!p.checkinAt);
   return h('div', { class: 'stack' },
     section('Test armi',
-      h('p', { class: 'muted tiny' }, 'Prova al cronografo, persona per persona. Segnare un\'arma vuol dire che è stata provata ed è minore di 1 joule. Compare solo chi è stato accettato all\'ingresso.'),
-      h('div', { class: 'ck-counts' }, ckCount(mainOk, present.length, 'con l\'arma principale provata')),
+      h('p', { class: 'muted tiny' }, 'Ogni replica va provata al cronografo, persona per persona: arma principale, principale di riserva, secondaria. Spuntata = provata e minore di 1 joule. Con il cronografo collegato tocca l\'arma (si illumina), spara: si spunta da sola se il tiro è sotto 1 J. Se il cronografo non legge, tocca di nuovo per spuntarla a mano.'),
+      h('div', { class: 'ck-counts' }, ckCount(mainOk, present.length, 'con l\'arma principale provata'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate'))),
       ckSearch(ctx)),
     btPanel(),
     groups.length ? h('div', { class: 'ck-grid' }, groups.map((g) => h('div', { class: 'panel ck-group', style: { '--c': g.team?.color || g.color || 'var(--line)' } },
       h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
-      g.people.map((p) => h('div', { class: 'chrono-person' },
-        h('strong', null, personLabel(p)),
-        h('div', { class: 'chrono-row' }, CHRONO.map(([weapon, col, label]) => h('button', { class: `chrono-btn ${p[col] ? 'on' : ''}`, type: 'button', title: p[col] ? `Provata alle ${fmtTime(p[col])}` : 'Tocca se è minore di 1 joule', onclick: () => toggle(p, weapon, col) },
-          h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : ''),
-          h('span', null, label, h('span', { class: 'tiny' }, 'minore di 1 joule'))))))))))
+      g.people.map((p) => {
+        const shots = shotsOf(p);
+        return h('div', { class: 'chrono-person' },
+          h('strong', null, personLabel(p)),
+          h('div', { class: 'chrono-row' }, CHRONO.map(([weapon, col, label]) => {
+            const s = shots[weapon];
+            const armed = BT.armed && BT.armed.playerId === p.id && BT.armed.weapon === weapon;
+            const sub = p[col] ? (s ? `${fmtJ(s.j)} · ${fmtV(s.v)}` : 'spuntata a mano')
+              : s && s.ok === false ? `✗ ${fmtJ(s.j)}: non passa`
+                : armed ? 'Spara ora… (tocca di nuovo: a mano)' : 'minore di 1 joule';
+            return h('button', { class: `chrono-btn ${p[col] ? 'on' : ''} ${armed ? 'armed' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''}`, type: 'button',
+              title: p[col] ? `Provata alle ${fmtTime(p[col])}` : live ? 'Tocca per provarla col cronografo' : 'Tocca se è minore di 1 joule', onclick: () => tap(p, weapon, col, label) },
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : armed ? '🎯' : ''),
+            h('span', null, label, h('span', { class: 'tiny' }, sub)));
+          })));
+      }))))
       : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'));
 }
-
