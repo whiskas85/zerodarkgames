@@ -193,12 +193,18 @@ async function acStart(server) {
     if (f[2] === 0x4b) { try { localStorage.setItem('zdg_ac_token', JSON.stringify(f.slice(3, -1))); } catch { /* */ } acked?.(); }
     if (f[2] === 0x41) acked?.();
     // Slot attivo (0x5A, anche quando lo si cambia sul cronografo) o record letto (0x47): aggiorna il peso del pallino.
+    if (f[2] === 0x5a) slotSeen = true;
     if (f[2] === 0x5a && f.length >= 10) setBb(acWeight(f[7] | (f[8] << 8)), `dal cronografo · slot ${f[4]}`);
     if (f[2] === 0x47 && f.length >= 11) setBb(acWeight(f[8] | (f[9] << 8)), `dal cronografo · slot ${f[5]}`);
     if (f[2] === 0x52 && f.length >= 10) { const raw = f[5] | (f[6] << 8) | (f[7] << 16) | (f[8] << 24); btShot(raw / 100); }
   });
   await nCh.startNotifications();
-  const send = (frame) => (wCh.writeValueWithoutResponse ? wCh.writeValueWithoutResponse(frame) : wCh.writeValue(frame));
+  // Ogni messaggio inviato finisce nel registro (→), per capire cosa il cronografo riceve.
+  const send = (frame) => {
+    btAdd({ kind: 'info', text: `→ ${[...frame].map((b) => b.toString(16).padStart(2, '0')).join(' ')}` });
+    return wCh.writeValueWithoutResponse ? wCh.writeValueWithoutResponse(frame) : wCh.writeValue(frame);
+  };
+  let slotSeen = false;
   const wait = (ms) => new Promise((res) => { acked = () => { acked = null; res(true); }; setTimeout(() => res(false), ms); });
   let token = [0xdf, 0x02];
   try { const t = JSON.parse(localStorage.getItem('zdg_ac_token') || 'null'); if (Array.isArray(t) && t.length === 2) token = t; } catch { /* */ }
@@ -210,11 +216,22 @@ async function acStart(server) {
     const body = [3 + payload.length + 1, c, ...payload];
     return Uint8Array.from([0xaa, ...body, (body.reduce((a, b) => a + b, 0) + tk[0] + 0xac) & 0xff]);
   };
-  // Dopo il saluto si chiede lo slot attivo (0x5A) per avere subito il peso del pallino impostato.
-  const askSlot = () => send(cmd(0x5a, [0x00])).catch(() => {});
+  // Dopo il saluto si chiede lo slot attivo (0x5A) per avere subito il peso del pallino impostato. Si prova con la
+  // chiave del cronografo e, se non risponde, con le altre due varianti note del checksum (non risponde ai messaggi errati).
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  const askSlot = async () => {
+    const tries = [cmd(0x5a, [0x00]), Uint8Array.from([0xaa, 0x05, 0x5a, 0x00, 0xea]), Uint8Array.from([0xaa, 0x05, 0x5a, 0x00, (0xaa + 0x05 + 0x5a) & 0xff])];
+    await pause(400);
+    for (const fr of tries) {
+      if (slotSeen) return;
+      await send(fr).catch(() => {});
+      await pause(1200);
+    }
+    if (!slotSeen) btAdd({ kind: 'info', text: 'Il cronografo non ha detto il peso del pallino: cambia slot sull\'AC6000 (avanti e indietro) oppure scrivilo qui.' });
+  };
   await send(acHello(token));
-  if (await wait(3000)) { await askSlot(); return true; }
-  for (let i = 0; i < 8; i++) { await send(acHello([0, 0])); if (await wait(3000)) { await askSlot(); return true; } }
+  if (await wait(3000)) { askSlot(); return true; }
+  for (let i = 0; i < 8; i++) { await send(acHello([0, 0])); if (await wait(3000)) { askSlot(); return true; } }
   return false;
 }
 
