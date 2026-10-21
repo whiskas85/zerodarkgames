@@ -179,7 +179,8 @@ function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
   const ok = j < 1;
-  const target = BT.session;
+  // Persona già chiusa: l'arma si guarda soltanto, i tiri non si aggiungono.
+  const target = BT.session?.view ? null : BT.session;
   btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
   BT.last = { j, v: mps, g, ok, at: Date.now() };
   if (target && !target.saving) target.readings.push({ j, v: mps, g });
@@ -424,7 +425,7 @@ async function saveSession(ctx) {
   const max = Math.max(...r.map((x) => x.j));
   ss.saving = true;
   ctx.render();
-  const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v })) } }, null);
+  const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v, g: x.g })) } }, null);
   if (!res) { ss.saving = false; ctx.render(); return; }
   BT.result = { label: ss.label, ok: res.ok !== false, mj, mv, max, n: r.length, over: r.filter((x) => x.j >= 1).length, at: Date.now() };
   if (BT.result.ok) toast(`${ss.label}: media ${fmtJ(mj)} ✓`, 'ok'); else toast(`${ss.label}: media ${fmtJ(mj)}, non passa`, 'error', 8000);
@@ -449,6 +450,18 @@ async function resetWeapon(ctx, p, weapon, label) {
   return !!(await ctx.call('POST', `/chrono/${p.id}`, { weapon, on: false }, `${label}: test azzerato`));
 }
 
+// L'ultimo test salvato di un'arma: quando, chi, pallino, media e i singoli tiri (potenza, velocità, grammatura).
+function savedTest(p, weapon) {
+  const s = shotsOf(p)[weapon];
+  const col = CHRONO.find(([w]) => w === weapon)[1];
+  if (!s) return p[col] ? h('div', { class: 'cs-saved' }, h('div', { class: 'eyebrow' }, 'Test salvato'), h('span', { class: 'small' }, `Spuntata a mano${p.chronoBy ? ` (${p.chronoBy})` : ''}: nessuna lettura del cronografo.`)) : null;
+  const reads = s.readings?.length ? s.readings : [{ j: s.j, v: s.v }];
+  return h('div', { class: `cs-saved ${s.ok === false ? 'bad' : 'ok'}` },
+    h('div', { class: 'eyebrow' }, `Test salvato · ${new Date(s.at).toLocaleDateString('it-IT')} ${fmtTime(s.at)}${s.by ? ` · ${s.by}` : ''}`),
+    h('strong', null, `${s.ok === false ? '✗ Non passa' : '✓ Passa'} · media ${fmtJ(s.j)}${s.v ? ` · ${fmtV(s.v)}` : ''}${s.g ? ` · pallino ${num(s.g)} g` : ''}`),
+    h('div', { class: 'cs-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''} · ${num(x.g || s.g || 0)} g`))));
+}
+
 // Sessione di prova: persona + arma; i tiri si sommano, la media decide. Al terzo tiro si salva da sola.
 function chronoSession(ctx) {
   const ss = BT.session;
@@ -462,6 +475,13 @@ function chronoSession(ctx) {
   const ok = r.length && mj < 1;
   const over = r.filter((x) => x.j >= 1).length;
   const close = () => { BT.session = null; ctx.render(); };
+  if (ss.view) {
+    return h('div', { class: 'panel chrono-session' },
+      h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Persona chiusa · solo lettura'), h('strong', null, ss.label)),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
+      savedTest(p, ss.weapon) || h('p', { class: 'empty' }, 'Quest\'arma non è stata provata.'),
+      h('p', { class: 'small muted' }, 'Per rifare o azzerare il test, prima «Riapri» la persona.'));
+  }
   const save = () => saveSession(ctx);
   const saved = shotsOf(p)[ss.weapon];
   const manual = async () => {
@@ -485,6 +505,7 @@ function chronoSession(ctx) {
       h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, r.length ? fmtJ(max) : '—')),
       h('strong', { class: 'cs-verdict' }, !r.length ? 'In attesa del primo tiro' : ok ? '✓ Media minore di 1 joule' : '✗ Media da 1 joule in su: non passa'),
       over ? h('strong', { class: 'cs-over' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${fmtJ(max)})`) : null),
+    r.length || ss.saving ? null : savedTest(p, ss.weapon),
     r.length ? h('div', { class: 'cs-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)} · ${fmtV(x.v)}`,
       h('button', { type: 'button', class: 'cs-del', title: 'Togli questa lettura', onclick: () => { r.splice(i, 1); ctx.render(); } }, '✕')))) : null,
     h('p', { class: 'small muted' }, ss.saving ? 'Salvataggio…' : btLive() ? `Spara ${AUTO_SHOTS} tiri: al ${AUTO_SHOTS === 3 ? 'terzo' : `${AUTO_SHOTS}°`} il test si chiude da solo col risultato (tiro ${Math.min(r.length + 1, AUTO_SHOTS)} di ${AUTO_SHOTS}).` : 'Cronografo non collegato: collegalo in alto, oppure spunta a mano.'),
@@ -507,7 +528,7 @@ export function viewChrono(ctx) {
   const shown = groups.filter((g) => !chronoGroup || g.key === chronoGroup)
     .flatMap((g) => g.people.map((p) => ({ p, g })))
     .filter(({ p }) => showClosed || !p.chronoDoneAt);
-  const open = (p, weapon, label) => { BT.result = null; BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [] }; ctx.render(); };
+  const open = (p, weapon, label) => { BT.result = null; BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [], view: !!p.chronoDoneAt }; ctx.render(); };
   const closeP = async (p) => {
     if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
     if (!p.chronoMain && !(await dialog({ title: 'Chiudere senza arma principale?', text: `${personLabel(p)} non ha l'arma principale provata.`, okLabel: 'Chiudi comunque' }))) return;
@@ -540,7 +561,7 @@ export function viewChrono(ctx) {
           const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? `✗ ${fmtJ(s.j)}` : 'da provare';
           // Colpi sopra 1 J tra le letture salvate (anche se la media passa): in rosso.
           const overN = (s?.readings || []).filter((x) => x.j >= 1).length || (s && s.max >= 1 ? 1 : 0);
-          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${overN && p[col] ? 'over' : ''} ${cur ? 'cur' : ''}`, disabled: !!p.chronoDoneAt, onclick: () => open(p, weapon, label) },
+          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${overN && p[col] ? 'over' : ''} ${cur ? 'cur' : ''}`, onclick: () => open(p, weapon, label) },
             h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub),
               overN && s ? h('span', { class: 'tiny w-over' }, `⚠ ${overN} sopra 1 J · max ${fmtJ(s.max ?? s.j)}`) : null));
         })),

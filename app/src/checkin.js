@@ -54,7 +54,7 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null) {
   const fail = shot && j >= 1;
   const passed = shot ? !fail : on;
   // Più letture: si salva la media (che decide se passa), il massimo e le singole letture.
-  const readings = Array.isArray(shot?.readings) ? shot.readings.slice(0, 50).map((r) => ({ j: Math.round(Number(r.j) * 1000) / 1000, v: Math.round(Number(r.v) * 100) / 100 })).filter((r) => Number.isFinite(r.j)) : null;
+  const readings = Array.isArray(shot?.readings) ? shot.readings.slice(0, 50).map((r) => ({ j: Math.round(Number(r.j) * 1000) / 1000, v: Math.round(Number(r.v) * 100) / 100, ...(Number(r.g) > 0 ? { g: Math.round(Number(r.g) * 1000) / 1000 } : {}) })).filter((r) => Number.isFinite(r.j)) : null;
   if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, max: readings?.length ? Math.max(...readings.map((r) => r.j)) : null, n: readings?.length || 1, readings, at: Date.now(), by: actor, ok: !fail };
   else delete shots[weapon];
   q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);

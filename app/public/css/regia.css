@@ -846,3 +846,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .cs-result.bad { background: color-mix(in srgb, #e5484d 16%, var(--paper)); border: 2px solid #e5484d; }
 .cs-result .cs-verdict { font-size: 20px; }
 .cs-result > button { position: absolute; top: 8px; right: 8px; }
+
+/* Ultimo test salvato di un'arma: quando, chi, media, pallino e i singoli tiri */
+.cs-saved { display: grid; gap: 6px; padding: 10px; border: 2px dashed var(--line); border-radius: 6px; }
+.cs-saved.ok { border-color: #46c46a; } .cs-saved.bad { border-color: #e5484d; }
