@@ -303,6 +303,7 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .map-wrap { position: relative; margin: 0 -16px; }
 .map-wrap .team-map { border-left: 0; border-right: 0; }
 .map-tools { position: absolute; left: 10px; bottom: 24px; z-index: 500; display: flex; gap: 6px; flex-wrap: wrap; }
+.map-tools .mt-ico { margin-right: 4px; }
 .map-tools .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 
@@ -705,8 +706,20 @@ button.banner-safety strong { letter-spacing: .08em; }
   body[data-view="mappa"] .map-page > :not(.map-wrap) { margin: 8px 12px 0; }
   body[data-view="mappa"] .map-wrap { margin: 0; }
   .team-map { height: calc(100dvh - 58px - env(safe-area-inset-top)); min-height: 220px; }
-  /* Sulla mappa i banner restano, ma su una riga sola: lo spazio è della mappa. */
-  body[data-view="mappa"] .banners > * { max-height: 38px; overflow: hidden; padding-top: 8px; padding-bottom: 8px; }
+  /* Mappa: tutta l'altezza. Niente fascia in alto: indietro e tempo residuo in sovraimpressione (il Settore no),
+     i banner su una riga sopra la mappa, i pulsanti a icona in colonna sotto lo zoom. */
+  body[data-view="mappa"] .team-map { height: 100dvh; }
+  body[data-view="mappa"] .top { position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(var(--rail-w) + 8px); left: auto; z-index: 700; gap: 8px; padding: 4px 8px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); border: 2px solid var(--line); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  body[data-view="mappa"] .top-id, body[data-view="mappa"] .top-phase { display: none; }
+  body[data-view="mappa"] .top .back { width: 32px; height: 32px; font-size: 26px; border-width: 1px; }
+  body[data-view="mappa"] .top-clock .big { font-size: 18px; }
+  body[data-view="mappa"] .banners { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: calc(54px + env(safe-area-inset-left)); right: calc(var(--rail-w) + 214px); z-index: 650; gap: 4px; pointer-events: none; }
+  body[data-view="mappa"] .banners > * { max-height: 34px; overflow: hidden; padding-top: 6px; padding-bottom: 6px; font-size: 13px; border-radius: 6px; pointer-events: auto; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  body[data-view="mappa"] .map-tools { top: 84px; bottom: auto; left: 10px; flex-direction: column; gap: 6px; }
+  body[data-view="mappa"] .map-tools .btn { width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; font-size: 18px; }
+  body[data-view="mappa"] .map-tools .mt-label { display: none; }
+  body[data-view="mappa"] .map-tools .mt-ico { margin: 0; }
   .toasts { bottom: calc(16px + env(safe-area-inset-bottom)); }
   .composer { right: var(--rail-w); bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   .main-chat { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
