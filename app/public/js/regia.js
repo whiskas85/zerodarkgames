@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
-import { createMapView, positionItem, landmarkItem, groupPositions } from './map.js';
+import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet } from './map.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -555,6 +555,74 @@ function altarRadiusPanel() {
       h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), h('span', { class: 'switch-label' }, on ? 'ACCESO' : 'SPENTO')));
 }
 
+// Registro delle letture degli Altari rifiutate: l'ultima in vista, le altre in una scheda che si apre e si chiude.
+// Ogni riga si apre su una mini mappa: Altare e coppia, la linea che li unisce e la distanza.
+const rejOpen = new Set();
+let rejOthersOpen = false;
+const rejMaps = new Map();
+const teamName = (r) => `${r.roman ? `${r.roman} · ` : ''}Settore ${r.sectorName || '?'}${r.displayName ? ` (${r.displayName})` : ''}`;
+const fmtDay = (ts) => `${new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })} ${fmtTime(ts, true)}`;
+function rejectionMap(r) {
+  if (rejMaps.has(r.id)) { const el = rejMaps.get(r.id); requestAnimationFrame(() => el._map?.invalidateSize()); return el; }
+  const el = h('div', { class: 'rej-map' });
+  rejMaps.set(r.id, el);
+  loadLeaflet().then((L) => {
+    const a = [r.altarLat, r.altarLng];
+    const t = [r.lat, r.lng];
+    const map = L.map(el, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+    el._map = map;
+    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, subdomains: 'abc' }).addTo(map);
+    L.circle(a, { radius: r.radiusM || 0, color: '#46c46a', weight: 1, fillOpacity: 0.08 }).addTo(map);
+    L.polyline([a, t], { color: '#e5484d', weight: 3, dashArray: '6 6' }).addTo(map)
+      .bindTooltip(`${r.distM} m`, { permanent: true, direction: 'center', className: 'rej-dist' });
+    L.circleMarker(a, { radius: 8, color: '#fff', weight: 2, fillColor: '#d1ad62', fillOpacity: 1 }).addTo(map)
+      .bindTooltip(r.altar, { permanent: true, direction: 'top', offset: [0, -8], className: 'rej-label' });
+    if (r.acc) L.circle(t, { radius: r.acc, color: r.sectorColor || '#ff4fa3', weight: 1, fillOpacity: 0.1 }).addTo(map);
+    L.circleMarker(t, { radius: 8, color: '#fff', weight: 2, fillColor: r.sectorColor || '#ff4fa3', fillOpacity: 1 }).addTo(map)
+      .bindTooltip(teamName(r), { permanent: true, direction: 'top', offset: [0, -8], className: 'rej-label' });
+    const fit = () => { map.invalidateSize(); map.fitBounds(L.latLngBounds([a, t]), { padding: [40, 40], maxZoom: 17 }); };
+    fit();
+    setTimeout(fit, 80);
+    setTimeout(fit, 400);
+  }).catch(() => { el.textContent = 'Mappa non disponibile'; });
+  return el;
+}
+function rejectionRow(r) {
+  const far = r.reason === 'too_far';
+  const where = far ? `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.acc ? ` (GPS ±${Math.round(r.acc)} m)` : ''}` : 'posizione non disponibile (GPS spento o negato)';
+  const mapBox = h('div', { class: 'rej-map-box' }, far && r.altarLat != null && rejOpen.has(r.id) ? rejectionMap(r) : null);
+  const toggle = (e) => {
+    if (!e.target.open) { rejOpen.delete(r.id); return; }
+    rejOpen.add(r.id);
+    if (far && r.altarLat != null && !mapBox.firstChild) mapBox.append(rejectionMap(r));
+  };
+  return h('details', { class: 'rej-row', open: rejOpen.has(r.id), ontoggle: toggle },
+    h('summary', null,
+      h('span', { class: 'rej-dot', style: { background: r.sectorColor || 'var(--blood)' }, 'aria-hidden': 'true' }),
+      h('span', { class: 'rej-main' }, h('strong', null, teamName(r)), h('span', { class: 'tiny muted' }, ` · ${fmtDay(r.at)}`),
+        h('div', { class: 'small' }, `${r.altar} · `, far ? h('strong', { class: 'bad-text' }, `${r.distM} m`) : h('strong', { class: 'bad-text' }, 'senza GPS'), far ? ` (raggio ${r.radiusM} m)` : '')),
+      h('span', { class: 'rej-chev', 'aria-hidden': 'true' }, '▾')),
+    h('div', { class: 'rej-body' },
+      h('div', { class: 'rej-facts small' },
+        h('div', null, h('span', { class: 'muted' }, 'Coppia: '), teamName(r)),
+        h('div', null, h('span', { class: 'muted' }, 'Quando: '), fmtDay(r.at)),
+        h('div', null, h('span', { class: 'muted' }, 'Altare letto: '), r.altar),
+        h('div', null, h('span', { class: 'muted' }, 'Posizione della coppia: '), far ? h('a', { href: `https://www.google.com/maps?q=${r.lat},${r.lng}`, target: '_blank', rel: 'noopener' }, where) : where),
+        far ? h('div', null, h('span', { class: 'muted' }, 'Distanza dall\'Altare: '), h('strong', null, `${r.distM} m`), ` · raggio ${r.radiusM} m`) : null),
+      mapBox));
+}
+function altarRejectionsPanel() {
+  const list = R.ms.altarRejections || [];
+  if (!list.length && !R.ms.game.altarCheckOn) return null;
+  const [last, ...others] = list;
+  return h('div', { class: 'panel rej-panel' },
+    h('div', { class: 'panel-head' }, h('h2', null, `Letture rifiutate${list.length ? ` · ${list.length}` : ''}`)),
+    !last ? h('p', { class: 'empty' }, 'Nessuna lettura rifiutata.') : [
+      h('div', { class: 'eyebrow' }, 'Ultima'), rejectionRow(last),
+      others.length ? h('details', { class: 'rej-others', open: rejOthersOpen, ontoggle: (e) => { rejOthersOpen = e.target.open; } },
+        h('summary', null, `Le altre ${others.length}`), h('div', { class: 'rej-list' }, others.map(rejectionRow))) : null]);
+}
+
 function viewLive() {
   const ms = R.ms;
   const c = ms.clock;
@@ -579,6 +647,7 @@ function viewLive() {
     liveTimeline(),
 
     altarRadiusPanel(),
+    altarRejectionsPanel(),
 
     h('div', { class: 'cols-3' },
       nextCard('Prossimo tradimento', n.revelation

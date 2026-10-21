@@ -1018,7 +1018,7 @@ function restartGame(g, actor) {
     for (const t of ['team_fragments', 'team_code_notes', 'team_visits', 'team_timers']) q.run(`DELETE FROM ${t} WHERE teamId IN ${inTeams}`, ...teamIds);
     q.run("UPDATE teams SET status = 'active', finishPosition = NULL, wonAt = NULL WHERE gameId = ?", g.id);
     q.run('DELETE FROM engagement_steals WHERE engagementId IN (SELECT id FROM engagements WHERE gameId = ?)', g.id);
-    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
+    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions', 'altar_rejections']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
     // Tradimenti: quelli aggiunti a mano spariscono, gli altri tornano in calendario.
     q.run('DELETE FROM revelations WHERE gameId = ? AND scheduledMin IS NULL', g.id);
     q.run("UPDATE revelations SET status = 'scheduled', firedAt = NULL WHERE gameId = ?", g.id);
@@ -1055,6 +1055,7 @@ function control(gameId, action, actor) {
       need('ready', 'circle');
       // Di nuovo in preparazione: gli Altari visitati (anche le prove) si azzerano.
       q.run('DELETE FROM team_visits WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', g.id);
+      q.run('DELETE FROM altar_rejections WHERE gameId = ?', g.id);
       setStatus(g, 'draft');
       break;
     case 'circle':
@@ -1372,6 +1373,20 @@ function recordScan(team, p, at) {
 const altarRadius = (g) => (g.altarCheckOn ? (Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30) : 0);
 // L'imprecisione del GPS si concede fino a 25 m. Senza coordinate dell'Altare o con raggio 0 non si controlla.
 const GPS_SLACK_M = 25;
+function rejectScan(g, team, p, { reason, lat = null, lng = null, acc = null, dist = null, radius }) {
+  q.run('INSERT INTO altar_rejections (gameId, teamId, pointId, at, lat, lng, acc, distM, radiusM, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, team.id, p.id, Date.now(), lat, lng, acc, dist == null ? null : Math.round(dist), radius, reason);
+  rt.toStaff(g.id, 'altar_rejection');
+}
+
+/** Letture rifiutate della partita, dalla più recente: coppia, Altare (con le sue coordinate), posizione e distanza. */
+function altarRejections(gameId) {
+  return q.all(`SELECT r.id, r.at, r.lat, r.lng, r.acc, r.distM, r.radiusM, r.reason, r.teamId, t.displayName, s.name AS sectorName, s.roman, s.color AS sectorColor,
+      p.label AS altar, p.lat AS altarLat, p.lng AS altarLng
+    FROM altar_rejections r JOIN teams t ON t.id = r.teamId LEFT JOIN sectors s ON s.id = t.sectorId JOIN points p ON p.id = r.pointId
+    WHERE r.gameId = ? ORDER BY r.at DESC, r.id DESC LIMIT 200`, gameId);
+}
+
 function checkAltarDistance(g, team, p, pos) {
   const radius = altarRadius(g);
   if (radius <= 0 || p.lat == null || p.lng == null) return;
@@ -1379,12 +1394,14 @@ function checkAltarDistance(g, team, p, pos) {
   const lng = Number(pos?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     log(g.id, `coppia:${team.id}`, 'scan_no_gps', { teamId: team.id, point: p.label });
+    rejectScan(g, team, p, { reason: 'no_gps', radius });
     throw err(428, `Lettura rifiutata: serve la posizione GPS per leggere «${p.label}». Attivate la localizzazione per l'app e riprovate davanti all'Altare.`);
   }
   const d = require('./skills').distM({ lat, lng }, { lat: p.lat, lng: p.lng });
   const slack = Math.min(Math.max(Number(pos.acc) || 0, 0), GPS_SLACK_M);
   if (d - slack > radius) {
     log(g.id, `coppia:${team.id}`, 'scan_too_far', { teamId: team.id, point: p.label, metri: Math.round(d), raggio: radius, gps: Math.round(Number(pos.acc) || 0) });
+    rejectScan(g, team, p, { reason: 'too_far', lat, lng, acc: Number(pos.acc) || null, dist: d, radius });
     throw err(403, `Lettura rifiutata: siete a circa ${Math.round(d)} m da «${p.label}»: la lettura vale entro ${radius} m. Avvicinatevi all'Altare e inquadrate di nuovo il QR.`);
   }
 }
@@ -2032,6 +2049,7 @@ function masterState(gameId) {
     clock: clockOf(g),
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
     // Altari con coordinate: solo su questi vale il raggio di lettura.
+    altarRejections: altarRejections(g.id),
     altarsPlaced: q.get('SELECT COUNT(*) AS total, SUM(lat IS NOT NULL) AS placed FROM points WHERE gameId = ?', g.id),
     readiness: readiness(g),
     spots: spotsOf(g.id),

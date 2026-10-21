@@ -457,6 +457,14 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   G.updateGame(g.id, { altarCheckOn: false }, 'test');
   assert.ok(G.visitPoint(A, pB.qrToken).visitedAt);
   assert.equal(G.getGame(g.id).altarRadiusM, 30);
+  // In regia: il registro delle letture rifiutate, dalla più recente, con Altare, posizione e distanza.
+  const rej = G.masterState(g.id).altarRejections;
+  assert.equal(rej.length, 2);
+  assert.equal(rej[0].reason, 'too_far');
+  assert.equal(rej[0].altar, pB.label);
+  assert.equal(rej[0].distM, 111);
+  assert.deepEqual([rej[0].lat, rej[0].altarLat, rej[0].radiusM], [45.001, 45, 30]);
+  assert.equal(rej[1].reason, 'no_gps');
 });
 
 test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () => {

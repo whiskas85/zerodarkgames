@@ -864,3 +864,23 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .switch.on { border-color: #46c46a; }
 .switch.on .switch-knob { background: #46c46a; }
 .switch.on .switch-knob::after { transform: translateX(18px); }
+
+/* Letture degli Altari rifiutate: righe apribili con mini mappa */
+.rej-panel { display: grid; gap: 8px; }
+.rej-row { border: 2px solid var(--line); background: var(--bg); }
+.rej-row > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
+.rej-row > summary::-webkit-details-marker, .rej-others > summary::-webkit-details-marker { display: none; }
+.rej-row[open] > summary .rej-chev { transform: rotate(180deg); }
+.rej-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; }
+.rej-main { flex: 1; min-width: 0; }
+.rej-chev { color: var(--muted); transition: transform .15s; }
+.rej-body { display: grid; gap: 10px; padding: 0 10px 10px; }
+.rej-facts { display: grid; gap: 2px; }
+.rej-map { height: 260px; border: 1px solid var(--line); }
+.rej-others > summary { list-style: none; cursor: pointer; padding: 8px 10px; font-weight: 700; color: var(--brass); }
+.rej-others > summary::before { content: "▸ "; }
+.rej-others[open] > summary::before { content: "▾ "; }
+.rej-list { display: grid; gap: 6px; }
+.leaflet-tooltip.rej-label { font-weight: 700; font-size: 12px; padding: 2px 6px; }
+.leaflet-tooltip.rej-dist { background: #e5484d; color: #fff; border: 0; font-weight: 800; font-size: 12px; padding: 1px 6px; box-shadow: none; }
+.leaflet-tooltip.rej-dist::before { display: none; }

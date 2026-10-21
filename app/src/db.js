@@ -192,6 +192,13 @@ if (!db.prepare('PRAGMA table_info(games)').all().some((c) => c.name === 'altarC
   addColumn('games', 'altarCheckOn', 'INTEGER NOT NULL DEFAULT 0');
   db.exec('UPDATE games SET altarCheckOn = 1 WHERE altarRadiusM > 0');
 }
+// Letture degli Altari rifiutate (fuori raggio o senza GPS): la regia le vede con la posizione della coppia.
+db.exec(`CREATE TABLE IF NOT EXISTS altar_rejections (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, pointId INTEGER NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL, lat REAL, lng REAL, acc REAL, distM REAL, radiusM INTEGER, reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_altar_rejections ON altar_rejections(gameId, at);`);
 
 // Squadre degli Eletti e loro incarichi (Altari e Doni da piazzare, incarichi liberi).
 db.exec(`
