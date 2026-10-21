@@ -99,7 +99,7 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarRadiusM', 'altarCheckOn', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
@@ -132,7 +132,7 @@ function updateGame(id, data, actor) {
     }
     if (f === 'codeLength' && (v < 4 || v > 12)) throw err(400, 'La lunghezza del Sigillo deve essere tra 4 e 12');
     if (f === 'durationMin' && v < 40) throw err(400, 'Durata troppo breve');
-    if (f === 'registrationOpen') v = v ? 1 : 0;
+    if (f === 'registrationOpen' || f === 'altarCheckOn') v = v && v !== '0' && v !== 'false' ? 1 : 0;
     if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
     sets.push(`${f} = ?`);
     vals.push(v === '' ? null : v);
@@ -1368,11 +1368,12 @@ function recordScan(team, p, at) {
   return q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id).visitedAt;
 }
 
-// La lettura di un Altare piazzato (con coordinate) vale solo se la coppia è entro altarRadiusM metri.
+// Con il controllo acceso (altarCheckOn) la lettura di un Altare piazzato vale solo entro altarRadiusM metri (30 se non scelto).
+const altarRadius = (g) => (g.altarCheckOn ? (Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30) : 0);
 // L'imprecisione del GPS si concede fino a 25 m. Senza coordinate dell'Altare o con raggio 0 non si controlla.
 const GPS_SLACK_M = 25;
 function checkAltarDistance(g, team, p, pos) {
-  const radius = Number(g.altarRadiusM) || 0;
+  const radius = altarRadius(g);
   if (radius <= 0 || p.lat == null || p.lng == null) return;
   const lat = Number(pos?.lat);
   const lng = Number(pos?.lng);
@@ -1911,7 +1912,7 @@ function teamStateCore(team, player = null) {
     clock: clockOf(g),
     game: {
       id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html',
-      codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin, altarRadiusM: g.altarRadiusM || 0,
+      codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin, altarRadiusM: altarRadius(g),
       prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },
     team: {

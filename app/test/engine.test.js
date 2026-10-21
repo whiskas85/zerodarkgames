@@ -441,9 +441,9 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   const pB = pointOf(g.id, B.sectorId);
   const pA = pointOf(g.id, A.sectorId);
   q.run('UPDATE points SET lat = 45.0, lng = 7.0 WHERE id = ?', pB.id);
-  // Raggio 0: nessun controllo, anche senza posizione.
+  // Controllo spento: nessun controllo, anche senza posizione.
   assert.ok(G.visitPoint(A, pB.qrToken).visitedAt);
-  G.updateGame(g.id, { altarRadiusM: 30 }, 'test');
+  G.updateGame(g.id, { altarRadiusM: 30, altarCheckOn: true }, 'test');
   // Senza GPS: rifiutata con la motivazione.
   assert.throws(() => G.visitPoint(A, pB.qrToken), /serve la posizione GPS/);
   // A circa 111 m (0,001° di latitudine): rifiutata con la distanza.
@@ -453,6 +453,10 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   // Altare senza coordinate: nessun controllo.
   q.run('UPDATE points SET lat = NULL, lng = NULL WHERE id = ?', pA.id);
   assert.ok(G.visitPoint(B, pA.qrToken).visitedAt);
+  // Spento al volo dalla Regia: di nuovo nessun controllo (il raggio resta impostato).
+  G.updateGame(g.id, { altarCheckOn: false }, 'test');
+  assert.ok(G.visitPoint(A, pB.qrToken).visitedAt);
+  assert.equal(G.getGame(g.id).altarRadiusM, 30);
 });
 
 test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () => {

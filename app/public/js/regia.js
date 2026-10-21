@@ -538,20 +538,21 @@ function phaseSteps() {
     i === idx && pauses && c.status !== 'paused' ? h('span', { class: 'ps-time mono' }, `${pauses} ${pauses === 1 ? 'pausa' : 'pause'}`) : null)));
 }
 
-// Anti «furbetto del QR», a portata di mano in Regia: raggio entro cui vale la lettura di un Altare piazzato.
-const RADIUS_OPTIONS = [0, 15, 25, 30, 50, 75, 100, 150, 200, 300];
+// Anti «furbetto del QR», a portata di mano in Regia: interruttore del controllo di distanza sulla lettura degli Altari.
+// Il raggio si sceglie nelle impostazioni della partita; qui si accende o si spegne al volo.
 function altarRadiusPanel() {
   const g = R.ms.game;
-  const cur = Number(g.altarRadiusM) || 0;
+  const on = !!g.altarCheckOn;
+  const radius = Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30;
   const ap = R.ms.altarsPlaced || {};
-  const opts = RADIUS_OPTIONS.includes(cur) ? RADIUS_OPTIONS : [...RADIUS_OPTIONS, cur].sort((a, b) => a - b);
-  return h('div', { class: `panel radius-panel ${cur ? 'on' : ''}` },
+  const toggle = () => call('PATCH', `/api/m/games/${g.id}`, { altarCheckOn: !on }, on ? 'Controllo di distanza SPENTO: gli Altari si leggono da ovunque' : `Controllo di distanza ACCESO: lettura valida entro ${radius} m`);
+  return h('div', { class: `panel radius-panel ${on ? 'on' : 'off'}` },
     h('div', null,
-      h('div', { class: 'eyebrow' }, 'Lettura degli Altari'),
-      h('strong', null, cur ? `Valida entro ${cur} m dall'Altare` : 'Nessun controllo di distanza'),
-      h('div', { class: 'tiny muted' }, `${ap.placed || 0} Altari piazzati su ${ap.total || 0}: il controllo vale solo per quelli piazzati. Al raggio si aggiunge l'imprecisione del GPS (fino a 25 m). Consigliato 30 m; 50 m nei boschi fitti.`)),
-    h('select', { class: 'input radius-select', 'aria-label': 'Raggio di lettura degli Altari', onchange: (e) => call('PATCH', `/api/m/games/${g.id}`, { altarRadiusM: Number(e.target.value) }, Number(e.target.value) ? `Lettura degli Altari valida entro ${e.target.value} m` : 'Controllo di distanza tolto') },
-      opts.map((v) => h('option', { value: v, selected: v === cur }, v ? `${v} m${v === 30 ? ' (consigliato)' : ''}` : 'Nessun controllo'))));
+      h('div', { class: 'eyebrow' }, 'Controllo distanza sulla lettura degli Altari'),
+      h('strong', null, on ? `Acceso · lettura valida entro ${radius} m dall'Altare` : 'Spento · gli Altari si leggono da ovunque'),
+      h('div', { class: 'tiny muted' }, `${ap.placed || 0} Altari piazzati su ${ap.total || 0} (il controllo vale solo per quelli piazzati). Raggio: `, h('a', { href: '#impostazioni' }, `${radius} m, si cambia in Impostazioni`), '.')),
+    h('button', { type: 'button', class: `switch ${on ? 'on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': 'Controllo distanza sulla lettura degli Altari', onclick: toggle },
+      h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), h('span', { class: 'switch-label' }, on ? 'ACCESO' : 'SPENTO')));
 }
 
 function viewLive() {
@@ -2869,13 +2870,12 @@ function gameForm(g, isNew) {
   f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
   f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
   f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
-  // Anti «furbetto del QR»: la lettura di un Altare piazzato vale solo entro questo raggio dal punto.
-  h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari piazzati'),
+  // Anti «furbetto del QR»: raggio entro cui vale la lettura di un Altare piazzato (il controllo si accende in Regia).
+  h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari (controllo da accendere in Regia)'),
     h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
-      [[0, 'Nessun controllo'], [15, '15 m'], [25, '25 m'], [30, '30 m'], [50, '50 m'], [75, '75 m'], [100, '100 m'], [150, '150 m'], [200, '200 m'], [300, '300 m']]
-        .concat(g?.altarRadiusM && ![0, 15, 25, 30, 50, 75, 100, 150, 200, 300].includes(g.altarRadiusM) ? [[g.altarRadiusM, `${g.altarRadiusM} m`]] : [])
-        .map(([v, l]) => h('option', { value: v, selected: Number(g?.altarRadiusM || 0) === v }, l))),
-    h('span', { class: 'tiny muted' }, 'Inquadrando il QR fuori da questo raggio la lettura viene rifiutata con la distanza. Si concede fino a 25 m di imprecisione del GPS. Gli Altari senza coordinate non si controllano.')),
+      (() => { const cur = Number(g?.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30; const o = [15, 25, 30, 50, 75, 100, 150, 200, 300]; return (o.includes(cur) ? o : [...o, cur].sort((a, b) => a - b))
+        .map((v) => h('option', { value: v, selected: v === cur }, `${v} m${v === 30 ? ' (consigliato)' : ''}`)); })()),
+    h('span', { class: 'tiny muted' }, 'Fuori da questo raggio la lettura viene rifiutata con la distanza. Si concede fino a 25 m di imprecisione del GPS. Gli Altari senza coordinate non si controllano.')),
   f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
   f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
   f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),

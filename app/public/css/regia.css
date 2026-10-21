@@ -854,8 +854,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Replica che non passa: X bianca su fondo rosso nel quadratino */
 .chrono-wbtn.fail > .ck-box { background: #e5484d; border-color: #e5484d; color: #fff; }
 
-/* Regia: raggio di lettura degli Altari */
+/* Regia: interruttore del controllo distanza sulla lettura degli Altari */
 .radius-panel { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .radius-panel > div { flex: 1 1 260px; display: grid; gap: 2px; }
-.radius-panel.on { border-color: var(--ok, #46c46a); }
-.radius-select { flex: 0 0 auto; width: auto; min-width: 190px; font-weight: 700; }
+.radius-panel.on { border-color: #46c46a; }
+.switch { flex: none; display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 999px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-weight: 800; letter-spacing: .06em; cursor: pointer; }
+.switch-knob { width: 44px; height: 26px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; }
+.switch-knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch.on { border-color: #46c46a; }
+.switch.on .switch-knob { background: #46c46a; }
+.switch.on .switch-knob::after { transform: translateX(18px); }

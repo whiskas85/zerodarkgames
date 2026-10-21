@@ -187,6 +187,11 @@ addColumn('team_code_notes', 'source', 'TEXT');
 addColumn('games', 'altarScanMin', 'INTEGER NOT NULL DEFAULT 15');
 // Anti «furbetto del QR»: la lettura di un Altare piazzato vale solo entro questi metri (0 = nessun controllo).
 addColumn('games', 'altarRadiusM', 'INTEGER NOT NULL DEFAULT 0');
+// Interruttore del controllo (si spegne al volo in Regia se in gioco crea problemi); il raggio resta impostato.
+if (!db.prepare('PRAGMA table_info(games)').all().some((c) => c.name === 'altarCheckOn')) {
+  addColumn('games', 'altarCheckOn', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE games SET altarCheckOn = 1 WHERE altarRadiusM > 0');
+}
 
 // Squadre degli Eletti e loro incarichi (Altari e Doni da piazzare, incarichi liberi).
 db.exec(`
