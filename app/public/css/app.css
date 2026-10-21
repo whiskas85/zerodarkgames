@@ -813,3 +813,4 @@ button.banner-safety strong { letter-spacing: .08em; }
 .weapon-card.ok .ab { background: #46c46a; border-color: #46c46a; } .weapon-card.bad .ab { background: #e5484d; border-color: #e5484d; }
 .btn-trash { background: #e5484d; border-color: #e5484d; color: #fff; min-width: 40px; font-size: 16px; line-height: 1; }
 .btn-trash:hover { background: #c93c40; border-color: #c93c40; }
+.btn-icon { min-width: 40px; font-size: 17px; line-height: 1; }

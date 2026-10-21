@@ -1157,10 +1157,10 @@ function viewTestArmi() {
         w.j != null ? h('div', { class: 'tiny muted' }, [w.n > 1 ? `media di ${w.n} tiri` : null, w.v ? fmtV(w.v) : null, w.g ? `pallino ${w.g.toFixed(2).replace('.', ',')} g` : null, w.max != null ? `max ${nJ(w.max)}` : null, w.testedAt ? `alle ${fmtTime(w.testedAt)}` : null].filter(Boolean).join(' · ')) : null,
         reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null,
         canEdit ? h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => {
+          h('button', { class: 'btn btn-sm btn-icon', type: 'button', title: `Rinomina ${label}`, 'aria-label': `Rinomina ${label}`, onclick: async () => {
             const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: label, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
             if (nn && nn.trim() && nn.trim() !== label) editWeapon({ action: 'rename', key: k, label: nn.trim() });
-          } }, '✎ Rinomina'),
+          } }, '✎'),
           !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-trash', type: 'button', title: `Togli ${label}`, 'aria-label': `Togli ${label}`, onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, '🗑') : null) : null);
     }),
     canEdit ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
