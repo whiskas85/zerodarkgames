@@ -1161,7 +1161,7 @@ function viewTestArmi() {
             const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: label, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
             if (nn && nn.trim() && nn.trim() !== label) editWeapon({ action: 'rename', key: k, label: nn.trim() });
           } }, '✎ Rinomina'),
-          !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, 'Non ce l\'ho: togli') : null) : null);
+          !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-trash', type: 'button', title: `Togli ${label}`, 'aria-label': `Togli ${label}`, onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, '🗑') : null) : null);
     }),
     canEdit ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
       const name = await dialog({ title: 'Aggiungi un\'arma', text: 'Ogni replica che porti va provata al cronografo.', input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });

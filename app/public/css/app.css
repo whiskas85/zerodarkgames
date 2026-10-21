@@ -811,3 +811,5 @@ button.banner-safety strong { letter-spacing: .08em; }
 .weapon-head .grow { flex: 1; }
 .weapon-head .ab { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--muted); border-radius: 4px; font-weight: 800; color: #fff; }
 .weapon-card.ok .ab { background: #46c46a; border-color: #46c46a; } .weapon-card.bad .ab { background: #e5484d; border-color: #e5484d; }
+.btn-trash { background: #e5484d; border-color: #e5484d; color: #fff; min-width: 40px; font-size: 16px; line-height: 1; }
+.btn-trash:hover { background: #c93c40; border-color: #c93c40; }

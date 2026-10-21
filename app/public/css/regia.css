@@ -894,3 +894,5 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ck-sum { font-family: var(--f-mono, monospace); color: var(--muted); }
 .ck-sum.ok { color: #46c46a; }
 .chrono-add { border-style: dashed; opacity: .85; }
+.btn-trash { background: #e5484d; border-color: #e5484d; color: #fff; min-width: 40px; font-size: 16px; line-height: 1; }
+.btn-trash:hover { background: #c93c40; border-color: #c93c40; }

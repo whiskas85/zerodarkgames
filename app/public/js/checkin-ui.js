@@ -599,10 +599,10 @@ function chronoSession(ctx) {
         const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: cur, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
         if (nn && nn.trim() && nn.trim() !== cur && await ctx.call('POST', `/weapons/${p.id}`, { action: 'rename', key: ss.weapon, label: nn.trim() }, 'Arma rinominata')) { ss.label = `${personLabel(p)} · ${nn.trim()}`; ctx.render(); }
       } }, '✎ Rinomina'),
-      r.length ? null : h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => {
+      r.length ? null : h('button', { class: 'btn btn-trash', type: 'button', title: 'Togli quest\'arma', 'aria-label': 'Togli quest\'arma', onclick: async () => {
         if (!(await dialog({ title: 'Togliere quest\'arma?', text: `${ss.label}: la persona non ce l'ha, non va provata.`, okLabel: 'Togli', danger: true }))) return;
         if (await ctx.call('POST', `/weapons/${p.id}`, { action: 'remove', key: ss.weapon }, 'Arma tolta')) close();
-      } }, 'Non ce l\'ha: togli'),
+      } }, '🗑'),
       r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; liveSend(ss, []); ctx.render(); } }, 'Ricomincia i tiri') : null,
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
 }
