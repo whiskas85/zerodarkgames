@@ -839,3 +839,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .council-perm:has(input:checked) { border-color: var(--ok); }
 .council-perm:has(input:disabled) { opacity: .6; cursor: default; }
 .council-card .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Esito del test appena chiuso (al terzo tiro): resta in vista finché non si apre un'altra arma */
+.cs-result { position: relative; display: grid; gap: 6px; padding: 12px 44px 12px 12px; }
+.cs-result.ok { background: color-mix(in srgb, #46c46a 16%, var(--paper)); border: 2px solid #46c46a; }
+.cs-result.bad { background: color-mix(in srgb, #e5484d 16%, var(--paper)); border: 2px solid #e5484d; }
+.cs-result .cs-verdict { font-size: 20px; }
+.cs-result > button { position: absolute; top: 8px; right: 8px; }

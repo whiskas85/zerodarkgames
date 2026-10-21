@@ -173,7 +173,8 @@ function btRefresh() { if (BT.ctx && !document.activeElement?.matches?.('input, 
 function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; btRefresh(); }
 
 // Un tiro: velocità → joule con il peso del pallino scelto. Con una sessione aperta (persona + arma) si aggiunge
-// alle sue letture; la media decide se l'arma passa (sotto 1 J).
+// alle sue letture; la media decide se l'arma passa (sotto 1 J). Al terzo tiro il test di quell'arma si chiude da solo.
+const AUTO_SHOTS = 3;
 function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
@@ -181,7 +182,8 @@ function btShot(mps) {
   const target = BT.session;
   btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
   BT.last = { j, v: mps, g, ok, at: Date.now() };
-  if (target) target.readings.push({ j, v: mps, g });
+  if (target && !target.saving) target.readings.push({ j, v: mps, g });
+  if (target && !target.saving && target.readings.length >= AUTO_SHOTS && BT.ctx) { saveSession(BT.ctx); return; }
   if (BT.ctx) BT.ctx.render();
 }
 
@@ -410,7 +412,44 @@ function chronoDash(ctx) {
         h('span', { class: 'tiny mono' }, last ? `${fmtV(last.v)} · ${Math.round(last.v * 3.28084)} fps` : ' '))));
 }
 
-// Sessione di prova: persona + arma; i tiri si sommano, la media decide. OK salva tutto.
+// Salva la sessione (media, massimo, letture) e la chiude; il risultato resta in vista sopra la lista.
+async function saveSession(ctx) {
+  const ss = BT.session;
+  if (!ss || ss.saving || !ss.readings.length) return;
+  const p = ctx.data.players.find((x) => x.id === ss.playerId);
+  if (!p) return;
+  const r = ss.readings;
+  const mj = avg(r.map((x) => x.j));
+  const mv = avg(r.map((x) => x.v));
+  const max = Math.max(...r.map((x) => x.j));
+  ss.saving = true;
+  ctx.render();
+  const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v })) } }, null);
+  if (!res) { ss.saving = false; ctx.render(); return; }
+  BT.result = { label: ss.label, ok: res.ok !== false, mj, mv, max, n: r.length, over: r.filter((x) => x.j >= 1).length, at: Date.now() };
+  if (BT.result.ok) toast(`${ss.label}: media ${fmtJ(mj)} ✓`, 'ok'); else toast(`${ss.label}: media ${fmtJ(mj)}, non passa`, 'error', 8000);
+  if (BT.session === ss) BT.session = null;
+  ctx.render();
+}
+
+// Esito dell'ultimo test salvato: resta finché non si apre un'altra arma.
+function chronoResult() {
+  const x = BT.result;
+  if (!x || BT.session) return null;
+  return h('div', { class: `panel cs-result ${x.ok ? 'ok' : 'bad'}` },
+    h('div', null, h('div', { class: 'eyebrow' }, 'Test chiuso'), h('strong', null, x.label)),
+    h('strong', { class: 'cs-verdict' }, x.ok ? `✓ Passa · media ${fmtJ(x.mj)}` : `✗ Non passa · media ${fmtJ(x.mj)}`),
+    h('span', { class: 'tiny mono' }, `${x.n} tiri · ${fmtV(x.mv)} · max ${fmtJ(x.max)}${x.over ? ` · ⚠ ${x.over} sopra 1 J` : ''}`),
+    h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: () => { BT.result = null; BT.ctx?.render(); } }, '✕'));
+}
+
+// Azzera il test di un'arma: via spunta, media e letture salvate; si può rifare da capo.
+async function resetWeapon(ctx, p, weapon, label) {
+  if (!(await dialog({ title: 'Azzerare il test?', text: `${label}: si tolgono la spunta e le letture salvate, il test va rifatto.`, okLabel: 'Azzera', danger: true }))) return false;
+  return !!(await ctx.call('POST', `/chrono/${p.id}`, { weapon, on: false }, `${label}: test azzerato`));
+}
+
+// Sessione di prova: persona + arma; i tiri si sommano, la media decide. Al terzo tiro si salva da sola.
 function chronoSession(ctx) {
   const ss = BT.session;
   if (!ss) return null;
@@ -423,11 +462,8 @@ function chronoSession(ctx) {
   const ok = r.length && mj < 1;
   const over = r.filter((x) => x.j >= 1).length;
   const close = () => { BT.session = null; ctx.render(); };
-  const save = async () => {
-    const res = await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, shot: { joule: mj, mps: mv, grams: bbGrams(), readings: r.map((x) => ({ j: x.j, v: x.v })) } }, ok ? `${ss.label}: media ${fmtJ(mj)} ✓` : null);
-    if (res && res.ok === false) toast(`${ss.label}: media ${fmtJ(mj)}, non passa`, 'error', 8000);
-    if (res) close();
-  };
+  const save = () => saveSession(ctx);
+  const saved = shotsOf(p)[ss.weapon];
   const manual = async () => {
     if (!(await dialog({ title: 'Spuntare a mano?', text: `${ss.label}: provata e minore di 1 joule, senza letture del cronografo.`, okLabel: 'Spunta' }))) return;
     if (await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, on: true }, `${ss.label}: spuntata a mano`)) close();
@@ -451,11 +487,12 @@ function chronoSession(ctx) {
       over ? h('strong', { class: 'cs-over' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${fmtJ(max)})`) : null),
     r.length ? h('div', { class: 'cs-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)} · ${fmtV(x.v)}`,
       h('button', { type: 'button', class: 'cs-del', title: 'Togli questa lettura', onclick: () => { r.splice(i, 1); ctx.render(); } }, '✕')))) : null,
-    h('p', { class: 'small muted' }, btLive() ? 'Spara: ogni tiro si aggiunge qui. Poi «OK, salva».' : 'Cronografo non collegato: collegalo in alto, oppure spunta a mano.'),
+    h('p', { class: 'small muted' }, ss.saving ? 'Salvataggio…' : btLive() ? `Spara ${AUTO_SHOTS} tiri: al ${AUTO_SHOTS === 3 ? 'terzo' : `${AUTO_SHOTS}°`} il test si chiude da solo col risultato (tiro ${Math.min(r.length + 1, AUTO_SHOTS)} di ${AUTO_SHOTS}).` : 'Cronografo non collegato: collegalo in alto, oppure spunta a mano.'),
     h('div', { class: 'row-actions' },
-      h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: !r.length, onclick: save }, ok ? 'OK, salva' : 'Salva (non passa)'),
+      h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: !r.length || ss.saving, onclick: save }, ok ? 'OK, salva ora' : 'Salva (non passa)'),
       h('button', { class: 'btn', type: 'button', onclick: manual }, 'Spunta a mano'),
-      p[col] ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => { if (await ctx.call('POST', `/chrono/${p.id}`, { weapon: ss.weapon, on: false }, 'Spunta tolta')) close(); } }, 'Togli spunta') : null,
+      r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; ctx.render(); } }, 'Ricomincia i tiri') : null,
+      p[col] || saved ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => { if (await resetWeapon(ctx, p, ss.weapon, ss.label)) { r.length = 0; ctx.render(); } } }, 'Azzera il test') : null,
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
 }
 
@@ -470,7 +507,7 @@ export function viewChrono(ctx) {
   const shown = groups.filter((g) => !chronoGroup || g.key === chronoGroup)
     .flatMap((g) => g.people.map((p) => ({ p, g })))
     .filter(({ p }) => showClosed || !p.chronoDoneAt);
-  const open = (p, weapon, label) => { BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [] }; ctx.render(); };
+  const open = (p, weapon, label) => { BT.result = null; BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [] }; ctx.render(); };
   const closeP = async (p) => {
     if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
     if (!p.chronoMain && !(await dialog({ title: 'Chiudere senza arma principale?', text: `${personLabel(p)} non ha l'arma principale provata.`, okLabel: 'Chiudi comunque' }))) return;
@@ -482,10 +519,11 @@ export function viewChrono(ctx) {
   return h('div', { class: 'stack' },
     section('Test armi',
       h('details', { class: 'muted tiny chrono-help' }, h('summary', null, 'Come funziona'),
-        h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma: spara uno o più tiri, guarda la media e dai «OK, salva» (passa se la media è sotto 1 joule). Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
+        h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma e spara 3 tiri: al terzo il test si chiude da solo col risultato (passa se la media è sotto 1 joule). Per rifarlo: tocca l\'arma e «Azzera il test». Senza cronografo: «Spunta a mano». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
         h('p', null, 'Cronografo Bluetooth (Acetech AC6000-BT): Chrome su Android o computer; su iPhone con l\'app Bluefy. Chiudi l\'app AceSoft prima di collegarlo.')),
       h('div', { class: 'ck-counts' }, ckCount(closed, present.length, 'persone chiuse'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate')))),
     chronoDash(ctx),
+    chronoResult(),
     chronoSession(ctx),
     h('div', { class: 'chrono-tiles' },
       tile(null, 'Tutte', closed, present.length),
