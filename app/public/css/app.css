@@ -825,7 +825,4 @@ button.banner-safety strong { letter-spacing: .08em; }
 .live-big strong { font-size: 22px; }
 .not-accepted { display: grid; gap: 8px; border-color: #e5484d; }
 .not-accepted h2 { margin: 0; color: #e5484d; }
-.altar-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.altar-stat { display: grid; justify-items: center; gap: 2px; padding: 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); text-decoration: none; }
-.altar-stat strong { font-size: 24px; }
 .swipeable { touch-action: pan-y; user-select: none; }

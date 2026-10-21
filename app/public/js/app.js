@@ -1297,9 +1297,9 @@ function viewHome() {
       tile('#/doni', 'I vostri doni', '✦', (st.gifts || []).filter((g) => !g.usedAt).length || null),
       tile('#/alleanze', 'Alleanze', '⚑', alliancePending(st) || null, alliancePending(st)),
       tile('#/scontri', 'Scontri', '⚔', fightPending(st) || null, fightPending(st)),
+      // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco: apre il taccuino.
+      tile('#/codici', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
-      // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco.
-      tile('#/altari', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
@@ -2159,16 +2159,8 @@ function allVisited() {
 
 function viewAltars() {
   const list = allVisited();
-  const st = S.state;
-  const nb = st?.notebook || [];
-  const frs = st?.fragments || [];
-  const codeOf = (sectorId) => nb.find((n) => n.sectorId === sectorId && n.code);
   return h('div', { class: 'stack' },
     h('h2', null, 'Altari'),
-    // Frammenti e Sigilli (codici) presi: un tocco porta al dettaglio.
-    st ? h('div', { class: 'altar-stats' },
-      h('a', { class: 'altar-stat', href: '#/frammenti' }, h('span', { class: 'eyebrow' }, 'Frammenti'), h('strong', { class: 'mono' }, `${frs.filter((f) => f.text).length}/${frs.length || '?'}`)),
-      h('a', { class: 'altar-stat', href: '#/codici' }, h('span', { class: 'eyebrow' }, 'Codici'), h('strong', { class: 'mono' }, `${nb.filter((n) => n.code).length}/${nb.length || '?'}`), h('span', { class: 'tiny muted' }, 'taccuino →'))) : null,
     h('p', { class: 'muted' }, 'Scansionate il QR dell\'Altare con l\'app, allontanatevi, poi inserite il Sigillo del suo Settore. Potete farlo anche più tardi.'),
     h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: openScanner }, '⌖ Scansiona Altare'),
     cameraSupported() ? null : h('p', { class: 'muted small' }, 'Lo scanner usa la fotocamera, che il browser concede solo con l\'indirizzo https del Consiglio.'),
@@ -2177,7 +2169,6 @@ function viewAltars() {
       const pending = S.queue.some((q) => q.kind === 'unlock' && q.payload.qrToken === v.qrToken);
       return h('li', null, h('a', { class: 'row', href: `#/altare/${encodeURIComponent(v.qrToken)}` },
         h('div', null, h('strong', null, v.label || 'Altare da riconoscere'), h('div', { class: 'muted small' }, v.sectorName ? `Settore ${v.sectorName}` : 'in attesa di rete')),
-        !v.unlocked && v.sectorId && codeOf(v.sectorId) ? h('span', { class: 'chip chip-brass' }, 'Sigillo noto') : null,
         v.unlocked ? h('span', { class: 'chip chip-ok' }, 'Sbloccato') : pending ? h('span', { class: 'chip chip-brass' }, 'In attesa di rete')
           : scanExpired(v) ? h('span', { class: 'chip chip-warn' }, 'Scansione scaduta')
             : v.expiresAt ? h('span', { class: 'chip' }, 'valida ', h('span', { class: 'mono', 'data-abs': v.expiresAt }, '—')) : h('span', { class: 'chip' }, 'Da sbloccare')));
