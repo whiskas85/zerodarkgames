@@ -589,7 +589,7 @@ m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameI
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
-m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req), req.body?.shot || null)));
+m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req), req.body?.shot || null, req.body?.fail === true)));
 m.post('/players/:pid/review', wrap((req) => G.reviewPlayer(Number(req.params.pid), req.body.decision, actor(req), { squadId: req.body.squadId })));
 m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.playerIds, actor(req)); return { ok: true }; }));
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
@@ -799,7 +799,7 @@ v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) =>
 v.post('/games/:id/checkin/team/:tid', needPerm('accettazione'), wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/place/:pid', needPerm('accettazione'), wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
 v.post('/games/:id/chrono/:pid/done', needPerm('armi'), wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
-v.post('/games/:id/chrono/:pid', needPerm('armi'), wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null)));
+v.post('/games/:id/chrono/:pid', needPerm('armi'), wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null, req.body?.fail === true)));
 v.post('/games/:id/squads', needPerm('accettazione'), wrap((req) => F.createSquad(Number(req.params.id), req.body || {}, sActor(req))));
 v.post('/teams/:tid/check', needPerm('soglia'), wrap((req) => G.compareTyped(Number(req.params.tid), req.body.typed)));
 v.post('/teams/:tid/validate', needPerm('soglia'), wrap((req) => G.validate(Number(req.params.tid), req.body || {}, req.user)));

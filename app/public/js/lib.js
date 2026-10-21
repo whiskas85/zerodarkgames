@@ -719,7 +719,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
   const W = [['main', 'Arma primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Arma secondaria']];
   const weapon = ([k, label]) => {
     const w = ev.weapons?.[k] || {};
-    const val = w.ok ? (w.manual ? 'provata · spunta manuale' : `${n2(w.j)} J${w.n > 1 ? ` (media di ${w.n})` : ''}`) : w.failed ? `${n2(w.j)} J · non passa` : 'da provare';
+    const val = w.ok ? (w.manual ? 'provata · spunta manuale' : `${n2(w.j)} J${w.n > 1 ? ` (media di ${w.n})` : ''}`) : w.failed ? (w.j == null ? 'non passa · segnata a mano' : `${n2(w.j)} J · non passa`) : 'da provare';
     const over = w.max != null && w.max >= 1;
     return h('div', { class: `ev-weapon ${w.ok ? 'ok' : w.failed ? 'bad' : ''}` },
       h('span', { class: 'small' }, label),

@@ -42,7 +42,8 @@ function setTeamCheckin(gameId, teamId, on, actor) {
 
 // Spunta di un'arma: manuale (on/off) oppure dal cronografo (misura con joule, velocità e peso del pallino).
 // Una misura da 1 joule in su non passa: l'arma resta (o torna) da provare e il tentativo finisce nel registro.
-function setChrono(gameId, playerId, weapon, on, actor, shot = null) {
+// manualFail: test segnato a mano come negativo (da 1 J in su), senza letture del cronografo.
+function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail = false) {
   const col = WEAPONS[weapon];
   if (!col) throw err(400, 'Arma non valida');
   const p = playerOf(gameId, playerId);
@@ -51,14 +52,15 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null) {
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
   const j = shot && Number(shot.joule);
   if (shot && !(Number.isFinite(j) && j >= 0)) throw err(400, 'Misura non valida');
-  const fail = shot && j >= 1;
-  const passed = shot ? !fail : on;
+  const fail = manualFail || (shot && j >= 1);
+  const passed = shot ? !fail : manualFail ? false : on;
   // Più letture: si salva la media (che decide se passa), il massimo e le singole letture.
   const readings = Array.isArray(shot?.readings) ? shot.readings.slice(0, 50).map((r) => ({ j: Math.round(Number(r.j) * 1000) / 1000, v: Math.round(Number(r.v) * 100) / 100, ...(Number(r.g) > 0 ? { g: Math.round(Number(r.g) * 1000) / 1000 } : {}) })).filter((r) => Number.isFinite(r.j)) : null;
   if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, max: readings?.length ? Math.max(...readings.map((r) => r.j)) : null, n: readings?.length || 1, readings, at: Date.now(), by: actor, ok: !fail };
+  else if (manualFail) shots[weapon] = { manual: true, ok: false, j: null, at: Date.now(), by: actor };
   else delete shots[weapon];
   q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);
-  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
+  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(manualFail ? { manuale: true } : shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
   G.log(gameId, actor, fail ? 'chrono_fail' : passed ? 'chrono_ok' : 'chrono_undo', data);
   G.notifyState(gameId);
   return { ok: !fail, joule: shot ? j : null };

@@ -1762,6 +1762,15 @@ test('test armi col cronografo: sotto 1 J spunta e salva la misura, da 1 J in su
   assert.ok(row.chronoSecondary);
   assert.equal(JSON.parse(row.chronoShots).secondary, undefined);
   assert.throws(() => CK.setChrono(g.id, p.id, 'main', true, 'test', { joule: 'x' }), /Misura non valida/);
+  // Negativo segnato a mano (senza cronografo): niente spunta, esito «non passa»; azzerando torna da provare.
+  assert.equal(CK.setChrono(g.id, p.id, 'backup', true, 'test', null, true).ok, false);
+  row = q.get('SELECT chronoBackup, chronoShots FROM players WHERE id = ?', p.id);
+  assert.equal(row.chronoBackup, null);
+  assert.deepEqual([JSON.parse(row.chronoShots).backup.ok, JSON.parse(row.chronoShots).backup.manual], [false, true]);
+  const { eventStatus } = require('../src/eventstatus');
+  assert.equal(eventStatus(q.get('SELECT * FROM players WHERE id = ?', p.id)).weapons.backup.failed, true);
+  CK.setChrono(g.id, p.id, 'backup', false, 'test');
+  assert.equal(JSON.parse(q.get('SELECT chronoShots FROM players WHERE id = ?', p.id).chronoShots).backup, undefined);
 });
 
 test('test armi: più letture salvano media e massimo; la persona si chiude e si riapre', () => {
