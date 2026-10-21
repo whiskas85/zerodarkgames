@@ -764,3 +764,7 @@ button.banner-safety strong { letter-spacing: .08em; }
 @media (orientation: landscape) and (max-height: 560px) {
   body[data-view="mappa"] .avatar { width: 32px; height: 32px; font-size: 13px; }
 }
+.avatar.xl { width: 64px; height: 64px; font-size: 24px; }
+.profile-head { display: flex; align-items: center; gap: 14px; }
+.profile-head h2 { margin: 0; }
+.card.stack-sm { display: grid; gap: 8px; }

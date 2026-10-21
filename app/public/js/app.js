@@ -433,7 +433,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewEventStatus, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -555,9 +555,9 @@ function openAvatarMenu(anchor) {
     h('span', { class: 'am-ico', 'aria-hidden': 'true' }, icon), h('span', null, label));
   const menu = h('div', { class: 'avatar-menu', role: 'menu' },
     h('div', { class: 'am-head' }, avatarFace(me, 'lg'), h('div', null, h('strong', null, me.name), acc ? h('div', { class: 'tiny muted' }, `@${acc.username}${acc.ops?.length ? ` · ${acc.ops[0].providerName}` : ''}`) : h('div', { class: 'tiny muted' }, 'Entrato con QR o codice'))),
-    acc ? item('/iscrizione#profilo', '👤', 'Profilo') : null,
+    acc ? item('#/profilo', '👤', 'Profilo') : null,
     acc ? item('#/ice', '✚', 'ICE · In Case of Emergency') : null,
-    acc ? item('/iscrizione#profilo-armi', '⌁', 'Il mio test armi') : null,
+    item('#/statoarmi', '⌁', 'Il mio test armi'),
     item('#/impostazioni', '⚙', 'Impostazioni'),
     item('#/regolamento', '§', 'Regolamento'),
     S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
@@ -2501,6 +2501,48 @@ function iceForm(onSaved = null) {
   field('Telefono del contatto di emergenza', 'iceContactPhone', ice.contactPhone, { type: 'tel', maxlength: 30 }),
   h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Salva'));
   return form;
+}
+
+// Profilo dentro l'app (senza uscire verso la pagina d'iscrizione): dati, password, gestionale collegato.
+function viewProfile() {
+  const a = S.state?.account;
+  if (!a) return h('div', { class: 'stack' }, h('h2', null, 'Profilo'), h('p', { class: 'empty' }, 'Sei entrato con il QR o il codice della coppia: il profilo è legato al tuo account personale.'));
+  const field = (label, attrs) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', ...attrs }));
+  const form = h('form', { class: 'stack', onsubmit: async (e) => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(form).entries());
+    if (fd.password && fd.password !== fd.password2) return toast('Le due password nuove non coincidono', 'error');
+    if (!fd.password) { delete fd.password; delete fd.currentPassword; }
+    delete fd.password2;
+    try { await api('PATCH', '/api/account', fd); toast('Profilo aggiornato', 'ok'); form.reset(); await refresh(); render(); } catch (err) { toast(err.offline ? 'Serve la rete per salvare' : err.message, 'error', 6000); }
+  } },
+  h('div', { class: 'card stack-sm' }, h('div', { class: 'eyebrow' }, 'I tuoi dati'),
+    field('Nome e cognome', { name: 'name', required: true, value: a.name }),
+    field('Nome di battaglia', { name: 'nickname', value: a.nickname || '' }),
+    field('Team di softair di appartenenza', { name: 'softairTeam', required: true, value: a.softairTeam || '' }),
+    field('Telefono', { name: 'phone', type: 'tel', value: a.phone || '' })),
+  h('div', { class: 'card stack-sm' }, h('div', { class: 'eyebrow' }, a.hasPassword ? 'Cambia password (facoltativo)' : 'Imposta una password (facoltativo)'),
+    a.hasPassword ? field('Password attuale', { name: 'currentPassword', type: 'password', autocomplete: 'current-password' })
+      : h('p', { class: 'muted small' }, `Entri con il gestionale. Con una password potrai entrare anche come @${a.username}.`),
+    field('Nuova password', { name: 'password', type: 'password', minlength: 8, autocomplete: 'new-password' }),
+    field('Ripeti la nuova password', { name: 'password2', type: 'password', minlength: 8, autocomplete: 'new-password' })),
+  h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Salva'));
+  const me = meInfo();
+  return h('div', { class: 'stack' },
+    h('div', { class: 'profile-head' }, avatarFace(me, 'xl'), h('div', null, h('h2', null, me.name), h('div', { class: 'muted small' }, `@${a.username}`))),
+    form,
+    a.ops?.length ? h('div', { class: 'card stack-sm' }, h('div', { class: 'eyebrow' }, 'Gestionale collegato'),
+      a.ops.map((o) => h('div', null, h('strong', null, o.providerName), h('div', { class: 'muted small' }, [o.opsName, o.squadra].filter(Boolean).join(' · '))))) : null,
+    h('nav', { class: 'grid' }, tile('#/ice', 'ICE', '✚'), tile('#/statoarmi', 'Il mio test armi', '⌁')));
+}
+
+// Stato all'evento (iscrizione, accettazione, test armi con i joule) dentro l'app.
+function viewEventStatus() {
+  const st = S.state;
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Il mio test armi'),
+    h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test armi al cronografo: per ogni arma i joule misurati e il pallino usato.'),
+    st?.player?.event ? eventStatusCard(st.player.event, { gameName: st.game?.name }) : h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
 }
 
 function viewIce() {
