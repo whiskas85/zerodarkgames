@@ -185,6 +185,8 @@ addColumn('gifts', 'expiredAt', 'INTEGER');
 addColumn('team_code_notes', 'source', 'TEXT');
 // Validità della scansione di un Altare (minuti; 0 = senza limite).
 addColumn('games', 'altarScanMin', 'INTEGER NOT NULL DEFAULT 15');
+// Anti «furbetto del QR»: la lettura di un Altare piazzato vale solo entro questi metri (0 = nessun controllo).
+addColumn('games', 'altarRadiusM', 'INTEGER NOT NULL DEFAULT 0');
 
 // Squadre degli Eletti e loro incarichi (Altari e Doni da piazzare, incarichi liberi).
 db.exec(`

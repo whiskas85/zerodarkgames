@@ -99,8 +99,8 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
@@ -1368,10 +1368,31 @@ function recordScan(team, p, at) {
   return q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id).visitedAt;
 }
 
-function visitPoint(team, qrToken, at) {
+// La lettura di un Altare piazzato (con coordinate) vale solo se la coppia è entro altarRadiusM metri.
+// L'imprecisione del GPS si concede fino a 25 m. Senza coordinate dell'Altare o con raggio 0 non si controlla.
+const GPS_SLACK_M = 25;
+function checkAltarDistance(g, team, p, pos) {
+  const radius = Number(g.altarRadiusM) || 0;
+  if (radius <= 0 || p.lat == null || p.lng == null) return;
+  const lat = Number(pos?.lat);
+  const lng = Number(pos?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    log(g.id, `coppia:${team.id}`, 'scan_no_gps', { teamId: team.id, point: p.label });
+    throw err(428, `Lettura rifiutata: serve la posizione GPS per leggere «${p.label}». Attivate la localizzazione per l'app e riprovate davanti all'Altare.`);
+  }
+  const d = require('./skills').distM({ lat, lng }, { lat: p.lat, lng: p.lng });
+  const slack = Math.min(Math.max(Number(pos.acc) || 0, 0), GPS_SLACK_M);
+  if (d - slack > radius) {
+    log(g.id, `coppia:${team.id}`, 'scan_too_far', { teamId: team.id, point: p.label, metri: Math.round(d), raggio: radius, gps: Math.round(Number(pos.acc) || 0) });
+    throw err(403, `Lettura rifiutata: siete a circa ${Math.round(d)} m da «${p.label}»: la lettura vale entro ${radius} m. Avvicinatevi all'Altare e inquadrate di nuovo il QR.`);
+  }
+}
+
+function visitPoint(team, qrToken, at, pos = null) {
   requireCouple(team);
   const g = gameForTeam(team);
   const p = pointByToken(g, qrToken);
+  checkAltarDistance(g, team, p, pos);
   const visitedAt = recordScan(team, p, at);
   const s = sectorById(p.sectorId);
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
@@ -1890,7 +1911,7 @@ function teamStateCore(team, player = null) {
     clock: clockOf(g),
     game: {
       id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html',
-      codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin,
+      codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin, altarRadiusM: g.altarRadiusM || 0,
       prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },
     team: {

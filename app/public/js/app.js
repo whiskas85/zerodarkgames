@@ -321,7 +321,7 @@ function sendItem(item) {
     case 'unlock': return api('POST', '/api/team/unlock', p);
     case 'fragment': return api('POST', '/api/team/fragment', p);
     case 'note': return api('POST', '/api/team/note', p);
-    case 'visit': return api('GET', `/api/team/point/${encodeURIComponent(p.qrToken)}?at=${p.at || ''}`);
+    case 'visit': return api('GET', `/api/team/point/${encodeURIComponent(p.qrToken)}?at=${p.at || ''}${posQuery(p.pos)}`);
     case 'claim': return api('POST', '/api/team/gift/claim', p);
     default: return Promise.resolve({ ok: true });
   }
@@ -330,6 +330,7 @@ function sendItem(item) {
 function handleResult(item, res, fromQueue) {
   const prefix = fromQueue ? 'Inviato: ' : '';
   if (item.kind === 'visit') {
+    if (res.ok === false) { scanRejected(item.payload.qrToken, res.message); return; }
     rememberVisit(item.payload.qrToken, { label: res.label, sectorName: res.sectorName, sectorId: res.sectorId, expiresAt: res.expiresAt });
     return;
   }
@@ -372,19 +373,41 @@ async function act(kind, payload, label) {
 }
 
 // Inquadrato un Altare: vale dall'ora di inquadratura (ora del server) per i minuti stabiliti dalla regia.
-function registerScan(token) {
+// Se la regia ha fissato un raggio, si manda anche la posizione del telefono: lontani dall'Altare la lettura non vale.
+async function registerScan(token) {
   const at = Math.round(clock.serverNow());
   const win = S.state?.game.altarScanMin || 0;
   rememberVisit(token, { scannedAt: at, expiresAt: win > 0 ? at + win * 60000 : null, at: Date.now() });
   delete S.altarResults[token];
+  const pos = await scanPosition();
   if (navigator.onLine) {
-    api('GET', `/api/team/point/${encodeURIComponent(token)}?at=${at}`)
+    api('GET', `/api/team/point/${encodeURIComponent(token)}?at=${at}${posQuery(pos)}`)
       .then((r) => { rememberVisit(token, { label: r.label, sectorName: r.sectorName, sectorId: r.sectorId, expiresAt: r.expiresAt }); refresh(); })
       .catch((e) => {
-        if (e.offline) enqueue('visit', { qrToken: token, at }, 'riconoscimento Altare');
+        if (e.offline) enqueue('visit', { qrToken: token, at, pos }, 'riconoscimento Altare');
+        else if (e.status === 403 || e.status === 428) scanRejected(token, e.message);
         else { toast(e.message, 'error'); delete S.visits[token]; store.set('zdg_visits', S.visits); location.hash = '#/altari'; }
       });
-  } else enqueue('visit', { qrToken: token, at }, 'riconoscimento Altare');
+  } else enqueue('visit', { qrToken: token, at, pos }, 'riconoscimento Altare');
+}
+
+// Posizione al momento della lettura: solo se la regia ha fissato il raggio degli Altari.
+function scanPosition() {
+  if (!(S.state?.game.altarRadiusM > 0) || !navigator.geolocation || !window.isSecureContext) return Promise.resolve(null);
+  if (myPos && Date.now() - (myPos.at || 0) < 15000) return Promise.resolve(myPos);
+  return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+    (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
+    () => resolve(null), { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }));
+}
+const posQuery = (pos) => (pos ? `&lat=${pos.lat.toFixed(6)}&lng=${pos.lng.toFixed(6)}&acc=${Math.round(pos.acc || 0)}` : '');
+
+// Lettura rifiutata (troppo lontani o senza GPS): l'Altare non risulta inquadrato e si spiega perché.
+function scanRejected(token, message) {
+  delete S.visits[token];
+  store.set('zdg_visits', S.visits);
+  vibrate(300);
+  if (location.hash.startsWith('#/altare/')) location.hash = '#/altari';
+  dialog({ title: 'Lettura rifiutata', text: String(message || 'Lettura dell\'Altare non valida.').replace(/^Lettura rifiutata:\s*/, ''), okLabel: 'Ho capito', cancelLabel: null });
 }
 
 function rememberVisit(token, info) {

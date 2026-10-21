@@ -435,6 +435,26 @@ test("scansione dell'Altare: vale i minuti stabiliti, poi va ripetuta", () => {
   assert.equal(G.unlock(B, pA.qrToken, codeOf(g.id, A.sectorId)).ok, true);
 });
 
+test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regia", () => {
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id);
+  const pB = pointOf(g.id, B.sectorId);
+  const pA = pointOf(g.id, A.sectorId);
+  q.run('UPDATE points SET lat = 45.0, lng = 7.0 WHERE id = ?', pB.id);
+  // Raggio 0: nessun controllo, anche senza posizione.
+  assert.ok(G.visitPoint(A, pB.qrToken).visitedAt);
+  G.updateGame(g.id, { altarRadiusM: 30 }, 'test');
+  // Senza GPS: rifiutata con la motivazione.
+  assert.throws(() => G.visitPoint(A, pB.qrToken), /serve la posizione GPS/);
+  // A circa 111 m (0,001° di latitudine): rifiutata con la distanza.
+  assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.001, lng: 7.0, acc: 10 }), /circa 111 m.*entro 30 m/);
+  // A 40 m con GPS impreciso (±20 m): accettata (fino a 25 m di tolleranza).
+  assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.00036, lng: 7.0, acc: 20 }).visitedAt);
+  // Altare senza coordinate: nessun controllo.
+  q.run('UPDATE points SET lat = NULL, lng = NULL WHERE id = ?', pA.id);
+  assert.ok(G.visitPoint(B, pA.qrToken).visitedAt);
+});
+
 test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () => {
   const F = require('../src/field');
   const g = setupGame(3);

@@ -434,7 +434,8 @@ app.post('/api/team/gift/:id/use', needTeam, teamRateLimit, wrap((req) => F.useG
 // Skill: scelta prima del via (tutta la coppia), uso a partita in corso.
 app.post('/api/team/skill/:id/choose', needTeam, wrap((req) => S.chooseSkill(req.team, req.params.id, req.body.on !== false)));
 app.post('/api/team/skill/:id/use', needTeam, teamRateLimit, wrap((req) => S.useSkill(req.team, req.params.id, req.body || {})));
-app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at)));
+app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at,
+  req.query.lat != null ? { lat: req.query.lat, lng: req.query.lng, acc: req.query.acc } : null)));
 app.post('/api/team/unlock', needTeam, teamRateLimit, wrap((req) => G.unlock(req.team, req.body.qrToken, req.body.code)));
 app.post('/api/team/fragment', needTeam, teamRateLimit, wrap((req) => G.addManualFragment(req.team, req.body.text)));
 app.post('/api/team/note', needTeam, teamRateLimit, wrap((req) => G.addCodeNote(req.team, req.body.sectorId, req.body.code)));

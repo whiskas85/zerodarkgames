@@ -2851,6 +2851,13 @@ function gameForm(g, isNew) {
   f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
   f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
   f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
+  // Anti «furbetto del QR»: la lettura di un Altare piazzato vale solo entro questo raggio dal punto.
+  h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari piazzati'),
+    h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
+      [[0, 'Nessun controllo'], [15, '15 m'], [25, '25 m'], [30, '30 m'], [50, '50 m'], [75, '75 m'], [100, '100 m'], [150, '150 m'], [200, '200 m'], [300, '300 m']]
+        .concat(g?.altarRadiusM && ![0, 15, 25, 30, 50, 75, 100, 150, 200, 300].includes(g.altarRadiusM) ? [[g.altarRadiusM, `${g.altarRadiusM} m`]] : [])
+        .map(([v, l]) => h('option', { value: v, selected: Number(g?.altarRadiusM || 0) === v }, l))),
+    h('span', { class: 'tiny muted' }, 'Inquadrando il QR fuori da questo raggio la lettura viene rifiutata con la distanza. Si concede fino a 25 m di imprecisione del GPS. Gli Altari senza coordinate non si controllano.')),
   f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
   f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
   f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),

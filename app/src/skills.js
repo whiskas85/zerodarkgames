@@ -980,5 +980,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
-  editableCatalog, editCatalog, giftForGame,
+  editableCatalog, editCatalog, giftForGame, distM,
 };
