@@ -1278,6 +1278,10 @@ function viewHome() {
       h('ol', { class: 'final-list' }, st.standings.map((r) => h('li', { class: `${r.mine ? 'mine' : ''} ${r.status === 'won' ? 'won-row' : ''}` },
         h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`),
         h('span', { class: 'mono' }, r.status === 'won' ? 'Soglia' : `${r.fragments}/${total}`))))) : null,
+    // I Sigilli (codici) presi: il vostro, i rivelati, quelli conquistati; un tocco apre il taccuino.
+    st.notebook?.length ? h('a', { class: 'progress', href: '#/codici' },
+      h('div', { class: 'progress-head' }, h('span', { class: 'eyebrow' }, 'I Sigilli'), h('strong', { class: 'mono' }, `Codici: ${st.notebook.filter((n) => n.code).length} / ${st.notebook.length}`)),
+      h('div', { class: 'segments' }, st.notebook.map((n) => h('i', { class: n.code ? 'on' : '' })))) : null,
     h('a', { class: 'progress', href: '#/frammenti' },
       h('div', { class: 'progress-head' }, h('span', { class: 'eyebrow' }, 'La Parola'), h('strong', { class: 'mono' }, `Frammenti: ${owned} / ${total || '?'}`)),
       h('div', { class: 'segments' }, st.fragments.map((f) => h('i', { class: f.text ? 'on' : '' })))),
