@@ -2946,7 +2946,7 @@ function gameForm(g, isNew) {
     h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
       (() => { const cur = Number(g?.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30; const o = [15, 25, 30, 50, 75, 100, 150, 200, 300]; return (o.includes(cur) ? o : [...o, cur].sort((a, b) => a - b))
         .map((v) => h('option', { value: v, selected: v === cur }, `${v} m${v === 30 ? ' (consigliato)' : ''}`)); })()),
-    h('span', { class: 'tiny muted' }, 'Fuori da questo raggio la lettura viene rifiutata con la distanza. Si concede fino a 25 m di imprecisione del GPS. Gli Altari senza coordinate non si controllano.')),
+    h('span', { class: 'tiny muted' }, 'La lettura vale quando il cerchio dell\'Altare (questo raggio) e il cerchio di incertezza del GPS del telefono si toccano; altrimenti viene rifiutata con la distanza. Gli Altari senza coordinate non si controllano.')),
   f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
   f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
   f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),

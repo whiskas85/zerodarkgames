@@ -448,7 +448,10 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   assert.throws(() => G.visitPoint(A, pB.qrToken), /serve la posizione GPS/);
   // A circa 111 m (0,001° di latitudine): rifiutata con la distanza.
   assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.001, lng: 7.0, acc: 10 }), /circa 111 m.*entro 30 m/);
-  // A 40 m con GPS impreciso (±20 m): accettata (fino a 25 m di tolleranza).
+  // I due cerchi si toccano: Altare 30 m + GPS ±75 m = 105 m ≥ 100 m → accettata; con ±60 m (90 m) no.
+  assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.0009, lng: 7.0, acc: 60 }), /circa 100 m/);
+  assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.0009, lng: 7.0, acc: 75 }).visitedAt);
+  // A 40 m con GPS ±20 m: i cerchi si toccano, accettata.
   assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.00036, lng: 7.0, acc: 20 }).visitedAt);
   // Altare senza coordinate: nessun controllo.
   q.run('UPDATE points SET lat = NULL, lng = NULL WHERE id = ?', pA.id);
@@ -459,12 +462,13 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   assert.equal(G.getGame(g.id).altarRadiusM, 30);
   // In regia: il registro delle letture rifiutate, dalla più recente, con Altare, posizione e distanza.
   const rej = G.masterState(g.id).altarRejections;
-  assert.equal(rej.length, 2);
+  assert.equal(rej.length, 3);
   assert.equal(rej[0].reason, 'too_far');
   assert.equal(rej[0].altar, pB.label);
-  assert.equal(rej[0].distM, 111);
-  assert.deepEqual([rej[0].lat, rej[0].altarLat, rej[0].radiusM], [45.001, 45, 30]);
-  assert.equal(rej[1].reason, 'no_gps');
+  assert.equal(rej[0].distM, 100);
+  assert.equal(rej[1].distM, 111);
+  assert.deepEqual([rej[1].lat, rej[1].altarLat, rej[1].radiusM], [45.001, 45, 30]);
+  assert.equal(rej[2].reason, 'no_gps');
 });
 
 test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () => {

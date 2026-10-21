@@ -1385,8 +1385,8 @@ function recordScan(team, p, at, geoOk = false) {
 
 // Con il controllo acceso (altarCheckOn) la lettura di un Altare piazzato vale solo entro altarRadiusM metri (30 se non scelto).
 const altarRadius = (g) => (g.altarCheckOn ? (Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30) : 0);
-// L'imprecisione del GPS si concede fino a 25 m. Senza coordinate dell'Altare o con raggio 0 non si controlla.
-const GPS_SLACK_M = 25;
+// La lettura vale quando i due cerchi si toccano: quello dell'Altare (raggio) e quello dell'incertezza del GPS
+// del telefono (precisione dichiarata). Senza coordinate dell'Altare o con il controllo spento non si controlla.
 function rejectScan(g, team, p, { reason, lat = null, lng = null, acc = null, dist = null, radius }) {
   q.run('INSERT INTO altar_rejections (gameId, teamId, pointId, at, lat, lng, acc, distM, radiusM, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     g.id, team.id, p.id, Date.now(), lat, lng, acc, dist == null ? null : Math.round(dist), radius, reason);
@@ -1416,11 +1416,11 @@ function checkAltarDistance(g, team, p, pos) {
     throw err(428, `Lettura rifiutata: serve la posizione GPS per leggere «${p.label}». Attivate la localizzazione per l'app e riprovate davanti all'Altare.`);
   }
   const d = require('./skills').distM({ lat, lng }, { lat: p.lat, lng: p.lng });
-  const slack = Math.min(Math.max(Number(pos.acc) || 0, 0), GPS_SLACK_M);
-  if (d - slack > radius) {
+  const acc = Math.max(Number(pos.acc) || 0, 0);
+  if (d > radius + acc) {
     log(g.id, `coppia:${team.id}`, 'scan_too_far', { teamId: team.id, point: p.label, metri: Math.round(d), raggio: radius, gps: Math.round(Number(pos.acc) || 0) });
     rejectScan(g, team, p, { reason: 'too_far', lat, lng, acc: Number(pos.acc) || null, dist: d, radius });
-    throw err(403, `Lettura rifiutata: siete a circa ${Math.round(d)} m da «${p.label}»: la lettura vale entro ${radius} m. Avvicinatevi all'Altare e inquadrate di nuovo il QR.`);
+    throw err(403, `Lettura rifiutata: siete a circa ${Math.round(d)} m da «${p.label}» (GPS ±${Math.round(acc)} m): la lettura vale entro ${radius} m dall'Altare. Avvicinatevi e inquadrate di nuovo il QR.`);
   }
   return true;
 }
