@@ -6,8 +6,9 @@ const WEAPONS = [['main', 'chronoMain'], ['backup', 'chronoBackup'], ['secondary
 // Letture del cronografo in corso, persona per persona (solo in memoria): la persona le vede in tempo reale nell'app.
 const LIVE_TTL = 10 * 60000;
 const live = new Map();
+// data null = prova chiusa; con open la prova è aperta anche prima del primo tiro (l'arbitro ha scelto l'arma).
 function setLive(playerId, data) {
-  if (!data?.readings?.length) live.delete(Number(playerId));
+  if (!data || (!data.open && !data.readings?.length)) live.delete(Number(playerId));
   else live.set(Number(playerId), { ...data, at: Date.now() });
 }
 function liveOf(playerId) {
@@ -42,7 +43,8 @@ function eventStatus(p) {
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
   const weapons = Object.fromEntries(WEAPONS.map(([w, col]) => {
     const s = shots[w];
-    return [w, { ok: !!p[col], at: p[col] || null, manual: (!!p[col] && !s) || !!s?.manual, j: s?.j ?? null, v: s?.v ?? null, g: s?.g ?? null, n: s?.n ?? null, max: s?.max ?? null, failed: !!s && s.ok === false && !p[col] }];
+    return [w, { ok: !!p[col], at: p[col] || null, manual: (!!p[col] && !s) || !!s?.manual, j: s?.j ?? null, v: s?.v ?? null, g: s?.g ?? null, n: s?.n ?? null, max: s?.max ?? null, failed: !!s && s.ok === false && !p[col],
+      readings: s?.readings || null, testedAt: s?.at || null, by: s?.by || null }];
   }));
   return {
     enrolled: p.status,

@@ -143,11 +143,11 @@ function checkinData(gameId) {
 }
 
 // Letture del cronografo mentre si prova un'arma: la persona le vede in tempo reale nella sua app.
-function setChronoLive(gameId, playerId, weapon, readings) {
+function setChronoLive(gameId, playerId, weapon, readings, { open = true, grams = null } = {}) {
   const p = playerOf(gameId, playerId);
   const label = WEAPON_LABELS[weapon];
   const list = Array.isArray(readings) ? readings.slice(0, 20).map((r) => ({ j: Number(r.j), v: Number(r.v), g: Number(r.g) || null })).filter((r) => Number.isFinite(r.j)) : [];
-  ES.setLive(p.id, label ? { weapon, label, readings: list } : null);
+  ES.setLive(p.id, label && open ? { weapon, label, readings: list, open: true, g: Number(grams) || null } : null);
   rt.toTeams(gameId, 'state', {});
   return { ok: true };
 }

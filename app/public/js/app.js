@@ -462,7 +462,7 @@ function render() {
     const body = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewEventStatus, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome)();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
@@ -586,7 +586,8 @@ function openAvatarMenu(anchor) {
     h('div', { class: 'am-head' }, avatarFace(me, 'lg'), h('div', null, h('strong', null, me.name), acc ? h('div', { class: 'tiny muted' }, `@${acc.username}${acc.ops?.length ? ` · ${acc.ops[0].providerName}` : ''}`) : h('div', { class: 'tiny muted' }, 'Entrato con QR o codice'))),
     acc ? item('#/profilo', '👤', 'Profilo') : null,
     acc ? item('#/ice', '✚', 'ICE · In Case of Emergency') : null,
-    item('#/statoarmi', '⌁', 'Il mio test armi'),
+    item('#/accettazione', '✓', 'La mia accettazione'),
+    item('#/testarmi', '⌁', 'Il mio test armi'),
     // Modalità sole (chiara) o notte (scura): interruttore, cambia subito.
     h('div', { class: 'am-item am-theme', role: 'menuitemcheckbox', 'aria-checked': S.settings.sun ? 'true' : 'false' },
       h('span', { class: 'am-ico', 'aria-hidden': 'true' }, S.settings.sun ? '☀' : '☾'), h('span', { class: 'grow' }, S.settings.sun ? 'Modalità sole' : 'Modalità notte'),
@@ -1064,7 +1065,7 @@ function arrivalCards(st) {
         return h('li', { class: c.on ? 'ok' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, c.on ? '✓' : ''), h('span', { class: 'grow' }, c.label),
           c.on ? null : href ? h('a', { class: 'btn btn-sm btn-ghost', href }, label) : c.key === 'iceLetto' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: safetyModal }, label) : null);
       })),
-      h('p', { class: 'tiny muted' }, 'Questo riquadro sparisce quando il Consiglio vi accetta.')));
+      h('p', { class: 'tiny muted' }, 'Questo riquadro sparisce quando il Consiglio vi accetta. ', h('a', { href: '#/accettazione' }, 'Dettagli →'))));
   }
   if (!ev.chronoDoneAt) {
     const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
@@ -1082,9 +1083,85 @@ function arrivalCards(st) {
         return h('li', { class: w.ok ? 'ok' : w.failed ? 'bad' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('span', { class: 'grow' }, label),
           h('span', { class: 'tiny mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}${w.n > 1 ? ` · media di ${w.n}` : ''}`) : w.failed ? (w.j == null ? 'non passa' : `${nJ(w.j)} · non passa`) : 'da provare'));
       })),
-      h('p', { class: 'tiny muted' }, 'Al cronografo vedete qui le letture mentre sparate. Il riquadro sparisce quando il test armi è chiuso.')));
+      h('p', { class: 'tiny muted' }, 'Al cronografo vedete qui le letture mentre sparate. Il riquadro sparisce quando il test armi è chiuso. ', h('a', { href: '#/testarmi' }, 'Come lo vede l\'arbitro →'))));
   }
   return cards;
+}
+
+// Pulsanti azzurri del menu prima della gara: accettazione e test armi (in tempo reale).
+function prepTiles() {
+  const st = S.state;
+  const ev = st?.player?.event;
+  if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return [];
+  const live = ev.live?.open;
+  return [
+    h('a', { class: 'tile tile-azure', href: '#/accettazione' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, ev.checkinAt ? '✓' : '☐'), h('span', null, 'Accettazione'),
+      h('span', { class: 'tiny' }, ev.checkinAt ? `fatta alle ${fmtTime(ev.checkinAt)}` : 'da fare all\'arrivo')),
+    h('a', { class: `tile tile-azure ${live ? 'tile-live' : ''}`, href: '#/testarmi' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌁'), h('span', null, 'Test armi'),
+      h('span', { class: 'tiny' }, live ? '● in prova adesso' : ev.chronoDoneAt ? 'chiuso' : 'al cronografo')),
+  ];
+}
+
+// La mia accettazione, in tempo reale: cosa controlla il Consiglio all'arrivo e cosa risulta già a posto.
+function viewAcceptance() {
+  const st = S.state;
+  const ev = st?.player?.event;
+  if (!ev) return h('div', { class: 'stack' }, h('h2', null, 'Accettazione'), h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
+  const rows = [{ key: 'presente', label: 'Presentato al campo', on: !!ev.checkinAt, note: ev.checkinAt ? `accettato alle ${fmtTime(ev.checkinAt)}` : 'quando il Consiglio vi accetta' }, ...(ev.checks || [])];
+  return h('div', { class: 'stack' },
+    h('h2', null, 'La mia accettazione'),
+    h('div', { class: `card arrival-card ${ev.checkinAt ? 'done' : ''}` },
+      h('strong', null, ev.checkinAt ? '✓ Siete stati accettati' : 'All\'arrivo al campo il Consiglio controlla con voi:'),
+      h('ul', { class: 'arrival-list' }, rows.map((c) => {
+        const [href, label] = CHECK_FIX[c.key] || [];
+        return h('li', { class: c.on ? 'ok' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, c.on ? '✓' : ''),
+          h('span', { class: 'grow' }, c.label, c.note ? h('div', { class: 'tiny muted' }, c.note) : c.optional ? h('div', { class: 'tiny muted' }, 'facoltativo') : null),
+          c.on || c.key === 'presente' ? null : href ? h('a', { class: 'btn btn-sm btn-ghost', href }, label) : c.key === 'iceLetto' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: safetyModal }, label) : null);
+      })),
+      h('p', { class: 'tiny muted' }, 'Si aggiorna da solo: quando sistemate qualcosa o il Consiglio spunta una voce, lo vedete qui. Nessuna voce è obbligatoria: decide il Consiglio.')));
+}
+
+// Il mio test armi, in tempo reale: quello che vede l'arbitro al cronografo (pallino, letture, media, massimo, over).
+function viewTestArmi() {
+  const st = S.state;
+  const ev = st?.player?.event;
+  if (!ev) return h('div', { class: 'stack' }, h('h2', null, 'Test armi'), h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
+  const lv = ev.live?.open ? ev.live : null;
+  const r = lv?.readings || [];
+  const avgOf = (a) => (a.length ? a.reduce((x, y) => x + y.j, 0) / a.length : null);
+  const mj = avgOf(r);
+  const mv = r.length ? r.reduce((x, y) => x + (y.v || 0), 0) / r.length : null;
+  const max = r.length ? Math.max(...r.map((x) => x.j)) : null;
+  const last = r[r.length - 1];
+  const over = r.filter((x) => x.j >= 1).length;
+  const g = last?.g || lv?.g;
+  const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
+  const fmtV = (v) => (v ? `${v.toFixed(1).replace('.', ',')} m/s` : '');
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Il mio test armi'),
+    lv ? h('div', { class: `card live-panel ${!r.length ? 'wait' : mj >= 1 ? 'bad' : 'ok'}` },
+      h('div', { class: 'eyebrow live-dot' }, `● In prova adesso · ${lv.label}`),
+      h('div', { class: 'live-top' },
+        h('div', { class: 'live-big' }, h('span', { class: 'eyebrow' }, 'Pallino'), h('strong', { class: 'mono' }, g ? `${g.toFixed(2).replace('.', ',')} g` : '—')),
+        h('div', { class: `live-big ${last && last.j >= 1 ? 'over' : ''}` }, h('span', { class: 'eyebrow' }, 'Ultima lettura'), h('strong', { class: 'mono' }, last ? nJ(last.j) : '—'), last ? h('span', { class: 'tiny mono' }, fmtV(last.v)) : null)),
+      h('div', { class: 'live-stats' },
+        h('div', null, h('span', { class: 'eyebrow' }, r.length ? `Media di ${r.length}` : 'Media'), h('strong', { class: 'mono' }, mj != null ? nJ(mj) : '—')),
+        h('div', null, h('span', { class: 'eyebrow' }, 'Vel. media'), h('strong', { class: 'mono' }, mv ? fmtV(mv) : '—')),
+        h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, max != null ? nJ(max) : '—'))),
+      h('strong', { class: 'live-verdict' }, !r.length ? 'In attesa del primo tiro…' : mj < 1 ? '✓ Media minore di 1 joule' : '✗ Media da 1 joule in su: OVER'),
+      over ? h('strong', { class: 'bad-text' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${nJ(max)})`) : null,
+      r.length ? h('div', { class: 'live-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null,
+      h('p', { class: 'tiny muted' }, 'Al terzo tiro il test di quest\'arma si chiude da solo con il risultato.'))
+      : h('p', { class: 'muted small' }, ev.chronoDoneAt ? `Test armi chiuso alle ${fmtTime(ev.chronoDoneAt)}.` : 'Nessuna arma in prova adesso: quando l\'arbitro la mette al cronografo, qui vedete le letture in tempo reale.'),
+    W.map(([k, label]) => {
+      const w = ev.weapons?.[k] || {};
+      const reads = w.readings || [];
+      return h('div', { class: `card weapon-card ${w.ok ? 'ok' : w.failed ? 'bad' : ''}` },
+        h('div', { class: 'weapon-head' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('strong', { class: 'grow' }, label),
+          h('span', { class: 'small mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}`) : w.failed ? (w.j == null ? 'non passa (a mano)' : `${nJ(w.j)} · non passa`) : 'da provare')),
+        w.j != null ? h('div', { class: 'tiny muted' }, [w.n > 1 ? `media di ${w.n} tiri` : null, w.v ? fmtV(w.v) : null, w.g ? `pallino ${w.g.toFixed(2).replace('.', ',')} g` : null, w.max != null ? `max ${nJ(w.max)}` : null, w.testedAt ? `alle ${fmtTime(w.testedAt)}` : null].filter(Boolean).join(' · ')) : null,
+        reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null);
+    }));
 }
 
 function viewLobbyHome(st) {
@@ -1112,6 +1189,7 @@ function viewLobbyHome(st) {
     latestNotice(st),
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, '?'), 'Il vostro Sigillo'),
     h('nav', { class: 'grid' },
+      ...prepTiles(),
       h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app')),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
@@ -1151,6 +1229,7 @@ function viewElectHome(st) {
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
     h('nav', { class: 'grid' },
+      ...prepTiles(),
       h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
       tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
       tile('#/mappa', 'Mappa del campo', '⛰'),
@@ -1216,6 +1295,7 @@ function viewHome() {
     lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     h('nav', { class: 'grid' },
+      ...prepTiles(),
       h('button', { class: 'tile tile-scan', type: 'button', onclick: openScanner }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
       tile('#/mappa', 'Mappa', '⛰', (st.map?.gifts.length || null), st.map?.gifts.length),
       tile('#/altari', 'Altari visitati', '⛬', allVisited().length || null),

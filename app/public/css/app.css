@@ -788,3 +788,26 @@ button.banner-safety strong { letter-spacing: .08em; }
 .theme-switch .theme-knob { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .theme-switch.on { background: var(--brass); }
 .theme-switch.on .theme-knob { transform: translateX(20px); }
+
+/* Menu prima della gara: accettazione e test armi in azzurro */
+.tile-azure { border-color: #3aa0e8; background: linear-gradient(135deg, rgba(58, 160, 232, .2), transparent); }
+.tile-azure .tile-ico { color: #4fb3ff; }
+.tile-live { box-shadow: 0 0 0 2px #e5484d inset; }
+.tile-live .tiny { color: #ff6b6b; font-weight: 700; }
+/* Il mio test armi: pannello come quello dell'arbitro */
+.live-panel { display: grid; gap: 10px; border-width: 2px; }
+.live-panel.ok { border-color: #46c46a; } .live-panel.bad { border-color: #e5484d; } .live-panel.wait { border-style: dashed; }
+.live-dot { color: #e5484d; }
+.live-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.live-big { display: grid; justify-items: center; gap: 2px; padding: 10px; border: 2px solid var(--line); border-radius: 8px; text-align: center; }
+.live-big strong { font-size: 28px; }
+.live-big.over { border-color: #e5484d; color: #e5484d; }
+.live-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.live-stats > div { display: grid; gap: 2px; }
+.live-verdict { font-size: 17px; }
+.weapon-card { display: grid; gap: 6px; }
+.weapon-card.ok { border-color: #46c46a; } .weapon-card.bad { border-color: #e5484d; }
+.weapon-head { display: flex; align-items: center; gap: 10px; }
+.weapon-head .grow { flex: 1; }
+.weapon-head .ab { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--muted); border-radius: 4px; font-weight: 800; color: #fff; }
+.weapon-card.ok .ab { background: #46c46a; border-color: #46c46a; } .weapon-card.bad .ab { background: #e5484d; border-color: #e5484d; }

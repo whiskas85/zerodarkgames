@@ -162,6 +162,7 @@ function setBb(grams, from) {
     LS.set('zdg_bt_bb', g2(grams));
     BT.bbSrc = from;
   }
+  if (BT.session && BT.session.liveG !== bbGrams()) { BT.session.liveG = bbGrams(); liveSend(BT.session); }
   btRefresh();
 }
 function setBbManual(grams) {
@@ -172,12 +173,14 @@ function setBbManual(grams) {
   LS.set('zdg_bt_bb_manual', '1');
   LS.set('zdg_bt_bb_manual_base', BT.chronoG ? g2(BT.chronoG) : null);
   BT.bbSrc = 'scritto a mano';
+  if (BT.session) liveSend(BT.session);
 }
 function bbUseChrono() {
   LS.set('zdg_bt_bb_manual', null);
   LS.set('zdg_bt_bb_manual_base', null);
   if (BT.chronoG) LS.set('zdg_bt_bb', g2(BT.chronoG));
   BT.bbSrc = BT.chronoSrc || 'dal cronografo';
+  if (BT.session) liveSend(BT.session);
 }
 const bbGrams = () => { const v = parseFloat(String(localStorage.getItem('zdg_bt_bb') || '0.20').replace(',', '.')); return v > 0 && v < 2 ? v : 0.2; };
 // Il browser lascia leggere solo i servizi dichiarati qui: quelli standard, le «seriali BLE» dei moduli più diffusi
@@ -223,10 +226,11 @@ function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textCon
 // alle sue letture; la media decide se l'arma passa (sotto 1 J). Al terzo tiro il test di quell'arma si chiude da solo.
 const AUTO_SHOTS = 3;
 // Letture in corso alla persona provata: le vede in tempo reale nella sua app (senza ricaricare la pagina qui).
-function liveSend(ss, readings = ss.readings) {
+// open false = prova chiusa (sparisce dall'app della persona).
+function liveSend(ss, readings = ss.readings, open = true) {
   const base = BT.ctx?.base;
-  if (!base || !ss) return;
-  api('POST', `${base}/chrono/${ss.playerId}/live`, { weapon: ss.weapon, readings: readings.map((x) => ({ j: x.j, v: x.v, g: x.g })) }).catch(() => {});
+  if (!base || !ss || ss.view) return;
+  api('POST', `${base}/chrono/${ss.playerId}/live`, { weapon: ss.weapon, open, grams: bbGrams(), readings: readings.map((x) => ({ j: x.j, v: x.v, g: x.g })) }).catch(() => {});
 }
 function btShot(mps) {
   const g = bbGrams();
@@ -531,7 +535,7 @@ function chronoSession(ctx) {
   const max = r.length ? Math.max(...r.map((x) => x.j)) : 0;
   const ok = r.length && mj < 1;
   const over = r.filter((x) => x.j >= 1).length;
-  const close = () => { if (!ss.view && r.length) liveSend(ss, []); BT.session = null; ctx.render(); };
+  const close = () => { liveSend(ss, [], false); BT.session = null; ctx.render(); };
   if (ss.view) {
     return h('div', { class: 'panel chrono-session' },
       h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Persona chiusa · solo lettura'), h('strong', null, ss.label)),
@@ -604,7 +608,7 @@ export function viewChrono(ctx) {
   const shown = groups.filter((g) => !chronoGroup || g.key === chronoGroup)
     .flatMap((g) => g.people.map((p) => ({ p, g })))
     .filter(({ p }) => showClosed || !p.chronoDoneAt);
-  const open = (p, weapon, label) => { BT.result = null; BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [], view: !!p.chronoDoneAt }; ctx.render(); };
+  const open = (p, weapon, label) => { BT.result = null; const prev = BT.session; if (prev && !prev.view && (prev.playerId !== p.id || prev.weapon !== weapon)) liveSend(prev, [], false); BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [], view: !!p.chronoDoneAt }; liveSend(BT.session); ctx.render(); };
   const closeP = async (p) => {
     if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
     if (!p.chronoMain && !(await dialog({ title: 'Chiudere senza arma principale?', text: `${personLabel(p)} non ha l'arma principale provata.`, okLabel: 'Chiudi comunque' }))) return;
