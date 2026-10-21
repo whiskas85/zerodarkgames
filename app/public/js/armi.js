@@ -46,6 +46,7 @@ async function load() {
 const ctx = () => ({
   data: A.data,
   render,
+  base: `/api/v/games/${A.gameId}`,
   call: async (method, path, body, okMsg) => {
     try {
       const r = await api(method, `/api/v/games/${A.gameId}${path}`, body);

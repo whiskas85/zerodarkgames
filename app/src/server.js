@@ -587,7 +587,10 @@ m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.acti
 
 m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.body || {}, { actor: actor(req) }) })));
 // Accettazione a inizio evento e test armi.
-m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
+// on assente con la sola checklist: si salvano le spunte senza cambiare l'accettazione.
+const ckOn = (b) => (b?.on === undefined ? (b?.checks ? null : true) : b.on !== false);
+m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, ckOn(req.body), actor(req), req.body?.checks || null)));
+m.post('/games/:id/chrono/:pid/live', wrap((req) => CK.setChronoLive(gameId(req), req.params.pid, req.body?.weapon, req.body?.readings)));
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
@@ -798,7 +801,8 @@ v.get('/teams/:tid', needPerm('soglia'), wrap((req) => G.validatorView(Number(re
 // Accettazione e test armi anche per lo staff (validatori), dalla pagina Soglia.
 const sActor = (req) => req.user?.username || 'staff';
 v.get('/games/:id/checkin', needPerm('accettazione', 'armi'), wrap((req) => CK.checkinData(Number(req.params.id))));
-v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, ckOn(req.body), sActor(req), req.body?.checks || null)));
+v.post('/games/:id/chrono/:pid/live', needPerm('armi'), wrap((req) => CK.setChronoLive(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.readings)));
 v.post('/games/:id/checkin/team/:tid', needPerm('accettazione'), wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/place/:pid', needPerm('accettazione'), wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
 v.post('/games/:id/chrono/:pid/done', needPerm('armi'), wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));

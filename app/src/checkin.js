@@ -5,6 +5,7 @@ const { q, tx } = require('./db');
 const rt = require('./realtime');
 const G = require('./game');
 const { HttpError } = require('./util');
+const ES = require('./eventstatus');
 
 const err = (status, msg) => new HttpError(status, msg);
 const WEAPONS = { main: 'chronoMain', backup: 'chronoBackup', secondary: 'chronoSecondary' };
@@ -16,10 +17,16 @@ function playerOf(gameId, playerId) {
   return p;
 }
 
-function setPlayerCheckin(gameId, playerId, on, actor) {
+// checks: { notifiche, traccar, iceLetto, iceCompilato, app } spuntati dal Consiglio (nessuno obbligatorio).
+function setPlayerCheckin(gameId, playerId, on, actor, checks = null) {
   const p = playerOf(gameId, playerId);
   if (on && p.status !== 'accepted') throw err(409, 'Prima approva l\'iscrizione');
-  q.run('UPDATE players SET checkinAt = ?, checkinBy = ? WHERE id = ?', on ? Date.now() : null, on ? actor : null, p.id);
+  if (checks && typeof checks === 'object') {
+    const keys = ES.CHECKS.map(([k]) => k);
+    q.run('UPDATE players SET checkinChecks = ? WHERE id = ?', JSON.stringify(Object.fromEntries(keys.filter((k) => checks[k] != null).map((k) => [k, !!checks[k]]))), p.id);
+  }
+  if (on === null) { G.notifyState(gameId); return { ok: true }; }
+  q.run('UPDATE players SET checkinAt = ?, checkinBy = ? WHERE id = ?', on ? (p.checkinAt || Date.now()) : null, on ? (p.checkinBy || actor) : null, p.id);
   // Chi non è più presente non è più confermato nemmeno come coppia.
   if (!on && p.teamId) q.run('UPDATE teams SET checkinAt = NULL, checkinBy = NULL WHERE id = ?', p.teamId);
   G.log(gameId, actor, on ? 'checkin_player' : 'checkin_player_undo', { name: p.name });
@@ -56,6 +63,7 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail 
   const passed = shot ? !fail : manualFail ? false : on;
   // Più letture: si salva la media (che decide se passa), il massimo e le singole letture.
   const readings = Array.isArray(shot?.readings) ? shot.readings.slice(0, 50).map((r) => ({ j: Math.round(Number(r.j) * 1000) / 1000, v: Math.round(Number(r.v) * 100) / 100, ...(Number(r.g) > 0 ? { g: Math.round(Number(r.g) * 1000) / 1000 } : {}) })).filter((r) => Number.isFinite(r.j)) : null;
+  ES.setLive(p.id, null);
   if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, max: readings?.length ? Math.max(...readings.map((r) => r.j)) : null, n: readings?.length || 1, readings, at: Date.now(), by: actor, ok: !fail };
   else if (manualFail) shots[weapon] = { manual: true, ok: false, j: null, at: Date.now(), by: actor };
   else delete shots[weapon];
@@ -124,12 +132,24 @@ function checkinData(gameId) {
   return {
     game: { id: g.id, name: g.name, status: g.status, scheduledStart: g.scheduledStart || null },
     clock: G.clockOf(g),
-    players: q.all(`SELECT p.id, p.name, p.nickname, p.status, p.teamId, p.squadId, p.softairTeam, p.checkinAt, p.chronoMain, p.chronoBackup, p.chronoSecondary, p.chronoShots, p.chronoDoneAt, a.username
-                    FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id),
+    players: q.all(`SELECT p.*, a.username FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id)
+      .map((p) => ({ id: p.id, name: p.name, nickname: p.nickname, status: p.status, teamId: p.teamId, squadId: p.squadId, softairTeam: p.softairTeam, checkinAt: p.checkinAt,
+        checkinBy: p.checkinBy, chronoMain: p.chronoMain, chronoBackup: p.chronoBackup, chronoSecondary: p.chronoSecondary, chronoShots: p.chronoShots, chronoDoneAt: p.chronoDoneAt,
+        username: p.username, checks: p.status === 'accepted' ? ES.checksOf(p) : [] })),
     teams: G.teamsOf(g.id).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName, color: t.sectorColor, status: t.status, checkinAt: t.checkinAt || null })),
     elect: elect ? { id: elect.id } : null,
     squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id),
   };
 }
 
-module.exports = { setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };
+// Letture del cronografo mentre si prova un'arma: la persona le vede in tempo reale nella sua app.
+function setChronoLive(gameId, playerId, weapon, readings) {
+  const p = playerOf(gameId, playerId);
+  const label = WEAPON_LABELS[weapon];
+  const list = Array.isArray(readings) ? readings.slice(0, 20).map((r) => ({ j: Number(r.j), v: Number(r.v), g: Number(r.g) || null })).filter((r) => Number.isFinite(r.j)) : [];
+  ES.setLive(p.id, label ? { weapon, label, readings: list } : null);
+  rt.toTeams(gameId, 'state', {});
+  return { ok: true };
+}
+
+module.exports = { setChronoLive, setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };

@@ -3,6 +3,39 @@
 // (per ogni arma: passata, joule, velocità e peso del pallino usato). Solo lettura, nessuna dipendenza.
 const WEAPONS = [['main', 'chronoMain'], ['backup', 'chronoBackup'], ['secondary', 'chronoSecondary']];
 
+// Letture del cronografo in corso, persona per persona (solo in memoria): la persona le vede in tempo reale nell'app.
+const LIVE_TTL = 10 * 60000;
+const live = new Map();
+function setLive(playerId, data) {
+  if (!data?.readings?.length) live.delete(Number(playerId));
+  else live.set(Number(playerId), { ...data, at: Date.now() });
+}
+function liveOf(playerId) {
+  const x = live.get(Number(playerId));
+  if (x && Date.now() - x.at > LIVE_TTL) { live.delete(Number(playerId)); return null; }
+  return x || null;
+}
+
+// Cosa si controlla all'accettazione: lo stato rilevato dall'app (notifiche, Traccar provato, avviso ICE letto,
+// ICE compilato, app installata) e la spunta del Consiglio, se l'ha cambiata a mano.
+const CHECKS = [['notifiche', 'Notifiche attive'], ['traccar', 'Traccar provato'], ['iceLetto', 'Avviso di sicurezza (ICE) letto'], ['iceCompilato', 'ICE compilato (facoltativo)'], ['app', 'App installata']];
+function autoChecks(p) {
+  const { q } = require('./db');
+  const own = q.get('SELECT COUNT(*) AS n FROM push_subs WHERE playerId = ?', p.id).n;
+  const shared = p.teamId ? q.get('SELECT COUNT(*) AS n FROM push_subs WHERE teamId = ? AND playerId IS NULL', p.teamId).n : 0;
+  const a = p.accountId ? q.get('SELECT iceBlood, iceConditions, iceContactName, iceContactPhone FROM accounts WHERE id = ?', p.accountId) : null;
+  return {
+    notifiche: own + shared > 0, traccar: !!p.trackVerifiedAt, iceLetto: !!p.safetyAckAt,
+    iceCompilato: !!(a && (a.iceBlood || a.iceConditions || a.iceContactName || a.iceContactPhone)), app: !!p.appInstalled,
+  };
+}
+function checksOf(p) {
+  let saved = {};
+  try { saved = JSON.parse(p.checkinChecks || '{}') || {}; } catch { saved = {}; }
+  const auto = autoChecks(p);
+  return CHECKS.map(([key, label]) => ({ key, label, auto: auto[key], on: saved[key] ?? auto[key], manual: saved[key] != null, optional: key === 'iceCompilato' }));
+}
+
 function eventStatus(p) {
   if (!p) return null;
   let shots = {};
@@ -17,7 +50,9 @@ function eventStatus(p) {
     chronoDoneAt: p.chronoDoneAt || null,
     chronoStarted: WEAPONS.some(([w, col]) => p[col] || shots[w]),
     weapons,
+    checks: checksOf(p),
+    live: liveOf(p.id),
   };
 }
 
-module.exports = { eventStatus };
+module.exports = { eventStatus, checksOf, setLive, liveOf, CHECKS };

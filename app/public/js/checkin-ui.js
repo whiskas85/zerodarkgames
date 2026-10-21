@@ -1,6 +1,6 @@
 // Accettazione a inizio evento e Test armi: condivisi tra la regia e lo staff (pagina Soglia).
 // ctx = { data: { players, teams, elect, squads }, call(method, path, body, okMsg), render() }.
-import { h, fmtTime, dialog, toast } from './lib.js';
+import { h, fmtTime, dialog, toast, modal, api } from './lib.js';
 
 const section = (title, ...children) => h('div', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', null, title)), ...children);
 
@@ -30,7 +30,7 @@ export function viewCheckin(ctx) {
   const present = accepted.filter((p) => p.checkinAt).length;
   const teamsOk = ms.teams.filter((t) => t.checkinAt).length;
   const pending = ms.players.filter((p) => p.status === 'pending').length;
-  const toggle = (p) => ctx.call('POST', (`/checkin/player/${p.id}`), { on: !p.checkinAt }, p.checkinAt ? null : `${p.nickname || p.name}: presente`);
+  const toggle = (p) => personModal(ctx, p);
   const teamToggle = async (t) => {
     if (t.checkinAt && !(await dialog({ title: 'Annullare la conferma?', text: `${t.roman} · Settore ${t.sectorName}: la coppia torna da confermare.`, okLabel: 'Annulla conferma' }))) return;
     ctx.call('POST', (`/checkin/team/${t.id}`), { on: !t.checkinAt }, t.checkinAt ? 'Conferma annullata' : 'Coppia confermata');
@@ -50,7 +50,7 @@ export function viewCheckin(ctx) {
         g.people.map((p) => h('div', { class: 'ck-row' }, h('span', { class: 'ck-grip', title: 'Trascina per spostare', 'aria-label': `Sposta ${p.name}`, onpointerdown: (e) => ckDrag(ctx, e, p) }, '⠿'), h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
           h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p.checkinAt ? '✓' : ''),
           h('span', { class: 'grow' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · '))),
-          h('span', { class: 'tiny' }, p.checkinAt ? `presente ${fmtTime(p.checkinAt)}` : 'presente?')))),
+          h('span', { class: 'ck-side tiny' }, p.checkinAt ? `accettato ${fmtTime(p.checkinAt)}` : 'da accettare', checkSummary(p))))),
         g.team ? h('button', { class: `btn btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: !g.team.checkinAt && !allIn, onclick: () => teamToggle(g.team) },
           g.team.checkinAt ? `✓ Coppia confermata · ${fmtTime(g.team.checkinAt)}` : allIn ? 'Conferma la coppia' : 'Conferma la coppia (manca qualcuno)') : null);
     }),
@@ -59,6 +59,37 @@ export function viewCheckin(ctx) {
       const name = await dialog({ title: 'Nuova squadra di Eletti', input: { placeholder: 'Nome della squadra' }, okLabel: 'Crea' });
       if (name && name.trim()) ctx.call('POST', ('/squads'), { name: name.trim() }, 'Squadra creata');
     } }, h('strong', null, '＋ Nuova squadra di Eletti'), h('span', { class: 'tiny muted' }, 'Tocca per crearla vuota, o trascina qui una persona'))));
+}
+
+// Quante voci della checklist sono a posto (rilevate dall'app o spuntate dal Consiglio).
+function checkSummary(p) {
+  const list = (p.checks || []).filter((c) => !c.optional);
+  if (!list.length) return null;
+  const ok = list.filter((c) => c.on).length;
+  return h('span', { class: `ck-sum ${ok === list.length ? 'ok' : ''}` }, `☑ ${ok}/${list.length}`);
+}
+
+// Finestra della persona: checklist (notifiche, Traccar, avviso ICE letto, ICE compilato, app installata).
+// Le voci rilevate dall'app arrivano già spuntate; nessuna è obbligatoria: decide chi accetta.
+function personModal(ctx, p) {
+  const boxes = (p.checks || []).map((c) => ({ ...c, el: h('input', { type: 'checkbox', checked: !!c.on }) }));
+  // Si salvano solo le voci diverse da quanto rileva l'app: le altre seguono l'app (es. Traccar provato più tardi).
+  const checks = () => Object.fromEntries(boxes.map((b) => [b.key, b.el.checked === !!b.auto ? null : b.el.checked]));
+  const name = p.nickname || p.name;
+  const body = h('div', { class: 'stack-sm ck-modal' },
+    h('div', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · ')),
+    p.checkinAt ? h('p', { class: 'small ok-text' }, `✓ Accettato alle ${fmtTime(p.checkinAt)}${p.checkinBy ? ` · ${p.checkinBy}` : ''}`) : null,
+    h('div', { class: 'eyebrow' }, 'Checklist · nessuna voce è obbligatoria'),
+    boxes.length ? h('div', { class: 'ck-checks' }, boxes.map((b) => h('label', { class: 'ck-check' }, b.el,
+      h('span', { class: 'grow' }, b.label),
+      h('span', { class: `tiny ${b.auto ? 'ok-text' : 'muted'}` }, b.auto ? '✓ dall\'app' : 'non rilevato')))) : h('p', { class: 'tiny muted' }, 'Nessun dato dall\'app.'),
+    p.checkinAt ? h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: async (e) => {
+      e.target.closest('dialog')?.close();
+      e.target.closest('dialog')?.remove();
+      await ctx.call('POST', `/checkin/player/${p.id}`, { on: false, checks: checks() }, `${name}: accettazione tolta`);
+    } }, 'Togli l\'accettazione') : null);
+  return modal({ title: personLabel(p), body, okLabel: p.checkinAt ? 'Salva' : '✓ Accetta',
+    onOk: () => ctx.call('POST', `/checkin/player/${p.id}`, { on: true, checks: checks() }, p.checkinAt ? 'Checklist salvata' : `${name}: accettato`) });
 }
 
 // Trascina e rilascia (mouse e dita): dalla maniglia ⠿ fino a un gruppo; al rilascio la persona viene spostata.
@@ -191,6 +222,12 @@ function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textCon
 // Un tiro: velocità → joule con il peso del pallino scelto. Con una sessione aperta (persona + arma) si aggiunge
 // alle sue letture; la media decide se l'arma passa (sotto 1 J). Al terzo tiro il test di quell'arma si chiude da solo.
 const AUTO_SHOTS = 3;
+// Letture in corso alla persona provata: le vede in tempo reale nella sua app (senza ricaricare la pagina qui).
+function liveSend(ss, readings = ss.readings) {
+  const base = BT.ctx?.base;
+  if (!base || !ss) return;
+  api('POST', `${base}/chrono/${ss.playerId}/live`, { weapon: ss.weapon, readings: readings.map((x) => ({ j: x.j, v: x.v, g: x.g })) }).catch(() => {});
+}
 function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
@@ -199,7 +236,7 @@ function btShot(mps) {
   const target = BT.session?.view || BT.session?.locked ? null : BT.session;
   btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
   BT.last = { j, v: mps, g, ok, at: Date.now() };
-  if (target && !target.saving) target.readings.push({ j, v: mps, g });
+  if (target && !target.saving) { target.readings.push({ j, v: mps, g }); liveSend(target); }
   if (target && !target.saving && target.readings.length >= AUTO_SHOTS && BT.ctx) { saveSession(BT.ctx); return; }
   if (BT.ctx) BT.ctx.render();
 }
@@ -494,7 +531,7 @@ function chronoSession(ctx) {
   const max = r.length ? Math.max(...r.map((x) => x.j)) : 0;
   const ok = r.length && mj < 1;
   const over = r.filter((x) => x.j >= 1).length;
-  const close = () => { BT.session = null; ctx.render(); };
+  const close = () => { if (!ss.view && r.length) liveSend(ss, []); BT.session = null; ctx.render(); };
   if (ss.view) {
     return h('div', { class: 'panel chrono-session' },
       h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Persona chiusa · solo lettura'), h('strong', null, ss.label)),
@@ -546,13 +583,13 @@ function chronoSession(ctx) {
       h('strong', { class: 'cs-verdict' }, !r.length ? 'In attesa del primo tiro' : ok ? '✓ Media minore di 1 joule: positivo' : '✗ Media da 1 joule in su: negativo'),
       over ? h('strong', { class: 'cs-over' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${fmtJ(max)})`) : null),
     r.length ? h('div', { class: 'cs-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)} · ${fmtV(x.v)}`,
-      h('button', { type: 'button', class: 'cs-del', title: 'Togli questa lettura', onclick: () => { r.splice(i, 1); ctx.render(); } }, '✕')))) : null,
+      h('button', { type: 'button', class: 'cs-del', title: 'Togli questa lettura', onclick: () => { r.splice(i, 1); liveSend(ss); ctx.render(); } }, '✕')))) : null,
     h('p', { class: 'small muted' }, ss.saving ? 'Salvataggio…' : btLive() ? `Spara ${AUTO_SHOTS} tiri: al ${AUTO_SHOTS === 3 ? 'terzo' : `${AUTO_SHOTS}°`} il test si chiude da solo col risultato (tiro ${Math.min(r.length + 1, AUTO_SHOTS)} di ${AUTO_SHOTS}).` : 'Cronografo non collegato: collegalo in alto, oppure segna l\'esito a mano.'),
     h('div', { class: 'row-actions' },
       r.length ? h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: ss.saving, onclick: save }, ok ? 'Salva ora (positivo)' : 'Salva ora (negativo)') : null,
       h('button', { class: 'btn', type: 'button', onclick: () => manual(true) }, '✓ Passa a mano'),
       h('button', { class: 'btn btn-danger', type: 'button', onclick: () => manual(false) }, '✗ Non passa a mano'),
-      r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; ctx.render(); } }, 'Ricomincia i tiri') : null,
+      r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; liveSend(ss, []); ctx.render(); } }, 'Ricomincia i tiri') : null,
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
 }
 

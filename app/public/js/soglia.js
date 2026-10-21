@@ -79,6 +79,7 @@ function ckCtx() {
   return {
     data: V.ck,
     render,
+    base: `/api/v/games/${V.gameId}`,
     call: async (method, path, body, okMsg) => {
       try {
         const r = await api(method, `/api/v/games/${V.gameId}${path}`, body);

@@ -2317,7 +2317,7 @@ function viewCatalog() {
 
 // ---------------------------------------------------------------- ACCETTAZIONE E TEST ARMI (modulo condiviso con lo staff, in Soglia)
 
-const ckCtx = () => ({ data: R.ms, call: (method, path, body, msg) => call(method, G(path), body, msg), render });
+const ckCtx = () => ({ data: R.ms, base: `/api/m/games/${R.gameId}`, call: (method, path, body, msg) => call(method, G(path), body, msg), render });
 const viewCheckin = () => CKUI.viewCheckin(ckCtx());
 const viewChrono = () => CKUI.viewChrono(ckCtx());
 

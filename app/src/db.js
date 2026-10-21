@@ -338,6 +338,8 @@ addColumn('users', 'perms', 'TEXT');
 addColumn('users', 'lastGameId', 'INTEGER');
 // Scansione dell'Altare fatta con il controllo di posizione superato (1); quelle senza controllo non valgono quando lo si accende.
 addColumn('team_visits', 'geoOk', 'INTEGER NOT NULL DEFAULT 0');
+// Checklist dell'accettazione spuntata dal Consiglio (le voci non cambiate seguono lo stato rilevato dall'app).
+addColumn('players', 'checkinChecks', 'TEXT');
 addColumn('account_identities', 'picture', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
   accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL

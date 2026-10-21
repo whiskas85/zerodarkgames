@@ -587,7 +587,22 @@ function openAvatarMenu(anchor) {
     acc ? item('#/profilo', '👤', 'Profilo') : null,
     acc ? item('#/ice', '✚', 'ICE · In Case of Emergency') : null,
     item('#/statoarmi', '⌁', 'Il mio test armi'),
+    // Modalità sole (chiara) o notte (scura): interruttore, cambia subito.
+    h('div', { class: 'am-item am-theme', role: 'menuitemcheckbox', 'aria-checked': S.settings.sun ? 'true' : 'false' },
+      h('span', { class: 'am-ico', 'aria-hidden': 'true' }, S.settings.sun ? '☀' : '☾'), h('span', { class: 'grow' }, S.settings.sun ? 'Modalità sole' : 'Modalità notte'),
+      h('button', { type: 'button', class: `theme-switch ${S.settings.sun ? 'on' : ''}`, role: 'switch', 'aria-checked': S.settings.sun ? 'true' : 'false', 'aria-label': 'Modalità sole',
+        onclick: (e) => {
+          e.stopPropagation();
+          S.settings.sun = !S.settings.sun; store.set('zdg_settings', S.settings); applyTheme();
+          const row = e.currentTarget.closest('.am-theme');
+          e.currentTarget.classList.toggle('on', S.settings.sun);
+          e.currentTarget.setAttribute('aria-checked', S.settings.sun ? 'true' : 'false');
+          row.querySelector('.am-ico').textContent = S.settings.sun ? '☀' : '☾';
+          row.querySelector('.grow').textContent = S.settings.sun ? 'Modalità sole' : 'Modalità notte';
+          render();
+        } }, h('span', { class: 'theme-knob', 'aria-hidden': 'true' }))),
     item('#/impostazioni', '⚙', 'Impostazioni'),
+
     item('#/regolamento', '§', 'Regolamento'),
     S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
     acc?.staff === 'master' ? item('/regia', '◉', 'Regia') : null,
@@ -597,7 +612,7 @@ function openAvatarMenu(anchor) {
   menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
   menu.style.maxHeight = `${Math.max(160, Math.round(window.innerHeight - r.bottom - 14))}px`;
   // Il tocco sull'avatar lo gestisce il suo pulsante (apre/chiude); un tocco fuori chiude.
-  const close = (ev) => { if (ev && ((menu.contains(ev.target) && !ev.target.closest('a, button')) || ev.target.closest?.('.avatar-btn'))) return; menu.remove(); document.removeEventListener('click', close, true); window.removeEventListener('hashchange', close); };
+  const close = (ev) => { if (ev && ((menu.contains(ev.target) && (!ev.target.closest('a, button') || ev.target.closest('.theme-switch'))) || ev.target.closest?.('.avatar-btn'))) return; menu.remove(); document.removeEventListener('click', close, true); window.removeEventListener('hashchange', close); };
   setTimeout(() => { document.addEventListener('click', close, true); window.addEventListener('hashchange', close); }, 0);
   document.body.append(menu);
 }
@@ -1032,6 +1047,46 @@ function startCountdown(st) {
       st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
 }
 
+// Prima della gara, in testa alla home: 1) l'accettazione all'arrivo (cosa controlla il Consiglio), sparisce quando si è
+// accettati; 2) il test armi, con le letture del cronografo in tempo reale, sparisce quando il test è chiuso.
+const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/impostazioni', 'Come installarla'] };
+const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
+function arrivalCards(st) {
+  const ev = st?.player?.event;
+  if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return null;
+  const cards = [];
+  if (!ev.checkinAt) {
+    cards.push(h('div', { class: 'card arrival-card' },
+      h('div', { class: 'eyebrow' }, '1 · Accettazione all\'arrivo'),
+      h('strong', null, 'Al campo il Consiglio controlla con voi:'),
+      h('ul', { class: 'arrival-list' }, (ev.checks || []).map((c) => {
+        const [href, label] = CHECK_FIX[c.key] || [];
+        return h('li', { class: c.on ? 'ok' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, c.on ? '✓' : ''), h('span', { class: 'grow' }, c.label),
+          c.on ? null : href ? h('a', { class: 'btn btn-sm btn-ghost', href }, label) : c.key === 'iceLetto' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: safetyModal }, label) : null);
+      })),
+      h('p', { class: 'tiny muted' }, 'Questo riquadro sparisce quando il Consiglio vi accetta.')));
+  }
+  if (!ev.chronoDoneAt) {
+    const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
+    const lv = ev.live;
+    const avg = lv?.readings?.length ? lv.readings.reduce((a, x) => a + x.j, 0) / lv.readings.length : null;
+    cards.push(h('div', { class: 'card arrival-card' },
+      h('div', { class: 'eyebrow' }, '2 · Test armi'),
+      lv?.readings?.length ? h('div', { class: `live-test ${avg >= 1 ? 'bad' : 'ok'}` },
+        h('div', { class: 'eyebrow' }, `● In prova adesso · ${lv.label}`),
+        h('div', { class: 'live-reads' }, lv.readings.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${x.v.toFixed(1).replace('.', ',')} m/s` : ''}`))),
+        h('strong', null, avg >= 1 ? `✗ Media ${nJ(avg)}: OVER, sopra 1 joule` : `✓ Media ${nJ(avg)}: sotto 1 joule`),
+        lv.readings.some((x) => x.j >= 1) && avg < 1 ? h('span', { class: 'tiny bad-text' }, '⚠ Almeno un colpo sopra 1 joule') : null) : null,
+      h('ul', { class: 'arrival-list' }, W.map(([k, label]) => {
+        const w = ev.weapons?.[k] || {};
+        return h('li', { class: w.ok ? 'ok' : w.failed ? 'bad' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('span', { class: 'grow' }, label),
+          h('span', { class: 'tiny mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}${w.n > 1 ? ` · media di ${w.n}` : ''}`) : w.failed ? (w.j == null ? 'non passa' : `${nJ(w.j)} · non passa`) : 'da provare'));
+      })),
+      h('p', { class: 'tiny muted' }, 'Al cronografo vedete qui le letture mentre sparate. Il riquadro sparisce quando il test armi è chiuso.')));
+  }
+  return cards;
+}
+
 function viewLobbyHome(st) {
   const pl = st.player || {};
   const pending = pl.status === 'pending';
@@ -1039,6 +1094,7 @@ function viewLobbyHome(st) {
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const partner = st.team.members.find((m) => !m.me);
   return h('div', { class: 'home' },
+    arrivalCards(st),
     startAt() > clock.serverNow() ? startCountdown(st) : null,
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, 'Anteprima · ', ROLE_TEXT[pl.role] || 'Iscritto'),
@@ -1075,6 +1131,7 @@ function viewElectHome(st) {
   const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const lastAnn = st.announcements[0];
   return h('div', { class: 'home' },
+    arrivalCards(st),
     prepCard(st),
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, STATUS_LABELS[c.status]),
@@ -1130,6 +1187,7 @@ function viewHome() {
   else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));
 
   return h('div', { class: 'home' },
+    arrivalCards(st),
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,

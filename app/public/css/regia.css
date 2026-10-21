@@ -884,3 +884,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .leaflet-tooltip.rej-label { font-weight: 700; font-size: 12px; padding: 2px 6px; }
 .leaflet-tooltip.rej-dist { background: #e5484d; color: #fff; border: 0; font-weight: 800; font-size: 12px; padding: 1px 6px; box-shadow: none; }
 .leaflet-tooltip.rej-dist::before { display: none; }
+
+/* Accettazione: finestra della persona con la checklist */
+.ck-checks { display: grid; gap: 6px; }
+.ck-check { display: flex; align-items: center; gap: 10px; padding: 10px; border: 2px solid var(--line); border-radius: 6px; cursor: pointer; }
+.ck-check input { width: 22px; height: 22px; flex: none; }
+.ck-check:has(input:checked) { border-color: #46c46a; }
+.ck-side { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.ck-sum { font-family: var(--f-mono, monospace); color: var(--muted); }
+.ck-sum.ok { color: #46c46a; }

@@ -2090,7 +2090,8 @@ function masterState(gameId) {
     next: nextEvents(g),
     sectors: sectors(),
     players: q.all(`SELECT p.*, a.username, (SELECT COUNT(*) FROM players x WHERE x.gameId = p.gameId AND x.regGroup = p.regGroup) AS groupSize
-                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id),
+                     FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id)
+      .map((p) => ({ ...p, checks: p.status === 'accepted' ? require('./eventstatus').checksOf(p) : [] })),
     teams: teams.map((t) => ({
       id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor,
       status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken, checkinAt: t.checkinAt || null,

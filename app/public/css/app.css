@@ -767,3 +767,24 @@ button.banner-safety strong { letter-spacing: .08em; }
 .profile-head h2 { margin: 0; }
 .card.stack-sm { display: grid; gap: 8px; }
 .campo-mismatch { border-color: var(--brass); display: grid; gap: 6px; margin-bottom: 10px; }
+
+/* Prima della gara: accettazione e test armi in testa alla home */
+.arrival-card { display: grid; gap: 8px; border-color: var(--brass); }
+.arrival-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.arrival-list li { display: flex; align-items: center; gap: 10px; }
+.arrival-list .grow { flex: 1; }
+.arrival-list .ab { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--muted); border-radius: 4px; font-weight: 800; color: #fff; }
+.arrival-list li.ok .ab { background: #46c46a; border-color: #46c46a; }
+.arrival-list li.bad .ab { background: #e5484d; border-color: #e5484d; }
+.live-test { display: grid; gap: 6px; padding: 10px; border-radius: 6px; border: 2px solid #46c46a; background: color-mix(in srgb, #46c46a 12%, transparent); }
+.live-test.bad { border-color: #e5484d; background: color-mix(in srgb, #e5484d 14%, transparent); }
+.live-test .eyebrow { color: #e5484d; }
+.live-reads { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-read { display: inline-flex; padding: 4px 8px; border-radius: 4px; font-family: var(--f-mono, monospace); font-size: 13px; border: 1px solid var(--line); }
+.cs-read.ok { border-color: #46c46a; } .cs-read.bad { border-color: #e5484d; color: #e5484d; }
+.am-theme { cursor: default; }
+.am-theme .grow { flex: 1; }
+.theme-switch { flex: none; position: relative; width: 48px; height: 28px; border-radius: 999px; border: 0; background: var(--line); cursor: pointer; padding: 0; transition: background .15s; }
+.theme-switch .theme-knob { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.theme-switch.on { background: var(--brass); }
+.theme-switch.on .theme-knob { transform: translateX(20px); }
