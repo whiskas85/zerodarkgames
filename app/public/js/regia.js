@@ -673,11 +673,12 @@ function viewLive() {
 
     sectionActions('Coppie in gioco', [h('a', { class: 'btn btn-sm', href: '#coppie' }, 'Gestisci')],
       ms.teams.length ? h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['Settore', 'Legati', 'Frammenti', 'Ultimo sblocco', 'Stato', 'Online', ''].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['Settore', 'Legati', 'Frammenti', 'Codici', 'Ultimo sblocco', 'Stato', 'Online', ''].map((x) => h('th', null, x)))),
         h('tbody', null, ms.teams.map((t) => h('tr', { class: t.status !== 'active' ? `row-${t.status}` : '' },
           h('td', null, h('strong', null, `${t.roman || ''} ${t.sectorName || '—'}`), t.displayName ? h('div', { class: 'tiny muted' }, t.displayName) : null),
           h('td', { class: 'tiny' }, t.members.map((m) => m.nickname || m.name).join(' · ')),
           h('td', null, h('div', { class: 'mono' }, `${t.fragments}/${t.fragmentsTotal}`), bar(t.fragments, t.fragmentsTotal)),
+          h('td', null, t.codes == null ? '—' : [h('div', { class: 'mono' }, `${t.codes}/${t.codesTotal}`), bar(t.codes, t.codesTotal)]),
           h('td', { class: 'tiny' }, t.lastUnlock ? `${t.lastUnlock.label} · ${fmtTime(t.lastUnlock.acquiredAt)}` : '—'),
           h('td', null, t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}° posto`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : h('span', { class: 'chip chip-brass' }, 'in gioco')),
           h('td', null, h('span', { class: `dot ${t.online ? 'dot-ok' : ''}` }), ' ', t.online || ''),

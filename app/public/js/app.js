@@ -1296,7 +1296,8 @@ function viewHome() {
       tile('#/alleanze', 'Alleanze', '⚑', alliancePending(st) || null, alliancePending(st)),
       tile('#/scontri', 'Scontri', '⚔', fightPending(st) || null, fightPending(st)),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
-      tile('#/codici', 'Codici', '✱'),
+      // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco.
+      tile('#/codici', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),

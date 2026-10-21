@@ -2063,6 +2063,7 @@ function masterState(gameId) {
   const online = rt.onlineByTeam();
   const teams = teamsOf(g.id);
   const fragCount = q.get('SELECT COUNT(*) AS n FROM fragments WHERE gameId = ?', g.id).n;
+  const inPlaySectors = new Set(gameSectorIds(g.id));
   const tfStats = Object.fromEntries(q.all(`SELECT tf.teamId, COUNT(*) AS n, MAX(tf.acquiredAt) AS lastAt FROM team_fragments tf
                                             JOIN teams t ON t.id = tf.teamId WHERE t.gameId = ? GROUP BY tf.teamId`, g.id).map((r) => [r.teamId, r]));
   const lastUnlock = Object.fromEntries(q.all(`SELECT tf.teamId, p.label, tf.acquiredAt FROM team_fragments tf
@@ -2111,6 +2112,8 @@ function masterState(gameId) {
       id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor,
       status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken, checkinAt: t.checkinAt || null,
       members: membersOf(t.id), fragments: tfStats[t.id]?.n || 0, fragmentsTotal: fragCount,
+      // Sigilli conosciuti dalla coppia (proprio, rivelati, conquistati) sui Settori in gioco.
+      codes: t.kind === 'couple' ? [...require('./combat').knownSectors(t)].filter((sid) => inPlaySectors.has(sid)).length : null, codesTotal: inPlaySectors.size,
       lastUnlock: lastUnlock[t.id] || null, online: online[t.id] || 0, unread: unread[t.id] || 0, owned: owned[t.id] || [], pushDevices: pushDevices[t.id] || 0,
     })),
     elect: {
