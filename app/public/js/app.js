@@ -1048,31 +1048,20 @@ function startCountdown(st) {
       st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
 }
 
-// Prima della gara, in testa alla home: 1) l'accettazione all'arrivo (cosa controlla il Consiglio), sparisce quando si è
-// accettati; 2) il test armi, con le letture del cronografo in tempo reale, sparisce quando il test è chiuso.
+// Prima della gara, in testa alla home: il test armi con le letture del cronografo in tempo reale; sparisce quando il
+// test è chiuso. L'accettazione si apre dal pulsante azzurro del menu.
 const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/impostazioni', 'Come installarla'] };
 const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
 function arrivalCards(st) {
   const ev = st?.player?.event;
   if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return null;
   const cards = [];
-  if (!ev.checkinAt) {
-    cards.push(h('div', { class: 'card arrival-card' },
-      h('div', { class: 'eyebrow' }, '1 · Accettazione all\'arrivo'),
-      h('strong', null, 'Al campo il Consiglio controlla con voi:'),
-      h('ul', { class: 'arrival-list' }, (ev.checks || []).map((c) => {
-        const [href, label] = CHECK_FIX[c.key] || [];
-        return h('li', { class: c.on ? 'ok' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, c.on ? '✓' : ''), h('span', { class: 'grow' }, c.label),
-          c.on ? null : href ? h('a', { class: 'btn btn-sm btn-ghost', href }, label) : c.key === 'iceLetto' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: safetyModal }, label) : null);
-      })),
-      h('p', { class: 'tiny muted' }, 'Questo riquadro sparisce quando il Consiglio vi accetta. ', h('a', { href: '#/accettazione' }, 'Dettagli →'))));
-  }
   if (!ev.chronoDoneAt) {
     const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
     const lv = ev.live;
     const avg = lv?.readings?.length ? lv.readings.reduce((a, x) => a + x.j, 0) / lv.readings.length : null;
     cards.push(h('div', { class: 'card arrival-card' },
-      h('div', { class: 'eyebrow' }, '2 · Test armi'),
+      h('div', { class: 'eyebrow' }, 'Test armi'),
       lv?.readings?.length ? h('div', { class: `live-test ${avg >= 1 ? 'bad' : 'ok'}` },
         h('div', { class: 'eyebrow' }, `● In prova adesso · ${lv.label}`),
         h('div', { class: 'live-reads' }, lv.readings.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${x.v.toFixed(1).replace('.', ',')} m/s` : ''}`))),
