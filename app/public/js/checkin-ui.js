@@ -113,23 +113,39 @@ const acHello = (token) => { const f = [0xaa, 6, 0x4b, ...token]; return Uint8Ar
 function acWeight(raw) { const g = raw / 100; return g > 1 ? raw / 1000 : g; }
 // Peso dal cronografo: si usa, salvo che sia stato scritto a mano (allora vale quello scritto, e i joule si
 // ricalcolano con quello: il cronografo manda la velocità, la formula la facciamo noi).
-const bbManual = () => { try { return localStorage.getItem('zdg_bt_bb_manual') === '1'; } catch { return false; } };
+// Il peso a mano vale finché sul cronografo non si cambia pallino: si ricorda il peso del cronografo di quel
+// momento e, se ne arriva uno diverso, torna a valere il cronografo. Uguale al cronografo = niente «a mano».
+const LS = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* */ } } };
+const g2 = (x) => Number(x).toFixed(2);
+const bbManual = () => LS.get('zdg_bt_bb_manual') === '1';
 function setBb(grams, from) {
   if (!(grams > 0 && grams < 1)) return;
   BT.chronoG = grams;
   BT.chronoSrc = from;
-  if (!bbManual()) {
-    try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); } catch { /* */ }
+  if (bbManual()) {
+    const base = LS.get('zdg_bt_bb_manual_base');
+    if (g2(grams) === g2(bbGrams())) bbUseChrono();
+    else if (!base) LS.set('zdg_bt_bb_manual_base', g2(grams));
+    else if (base !== g2(grams)) { bbUseChrono(); toast(`Pallino cambiato sul cronografo: ${num(grams)} g`, 'info', 5000); }
+  } else {
+    LS.set('zdg_bt_bb', g2(grams));
     BT.bbSrc = from;
   }
   btRefresh();
 }
 function setBbManual(grams) {
-  try { localStorage.setItem('zdg_bt_bb', grams.toFixed(2)); localStorage.setItem('zdg_bt_bb_manual', '1'); } catch { /* */ }
+  // Uguale al cronografo: si torna a usare il cronografo. Uguale a quello già in uso: non cambia nulla.
+  if (BT.chronoG && g2(grams) === g2(BT.chronoG)) return bbUseChrono();
+  if (g2(grams) === g2(bbGrams())) return;
+  LS.set('zdg_bt_bb', g2(grams));
+  LS.set('zdg_bt_bb_manual', '1');
+  LS.set('zdg_bt_bb_manual_base', BT.chronoG ? g2(BT.chronoG) : null);
   BT.bbSrc = 'scritto a mano';
 }
 function bbUseChrono() {
-  try { localStorage.removeItem('zdg_bt_bb_manual'); if (BT.chronoG) localStorage.setItem('zdg_bt_bb', BT.chronoG.toFixed(2)); } catch { /* */ }
+  LS.set('zdg_bt_bb_manual', null);
+  LS.set('zdg_bt_bb_manual_base', null);
+  if (BT.chronoG) LS.set('zdg_bt_bb', g2(BT.chronoG));
   BT.bbSrc = BT.chronoSrc || 'dal cronografo';
 }
 const bbGrams = () => { const v = parseFloat(String(localStorage.getItem('zdg_bt_bb') || '0.20').replace(',', '.')); return v > 0 && v < 2 ? v : 0.2; };
