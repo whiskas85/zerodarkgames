@@ -581,7 +581,11 @@ function chronoSession(ctx) {
         bbTile(ctx, 'session'),
         h('div', { class: `cs-big cs-lastread ${r.length && r[r.length - 1].j >= 1 ? 'over' : ''}` }, h('span', { class: 'eyebrow' }, 'Ultima lettura'),
           h('strong', { class: 'mono' }, r.length ? fmtJ(r[r.length - 1].j) : '—'),
-          r.length ? h('span', { class: 'tiny mono' }, fmtV(r[r.length - 1].v)) : null)),
+          r.length ? h('span', { class: 'tiny mono' }, fmtV(r[r.length - 1].v)) : null),
+        // Contatore dei tiri di quest'arma: 1, 2, 3 (al terzo il test si chiude da solo), un pallino per tiro.
+        h('div', { class: 'cs-big cs-count' }, h('span', { class: 'eyebrow' }, 'Tiro'),
+          h('strong', { class: 'mono' }, `${r.length}/${AUTO_SHOTS}`),
+          h('span', { class: 'shot-dots', 'aria-hidden': 'true' }, Array.from({ length: Math.max(AUTO_SHOTS, r.length) }, (_, i) => h('i', { class: i < r.length ? (r[i].j >= 1 ? 'bad' : 'ok') : '' }))))),
       h('div', null, h('span', { class: 'eyebrow' }, r.length ? `Media di ${r.length}` : 'Media'), h('strong', { class: 'mono' }, r.length ? fmtJ(mj) : '—')),
       h('div', null, h('span', { class: 'eyebrow' }, 'Vel. media'), h('strong', { class: 'mono' }, r.length ? fmtV(mv) : '—')),
       h('div', null, h('span', { class: 'eyebrow' }, 'Massimo'), h('strong', { class: 'mono' }, r.length ? fmtJ(max) : '—')),
