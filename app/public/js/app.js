@@ -459,11 +459,13 @@ function render() {
   if (view !== 'mappa') field.leaveMap();
   if (view === 'sigillo') openSeal(); else closeSeal();
   preserveInputs(() => {
-    const body = ({
+    const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
       avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
-    }[view] || viewHome)();
+    }[view] || viewHome);
+    // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
+    const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
     document.body.dataset.view = view;
@@ -1046,6 +1048,16 @@ function startCountdown(st) {
     h('div', { class: 'cd-row' }, box('d', 'giorni'), box('h', 'ore'), box('m', 'minuti'), box('s', 'secondi')),
     h('p', { class: 'muted' }, `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. `,
       st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
+}
+
+function viewNotAccepted() {
+  return h('div', { class: 'stack' },
+    h('div', { class: 'card not-accepted' },
+      h('div', { class: 'eyebrow' }, 'Partita in corso'),
+      h('h2', null, 'Non sei stato accettato'),
+      h('p', null, 'All\'arrivo al campo non sei passato dall\'accettazione del Consiglio: senza accettazione non puoi partecipare ai Giochi.'),
+      h('p', { class: 'small muted' }, 'Presentati al Consiglio: appena ti accetta, l\'app si sblocca da sola.'),
+      h('a', { class: 'btn btn-block', href: '#/accettazione' }, 'La mia accettazione')));
 }
 
 // Prima della gara: accettazione e test armi si aprono dai pulsanti azzurri del menu.

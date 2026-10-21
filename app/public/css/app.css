@@ -823,3 +823,5 @@ button.banner-safety strong { letter-spacing: .08em; }
 .shot-dots i.ok { background: #46c46a; border-color: #46c46a; }
 .shot-dots i.bad { background: #e5484d; border-color: #e5484d; }
 .live-big strong { font-size: 22px; }
+.not-accepted { display: grid; gap: 8px; border-color: #e5484d; }
+.not-accepted h2 { margin: 0; color: #e5484d; }

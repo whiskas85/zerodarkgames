@@ -1878,6 +1878,27 @@ test('test armi col cronografo: sotto 1 J spunta e salva la misura, da 1 J in su
   assert.equal(JSON.parse(q.get('SELECT chronoShots FROM players WHERE id = ?', p.id).chronoShots).backup, undefined);
 });
 
+test("accettazione: a gioco iniziato chi non è stato accettato non partecipa (solo se la regia usa l'accettazione)", () => {
+  const CK = require('../src/checkin');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [a1, a2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const [b1] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', B.id);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  // Nessuno accettato: la regia non usa l'accettazione, si gioca come sempre.
+  assert.equal(G.notAccepted(G.getGame(g.id), b1, B), false);
+  CK.setPlayerCheckin(g.id, a1.id, true, 'test');
+  assert.equal(G.notAccepted(G.getGame(g.id), a1, A), false);
+  assert.equal(G.notAccepted(G.getGame(g.id), a2, A), true);
+  assert.equal(G.notAccepted(G.getGame(g.id), b1, B), true);
+  // Accesso della coppia (senza persona): basta un accettato nella coppia.
+  assert.equal(G.notAccepted(G.getGame(g.id), null, A), false);
+  assert.equal(G.notAccepted(G.getGame(g.id), null, B), true);
+  assert.equal(G.teamState(B, b1).notAccepted, true);
+});
+
 test('test armi: la persona toglie le armi che non ha e ne aggiunge altre (anche più di tre)', () => {
   const CK = require('../src/checkin');
   const ES = require('../src/eventstatus');

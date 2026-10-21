@@ -947,6 +947,16 @@ function editFragment(fragmentId, data, actor) {
 
 // Controllo di preparazione, diviso nelle 4 parti del setup (il "sigillo" della regia):
 // I Coppie · II Sigilli · III Altari e Parola · IV Doni (facoltativi).
+// Accettazione all'arrivo: se la regia la usa in questa partita (almeno una persona accettata), a gioco iniziato
+// chi non è stato accettato non partecipa. Con l'accesso della coppia (senza persona) basta un accettato nella coppia.
+const acceptanceUsed = (gameId) => !!q.get('SELECT 1 FROM players WHERE gameId = ? AND checkinAt IS NOT NULL LIMIT 1', gameId);
+function notAccepted(g, player, team) {
+  if (C.PRE_START.includes(g.status) || g.status === 'ended' || !acceptanceUsed(g.id)) return false;
+  if (player) return !q.get('SELECT checkinAt FROM players WHERE id = ?', player.id)?.checkinAt;
+  if (team) return !q.get('SELECT 1 FROM players WHERE teamId = ? AND checkinAt IS NOT NULL', team.id);
+  return false;
+}
+
 function readiness(g) {
   const issues = [];
   const teams = teamsOf(g.id);
@@ -963,6 +973,10 @@ function readiness(g) {
   const W = (part, text) => issues.push({ level: 'warn', part, text });
 
   if (withSector.length < 2) E('coppie', 'Servono almeno due coppie con Settore');
+  if (acceptanceUsed(g.id)) {
+    const missing = q.get("SELECT COUNT(*) AS n FROM players WHERE gameId = ? AND status = 'accepted' AND teamId IS NOT NULL AND checkinAt IS NULL", g.id).n;
+    if (missing) W('coppie', `${missing === 1 ? '1 persona non ancora accettata' : `${missing} persone non ancora accettate`} all'arrivo: al via non potranno giocare`);
+  }
   if (teams.length !== withSector.length) E('coppie', 'Ci sono coppie senza Settore');
   const codeSectors = new Set(codes.map((c) => c.sectorId));
   const inPlay = new Set([...withSector.map((t) => t.sectorId), ...points.map((p) => p.sectorId)]);
@@ -1900,6 +1914,7 @@ function lobbyState(player) {
 function teamState(team, player = null) {
   const st = teamStateCore(team, player);
   st.player = playerInfo(player);
+  st.notAccepted = notAccepted(getGame(team.gameId), player, team);
   return st;
 }
 
@@ -2149,7 +2164,7 @@ function boardState(gameId) {
 }
 
 module.exports = {
-  landmarksOf, scanExpiresAt,
+  notAccepted, acceptanceUsed, landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,

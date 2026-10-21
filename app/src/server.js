@@ -149,7 +149,13 @@ const needStaff = (req, _res, next) => (req.user ? next() : next(new HttpError(4
 // Azione del Consiglio Zero: il master le ha tutte, gli altri quelle che il master ha aperto loro (una basta).
 const needPerm = (...perms) => (req, _res, next) => (!req.user ? next(new HttpError(401, 'Accesso riservato all\'organizzazione'))
   : perms.some((p) => St.can(req.user, p)) ? next() : next(new HttpError(403, 'Questa azione non ti è stata aperta dal Consiglio')));
-const needTeam = (req, _res, next) => (req.team ? next() : next(new HttpError(req.player ? 403 : 401, req.player ? 'Disponibile quando il Consiglio vi avrà assegnato il Settore' : 'Accesso coppia richiesto')));
+const NOT_ACCEPTED = 'Non sei stato accettato all\'arrivo: non puoi partecipare alla partita. Presentati al Consiglio.';
+const needTeam = (req, _res, next) => {
+  if (!req.team) return next(new HttpError(req.player ? 403 : 401, req.player ? 'Disponibile quando il Consiglio vi avrà assegnato il Settore' : 'Accesso coppia richiesto'));
+  // A gioco iniziato chi non è stato accettato all'arrivo non partecipa.
+  if (G.notAccepted(G.getGame(req.team.gameId), req.player, req.team)) return next(new HttpError(403, NOT_ACCEPTED));
+  next();
+};
 const needMember = (req, _res, next) => (req.team || req.player || req.account ? next() : next(new HttpError(401, 'Accesso richiesto')));
 const actor = (req) => req.user?.username || 'regia';
 
@@ -496,7 +502,12 @@ app.get('/api/stream', (req, res, next) => {
 // ---- strumento di campo (/campo): Master o Eletti, dal telefono
 // Regia sul campo: il master e chi nel Consiglio Zero ha l'azione «Campo».
 const fieldStaff = (req) => St.can(req.user, 'campo');
-const needField = (req, _res, next) => (fieldStaff(req) || req.team?.kind === 'elect' ? next() : next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio')));
+const needField = (req, _res, next) => {
+  if (fieldStaff(req)) return next();
+  if (req.team?.kind !== 'elect') return next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio'));
+  if (G.notAccepted(G.getGame(req.team.gameId), req.player, req.team)) return next(new HttpError(403, NOT_ACCEPTED));
+  next();
+};
 const fieldGame = (req) => {
   if (req.team?.kind === 'elect' && !fieldStaff(req)) return req.team.gameId;
   const id = Number(req.query.gameId || req.body?.gameId);
