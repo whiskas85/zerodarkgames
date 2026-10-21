@@ -17,6 +17,8 @@ const S = {
   settings: store.get('zdg_settings', { sound: false, sun: false }),
   timers: store.get('zdg_timers', []).filter((t) => !t.done),
   seenAnn: store.get('zdg_seen_ann', 0),
+  // Annunci tolti con uno swipe: spariscono dall'elenco e contano come letti.
+  annHidden: store.get('zdg_ann_hidden', []),
   seenMsg: store.get('zdg_seen_msg', 0),
   seenNotice: store.get('zdg_seen_notice', 0),
   giftResults: {},
@@ -1201,7 +1203,7 @@ function viewElectHome(st) {
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
   const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
-  const lastAnn = st.announcements[0];
+  const lastAnn = st.announcements.find((a) => !S.annHidden.includes(a.id));
   return h('div', { class: 'home' },
     prepCard(st),
     h('div', { class: 'phase' },
@@ -1219,7 +1221,7 @@ function viewElectHome(st) {
     latestNotice(st),
     st.standings ? h('div', { class: 'card final' }, h('div', { class: 'eyebrow' }, 'Classifica finale'),
       h('ol', { class: 'final-list' }, st.standings.map((r) => h('li', { class: r.status === 'won' ? 'won-row' : '' }, h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`), h('span', { class: 'mono' }, r.status === 'won' ? 'Soglia' : r.fragments))))) : null,
-    lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
+    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
     h('nav', { class: 'grid' },
       ...prepTiles(),
@@ -1247,7 +1249,7 @@ function viewHome() {
   const c = st.clock;
   const total = st.fragments.length;
   const owned = st.fragments.filter((f) => f.text).length;
-  const lastAnn = st.announcements[0];
+  const lastAnn = st.announcements.find((a) => !S.annHidden.includes(a.id));
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
 
@@ -1284,7 +1286,7 @@ function viewHome() {
     presageCards(st),
     trackingCards(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
-    lastAnn ? h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)) : null,
+    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     h('nav', { class: 'grid' },
       ...prepTiles(),
@@ -1297,7 +1299,7 @@ function viewHome() {
       tile('#/scontri', 'Scontri', '⚔', fightPending(st) || null, fightPending(st)),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
       // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco.
-      tile('#/codici', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
+      tile('#/altari', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
       tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
       tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
@@ -2157,8 +2159,16 @@ function allVisited() {
 
 function viewAltars() {
   const list = allVisited();
+  const st = S.state;
+  const nb = st?.notebook || [];
+  const frs = st?.fragments || [];
+  const codeOf = (sectorId) => nb.find((n) => n.sectorId === sectorId && n.code);
   return h('div', { class: 'stack' },
     h('h2', null, 'Altari'),
+    // Frammenti e Sigilli (codici) presi: un tocco porta al dettaglio.
+    st ? h('div', { class: 'altar-stats' },
+      h('a', { class: 'altar-stat', href: '#/frammenti' }, h('span', { class: 'eyebrow' }, 'Frammenti'), h('strong', { class: 'mono' }, `${frs.filter((f) => f.text).length}/${frs.length || '?'}`)),
+      h('a', { class: 'altar-stat', href: '#/codici' }, h('span', { class: 'eyebrow' }, 'Codici'), h('strong', { class: 'mono' }, `${nb.filter((n) => n.code).length}/${nb.length || '?'}`), h('span', { class: 'tiny muted' }, 'taccuino →'))) : null,
     h('p', { class: 'muted' }, 'Scansionate il QR dell\'Altare con l\'app, allontanatevi, poi inserite il Sigillo del suo Settore. Potete farlo anche più tardi.'),
     h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: openScanner }, '⌖ Scansiona Altare'),
     cameraSupported() ? null : h('p', { class: 'muted small' }, 'Lo scanner usa la fotocamera, che il browser concede solo con l\'indirizzo https del Consiglio.'),
@@ -2167,6 +2177,7 @@ function viewAltars() {
       const pending = S.queue.some((q) => q.kind === 'unlock' && q.payload.qrToken === v.qrToken);
       return h('li', null, h('a', { class: 'row', href: `#/altare/${encodeURIComponent(v.qrToken)}` },
         h('div', null, h('strong', null, v.label || 'Altare da riconoscere'), h('div', { class: 'muted small' }, v.sectorName ? `Settore ${v.sectorName}` : 'in attesa di rete')),
+        !v.unlocked && v.sectorId && codeOf(v.sectorId) ? h('span', { class: 'chip chip-brass' }, 'Sigillo noto') : null,
         v.unlocked ? h('span', { class: 'chip chip-ok' }, 'Sbloccato') : pending ? h('span', { class: 'chip chip-brass' }, 'In attesa di rete')
           : scanExpired(v) ? h('span', { class: 'chip chip-warn' }, 'Scansione scaduta')
             : v.expiresAt ? h('span', { class: 'chip' }, 'valida ', h('span', { class: 'mono', 'data-abs': v.expiresAt }, '—')) : h('span', { class: 'chip' }, 'Da sbloccare')));
@@ -2746,15 +2757,54 @@ function viewNotices() {
       : h('p', { class: 'empty' }, 'Nessun avviso, per ora.'));
 }
 
+// Toglie un annuncio con uno swipe: sparisce e conta come letto.
+function hideAnn(id) {
+  if (!S.annHidden.includes(id)) S.annHidden = [...S.annHidden, id].slice(-500);
+  store.set('zdg_ann_hidden', S.annHidden);
+  if (id > S.seenAnn) { S.seenAnn = id; store.set('zdg_seen_ann', id); }
+  render();
+}
+
+// Scorrere di lato un elemento lo toglie (con un tocco normale funziona come sempre).
+function swipeAway(el, onDismiss) {
+  let x0 = null; let y0 = 0; let dx = 0; let moved = false;
+  el.classList.add('swipeable');
+  el.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button !== 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; });
+  el.addEventListener('pointermove', (e) => {
+    if (x0 == null) return;
+    dx = e.clientX - x0;
+    if (!moved && Math.abs(e.clientY - y0) > Math.abs(dx)) { x0 = null; return; }
+    if (Math.abs(dx) > 8) { moved = true; el.style.transform = `translateX(${dx}px)`; el.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / el.offsetWidth)); }
+  });
+  const end = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (moved && Math.abs(dx) > el.offsetWidth * 0.35) {
+      el.style.transition = 'transform .2s, opacity .2s';
+      el.style.transform = `translateX(${dx > 0 ? '' : '-'}110%)`; el.style.opacity = '0';
+      setTimeout(onDismiss, 200);
+    } else { el.style.transition = 'transform .15s, opacity .15s'; el.style.transform = ''; el.style.opacity = ''; setTimeout(() => { el.style.transition = ''; }, 160); }
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  // Dopo uno swipe il tocco non apre il link.
+  el.addEventListener('click', (e) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } }, true);
+  return el;
+}
+
 function viewAnnouncements() {
-  const list = S.state?.announcements || [];
+  const all = S.state?.announcements || [];
+  const list = all.filter((a) => !S.annHidden.includes(a.id));
+  const hidden = all.length - list.length;
   return h('div', { class: 'stack' },
     h('h2', null, 'Annunci del Consiglio'),
-    list.length ? h('ul', { class: 'feed' }, list.map((a) => h('li', { class: `ann ann-${a.type} ${a.id > S.seenAnn ? 'new' : ''}` },
+    list.length ? h('p', { class: 'tiny muted' }, 'Scorrete un annuncio di lato per toglierlo.') : null,
+    list.length ? h('ul', { class: 'feed' }, list.map((a) => swipeAway(h('li', { class: `ann ann-${a.type} ${a.id > S.seenAnn ? 'new' : ''}` },
       h('div', { class: 'ann-head' }, h('span', { class: `chip ${a.type === 'revelation' || a.type === 'pause' ? 'chip-blood' : ''}` }, ANN_LABEL[a.type] || a.type), h('span', { class: 'mono muted small' }, fmtTime(a.createdAt, true))),
       h('p', null, a.text),
-      a.type === 'revelation' && a.payload ? h('div', { class: 'ann-code mono' }, `${a.payload.sectorName}: `, h('strong', null, a.payload.code)) : null)))
-      : h('p', { class: 'empty' }, 'Il Consiglio tace, per ora.'));
+      a.type === 'revelation' && a.payload ? h('div', { class: 'ann-code mono' }, `${a.payload.sectorName}: `, h('strong', null, a.payload.code)) : null), () => hideAnn(a.id))))
+      : h('p', { class: 'empty' }, hidden ? 'Nessun annuncio da leggere.' : 'Il Consiglio tace, per ora.'),
+    hidden ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { S.annHidden = []; store.set('zdg_ann_hidden', []); render(); } }, hidden === 1 ? 'Mostra l\'annuncio tolto' : `Mostra i ${hidden} annunci tolti`) : null);
 }
 
 // Chat con la regia, stile WhatsApp: fumetti, composer fisso in fondo, vocali.
