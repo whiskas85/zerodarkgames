@@ -1586,7 +1586,8 @@ function fieldMapItems(d) {
     ...targetItems(d),
     // Punti di interesse segnati dal campo (regia ed Eletti).
     ...(d.pois || []).filter((x) => !x.occupied).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
-      popup: `<strong>◆ ${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>${escHtml(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>` })),
+      popup: `<strong>◆ ${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>${escHtml(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>
+        <div class="popup-actions">${actBtn('pick', 'poi', x.id, 'Sposta: clicca sulla mappa')}${actBtn('edit', 'poi', x.id, 'Rinomina')}${actBtn('del', 'poi', x.id, 'Elimina')}</div>` })),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
@@ -1620,7 +1621,7 @@ function viewFieldMapItems() {
 const findFieldItem = (kind, id) => {
   const d = fieldData;
   if (!d) return null;
-  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : d.points).find((x) => x.id === Number(id)) || null;
+  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : kind === 'poi' ? d.pois || [] : d.points).find((x) => x.id === Number(id)) || null;
 };
 
 // Pulsanti dentro i popup della mappa (in cattura: Leaflet ferma i clic nei popup prima che risalgano).
@@ -1633,7 +1634,22 @@ fieldMap.el.addEventListener('click', (e) => {
   fieldMap.map?.closePopup();
   if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
   if (b.dataset.act === 'pick') startPick(x, b.dataset.kind);
+  if (b.dataset.act === 'edit') editPoi(x);
+  if (b.dataset.act === 'del') deletePoiDialog(x);
 }, true);
+
+// Punti di interesse dalla regia: rinomina (e descrizione) ed elimina.
+async function editPoi(x) {
+  const label = await dialog({ title: 'Rinomina il punto di interesse', input: { value: x.label, placeholder: 'Nome del punto' }, okLabel: 'Salva' });
+  if (!label || !label.trim() || label.trim() === x.label) return;
+  try { await api('PATCH', `/api/field/pois/${x.id}?gameId=${R.gameId}`, { label: label.trim() }); toast('Punto rinominato', 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
+  await loadField();
+}
+async function deletePoiDialog(x) {
+  if (!(await dialog({ title: `Eliminare «${x.label}»?`, text: 'Il punto di interesse sparisce dalla mappa di regia ed Eletti.', okLabel: 'Elimina', danger: true }))) return;
+  try { await api('DELETE', `/api/field/pois/${x.id}?gameId=${R.gameId}`); toast('Punto eliminato', 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
+  await loadField();
+}
 
 // Soglia e Cerchio si possono segnare direttamente dalla regia: un clic sulla mappa (foto facoltativa, si aggiunge dal telefono).
 function startPick(x, kind = 'landmark') {
@@ -1642,7 +1658,7 @@ function startPick(x, kind = 'landmark') {
 }
 // Spostando un oggetto si può toccare un punto di interesse: l'oggetto prende il suo posto (e il punto non si vede più).
 fieldMap.onMarkerTap((key) => {
-  if (!R.mapPick || !key.startsWith('poi')) return false;
+  if (!R.mapPick || R.mapPick.kind === 'poi' || !key.startsWith('poi')) return false;
   const x = (fieldData?.pois || []).find((p) => `poi${p.id}` === key);
   if (!x) return false;
   placePicked({ lat: x.lat, lng: x.lng }, x.label);
@@ -1653,6 +1669,11 @@ async function placePicked(ll, poiLabel = null) {
   const pick = R.mapPick;
   if (!pick) return;
   R.mapPick = null;
+  if (pick.kind === 'poi') {
+    try { await api('PATCH', `/api/field/pois/${pick.id}?gameId=${R.gameId}`, { lat: ll.lat, lng: ll.lng }); toast(`${pick.label} spostato`, 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
+    await loadField();
+    return;
+  }
   const qs = new URLSearchParams({ gameId: R.gameId, lat: ll.lat, lng: ll.lng, source: 'manual' });
   try {
     const path = { landmark: 'landmarks', point: 'points', gift: 'gifts' }[pick.kind || 'landmark'];
@@ -1716,7 +1737,7 @@ function viewFieldMap() {
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
-    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
+    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, R.mapPick.kind === 'poi' ? `Clicca sulla mappa il nuovo posto di: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
     R.mapSide === false || !toPlace.length ? null : h('aside', { class: 'map-side' },
       h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),
