@@ -448,9 +448,10 @@ test("lettura dell'Altare piazzato: vale solo entro il raggio fissato dalla regi
   assert.throws(() => G.visitPoint(A, pB.qrToken), /serve la posizione GPS/);
   // A circa 111 m (0,001° di latitudine): rifiutata con la distanza.
   assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.001, lng: 7.0, acc: 10 }), /circa 111 m.*entro 30 m/);
-  // I due cerchi si toccano: Altare 30 m + GPS ±75 m = 105 m ≥ 100 m → accettata; con ±60 m (90 m) no.
-  assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.0009, lng: 7.0, acc: 60 }), /circa 100 m/);
-  assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.0009, lng: 7.0, acc: 75 }).visitedAt);
+  // I due cerchi si toccano: Altare 30 m + GPS fino a 50 m. A 100 m nemmeno con GPS ±75 m (conta 50 m).
+  assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 45.0009, lng: 7.0, acc: 75 }), /circa 100 m/);
+  // A 78 m con GPS ±50 m: 30 + 50 = 80 m → accettata.
+  assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.0007, lng: 7.0, acc: 50 }).visitedAt);
   // A 40 m con GPS ±20 m: i cerchi si toccano, accettata.
   assert.ok(G.visitPoint(A, pB.qrToken, null, { lat: 45.00036, lng: 7.0, acc: 20 }).visitedAt);
   // Altare senza coordinate: nessun controllo.
