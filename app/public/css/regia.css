@@ -850,3 +850,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Ultimo test salvato di un'arma: quando, chi, media, pallino e i singoli tiri */
 .cs-saved { display: grid; gap: 6px; padding: 10px; border: 2px dashed var(--line); border-radius: 6px; }
 .cs-saved.ok { border-color: #46c46a; } .cs-saved.bad { border-color: #e5484d; }
+
+/* Replica che non passa: X bianca su fondo rosso nel quadratino */
+.chrono-wbtn.fail > .ck-box { background: #e5484d; border-color: #e5484d; color: #fff; }

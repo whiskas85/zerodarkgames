@@ -723,7 +723,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
     const over = w.max != null && w.max >= 1;
     return h('div', { class: `ev-weapon ${w.ok ? 'ok' : w.failed ? 'bad' : ''}` },
       h('span', { class: 'small' }, label),
-      h('strong', { class: 'mono' }, val),
+      h('strong', { class: 'mono' }, `${w.ok ? '✓ ' : w.failed ? '✕ ' : ''}${val}`),
       w.g ? h('span', { class: 'tiny muted' }, `pallino ${n2(w.g)} g${w.v ? ` · ${n2(w.v)} m/s` : ''}`) : null,
       over ? h('span', { class: 'tiny ev-over' }, `⚠ un colpo sopra 1 J (max ${n2(w.max)} J)`) : null);
   };

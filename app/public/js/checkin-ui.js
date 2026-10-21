@@ -581,11 +581,11 @@ export function viewChrono(ctx) {
         h('div', { class: 'chrono-weapons' }, CHRONO.map(([weapon, col, label]) => {
           const s = shots[weapon];
           const cur = BT.session?.playerId === p.id && BT.session.weapon === weapon;
-          const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? (s.j == null ? '✗ non passa (a mano)' : `✗ ${fmtJ(s.j)}`) : 'da provare';
+          const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? (s.j == null ? 'non passa (a mano)' : `${fmtJ(s.j)} · non passa`) : 'da provare';
           // Colpi sopra 1 J tra le letture salvate (anche se la media passa): in rosso.
           const overN = (s?.readings || []).filter((x) => x.j >= 1).length || (s && s.max >= 1 ? 1 : 0);
           return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${overN && p[col] ? 'over' : ''} ${cur ? 'cur' : ''}`, onclick: () => open(p, weapon, label) },
-            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub),
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : s && s.ok === false ? '✕' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub),
               overN && s ? h('span', { class: 'tiny w-over' }, `⚠ ${overN} sopra 1 J · max ${fmtJ(s.max ?? s.j)}`) : null));
         })),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
