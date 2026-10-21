@@ -27,7 +27,14 @@ window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 
   }
   if (F.who.role === 'elect') { location.replace('/#/campo'); return; }
   F.switchGame = async (id) => { F.gameId = id; store.set('zdg_campo_game', id); F.data = null; render(); await field.load(); };
+  // Si parte dalla partita aperta in regia (così i piazzamenti finiscono nella partita giusta).
+  if (F.who.games.some((g) => g.id === F.who.regiaGameId)) F.gameId = F.who.regiaGameId;
   if (!F.who.games.some((g) => g.id === F.gameId)) F.gameId = F.who.games[0]?.id || null;
+  // Tornando sulla pagina (telefono riaperto) si ricontrolla quale partita è aperta in regia.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) return;
+    try { F.who = await api('GET', '/api/field/whoami'); render(); } catch { /* offline */ }
+  });
   store.set('zdg_campo_game', F.gameId);
   stream('/api/stream?as=staff', {
     refresh: (d) => { if (d.gameId === F.gameId) field.load(); },
@@ -53,6 +60,7 @@ function render() {
         F.who.games.map((g) => h('option', { value: g.id, selected: g.id === F.gameId }, g.name))) : null),
     h('main', { class: 'main campo' },
       !F.gameId ? h('p', { class: 'empty' }, 'Nessuna partita aperta.') : !d ? h('p', { class: 'empty' }, 'Caricamento…') : [
+        regiaMismatch(),
         h('div', { class: 'campo-head' },
           h('div', null, h('div', { class: 'eyebrow' }, `${d.game.name} · ${STATUS_LABELS[d.game.status]}`), h('div', { class: 'mono small', id: 'gps-now' }, field.gpsText())),
           h('button', { class: 'btn btn-primary btn-block btn-xl', onclick: field.scanSign }, '⌖ Scansiona un cartello'),
@@ -64,6 +72,16 @@ function render() {
           tabLink('punti', `Punti ${(d.pois || []).length}`)),
         F.tab === 'doni' ? field.viewGifts() : F.tab === 'mappa' ? field.viewMap() : F.tab === 'punti' ? field.viewPois() : field.viewAltars(),
       ]));
+}
+
+// Campo su una partita diversa da quella aperta in regia: avviso con il pulsante per passare a quella.
+function regiaMismatch() {
+  const rg = F.who.games.find((g) => g.id === F.who.regiaGameId);
+  if (!rg || rg.id === F.gameId) return null;
+  return h('div', { class: 'card campo-mismatch' },
+    h('strong', null, '⚠ Partita diversa dalla regia'),
+    h('p', { class: 'small' }, `Qui stai piazzando nella partita «${F.data?.game.name || '?'}», ma in regia è aperta «${rg.name}». Quello che piazzi qui non compare là.`),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => F.switchGame(rg.id) }, `Passa a «${rg.name}»`));
 }
 
 const tabLink = (id, label) => h('a', { href: `#${id}`, class: F.tab === id ? 'on' : '' }, label);

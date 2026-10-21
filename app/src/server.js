@@ -501,7 +501,7 @@ const fieldGame = (req) => {
 const fieldWho = (req) => (fieldStaff(req) ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
 const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
 app.get('/api/field/whoami', (req, res) => {
-  if (fieldStaff(req)) return res.json({ role: 'master', name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
+  if (fieldStaff(req)) return res.json({ role: 'master', regiaGameId: q.get('SELECT lastGameId FROM users WHERE id = ?', req.user.id)?.lastGameId || null, name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
   if (req.team?.kind === 'elect') {
     const squad = req.player?.squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', req.player.squadId) : null;
     return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', personal: !!req.player, squad, gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
@@ -580,7 +580,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => ({ ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), councilPending: St.pendingCount() })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), councilPending: St.pendingCount() })));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 

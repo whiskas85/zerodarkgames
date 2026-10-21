@@ -463,8 +463,8 @@ export function createField(F, { rerender }) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
         vibrate([80, 60, 200]);
-        toast(prov ? `${data.label} piazzato provvisorio: confermalo poi con cartello e foto`
-          : target.kind === 'gift' ? `${data.label} piazzato${data.revealed ? ' e annunciato alle coppie' : ''}` : `${data.label} piazzato`, 'ok', 6000);
+        toast((prov ? `${data.label} piazzato provvisorio: confermalo poi con cartello e foto`
+          : target.kind === 'gift' ? `${data.label} piazzato${data.revealed ? ' e annunciato alle coppie' : ''}` : `${data.label} piazzato`) + (F.data?.game?.name ? ` · partita «${F.data.game.name}»` : ''), 'ok', 7000);
         close();
         load();
       } catch (e) {

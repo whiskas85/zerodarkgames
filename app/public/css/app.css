@@ -766,3 +766,4 @@ button.banner-safety strong { letter-spacing: .08em; }
 .profile-head { display: flex; align-items: center; gap: 14px; }
 .profile-head h2 { margin: 0; }
 .card.stack-sm { display: grid; gap: 8px; }
+.campo-mismatch { border-color: var(--brass); display: grid; gap: 6px; margin-bottom: 10px; }
