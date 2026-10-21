@@ -1035,7 +1035,6 @@ function viewLobbyHome(st) {
       tile('#/impostazioni', 'Impostazioni', '⚙'),
       S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
       iceTile()),
-    accountBar(st),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
 }
@@ -1077,7 +1076,6 @@ function viewElectHome(st) {
       tile('#/impostazioni', 'Impostazioni', '⚙'),
       S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
       iceTile()),
-    accountBar(st),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
       h('ul', { class: 'elect-members' }, st.team.members.map((m) => h('li', null, m.name, m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null)))));
 }
@@ -1147,8 +1145,7 @@ function viewHome() {
       tile('#/regolamento', 'Regolamento', '§'),
       tile('#/impostazioni', 'Impostazioni', '⚙'),
       S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
-      iceTile()),
-    accountBar(st));
+      iceTile()));
 }
 
 function supplyCard(st) {
@@ -2753,15 +2750,6 @@ async function logout() {
 }
 
 // In fondo a ogni home: con chi sei entrato, profilo ed Esci.
-function accountBar(st) {
-  const acc = st?.account;
-  return h('div', { class: 'account-bar' },
-    h('span', { class: 'small muted' }, acc ? ['Entrato come ', h('strong', null, `@${acc.username}`), acc.ops?.length ? ` · ${acc.ops[0].providerName}` : null] : 'Entrato con QR o codice d\'accesso'),
-    acc ? h('a', { class: 'btn btn-sm btn-ghost', href: '/iscrizione#profilo' }, 'Profilo') : null,
-    staffLink(acc, 'btn btn-sm'),
-    h('button', { class: 'btn btn-sm', type: 'button', onclick: logout }, 'Esci'));
-}
-
 // Account che fa parte dell'organizzazione: scorciatoia per la regia o la Soglia.
 function staffLink(acc, cls) {
   if (!acc?.staff) return null;

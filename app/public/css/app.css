@@ -411,8 +411,6 @@ body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 .bubble-tag { color: var(--brass); font-weight: 600; }
 
 /* Barra dell'account in fondo alla home: con chi sei entrato, profilo, Esci */
-.account-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0 4px; border-top: 1px solid var(--line); }
-.account-bar > span { flex: 1; min-width: 160px; }
 
 /* Esito degli scontri: vittoria (Sigilli che si svelano) e sconfitta (tempo per tornare in battaglia) */
 .battle-overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(8, 10, 9, .97); backdrop-filter: blur(6px); animation: battle-in .35s ease-out both; }
