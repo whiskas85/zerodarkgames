@@ -698,7 +698,7 @@ function editableCatalog(gameId) {
     base: Object.fromEntries(EDITABLE.map((k) => [k, base[k] ?? null])), current: Object.fromEntries(EDITABLE.map((k) => [k, cur[k] ?? null])),
     edited: !!edits, durationFromParams: base.id === 'occhio' && kind === 'skill', tags: tagsFor(cur, g), preview: fillTags(cur.description, cur, g) });
   return {
-    editable: g.status === 'draft',
+    editable: ['created', 'draft'].includes(g.status),
     skills: SKILLS.filter(available).map((s) => row(s, skillTemplate(s, g), 'skill', ed.skills?.[s.id])),
     gifts: GIFTS.filter(available).map((t) => row(t, giftTemplate(t, g), 'gift', ed.gifts?.[t.id])),
   };
@@ -706,7 +706,7 @@ function editableCatalog(gameId) {
 
 function editCatalog(gameId, kind, id, data, actor) {
   const g = G.getGame(gameId);
-  if (g.status !== 'draft') throw err(409, 'Testi e tempi di Skill e Doni si cambiano solo con la partita in preparazione');
+  if (!['created', 'draft'].includes(g.status)) throw err(409, 'Testi e tempi di Skill e Doni si cambiano solo con la partita in preparazione');
   const list = kind === 'skill' ? SKILLS : kind === 'gift' ? GIFTS : null;
   const base = list?.find((x) => x.id === id);
   if (!base) throw err(404, 'Skill o Dono non trovato');

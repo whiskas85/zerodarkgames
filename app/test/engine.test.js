@@ -501,6 +501,17 @@ test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () 
   assert.ok(F.teamMap(B).points.some((x) => x.id === p.id));
 });
 
+test("partita «Creata»: solo in regia, poi in preparazione; iscrizioni chiuse finché è creata", () => {
+  const g = G.createGame({ name: 'Nuova', status: 'created', registrationOpen: true }, 'test');
+  assert.equal(G.getGame(g.id).status, 'created');
+  assert.throws(() => G.control(g.id, 'ready', 'test'), /non possibile/);
+  G.control(g.id, 'prepare', 'test');
+  assert.equal(G.getGame(g.id).status, 'draft');
+  G.control(g.id, 'created', 'test');
+  const back = G.getGame(g.id);
+  assert.deepEqual([back.status, back.registrationOpen], ['created', 0]);
+});
+
 test('preparazione: Altare piazzato visto in regia, alle coppie solo dal via; tornando in preparazione i doni piazzati si tolgono', () => {
   const F = require('../src/field');
   const g = setupGame(2);

@@ -108,8 +108,8 @@ const LOCKED_AFTER_START = new Set(['maxActiveSkills', 'maxPassiveSkills', 'dura
 
 function createGame(data, actor) {
   if (!data.name?.trim()) throw err(400, 'Il nome della partita è obbligatorio');
-  const r = q.run(`INSERT INTO games (name, scheduledStart, emergencyRadioChannel, bookUrl, createdAt) VALUES (?, ?, ?, ?, ?)`,
-    data.name.trim(), data.scheduledStart || null, data.emergencyRadioChannel || null, data.bookUrl || '/regolamento.html', Date.now());
+  const r = q.run(`INSERT INTO games (name, status, scheduledStart, emergencyRadioChannel, bookUrl, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
+    data.name.trim(), data.status === 'created' ? 'created' : 'draft', data.scheduledStart || null, data.emergencyRadioChannel || null, data.bookUrl || '/regolamento.html', Date.now());
   const id = Number(r.lastInsertRowid);
   updateGame(id, data, actor);
   log(id, actor, 'game_created', { name: data.name });
@@ -184,7 +184,7 @@ const TRACK_ON_PINGS = 2;
 const TRACK_PINGS_WINDOW_MS = 30 * 60000;
 function trackStateOf(player, game, team) {
   const soon = !!team && ['ready', 'circle'].includes(game.status);
-  const live = !!team && (team.kind === 'elect' ? !['draft', 'ended'].includes(game.status) && !soon : [...C.ACTIVE, 'paused'].includes(game.status) && team.status !== 'withdrawn');
+  const live = !!team && (team.kind === 'elect' ? !['created', 'draft', 'ended'].includes(game.status) && !soon : [...C.ACTIVE, 'paused'].includes(game.status) && team.status !== 'withdrawn');
   const verified = !!player.trackVerifiedAt;
   if (!soon && !live) return { state: verified ? 'ok' : 'none', soon, live, prompt: false };
   // Traccar acceso: almeno 2 segnali (nell'ultima mezz'ora) e l'ultimo recente.
@@ -331,7 +331,7 @@ function firstFreeSector(gameId) {
 
 function createTeam(gameId, data, actor) {
   const g = getGame(gameId);
-  if (!['draft', 'ready'].includes(g.status)) throw err(409, 'Le coppie si formano prima di aprire il cerchio');
+  if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Le coppie si formano prima di aprire il cerchio');
   const ids = [...new Set((data.playerIds || []).map(Number))];
   if (ids.length !== 2) throw err(400, 'Seleziona due giocatori per formare la coppia');
   const teamId = tx(() => {
@@ -358,7 +358,7 @@ function createTeam(gameId, data, actor) {
 
 function autoPair(gameId, actor) {
   const g = getGame(gameId);
-  if (!['draft', 'ready'].includes(g.status)) throw err(409, 'Le coppie si formano prima di aprire il cerchio');
+  if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Le coppie si formano prima di aprire il cerchio');
   const free = q.all("SELECT * FROM players WHERE gameId = ? AND teamId IS NULL AND status = 'accepted' ORDER BY id", g.id);
   const created = [];
   // Prima chi si è iscritto insieme, poi gli altri a caso.
@@ -551,7 +551,7 @@ function updateTeam(teamId, data, actor) {
   const g = getGame(t.gameId);
   if (data.displayName !== undefined) q.run('UPDATE teams SET displayName = ? WHERE id = ?', data.displayName?.trim() || null, t.id);
   if (data.sectorId !== undefined && Number(data.sectorId) !== t.sectorId) {
-    if (!['draft', 'ready'].includes(g.status)) throw err(409, 'Il Settore si cambia solo prima di aprire il cerchio');
+    if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Il Settore si cambia solo prima di aprire il cerchio');
     const s = sectorById(Number(data.sectorId));
     if (!s) throw err(400, 'Settore non valido');
     const other = q.get('SELECT * FROM teams WHERE gameId = ? AND sectorId = ?', g.id, s.id);
@@ -565,7 +565,7 @@ function updateTeam(teamId, data, actor) {
     syncPoints(g);
   }
   if (Array.isArray(data.playerIds)) {
-    if (!['draft', 'ready'].includes(g.status)) throw err(409, 'I membri si cambiano solo prima di aprire il cerchio');
+    if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'I membri si cambiano solo prima di aprire il cerchio');
     const ids = [...new Set(data.playerIds.map(Number))];
     if (ids.length !== 2) throw err(400, 'Una coppia ha due giocatori');
     tx(() => {
@@ -586,7 +586,7 @@ function dissolveTeam(teamId, actor) {
   if (!t) throw err(404, 'Coppia non trovata');
   const g = getGame(t.gameId);
   if (t.kind === 'elect') throw err(409, 'Gli Eletti non si sciolgono: togli le persone una alla volta');
-  if (!['draft', 'ready'].includes(g.status)) throw err(409, 'Una coppia si scioglie solo prima di aprire il cerchio; durante la partita usa "Ritira"');
+  if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Una coppia si scioglie solo prima di aprire il cerchio; durante la partita usa "Ritira"');
   tx(() => {
     q.run('UPDATE players SET teamId = NULL WHERE teamId = ?', t.id);
     q.run('DELETE FROM teams WHERE id = ?', t.id);
@@ -668,7 +668,7 @@ function saveSector(id, data, actor) {
       q.run('UPDATE sectors SET ord = ?, roman = ?, name = ?, article = ?, element = ?, motto = ?, altarLabel = ?, color = ? WHERE id = ?', ord, roman, name, article, element, motto, custom, color, old.id);
       // Gli Altari delle partite non ancora iniziate seguono il nuovo nome, se non erano stati rinominati a mano.
       const newLabel = altarLabel({ name, article, altarLabel: custom });
-      q.run(`UPDATE points SET label = ? WHERE sectorId = ? AND label = ? AND gameId IN (SELECT id FROM games WHERE status IN ('draft','ready','circle'))`,
+      q.run(`UPDATE points SET label = ? WHERE sectorId = ? AND label = ? AND gameId IN (SELECT id FROM games WHERE status IN ('created','draft','ready','circle'))`,
         newLabel, old.id, altarLabel(old));
     } else {
       sid = Number(q.run('INSERT INTO sectors (ord, roman, name, article, element, motto, altarLabel, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ord, roman, name, article, element, motto, custom, color).lastInsertRowid);
@@ -1051,6 +1051,16 @@ function control(gameId, action, actor) {
       pushTraccarOn(g);
       break;
     }
+    // Creata → in preparazione: la partita diventa visibile alle app di campo (e si possono aprire le iscrizioni).
+    case 'prepare':
+      need('created');
+      setStatus(g, 'draft');
+      break;
+    // In preparazione → di nuovo solo in regia.
+    case 'created':
+      need('draft');
+      setStatus(g, 'created', { registrationOpen: 0 });
+      break;
     case 'draft':
       need('ready', 'circle');
       // Di nuovo in preparazione: gli Altari visitati (anche le prove) si azzerano.
@@ -1097,7 +1107,7 @@ function control(gameId, action, actor) {
     default:
       throw err(400, 'Azione sconosciuta');
   }
-  if (!['start', 'pause', 'resume', 'end'].includes(action)) log(g.id, actor, 'status_' + action);
+  if (!['start', 'pause', 'resume', 'end'].includes(action)) log(g.id, actor, `status_${action === 'prepare' ? 'draft' : action}`);
   notifyState(g.id);
   if (action === 'resume') tickGame(getGame(g.id));
   return getGame(g.id);
@@ -1483,7 +1493,7 @@ function addManualFragment(team, text) {
 function addCodeNote(team, sectorId, code) {
   requireCouple(team);
   const g = gameForTeam(team);
-  if (['draft', 'ready'].includes(g.status)) throw err(409, 'Il taccuino si apre nel cerchio');
+  if (['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Il taccuino si apre nel cerchio');
   const sid = Number(sectorId);
   const sc = q.get('SELECT * FROM sector_codes WHERE gameId = ? AND sectorId = ?', g.id, sid);
   if (!sc) throw err(400, 'Settore non in gioco');
@@ -1885,7 +1895,7 @@ function teamStateCore(team, player = null) {
   if (team.kind === 'elect') return electState(team, player);
   const g = gameForTeam(team);
   const s = team.sectorId ? sectorById(team.sectorId) : null;
-  const sealVisible = !['draft', 'ready'].includes(g.status);
+  const sealVisible = !['created', 'draft', 'ready'].includes(g.status);
   const own = sealVisible && s ? q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', g.id, s.id) : null;
   const gameTeams = teamsOf(g.id).filter((t) => t.sectorId);
   const revealed = Object.fromEntries(revealedCodes(g.id).map((r) => [r.sectorId, r]));
@@ -2058,7 +2068,7 @@ function masterState(gameId) {
     env: process.env.ZDG_ENV || 'production',
     // Passaggi di fase (per la timeline degli stati in regia), dall'ultima ripartenza della partita.
     phaseLog: q.all(`SELECT type, at FROM event_log WHERE gameId = ? AND id > COALESCE((SELECT MAX(id) FROM event_log WHERE gameId = ? AND type = 'game_restarted'), 0)
-                     AND type IN ('status_draft', 'status_ready', 'status_circle', 'game_started', 'phase_hunt', 'phase_last_half_hour', 'game_paused', 'game_resumed', 'game_ended') ORDER BY id`, g.id, g.id),
+                     AND type IN ('status_created', 'status_draft', 'status_ready', 'status_circle', 'game_started', 'phase_hunt', 'phase_last_half_hour', 'game_paused', 'game_resumed', 'game_ended') ORDER BY id`, g.id, g.id),
     canWarp: canWarp(g),
     // Persone (coppie ed Eletti) senza notifiche su nessun dispositivo: il numero accanto a «Notifiche».
     pushOff: pushReport(g.id).people.filter((p) => !p.ready && ['couple', 'elect'].includes(p.group)).length,

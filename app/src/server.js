@@ -303,7 +303,7 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: r
 app.get('/api/public/games', (_req, res) => res.json(openGames()));
 // Data del prossimo evento per la pagina di login: la partita vera (non di prova, non finita) in programma.
 app.get('/api/public/event', (_req, res) => {
-  const g = q.all("SELECT name, scheduledStart FROM games WHERE isDemo = 0 AND status != 'ended' AND scheduledStart IS NOT NULL AND scheduledStart != ''")
+  const g = q.all("SELECT name, scheduledStart FROM games WHERE isDemo = 0 AND status NOT IN ('ended', 'created') AND scheduledStart IS NOT NULL AND scheduledStart != ''")
     .map((x) => {
       const v = String(x.scheduledStart);
       const d = /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : Number.isFinite(Number(v)) ? new Date(Number(v)).toISOString().slice(0, 10) : null;
@@ -501,7 +501,7 @@ const fieldGame = (req) => {
 const fieldWho = (req) => (fieldStaff(req) ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
 const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
 app.get('/api/field/whoami', (req, res) => {
-  if (fieldStaff(req)) return res.json({ role: 'master', regiaGameId: q.get('SELECT lastGameId FROM users WHERE id = ?', req.user.id)?.lastGameId || null, name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status != 'ended' ORDER BY id DESC") });
+  if (fieldStaff(req)) return res.json({ role: 'master', regiaGameId: q.get('SELECT lastGameId FROM users WHERE id = ?', req.user.id)?.lastGameId || null, name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status NOT IN ('ended', 'created') ORDER BY id DESC") });
   if (req.team?.kind === 'elect') {
     const squad = req.player?.squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', req.player.squadId) : null;
     return res.json({ role: 'elect', name: req.player?.name || 'Eletti del Consiglio', personal: !!req.player, squad, gameId: req.team.gameId, games: q.all('SELECT id, name, status FROM games WHERE id = ?', req.team.gameId) });
@@ -567,7 +567,8 @@ m.patch('/sectors/:sid', wrap((req) => ({ id: G.saveSector(Number(req.params.sid
 m.delete('/sectors/:sid', wrap((req) => G.deleteSector(Number(req.params.sid), actor(req))));
 m.post('/sectors/:sid/restore', wrap((req) => { G.restoreSector(Number(req.params.sid), actor(req)); return { ok: true }; }));
 m.get('/games', (_req, res) => res.json(q.all('SELECT id, name, status, scheduledStart, createdAt FROM games ORDER BY id DESC')));
-m.post('/games', wrap((req) => G.createGame(req.body || {}, actor(req))));
+// Dalla regia una partita nuova nasce «Creata»: le app di campo la vedono da «In preparazione».
+m.post('/games', wrap((req) => G.createGame({ ...(req.body || {}), status: 'created' }, actor(req))));
 m.patch('/games/:id', wrap((req) => G.updateGame(gameId(req), req.body || {}, actor(req))));
 m.delete('/games/:id', wrap((req) => { G.deleteGame(gameId(req), actor(req)); return { ok: true }; }));
 m.post('/demo', wrap((req) => ({ id: G.createDemo(req.body.teams, actor(req)) })));
@@ -781,7 +782,8 @@ app.use('/api/m', m);
 // ---- API validatore (regia o validatore)
 const v = express.Router();
 v.use(needStaff);
-v.get('/games', (_req, res) => res.json(q.all('SELECT id, name, status FROM games ORDER BY id DESC')));
+// Le partite «Creata» restano solo in regia: le app di campo (Soglia, Test armi, Consiglio) non le vedono.
+v.get('/games', (req, res) => res.json(q.all(`SELECT id, name, status FROM games${req.user.role === 'master' ? '' : " WHERE status != 'created'"} ORDER BY id DESC`)));
 v.get('/games/:id/teams', needPerm('soglia'), wrap(async (req) => {
   const g = G.getGame(Number(req.params.id));
   // Codice di uscita della Soglia: il QR da mostrare a schermo accanto all'elenco (lo stesso del cartello stampato).

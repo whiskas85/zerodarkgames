@@ -255,7 +255,7 @@ export const store = {
 };
 
 export const STATUS_LABELS = {
-  draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
+  created: 'Creata', draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
   last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',
 };
 

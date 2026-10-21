@@ -42,7 +42,7 @@ const TABS = [
 // Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
 const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
-const PRE = ['draft', 'ready', 'circle'];
+const PRE = ['created', 'draft', 'ready', 'circle'];
 
 const tab = () => (location.hash.slice(1) || 'live');
 
@@ -489,7 +489,9 @@ function controlButtons() {
   const st = R.ms.clock.status;
   const b = [];
   const act = (action, label, cls = '', title, text, danger) => h('button', { class: `btn ${cls}`, onclick: () => confirmCall(title, text, 'POST', G('/action'), { action }, null, danger) }, label);
-  if (st === 'draft') b.push(act('ready', 'Segna pronta', 'btn-primary', 'Partita pronta?', 'Le coppie potranno accedere e leggere il regolamento. Le iscrizioni si chiudono.'));
+  if (st === 'created') b.push(act('prepare', 'Porta in preparazione', 'btn-primary', 'Portare in preparazione?', 'La partita diventa visibile alle app di campo (Campo, Soglia, Test armi, Consiglio) e si possono aprire le iscrizioni.'));
+  if (st === 'draft') b.push(act('ready', 'Segna pronta', 'btn-primary', 'Partita pronta?', 'Le coppie potranno accedere e leggere il regolamento. Le iscrizioni si chiudono.'),
+    act('created', 'Torna a «Creata»', '', 'Tornare a «Creata»?', 'La partita sparisce dalle app di campo e le iscrizioni si chiudono. Resta tutto in regia.'));
   if (st === 'ready') b.push(act('circle', 'Apri il cerchio', 'btn-primary', 'Aprire il cerchio?', 'Ogni coppia vedrà il proprio Sigillo.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', 'La partita torna modificabile.'));
   if (st === 'circle') b.push(act('start', 'VIA!', 'btn-primary btn-go', 'Dare il VIA?', 'Parte l\'orologio di partita: tregua di ' + R.ms.game.truceMin + ' minuti, poi la caccia. Tutte le coppie ricevono l\'annuncio.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', 'Le coppie non vedranno più il Sigillo fino al prossimo cerchio.'));
   if (ACTIVE.includes(st)) b.push(act('pause', 'Sospendi', 'btn-danger', 'Sospendere la partita?', 'Tutti gli orologi e il calendario si fermano. Banner rosso su tutti i dispositivi.', true), act('end', 'Termina', '', 'Terminare la partita?', 'Gli Altari si chiudono e si calcola la classifica finale.', true));
@@ -502,7 +504,7 @@ function controlButtons() {
 
 // Timeline degli stati della gara: fatti (con l'ora), quello attuale, i prossimi (con l'ora prevista).
 const PHASES = [
-  ['draft', 'In preparazione', 'status_draft'], ['ready', 'Pronta', 'status_ready'], ['circle', 'Cerchio', 'status_circle'],
+  ['created', 'Creata', 'status_created'], ['draft', 'In preparazione', 'status_draft'], ['ready', 'Pronta', 'status_ready'], ['circle', 'Cerchio', 'status_circle'],
   ['truce', 'Tregua', 'game_started'], ['hunt', 'Caccia', 'phase_hunt'], ['last_half_hour', 'Ultima mezz\'ora', 'phase_last_half_hour'], ['ended', 'Fine', 'game_ended'],
 ];
 function phaseSteps() {
@@ -1017,7 +1019,7 @@ const resetBtn = (p) => ((R.ms.players.find((x) => x.id === p.id) || p).accountI
 function viewTeams() {
   const ms = R.ms;
   const st = ms.clock.status;
-  const editable = ['draft', 'ready'].includes(st);
+  const editable = ['created', 'draft', 'ready'].includes(st);
   const pending = ms.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect');
   const free = ms.players.filter((p) => !p.teamId && p.status === 'accepted');
   const usedSectors = new Set(ms.teams.map((t) => t.sectorId));

@@ -4,7 +4,7 @@ import { h, mount, api, makeClock, fmtDuration, toast, stream, store, STATUS_LAB
 
 const $root = document.getElementById('root');
 const clock = makeClock();
-const PRE = ['draft', 'ready', 'circle'];
+const PRE = ['created', 'draft', 'ready', 'circle'];
 const params = new URLSearchParams(location.search);
 const A = { me: null, games: [], gameId: Number(params.get('g')) || store.get('zdg_armi_game'), data: null };
 

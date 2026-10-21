@@ -763,7 +763,7 @@ function emergencyModal() {
 
 const dueDone = new Set();
 // Conto alla rovescia al via (partita in preparazione con data e ora previste).
-const PRE = ['draft', 'ready', 'circle'];
+const PRE = ['created', 'draft', 'ready', 'circle'];
 function startAt() {
   const st = S.state;
   if (!st || !PRE.includes(st.clock?.status) || !st.game?.scheduledStart) return null;

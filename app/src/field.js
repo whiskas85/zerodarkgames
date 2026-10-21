@@ -339,7 +339,7 @@ function resolveToken(gameId, text, anyGame = false) {
   if (anyGame) {
     const tok = s.match(/\/(a|d)\/([\w-]+)/);
     const row = tok && q.get(`SELECT x.id, x.label, x.gameId, g.name AS gameName FROM ${tok[1] === 'a' ? 'points' : 'gifts'} x JOIN games g ON g.id = x.gameId
-      WHERE x.qrToken = ? AND g.status != 'ended'`, tok[2]);
+      WHERE x.qrToken = ? AND g.status NOT IN ('ended', 'created')`, tok[2]);
     if (row && row.gameId !== Number(gameId)) return { kind: tok[1] === 'a' ? 'point' : 'gift', id: row.id, label: row.label, gameId: row.gameId, gameName: row.gameName };
   }
   const a = s.match(/\/a\/([\w-]+)/);
@@ -702,7 +702,7 @@ const POSITION_STALE = 5 * 60000; // dopo 5 minuti il segnaposto si sbiadisce
 // Le coppie si vedono in mappa solo a partita iniziata; gli Eletti da quando la partita è pronta (non in preparazione).
 function trackingActive(team, status) {
   if (team.kind === 'couple') return [...C.ACTIVE, 'paused'].includes(status) && team.status !== 'withdrawn';
-  if (team.kind === 'elect') return !['draft', 'ended'].includes(status);
+  if (team.kind === 'elect') return !['created', 'draft', 'ended'].includes(status);
   return false;
 }
 

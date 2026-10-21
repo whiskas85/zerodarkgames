@@ -51,10 +51,11 @@ const DEFAULT_TIMERS = [
 
 const LAST_PHASE_MIN = 30;
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
-const PRE_START = ['draft', 'ready', 'circle'];
+// «Creata»: partita appena creata, solo in regia (le app di campo non la vedono, iscrizioni chiuse).
+const PRE_START = ['created', 'draft', 'ready', 'circle'];
 
 const STATUS_LABELS = {
-  draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
+  created: 'Creata', draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
   last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',
 };
 
