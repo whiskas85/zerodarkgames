@@ -1048,35 +1048,9 @@ function startCountdown(st) {
       st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
 }
 
-// Prima della gara, in testa alla home: il test armi con le letture del cronografo in tempo reale; sparisce quando il
-// test è chiuso. L'accettazione si apre dal pulsante azzurro del menu.
+// Prima della gara: accettazione e test armi si aprono dai pulsanti azzurri del menu.
 const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/impostazioni', 'Come installarla'] };
 const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
-function arrivalCards(st) {
-  const ev = st?.player?.event;
-  if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return null;
-  const cards = [];
-  if (!ev.chronoDoneAt) {
-    const W = (ev.weaponList || []).map((w) => [w.key, w.label]);
-    const lv = ev.live;
-    const avg = lv?.readings?.length ? lv.readings.reduce((a, x) => a + x.j, 0) / lv.readings.length : null;
-    cards.push(h('div', { class: 'card arrival-card' },
-      h('div', { class: 'eyebrow' }, 'Test armi'),
-      lv?.readings?.length ? h('div', { class: `live-test ${avg >= 1 ? 'bad' : 'ok'}` },
-        h('div', { class: 'eyebrow' }, `● In prova adesso · ${lv.label}`),
-        h('div', { class: 'live-reads' }, lv.readings.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${x.v.toFixed(1).replace('.', ',')} m/s` : ''}`))),
-        h('strong', null, avg >= 1 ? `✗ Media ${nJ(avg)}: OVER, sopra 1 joule` : `✓ Media ${nJ(avg)}: sotto 1 joule`),
-        lv.readings.some((x) => x.j >= 1) && avg < 1 ? h('span', { class: 'tiny bad-text' }, '⚠ Almeno un colpo sopra 1 joule') : null) : null,
-      h('ul', { class: 'arrival-list' }, W.map(([k, label]) => {
-        const w = ev.weapons?.[k] || {};
-        return h('li', { class: w.ok ? 'ok' : w.failed ? 'bad' : '' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('span', { class: 'grow' }, label),
-          h('span', { class: 'tiny mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}${w.n > 1 ? ` · media di ${w.n}` : ''}`) : w.failed ? (w.j == null ? 'non passa' : `${nJ(w.j)} · non passa`) : 'da provare'));
-      })),
-      h('p', { class: 'tiny muted' }, 'Al cronografo vedete qui le letture mentre sparate. Il riquadro sparisce quando il test armi è chiuso. ', h('a', { href: '#/testarmi' }, 'Come lo vede l\'arbitro →'))));
-  }
-  return cards;
-}
-
 // Pulsanti azzurri del menu prima della gara: accettazione e test armi (in tempo reale).
 function prepTiles() {
   const st = S.state;
@@ -1180,7 +1154,6 @@ function viewLobbyHome(st) {
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
   const partner = st.team.members.find((m) => !m.me);
   return h('div', { class: 'home' },
-    arrivalCards(st),
     startAt() > clock.serverNow() ? startCountdown(st) : null,
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, 'Anteprima · ', ROLE_TEXT[pl.role] || 'Iscritto'),
@@ -1218,7 +1191,6 @@ function viewElectHome(st) {
   const unreadNot = (st.notices || []).filter((n) => n.id > S.seenNotice || (n.poll && !n.myVote)).length;
   const lastAnn = st.announcements[0];
   return h('div', { class: 'home' },
-    arrivalCards(st),
     prepCard(st),
     h('div', { class: 'phase' },
       h('div', { class: 'eyebrow' }, STATUS_LABELS[c.status]),
@@ -1275,7 +1247,6 @@ function viewHome() {
   else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));
 
   return h('div', { class: 'home' },
-    arrivalCards(st),
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     phase,
