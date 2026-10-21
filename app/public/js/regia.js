@@ -538,6 +538,22 @@ function phaseSteps() {
     i === idx && pauses && c.status !== 'paused' ? h('span', { class: 'ps-time mono' }, `${pauses} ${pauses === 1 ? 'pausa' : 'pause'}`) : null)));
 }
 
+// Anti «furbetto del QR», a portata di mano in Regia: raggio entro cui vale la lettura di un Altare piazzato.
+const RADIUS_OPTIONS = [0, 15, 25, 30, 50, 75, 100, 150, 200, 300];
+function altarRadiusPanel() {
+  const g = R.ms.game;
+  const cur = Number(g.altarRadiusM) || 0;
+  const ap = R.ms.altarsPlaced || {};
+  const opts = RADIUS_OPTIONS.includes(cur) ? RADIUS_OPTIONS : [...RADIUS_OPTIONS, cur].sort((a, b) => a - b);
+  return h('div', { class: `panel radius-panel ${cur ? 'on' : ''}` },
+    h('div', null,
+      h('div', { class: 'eyebrow' }, 'Lettura degli Altari'),
+      h('strong', null, cur ? `Valida entro ${cur} m dall'Altare` : 'Nessun controllo di distanza'),
+      h('div', { class: 'tiny muted' }, `${ap.placed || 0} Altari piazzati su ${ap.total || 0}: il controllo vale solo per quelli piazzati. Al raggio si aggiunge l'imprecisione del GPS (fino a 25 m). Consigliato 30 m; 50 m nei boschi fitti.`)),
+    h('select', { class: 'input radius-select', 'aria-label': 'Raggio di lettura degli Altari', onchange: (e) => call('PATCH', `/api/m/games/${g.id}`, { altarRadiusM: Number(e.target.value) }, Number(e.target.value) ? `Lettura degli Altari valida entro ${e.target.value} m` : 'Controllo di distanza tolto') },
+      opts.map((v) => h('option', { value: v, selected: v === cur }, v ? `${v} m${v === 30 ? ' (consigliato)' : ''}` : 'Nessun controllo'))));
+}
+
 function viewLive() {
   const ms = R.ms;
   const c = ms.clock;
@@ -560,6 +576,8 @@ function viewLive() {
     PRE.includes(st) ? readinessPanel() : null,
 
     liveTimeline(),
+
+    altarRadiusPanel(),
 
     h('div', { class: 'cols-3' },
       nextCard('Prossimo tradimento', n.revelation

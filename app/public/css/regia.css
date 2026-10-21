@@ -853,3 +853,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
 
 /* Replica che non passa: X bianca su fondo rosso nel quadratino */
 .chrono-wbtn.fail > .ck-box { background: #e5484d; border-color: #e5484d; color: #fff; }
+
+/* Regia: raggio di lettura degli Altari */
+.radius-panel { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.radius-panel > div { flex: 1 1 260px; display: grid; gap: 2px; }
+.radius-panel.on { border-color: var(--ok, #46c46a); }
+.radius-select { flex: 0 0 auto; width: auto; min-width: 190px; font-weight: 700; }

@@ -2030,6 +2030,8 @@ function masterState(gameId) {
   return {
     clock: clockOf(g),
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
+    // Altari con coordinate: solo su questi vale il raggio di lettura.
+    altarsPlaced: q.get('SELECT COUNT(*) AS total, SUM(lat IS NOT NULL) AS placed FROM points WHERE gameId = ?', g.id),
     readiness: readiness(g),
     spots: spotsOf(g.id),
     env: process.env.ZDG_ENV || 'production',
