@@ -127,7 +127,10 @@ function ckDrag(ctx, e, p) {
   window.addEventListener('pointercancel', end);
 }
 
-const CHRONO = [['main', 'chronoMain', 'Arma principale'], ['backup', 'chronoBackup', 'Principale di riserva'], ['secondary', 'chronoSecondary', 'Arma secondaria']];
+// Armi della persona (dal server): di base le tre, ma se ne possono togliere o aggiungere.
+const DEFAULT_WEAPONS = [{ key: 'main', label: 'Arma principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Arma secondaria' }];
+const weaponsOf = (p) => p.weaponList || DEFAULT_WEAPONS;
+const passed = (p, key) => !!weaponsOf(p).find((w) => w.key === key)?.ok;
 // ---------------------------------------------------------------- cronografo Bluetooth: registrazione dei dati grezzi
 // Prima fase: ci si collega al cronografo (Web Bluetooth, Chrome su Android o computer), si ascoltano tutti i canali e si
 // registrano i byte di ogni tiro accanto al valore letto sul display. Dal registro esportato si ricava il formato.
@@ -510,8 +513,7 @@ async function resetWeapon(ctx, p, weapon, label) {
 // L'ultimo test salvato di un'arma: quando, chi, pallino, media e i singoli tiri (potenza, velocità, grammatura).
 function savedTest(p, weapon) {
   const s = shotsOf(p)[weapon];
-  const col = CHRONO.find(([w]) => w === weapon)[1];
-  if (!s) return p[col] ? h('div', { class: 'cs-saved ok' }, h('div', { class: 'eyebrow' }, 'Test salvato'), h('strong', null, '✓ Passa · segnata a mano'), h('span', { class: 'small' }, `Minore di 1 joule${p.chronoBy ? ` (${p.chronoBy})` : ''}: nessuna lettura del cronografo.`)) : null;
+  if (!s) return passed(p, weapon) ? h('div', { class: 'cs-saved ok' }, h('div', { class: 'eyebrow' }, 'Test salvato'), h('strong', null, '✓ Passa · segnata a mano'), h('span', { class: 'small' }, `Minore di 1 joule${p.chronoBy ? ` (${p.chronoBy})` : ''}: nessuna lettura del cronografo.`)) : null;
   if (s.manual) {
     return h('div', { class: 'cs-saved bad' }, h('div', { class: 'eyebrow' }, `Test salvato · ${new Date(s.at).toLocaleDateString('it-IT')} ${fmtTime(s.at)}${s.by ? ` · ${s.by}` : ''}`),
       h('strong', null, '✗ Non passa · segnata a mano'), h('span', { class: 'small' }, 'Da 1 joule in su: nessuna lettura del cronografo.'));
@@ -545,14 +547,13 @@ function chronoSession(ctx) {
   }
   const save = () => saveSession(ctx);
   const saved = shotsOf(p)[ss.weapon];
-  const col = CHRONO.find(([w]) => w === ss.weapon)[1];
   const reset = async () => { if (await resetWeapon(ctx, p, ss.weapon, ss.label)) { r.length = 0; ctx.render(); } };
   // Test già fatto (positivo o negativo): si guarda il risultato; per rifarlo prima si azzera l'arma.
-  ss.locked = !!(p[col] || saved) && !ss.saving;
+  ss.locked = !!(passed(p, ss.weapon) || saved) && !ss.saving;
   if (ss.locked) {
-    const passed = !!p[col];
+    const ok = passed(p, ss.weapon);
     return h('div', { class: 'panel chrono-session' },
-      h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, passed ? 'Test fatto · positivo' : 'Test fatto · negativo'), h('strong', null, ss.label)),
+      h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, ok ? 'Test fatto · positivo' : 'Test fatto · negativo'), h('strong', null, ss.label)),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
       savedTest(p, ss.weapon),
       h('p', { class: 'small muted' }, 'Per rifare il test azzera l\'arma: si tolgono esito e letture, poi si spara di nuovo.'),
@@ -593,6 +594,10 @@ function chronoSession(ctx) {
       r.length ? h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: ss.saving, onclick: save }, ok ? 'Salva ora (positivo)' : 'Salva ora (negativo)') : null,
       h('button', { class: 'btn', type: 'button', onclick: () => manual(true) }, '✓ Passa a mano'),
       h('button', { class: 'btn btn-danger', type: 'button', onclick: () => manual(false) }, '✗ Non passa a mano'),
+      r.length ? null : h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => {
+        if (!(await dialog({ title: 'Togliere quest\'arma?', text: `${ss.label}: la persona non ce l'ha, non va provata.`, okLabel: 'Togli', danger: true }))) return;
+        if (await ctx.call('POST', `/weapons/${p.id}`, { action: 'remove', key: ss.weapon }, 'Arma tolta')) close();
+      } }, 'Non ce l\'ha: togli'),
       r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; liveSend(ss, []); ctx.render(); } }, 'Ricomincia i tiri') : null,
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
 }
@@ -602,7 +607,7 @@ export function viewChrono(ctx) {
   const ms = ctx.data;
   const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
   const closed = present.filter((p) => p.chronoDoneAt).length;
-  const tested = present.reduce((n, p) => n + CHRONO.filter(([, col]) => p[col]).length, 0);
+  const tested = present.reduce((n, p) => n + weaponsOf(p).filter((w) => w.ok).length, 0);
   const groups = peopleGroups(ctx, (p) => !!p.checkinAt).map((g) => ({ ...g, key: JSON.stringify(g.dest) }));
   if (chronoGroup && !groups.some((g) => g.key === chronoGroup)) chronoGroup = null;
   const shown = groups.filter((g) => !chronoGroup || g.key === chronoGroup)
@@ -611,7 +616,7 @@ export function viewChrono(ctx) {
   const open = (p, weapon, label) => { BT.result = null; const prev = BT.session; if (prev && !prev.view && (prev.playerId !== p.id || prev.weapon !== weapon)) liveSend(prev, [], false); BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [], view: !!p.chronoDoneAt }; liveSend(BT.session); ctx.render(); };
   const closeP = async (p) => {
     if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
-    if (!p.chronoMain && !(await dialog({ title: 'Chiudere senza arma principale?', text: `${personLabel(p)} non ha l'arma principale provata.`, okLabel: 'Chiudi comunque' }))) return;
+    if (!weaponsOf(p).some((w) => w.ok) && !(await dialog({ title: 'Chiudere senza armi passate?', text: `${personLabel(p)} non ha nessuna arma provata e passata.`, okLabel: 'Chiudi comunque' }))) return;
     if (BT.session?.playerId === p.id) BT.session = null;
     return ctx.call('POST', `/chrono/${p.id}/done`, { on: true }, `${p.nickname || p.name}: chiusa`);
   };
@@ -635,16 +640,21 @@ export function viewChrono(ctx) {
       const shots = shotsOf(p);
       return h('div', { class: `chrono-tr ${p.chronoDoneAt ? 'closed' : ''} ${BT.session?.playerId === p.id ? 'active' : ''}`, style: { '--c': g.team?.color || g.color || 'var(--line)' } },
         h('div', { class: 'chrono-who' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, g.title)),
-        h('div', { class: 'chrono-weapons' }, CHRONO.map(([weapon, col, label]) => {
+        h('div', { class: 'chrono-weapons' }, weaponsOf(p).map(({ key: weapon, label, ok: pass }) => {
           const s = shots[weapon];
           const cur = BT.session?.playerId === p.id && BT.session.weapon === weapon;
-          const sub = p[col] ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? (s.j == null ? 'non passa (a mano)' : `${fmtJ(s.j)} · non passa`) : 'da provare';
+          const sub = pass ? (s ? `${fmtJ(s.j)}${s.n > 1 ? ` · media di ${s.n}` : ''}` : 'a mano') : s && s.ok === false ? (s.j == null ? 'non passa (a mano)' : `${fmtJ(s.j)} · non passa`) : 'da provare';
           // Colpi sopra 1 J tra le letture salvate (anche se la media passa): in rosso.
           const overN = (s?.readings || []).filter((x) => x.j >= 1).length || (s && s.max >= 1 ? 1 : 0);
-          return h('button', { type: 'button', class: `chrono-wbtn ${p[col] ? 'on' : ''} ${s && s.ok === false && !p[col] ? 'fail' : ''} ${overN && p[col] ? 'over' : ''} ${cur ? 'cur' : ''}`, onclick: () => open(p, weapon, label) },
-            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p[col] ? '✓' : s && s.ok === false ? '✕' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon]), h('span', { class: 'tiny' }, sub),
+          return h('button', { type: 'button', class: `chrono-wbtn ${pass ? 'on' : ''} ${s && s.ok === false && !pass ? 'fail' : ''} ${overN && pass ? 'over' : ''} ${cur ? 'cur' : ''}`, onclick: () => open(p, weapon, label) },
+            h('span', { class: 'ck-box', 'aria-hidden': 'true' }, pass ? '✓' : s && s.ok === false ? '✕' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon] || label), h('span', { class: 'tiny' }, sub),
               overN && s ? h('span', { class: 'tiny w-over' }, `⚠ ${overN} sopra 1 J · max ${fmtJ(s.max ?? s.j)}`) : null));
-        })),
+        }),
+        // Arma in più (anche oltre le tre): si aggiunge qui; quelle non provate si tolgono dalla prova.
+        p.chronoDoneAt ? null : h('button', { type: 'button', class: 'chrono-wbtn chrono-add', title: 'Aggiungi un\'arma', onclick: async () => {
+          const name = await dialog({ title: `Nuova arma per ${personLabel(p)}`, input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
+          if (name && name.trim()) ctx.call('POST', `/weapons/${p.id}`, { action: 'add', label: name.trim() }, `${name.trim()} aggiunta`);
+        } }, h('span', { class: 'ck-box', 'aria-hidden': 'true' }, '＋'), h('span', null, h('span', { class: 'w-long' }, 'Aggiungi arma'), h('span', { class: 'w-short' }, 'Arma')))),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
     })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
     btDiag(),

@@ -8,8 +8,8 @@ const { HttpError } = require('./util');
 const ES = require('./eventstatus');
 
 const err = (status, msg) => new HttpError(status, msg);
-const WEAPONS = { main: 'chronoMain', backup: 'chronoBackup', secondary: 'chronoSecondary' };
-const WEAPON_LABELS = { main: 'arma principale', backup: 'arma principale di riserva', secondary: 'arma secondaria' };
+const WEAPONS = ES.LEGACY;
+const weaponLabel = (p, key) => ES.weaponsOf(p).find((w) => w.key === key)?.label || null;
 
 function playerOf(gameId, playerId) {
   const p = q.get('SELECT * FROM players WHERE id = ? AND gameId = ?', Number(playerId), gameId);
@@ -51,9 +51,9 @@ function setTeamCheckin(gameId, teamId, on, actor) {
 // Una misura da 1 joule in su non passa: l'arma resta (o torna) da provare e il tentativo finisce nel registro.
 // manualFail: test segnato a mano come negativo (da 1 J in su), senza letture del cronografo.
 function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail = false) {
-  const col = WEAPONS[weapon];
-  if (!col) throw err(400, 'Arma non valida');
   const p = playerOf(gameId, playerId);
+  if (!weaponLabel(p, weapon)) throw err(400, 'Arma non valida');
+  const col = WEAPONS[weapon];
   if (!p.checkinAt) throw err(409, 'Prima va accettato all\'ingresso');
   let shots = {};
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
@@ -67,8 +67,13 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail 
   if (shot) shots[weapon] = { j: Math.round(j * 1000) / 1000, v: Number(shot.mps) || null, g: Number(shot.grams) || null, max: readings?.length ? Math.max(...readings.map((r) => r.j)) : null, n: readings?.length || 1, readings, at: Date.now(), by: actor, ok: !fail };
   else if (manualFail) shots[weapon] = { manual: true, ok: false, j: null, at: Date.now(), by: actor };
   else delete shots[weapon];
-  q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);
-  const data = { name: p.name, arma: WEAPON_LABELS[weapon], ...(manualFail ? { manuale: true } : shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
+  if (col) q.run(`UPDATE players SET ${col} = ?, chronoBy = ?, chronoShots = ? WHERE id = ?`, passed ? Date.now() : null, actor, JSON.stringify(shots), p.id);
+  else {
+    const pass = (() => { try { return JSON.parse(p.chronoPass || '{}') || {}; } catch { return {}; } })();
+    if (passed) pass[weapon] = Date.now(); else delete pass[weapon];
+    q.run('UPDATE players SET chronoPass = ?, chronoBy = ?, chronoShots = ? WHERE id = ?', JSON.stringify(pass), actor, JSON.stringify(shots), p.id);
+  }
+  const data = { name: p.name, arma: weaponLabel(p, weapon), ...(manualFail ? { manuale: true } : shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
   G.log(gameId, actor, fail ? 'chrono_fail' : passed ? 'chrono_ok' : 'chrono_undo', data);
   G.notifyState(gameId);
   return { ok: !fail, joule: shot ? j : null };
@@ -135,7 +140,7 @@ function checkinData(gameId) {
     players: q.all(`SELECT p.*, a.username FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id)
       .map((p) => ({ id: p.id, name: p.name, nickname: p.nickname, status: p.status, teamId: p.teamId, squadId: p.squadId, softairTeam: p.softairTeam, checkinAt: p.checkinAt,
         checkinBy: p.checkinBy, chronoMain: p.chronoMain, chronoBackup: p.chronoBackup, chronoSecondary: p.chronoSecondary, chronoShots: p.chronoShots, chronoDoneAt: p.chronoDoneAt,
-        username: p.username, checks: p.status === 'accepted' ? ES.checksOf(p) : [] })),
+        username: p.username, weaponList: ES.weaponList(p), checks: p.status === 'accepted' ? ES.checksOf(p) : [] })),
     teams: G.teamsOf(g.id).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName, color: t.sectorColor, status: t.status, checkinAt: t.checkinAt || null })),
     elect: elect ? { id: elect.id } : null,
     squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id),
@@ -145,11 +150,38 @@ function checkinData(gameId) {
 // Letture del cronografo mentre si prova un'arma: la persona le vede in tempo reale nella sua app.
 function setChronoLive(gameId, playerId, weapon, readings, { open = true, grams = null } = {}) {
   const p = playerOf(gameId, playerId);
-  const label = WEAPON_LABELS[weapon];
+  const label = weaponLabel(p, weapon);
   const list = Array.isArray(readings) ? readings.slice(0, 20).map((r) => ({ j: Number(r.j), v: Number(r.v), g: Number(r.g) || null })).filter((r) => Number.isFinite(r.j)) : [];
   ES.setLive(p.id, label && open ? { weapon, label, readings: list, open: true, g: Number(grams) || null } : null);
   rt.toTeams(gameId, 'state', {});
   return { ok: true };
 }
 
-module.exports = { setChronoLive, setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };
+// Armi della persona: la persona stessa (dall'app) o lo staff ne aggiunge (anche più di tre) o ne toglie una non ancora provata.
+const MAX_WEAPONS = 8;
+function editWeapons(gameId, playerId, { action, label, key } = {}, actor) {
+  const p = playerOf(gameId, playerId);
+  if (p.chronoDoneAt) throw err(409, 'Test armi già chiuso: chiedi all\'arbitro di riaprirlo');
+  const list = ES.weaponsOf(p);
+  let shots = {};
+  try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
+  if (action === 'add') {
+    const name = String(label || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!name) throw err(400, 'Scrivi il nome dell\'arma (es. «Pistola», «Secondo fucile»)');
+    if (list.length >= MAX_WEAPONS) throw err(409, `Al massimo ${MAX_WEAPONS} armi`);
+    let n = 1;
+    while (list.some((w) => w.key === `w${n}`)) n++;
+    list.push({ key: `w${n}`, label: name });
+  } else if (action === 'remove') {
+    const w = list.find((x) => x.key === key);
+    if (!w) throw err(404, 'Arma non trovata');
+    if (ES.passOf(p, key) || shots[key]) throw err(409, `«${w.label}» è già stata provata: per toglierla l'arbitro deve prima azzerarne il test`);
+    list.splice(list.indexOf(w), 1);
+  } else throw err(400, 'Azione non valida');
+  q.run('UPDATE players SET weapons = ? WHERE id = ?', JSON.stringify(list), p.id);
+  G.log(gameId, actor, action === 'add' ? 'weapon_added' : 'weapon_removed', { name: p.name, arma: action === 'add' ? list[list.length - 1].label : key });
+  G.notifyState(gameId);
+  return { ok: true, weapons: list };
+}
+
+module.exports = { editWeapons, setChronoLive, setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };

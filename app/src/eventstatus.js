@@ -1,7 +1,18 @@
 'use strict';
 // Stato della persona all'evento, per il suo profilo: iscrizione, accettazione all'arrivo, test armi
 // (per ogni arma: passata, joule, velocità e peso del pallino usato). Solo lettura, nessuna dipendenza.
-const WEAPONS = [['main', 'chronoMain'], ['backup', 'chronoBackup'], ['secondary', 'chronoSecondary']];
+// Armi della persona: di base principale, principale di riserva e secondaria; se ne possono togliere o aggiungere.
+const LEGACY = { main: 'chronoMain', backup: 'chronoBackup', secondary: 'chronoSecondary' };
+const DEFAULT_WEAPONS = [{ key: 'main', label: 'Arma principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Arma secondaria' }];
+const parseJson = (v, d) => { try { return JSON.parse(v || '') ?? d; } catch { return d; } };
+function weaponsOf(p) {
+  const list = parseJson(p.weapons, null);
+  return Array.isArray(list) ? list.filter((w) => w && w.key && w.label) : DEFAULT_WEAPONS.slice();
+}
+// Quando l'arma è passata (spunta): le tre di base nelle loro colonne, le altre in chronoPass.
+const passOf = (p, key) => (LEGACY[key] ? p[LEGACY[key]] : parseJson(p.chronoPass, {})[key]) || null;
+// Elenco per l'Accettazione/Test armi: chiave, nome e spunta.
+const weaponList = (p) => weaponsOf(p).map((w) => ({ key: w.key, label: w.label, custom: !LEGACY[w.key], ok: passOf(p, w.key) }));
 
 // Letture del cronografo in corso, persona per persona (solo in memoria): la persona le vede in tempo reale nell'app.
 const LIVE_TTL = 10 * 60000;
@@ -41,20 +52,24 @@ function eventStatus(p) {
   if (!p) return null;
   let shots = {};
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
-  const weapons = Object.fromEntries(WEAPONS.map(([w, col]) => {
+  const list = weaponsOf(p).map((wp) => {
+    const w = wp.key;
+    const pass = passOf(p, w);
     const s = shots[w];
-    return [w, { ok: !!p[col], at: p[col] || null, manual: (!!p[col] && !s) || !!s?.manual, j: s?.j ?? null, v: s?.v ?? null, g: s?.g ?? null, n: s?.n ?? null, max: s?.max ?? null, failed: !!s && s.ok === false && !p[col],
-      readings: s?.readings || null, testedAt: s?.at || null, by: s?.by || null }];
-  }));
+    return { key: w, label: wp.label, custom: !LEGACY[w], ok: !!pass, at: pass || null, manual: (!!pass && !s) || !!s?.manual, j: s?.j ?? null, v: s?.v ?? null, g: s?.g ?? null, n: s?.n ?? null, max: s?.max ?? null, failed: !!s && s.ok === false && !pass,
+      readings: s?.readings || null, testedAt: s?.at || null, by: s?.by || null };
+  });
+  const weapons = Object.fromEntries(list.map((w) => [w.key, w]));
   return {
     enrolled: p.status,
     checkinAt: p.checkinAt || null,
     chronoDoneAt: p.chronoDoneAt || null,
-    chronoStarted: WEAPONS.some(([w, col]) => p[col] || shots[w]),
+    chronoStarted: list.some((w) => w.ok || shots[w.key]),
     weapons,
+    weaponList: list,
     checks: checksOf(p),
     live: liveOf(p.id),
   };
 }
 
-module.exports = { eventStatus, checksOf, setLive, liveOf, CHECKS };
+module.exports = { weaponsOf, passOf, weaponList, LEGACY, DEFAULT_WEAPONS, eventStatus, checksOf, setLive, liveOf, CHECKS };

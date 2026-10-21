@@ -340,6 +340,9 @@ addColumn('users', 'lastGameId', 'INTEGER');
 addColumn('team_visits', 'geoOk', 'INTEGER NOT NULL DEFAULT 0');
 // Checklist dell'accettazione spuntata dal Consiglio (le voci non cambiate seguono lo stato rilevato dall'app).
 addColumn('players', 'checkinChecks', 'TEXT');
+// Armi della persona per il test (null = le tre di base) e spunte delle armi aggiunte (le tre di base hanno le loro colonne).
+addColumn('players', 'weapons', 'TEXT');
+addColumn('players', 'chronoPass', 'TEXT');
 addColumn('account_identities', 'picture', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
   accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL

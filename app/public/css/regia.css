@@ -893,3 +893,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ck-side { display: grid; justify-items: end; gap: 2px; text-align: right; }
 .ck-sum { font-family: var(--f-mono, monospace); color: var(--muted); }
 .ck-sum.ok { color: #46c46a; }
+.chrono-add { border-style: dashed; opacity: .85; }

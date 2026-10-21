@@ -716,7 +716,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
     h('span', { class: 'ev-dot', 'aria-hidden': 'true' }, done ? '✓' : ''), h('div', null, h('strong', null, label), sub ? h('div', { class: 'tiny muted' }, sub) : null));
   const enrolled = ev.enrolled === 'accepted';
   const chronoSub = ev.chronoDoneAt ? `Chiuso alle ${t(ev.chronoDoneAt)}` : ev.chronoStarted ? 'In corso' : 'Da fare al cronografo';
-  const W = [['main', 'Arma primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Arma secondaria']];
+  const W = ev.weaponList ? ev.weaponList.map((w) => [w.key, w.label]) : [['main', 'Arma primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Arma secondaria']];
   const weapon = ([k, label]) => {
     const w = ev.weapons?.[k] || {};
     const val = w.ok ? (w.manual ? 'provata · spunta manuale' : `${n2(w.j)} J${w.n > 1 ? ` (media di ${w.n})` : ''}`) : w.failed ? (w.j == null ? 'non passa · segnata a mano' : `${n2(w.j)} J · non passa`) : 'da provare';

@@ -415,6 +415,11 @@ app.post('/api/team/tracking/verify', needMember, wrap((req) => {
 }));
 // EMERGENZA reale (OFF GAME): da qualunque telefono della partita, anche prima della coppia.
 // Avviso di sicurezza pre-gara letto e compreso (per chi entra con l'accesso personale; con il codice di coppia resta sul telefono).
+// Le mie armi per il test: aggiungerne (anche più di tre) o togliere quelle che non ho (solo con l'accesso personale).
+app.post('/api/team/weapons', needMember, wrap((req) => {
+  if (!req.player) throw new HttpError(409, 'Serve il tuo accesso personale (non quello della coppia)');
+  return CK.editWeapons(req.player.gameId, req.player.id, req.body || {}, `giocatore:${req.player.id}`);
+}));
 app.post('/api/team/safety-ack', needMember, wrap((req) => {
   if (req.player) q.run('UPDATE players SET safetyAckAt = COALESCE(safetyAckAt, ?) WHERE id = ?', Date.now(), req.player.id);
   return { ok: true };
@@ -590,6 +595,7 @@ m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.b
 // on assente con la sola checklist: si salvano le spunte senza cambiare l'accettazione.
 const ckOn = (b) => (b?.on === undefined ? (b?.checks ? null : true) : b.on !== false);
 m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameId(req), req.params.pid, ckOn(req.body), actor(req), req.body?.checks || null)));
+m.post('/games/:id/weapons/:pid', wrap((req) => CK.editWeapons(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid/live', wrap((req) => CK.setChronoLive(gameId(req), req.params.pid, req.body?.weapon, req.body?.readings, { open: req.body?.open !== false, grams: req.body?.grams })));
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
@@ -802,6 +808,7 @@ v.get('/teams/:tid', needPerm('soglia'), wrap((req) => G.validatorView(Number(re
 const sActor = (req) => req.user?.username || 'staff';
 v.get('/games/:id/checkin', needPerm('accettazione', 'armi'), wrap((req) => CK.checkinData(Number(req.params.id))));
 v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) => CK.setPlayerCheckin(Number(req.params.id), req.params.pid, ckOn(req.body), sActor(req), req.body?.checks || null)));
+v.post('/games/:id/weapons/:pid', needPerm('armi'), wrap((req) => CK.editWeapons(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
 v.post('/games/:id/chrono/:pid/live', needPerm('armi'), wrap((req) => CK.setChronoLive(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.readings, { open: req.body?.open !== false, grams: req.body?.grams })));
 v.post('/games/:id/checkin/team/:tid', needPerm('accettazione'), wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/place/:pid', needPerm('accettazione'), wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));

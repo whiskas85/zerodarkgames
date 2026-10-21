@@ -1057,7 +1057,7 @@ function arrivalCards(st) {
   if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return null;
   const cards = [];
   if (!ev.chronoDoneAt) {
-    const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
+    const W = (ev.weaponList || []).map((w) => [w.key, w.label]);
     const lv = ev.live;
     const avg = lv?.readings?.length ? lv.readings.reduce((a, x) => a + x.j, 0) / lv.readings.length : null;
     cards.push(h('div', { class: 'card arrival-card' },
@@ -1124,8 +1124,14 @@ function viewTestArmi() {
   const last = r[r.length - 1];
   const over = r.filter((x) => x.j >= 1).length;
   const g = last?.g || lv?.g;
-  const W = [['main', 'Arma principale'], ['backup', 'Principale di riserva'], ['secondary', 'Arma secondaria']];
+  const W = (ev.weaponList || []).map((w) => [w.key, w.label]);
   const fmtV = (v) => (v ? `${v.toFixed(1).replace('.', ',')} m/s` : '');
+  // La persona sistema la sua lista di armi finché il test non è chiuso (serve il suo accesso personale).
+  const canEdit = !ev.chronoDoneAt && !!st.player?.id && !lv;
+  const editWeapon = async (body, confirmTitle, confirmText) => {
+    if (confirmTitle && !(await dialog({ title: confirmTitle, text: confirmText, okLabel: 'Togli' }))) return;
+    try { await api('POST', '/api/team/weapons', body); await refresh(); render(); } catch (e) { toast(e.offline ? 'Serve la rete' : e.message, 'error', 6000); }
+  };
   return h('div', { class: 'stack' },
     h('h2', null, 'Il mio test armi'),
     lv ? h('div', { class: `card live-panel ${!r.length ? 'wait' : mj >= 1 ? 'bad' : 'ok'}` },
@@ -1149,8 +1155,14 @@ function viewTestArmi() {
         h('div', { class: 'weapon-head' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('strong', { class: 'grow' }, label),
           h('span', { class: 'small mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}`) : w.failed ? (w.j == null ? 'non passa (a mano)' : `${nJ(w.j)} · non passa`) : 'da provare')),
         w.j != null ? h('div', { class: 'tiny muted' }, [w.n > 1 ? `media di ${w.n} tiri` : null, w.v ? fmtV(w.v) : null, w.g ? `pallino ${w.g.toFixed(2).replace('.', ',')} g` : null, w.max != null ? `max ${nJ(w.max)}` : null, w.testedAt ? `alle ${fmtTime(w.testedAt)}` : null].filter(Boolean).join(' · ')) : null,
-        reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null);
-    }));
+        reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null,
+        canEdit && !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, 'Non ce l\'ho: togli') : null);
+    }),
+    canEdit ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
+      const name = await dialog({ title: 'Aggiungi un\'arma', text: 'Ogni replica che porti va provata al cronografo.', input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
+      if (name && name.trim()) editWeapon({ action: 'add', label: name.trim() });
+    } }, '＋ Aggiungi un\'arma') : null,
+    canEdit ? h('p', { class: 'tiny muted' }, 'Togli le armi che non hai e aggiungi quelle in più: l\'arbitro vedrà la tua lista.') : null);
 }
 
 function viewLobbyHome(st) {

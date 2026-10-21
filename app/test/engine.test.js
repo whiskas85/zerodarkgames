@@ -1878,6 +1878,29 @@ test('test armi col cronografo: sotto 1 J spunta e salva la misura, da 1 J in su
   assert.equal(JSON.parse(q.get('SELECT chronoShots FROM players WHERE id = ?', p.id).chronoShots).backup, undefined);
 });
 
+test('test armi: la persona toglie le armi che non ha e ne aggiunge altre (anche più di tre)', () => {
+  const CK = require('../src/checkin');
+  const ES = require('../src/eventstatus');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  q.run("UPDATE players SET status = 'accepted' WHERE gameId = ?", g.id);
+  const [p] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  CK.setPlayerCheckin(g.id, p.id, true, 'test');
+  CK.editWeapons(g.id, p.id, { action: 'remove', key: 'backup' }, 'giocatore');
+  CK.editWeapons(g.id, p.id, { action: 'add', label: 'Pistola' }, 'giocatore');
+  CK.editWeapons(g.id, p.id, { action: 'add', label: 'Secondo fucile' }, 'giocatore');
+  let row = q.get('SELECT * FROM players WHERE id = ?', p.id);
+  assert.deepEqual(ES.weaponList(row).map((w) => w.label), ['Arma principale', 'Arma secondaria', 'Pistola', 'Secondo fucile']);
+  // L'arma aggiunta si prova come le altre e passa.
+  assert.equal(CK.setChrono(g.id, p.id, 'w1', true, 'arbitro', { joule: 0.8, mps: 90, grams: 0.2 }).ok, true);
+  row = q.get('SELECT * FROM players WHERE id = ?', p.id);
+  assert.equal(ES.eventStatus(row).weapons.w1.ok, true);
+  // Un'arma già provata non si toglie; quella tolta non si prova più.
+  assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'remove', key: 'w1' }, 'giocatore'), /già stata provata/);
+  assert.throws(() => CK.setChrono(g.id, p.id, 'backup', true, 'arbitro'), /Arma non valida/);
+  assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'add', label: ' ' }, 'giocatore'), /nome/);
+});
+
 test('test armi: più letture salvano media e massimo; la persona si chiude e si riapre', () => {
   const CK = require('../src/checkin');
   const g = setupGame(2);
