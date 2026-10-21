@@ -1375,9 +1375,11 @@ function scanTime(at) {
   return Number.isFinite(t) && t <= now + 60000 && t > now - 12 * 3600000 ? Math.min(t, now) : now;
 }
 
-function recordScan(team, p, at) {
-  q.run('INSERT INTO team_visits (teamId, pointId, visitedAt) VALUES (?, ?, ?) ON CONFLICT(teamId, pointId) DO UPDATE SET visitedAt = MAX(visitedAt, excluded.visitedAt)',
-    team.id, p.id, scanTime(at));
+function recordScan(team, p, at, geoOk = false) {
+  // Vale l'ultima scansione: se è stata fatta con il controllo di posizione superato lo si ricorda (geoOk).
+  q.run(`INSERT INTO team_visits (teamId, pointId, visitedAt, geoOk) VALUES (?, ?, ?, ?) ON CONFLICT(teamId, pointId) DO UPDATE SET
+    geoOk = CASE WHEN excluded.visitedAt >= visitedAt THEN excluded.geoOk ELSE geoOk END, visitedAt = MAX(visitedAt, excluded.visitedAt)`,
+    team.id, p.id, scanTime(at), geoOk ? 1 : 0);
   return q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id).visitedAt;
 }
 
@@ -1399,9 +1401,13 @@ function altarRejections(gameId) {
     WHERE r.gameId = ? ORDER BY r.at DESC, r.id DESC LIMIT 200`, gameId);
 }
 
+// Controllo acceso e Altare piazzato: una scansione fatta senza controllo (prima di accenderlo) non vale.
+const needsGeo = (g, p) => altarRadius(g) > 0 && p.lat != null && p.lng != null;
+
+// Torna true se il controllo c'è stato ed è superato; lancia l'errore con la motivazione se la coppia è lontana.
 function checkAltarDistance(g, team, p, pos) {
   const radius = altarRadius(g);
-  if (radius <= 0 || p.lat == null || p.lng == null) return;
+  if (!needsGeo(g, p)) return false;
   const lat = Number(pos?.lat);
   const lng = Number(pos?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -1416,14 +1422,15 @@ function checkAltarDistance(g, team, p, pos) {
     rejectScan(g, team, p, { reason: 'too_far', lat, lng, acc: Number(pos.acc) || null, dist: d, radius });
     throw err(403, `Lettura rifiutata: siete a circa ${Math.round(d)} m da «${p.label}»: la lettura vale entro ${radius} m. Avvicinatevi all'Altare e inquadrate di nuovo il QR.`);
   }
+  return true;
 }
 
 function visitPoint(team, qrToken, at, pos = null) {
   requireCouple(team);
   const g = gameForTeam(team);
   const p = pointByToken(g, qrToken);
-  checkAltarDistance(g, team, p, pos);
-  const visitedAt = recordScan(team, p, at);
+  const geoOk = checkAltarDistance(g, team, p, pos);
+  const visitedAt = recordScan(team, p, at, geoOk);
   const s = sectorById(p.sectorId);
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
   const owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
@@ -1443,9 +1450,13 @@ function unlock(team, qrToken, code) {
   const owned = q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
   if (owned) return { ok: true, already: true, label: p.label, fragment: fragmentOut(f, p, owned.source, owned.acquiredAt) };
   // Serve una scansione ancora valida dell'Altare.
-  const v = q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id);
+  const v = q.get('SELECT visitedAt, geoOk FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id);
   const exp = v ? scanExpiresAt(g, v.visitedAt, team) : null;
   if (!v) return { ok: false, label: p.label, expired: true, message: 'Prima inquadrate il QR dell\'Altare con l\'app' };
+  if (needsGeo(g, p) && !v.geoOk) {
+    log(g.id, `coppia:${team.id}`, 'unlock_scan_unchecked', { teamId: team.id, point: p.label });
+    return { ok: false, label: p.label, expired: true, message: 'Il controllo di posizione è attivo: serve una lettura fatta davanti all\'Altare. Inquadrate di nuovo il QR.' };
+  }
   if (exp && exp < Date.now()) {
     log(g.id, `coppia:${team.id}`, 'unlock_scan_expired', { teamId: team.id, point: p.label });
     return { ok: false, label: p.label, expired: true, message: `Scansione scaduta (valeva ${g.altarScanMin} minuti): tornate all'Altare e riscansionatelo` };
@@ -1907,7 +1918,10 @@ function teamStateCore(team, player = null) {
   }
   const points = q.all('SELECT * FROM points WHERE gameId = ?', g.id);
   const pointBySector = Object.fromEntries(points.map((p) => [p.sectorId, p]));
-  const visitRows = Object.fromEntries(q.all('SELECT pointId, visitedAt FROM team_visits WHERE teamId = ?', team.id).map((v) => [v.pointId, v.visitedAt]));
+  // Con il controllo di posizione acceso, le scansioni fatte senza controllo non contano (l'app fa riscansionare).
+  const pointById = Object.fromEntries(points.map((p) => [p.id, p]));
+  const visitRows = Object.fromEntries(q.all('SELECT pointId, visitedAt, geoOk FROM team_visits WHERE teamId = ?', team.id)
+    .filter((v) => v.geoOk || !pointById[v.pointId] || !needsGeo(g, pointById[v.pointId])).map((v) => [v.pointId, v.visitedAt]));
   const visits = new Set(Object.keys(visitRows).map(Number));
   const scanValid = (pid) => { const e = scanExpiresAt(g, visitRows[pid], team); return !e || e >= Date.now(); };
   const board = teamFragmentsBoard(team);

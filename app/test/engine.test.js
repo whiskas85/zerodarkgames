@@ -501,6 +501,28 @@ test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () 
   assert.ok(F.teamMap(B).points.some((x) => x.id === p.id));
 });
 
+test("controllo posizione acceso dopo: le letture fatte senza controllo non valgono più (si riscansiona davanti all'Altare)", () => {
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const [A, B] = teamsOf(g.id);
+  const pB = pointOf(g.id, B.sectorId);
+  q.run('UPDATE points SET lat = 45.0, lng = 7.0 WHERE id = ?', pB.id);
+  // Lettura da lontano con il controllo spento: passa.
+  G.visitPoint(A, pB.qrToken, null, { lat: 46, lng: 8, acc: 5 });
+  G.updateGame(g.id, { altarCheckOn: true, altarRadiusM: 30 }, 'test');
+  // Acceso il controllo: quella lettura non vale per il Sigillo e non risulta tra gli Altari letti.
+  const r = G.unlock(A, pB.qrToken, codeOf(g.id, B.sectorId));
+  assert.equal(r.ok, false);
+  assert.match(r.message, /davanti all'Altare/);
+  assert.equal(G.teamState(A).visited.some((v) => v.pointId === pB.id), false);
+  // Da lontano: rifiutata; davanti all'Altare: vale e il Sigillo apre.
+  assert.throws(() => G.visitPoint(A, pB.qrToken, null, { lat: 46, lng: 8, acc: 5 }), /Lettura rifiutata/);
+  G.visitPoint(A, pB.qrToken, null, { lat: 45.0001, lng: 7.0, acc: 5 });
+  assert.equal(G.unlock(A, pB.qrToken, codeOf(g.id, B.sectorId)).ok, true);
+});
+
 test("partita «Creata»: solo in regia, poi in preparazione; iscrizioni chiuse finché è creata", () => {
   const g = G.createGame({ name: 'Nuova', status: 'created', registrationOpen: true }, 'test');
   assert.equal(G.getGame(g.id).status, 'created');

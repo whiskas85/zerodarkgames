@@ -263,7 +263,7 @@ function applySkill(g, me, s, p) {
       if (!v) throw err(400, 'Scegliete un Altare che avete già inquadrato');
       const exp = G.scanExpiresAt(g, v.visitedAt, me);
       if (!exp || exp > Date.now()) throw err(409, 'La scansione di questo Altare è ancora valida');
-      q.run('UPDATE team_visits SET visitedAt = ? WHERE teamId = ? AND pointId = ?', Date.now(), me.id, pt.id);
+      q.run('UPDATE team_visits SET visitedAt = ?, geoOk = 1 WHERE teamId = ? AND pointId = ?', Date.now(), me.id, pt.id);
       startEffect(me, 'skill', s.id, { pointId: pt.id });
       endNow(me.gameId, me.id, s.id);
       return { qrToken: pt.qrToken, message: `${pt.label} di nuovo aperto: pronunciate il Sigillo.` };
@@ -282,7 +282,7 @@ function applySkill(g, me, s, p) {
     case 'intuizione': {
       const pt = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(p.pointId), g.id);
       if (!pt) throw err(400, 'Scegliete un Altare');
-      q.run('INSERT INTO team_visits (teamId, pointId, visitedAt) VALUES (?, ?, ?) ON CONFLICT(teamId, pointId) DO UPDATE SET visitedAt = excluded.visitedAt', me.id, pt.id, Date.now());
+      q.run('INSERT INTO team_visits (teamId, pointId, visitedAt, geoOk) VALUES (?, ?, ?, 1) ON CONFLICT(teamId, pointId) DO UPDATE SET visitedAt = excluded.visitedAt, geoOk = 1', me.id, pt.id, Date.now());
       startEffect(me, 'skill', s.id, { pointId: pt.id });
       endNow(me.gameId, me.id, s.id);
       return { qrToken: pt.qrToken, message: `${pt.label} aperto: pronunciate il Sigillo.` };

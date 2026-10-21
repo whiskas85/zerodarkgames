@@ -336,6 +336,8 @@ CREATE INDEX IF NOT EXISTS ix_track_pings ON track_pings(playerId, at);`);
 addColumn('users', 'perms', 'TEXT');
 // Ultima partita aperta in regia: Campo (sul telefono) la segue, così i piazzamenti finiscono nella partita giusta.
 addColumn('users', 'lastGameId', 'INTEGER');
+// Scansione dell'Altare fatta con il controllo di posizione superato (1); quelle senza controllo non valgono quando lo si accende.
+addColumn('team_visits', 'geoOk', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('account_identities', 'picture', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
   accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL

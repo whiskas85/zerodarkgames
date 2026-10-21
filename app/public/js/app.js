@@ -374,16 +374,22 @@ async function act(kind, payload, label) {
 
 // Inquadrato un Altare: vale dall'ora di inquadratura (ora del server) per i minuti stabiliti dalla regia.
 // Se la regia ha fissato un raggio, si manda anche la posizione del telefono: lontani dall'Altare la lettura non vale.
+// Con il controllo di posizione acceso l'Altare non risulta letto finché il server non conferma la posizione.
+const checkingScan = new Set();
 async function registerScan(token) {
+  if (checkingScan.has(token)) return;
   const at = Math.round(clock.serverNow());
   const win = S.state?.game.altarScanMin || 0;
-  rememberVisit(token, { scannedAt: at, expiresAt: win > 0 ? at + win * 60000 : null, at: Date.now() });
+  const geo = S.state?.game.altarRadiusM > 0 && navigator.onLine;
+  if (geo) { checkingScan.add(token); delete S.visits[token]; store.set('zdg_visits', S.visits); render(); }
+  else rememberVisit(token, { scannedAt: at, expiresAt: win > 0 ? at + win * 60000 : null, at: Date.now() });
   delete S.altarResults[token];
   const pos = await scanPosition();
   if (navigator.onLine) {
     api('GET', `/api/team/point/${encodeURIComponent(token)}?at=${at}${posQuery(pos)}`)
-      .then((r) => { rememberVisit(token, { label: r.label, sectorName: r.sectorName, sectorId: r.sectorId, expiresAt: r.expiresAt }); refresh(); })
+      .then((r) => { checkingScan.delete(token); rememberVisit(token, { scannedAt: at, at: Date.now(), label: r.label, sectorName: r.sectorName, sectorId: r.sectorId, expiresAt: r.expiresAt }); refresh(); render(); })
       .catch((e) => {
+        checkingScan.delete(token);
         if (e.offline) enqueue('visit', { qrToken: token, at, pos }, 'riconoscimento Altare');
         else if (e.status === 403 || e.status === 428) scanRejected(token, e.message);
         else { toast(e.message, 'error'); delete S.visits[token]; store.set('zdg_visits', S.visits); location.hash = '#/altari'; }
@@ -2091,6 +2097,10 @@ function viewAltar(token, query) {
   if (!token) return h('p', { class: 'empty' }, 'Altare non valido');
   const st = S.state;
   // Aperto da un link senza scansione registrata: la registra ora.
+  if (checkingScan.has(token)) {
+    return h('div', { class: 'stack' }, h('h2', null, 'Altare'), h('div', { class: 'card stack-sm' }, h('strong', null, '⌖ Verifico la posizione…'),
+      h('p', { class: 'small muted' }, 'Il Consiglio controlla che siate davanti all\'Altare. Restate fermi qualche secondo con il GPS acceso.')));
+  }
   if (!S.visits[token] && !(st?.visited || []).some((x) => x.qrToken === token)) setTimeout(() => registerScan(token));
   const v = allVisited().find((x) => x.qrToken === token) || {};
   const sectorId = v.sectorId || (st?.visited || []).find((x) => x.qrToken === token)?.sectorId;
