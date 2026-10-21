@@ -13,11 +13,13 @@ const normUser = (u) => String(u || '').trim().toLowerCase();
 function publicAccount(a) {
   if (!a) return null;
   // ops: gestionali collegati (Zero Dark Ops); senza password si entra solo da lì.
-  const ops = q.all('SELECT id, iss, providerName, opsName, squadra FROM account_identities WHERE accountId = ? ORDER BY id', a.id);
+  const ops = q.all('SELECT id, iss, providerName, opsName, squadra, picture FROM account_identities WHERE accountId = ? ORDER BY id', a.id);
   // staff: ruolo nell'organizzazione ottenuto con un invito del Consiglio (master o validatore).
   const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id)?.role || null;
   // ice: solo alla persona stessa (il suo profilo); alla regia arriva soltanto dentro un'emergenza chiamata da lei.
   return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops, staff,
+    // Avatar nell'app: la foto del gestionale, se c'è (altrimenti le iniziali).
+    picture: ops.find((o) => o.picture)?.picture || null,
     ice: { blood: a.iceBlood || '', conditions: a.iceConditions || '', contactName: a.iceContactName || '', contactPhone: a.iceContactPhone || '' } };
 }
 

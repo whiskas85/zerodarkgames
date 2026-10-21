@@ -255,6 +255,8 @@ function profileOf(c) {
   return {
     name: name || 'Operatore', nickname: callsign && callsign !== name ? callsign : null,
     squadra: String(c.squadra?.nome || '').trim().slice(0, 60) || null,
+    // Foto del profilo (claim standard «picture»): solo indirizzi https, per l'avatar nell'app.
+    picture: /^https:\/\/[^\s"'<>]+$/.test(String(c.picture || '')) && String(c.picture).length <= 500 ? String(c.picture) : null,
   };
 }
 
@@ -274,7 +276,7 @@ function identityRow(p, claims) {
 
 function touch(id, p, claims) {
   const pr = profileOf(claims);
-  q.run('UPDATE account_identities SET providerName = ?, opsName = ?, squadra = ?, lastLoginAt = ? WHERE id = ?', p.name, pr.name, pr.squadra, Date.now(), id);
+  q.run('UPDATE account_identities SET providerName = ?, opsName = ?, squadra = ?, picture = ?, lastLoginAt = ? WHERE id = ?', p.name, pr.name, pr.squadra, pr.picture, Date.now(), id);
 }
 
 /**
@@ -315,8 +317,8 @@ function resolveAccount({ flow, provider: p, claims }, currentAccountId) {
 function addIdentity(accountId, p, claims) {
   const pr = profileOf(claims);
   const now = Date.now();
-  q.run('INSERT INTO account_identities (accountId, iss, sub, providerName, opsName, squadra, createdAt, lastLoginAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    accountId, p.issuer, String(claims.sub), p.name, pr.name, pr.squadra, now, now);
+  q.run('INSERT INTO account_identities (accountId, iss, sub, providerName, opsName, squadra, picture, createdAt, lastLoginAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    accountId, p.issuer, String(claims.sub), p.name, pr.name, pr.squadra, pr.picture, now, now);
 }
 
 const identitiesOf = (accountId) => q.all('SELECT id, iss, providerName, opsName, squadra, createdAt, lastLoginAt FROM account_identities WHERE accountId = ? ORDER BY id', accountId);

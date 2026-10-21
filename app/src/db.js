@@ -320,6 +320,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS track_pings (
 );
 CREATE INDEX IF NOT EXISTS ix_track_pings ON track_pings(playerId, at);`);
 addColumn('users', 'perms', 'TEXT');
+addColumn('account_identities', 'picture', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
   accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL
 )`);

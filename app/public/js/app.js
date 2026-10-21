@@ -511,7 +511,7 @@ function header(view) {
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
     view !== 'home' ? h('a', { class: 'back', href: '#/home', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
-      h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? `Settore ${sec.name}` : 'Legati'),
+      h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? sec.name : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
         : st?.team.displayName || st?.team.members.map((m) => m.nickname || (m.me ? 'Tu' : m.name) || 'Legato').join(' · ') || '')),
     h('div', { class: `top-clock ${glow.length ? 'fx-on' : ''}`, style: glow.length ? { '--fx-grad': fxGradient(glow), '--fx-a': glow[0].color, '--fx-b': (glow[1] || glow[0]).color } : null },
@@ -522,7 +522,55 @@ function header(view) {
         h('span', { class: `net-dot net-${net[0]}`, role: 'img', 'aria-label': net[1], title: net[1] }),
         h('span', { class: 'mono big', 'data-clock': startAt() ? 'start' : 'remaining' }, '—')),
       startAt() && !veglia ? h('div', { class: 'top-phase' }, 'al via') : veglia ? h('a', { class: 'top-veglia', href: '#/timer', title: veglia.reason || 'Veglia' }, '⛓ Veglia ', h('span', { class: 'mono', 'data-timer': veglia.uid }, '—'))
-        : h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')));
+        : h('div', { class: `top-phase ${st?.clock.status === 'paused' ? 'paused' : ''}` }, STATUS_LABELS[st?.clock.status] || '')),
+    avatarButton());
+}
+
+// Avatar in alto a destra: la foto di Zero Dark Ops se c'è, altrimenti le iniziali. Toccandolo si apre il menu
+// della persona (profilo, ICE, test armi, impostazioni, Consiglio, esci).
+function meInfo() {
+  const st = S.state;
+  const acc = st?.account;
+  const me = st?.team?.members?.find((m) => m.me) || st?.player;
+  const name = acc?.nickname || acc?.name || me?.nickname || me?.name || 'Legato';
+  const words = String(acc?.name || me?.name || name).trim().split(/\s+/).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+  return { acc, name, initials, picture: acc?.picture || null };
+}
+function avatarFace(me, cls = '') {
+  return h('span', { class: `avatar ${cls}`, 'aria-hidden': 'true' },
+    me.picture ? h('img', { src: me.picture, alt: '', referrerpolicy: 'no-referrer', onerror: (e) => { e.target.replaceWith(document.createTextNode(me.initials)); } }) : me.initials);
+}
+function avatarButton() {
+  if (!S.state) return null;
+  const me = meInfo();
+  return h('button', { type: 'button', class: 'avatar-btn', 'aria-label': `Menu di ${me.name}`, 'aria-haspopup': 'menu', onclick: (e) => { e.stopPropagation(); openAvatarMenu(e.currentTarget); } }, avatarFace(me));
+}
+function openAvatarMenu(anchor) {
+  const old = document.querySelector('.avatar-menu');
+  if (old) { old.remove(); return; }
+  const me = meInfo();
+  const acc = me.acc;
+  const item = (href, icon, label, attrs = {}) => h(href ? 'a' : 'button', { class: 'am-item', role: 'menuitem', ...(href ? { href } : { type: 'button' }), ...attrs },
+    h('span', { class: 'am-ico', 'aria-hidden': 'true' }, icon), h('span', null, label));
+  const menu = h('div', { class: 'avatar-menu', role: 'menu' },
+    h('div', { class: 'am-head' }, avatarFace(me, 'lg'), h('div', null, h('strong', null, me.name), acc ? h('div', { class: 'tiny muted' }, `@${acc.username}${acc.ops?.length ? ` · ${acc.ops[0].providerName}` : ''}`) : h('div', { class: 'tiny muted' }, 'Entrato con QR o codice'))),
+    acc ? item('/iscrizione#profilo', '👤', 'Profilo') : null,
+    acc ? item('#/ice', '✚', 'ICE · In Case of Emergency') : null,
+    acc ? item('/iscrizione#profilo-armi', '⌁', 'Il mio test armi') : null,
+    item('#/impostazioni', '⚙', 'Impostazioni'),
+    item('#/regolamento', '§', 'Regolamento'),
+    S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
+    acc?.staff === 'master' ? item('/regia', '◉', 'Regia') : null,
+    item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: () => logout() }));
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  menu.style.maxHeight = `${Math.max(160, Math.round(window.innerHeight - r.bottom - 14))}px`;
+  // Il tocco sull'avatar lo gestisce il suo pulsante (apre/chiude); un tocco fuori chiude.
+  const close = (ev) => { if (ev && ((menu.contains(ev.target) && !ev.target.closest('a, button')) || ev.target.closest?.('.avatar-btn'))) return; menu.remove(); document.removeEventListener('click', close, true); window.removeEventListener('hashchange', close); };
+  setTimeout(() => { document.addEventListener('click', close, true); window.addEventListener('hashchange', close); }, 0);
+  document.body.append(menu);
 }
 
 function banners() {
@@ -2675,7 +2723,7 @@ function accountBar(st) {
 // Account che fa parte dell'organizzazione: scorciatoia per la regia o la Soglia.
 function staffLink(acc, cls) {
   if (!acc?.staff) return null;
-  return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/soglia' }, acc.staff === 'master' ? 'Vai in regia' : 'Vai alla Soglia');
+  return h('a', { class: cls, href: acc.staff === 'master' ? '/regia' : '/consiglio' }, acc.staff === 'master' ? 'Vai in regia' : 'Consiglio Zero');
 }
 
 // ---------------------------------------------------------------- Posizione dell'app

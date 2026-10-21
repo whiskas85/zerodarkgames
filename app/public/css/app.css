@@ -714,12 +714,14 @@ button.banner-safety strong { letter-spacing: .08em; }
   body[data-view="mappa"] .top-id, body[data-view="mappa"] .top-phase { display: none; }
   body[data-view="mappa"] .top .back { width: 32px; height: 32px; font-size: 26px; border-width: 1px; }
   body[data-view="mappa"] .top-clock .big { font-size: 18px; }
-  body[data-view="mappa"] .banners { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: calc(54px + env(safe-area-inset-left)); right: calc(var(--rail-w) + 214px); z-index: 650; gap: 4px; pointer-events: none; }
+  body[data-view="mappa"] .banners { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: calc(54px + env(safe-area-inset-left)); right: calc(var(--rail-w) + 262px); z-index: 650; gap: 4px; pointer-events: none; }
   body[data-view="mappa"] .banners > * { max-height: 34px; overflow: hidden; padding-top: 6px; padding-bottom: 6px; font-size: 13px; border-radius: 6px; pointer-events: auto; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
   body[data-view="mappa"] .map-tools { top: 84px; bottom: auto; left: 10px; flex-direction: column; gap: 6px; }
   body[data-view="mappa"] .map-tools .btn { width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; font-size: 18px; }
   body[data-view="mappa"] .map-tools .mt-label { display: none; }
   body[data-view="mappa"] .map-tools .mt-ico { margin: 0; }
+  body[data-view="mappa"] #map-gps { position: fixed; left: calc(54px + env(safe-area-inset-left)); bottom: 28px; right: calc(var(--rail-w) + 12px); z-index: 650; margin: 0;
+    padding: 6px 10px; background: color-mix(in srgb, var(--bg) 85%, transparent); border-radius: 6px; }
   .toasts { bottom: calc(16px + env(safe-area-inset-bottom)); }
   .composer { right: var(--rail-w); bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   .main-chat { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
@@ -744,3 +746,21 @@ button.banner-safety strong { letter-spacing: .08em; }
 .pair-code-card { display: grid; gap: 6px; justify-items: center; text-align: center; border-color: var(--brass); }
 .pair-code { font-size: 40px; font-weight: 700; letter-spacing: .18em; padding: 8px 18px; background: var(--paper-2, rgba(255,255,255,.05)); color: var(--brass); border: 2px dashed var(--brass); border-radius: 8px; cursor: pointer; }
 .pair-code:active { transform: scale(.98); }
+
+/* Avatar in alto a destra (foto di Zero Dark Ops o iniziali) e il suo menu a discesa */
+.avatar-btn { flex: none; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+.avatar { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: var(--blood); color: #fff; border: 2px solid var(--brass);
+  font-family: var(--f-display); font-weight: 900; font-size: 16px; letter-spacing: .02em; line-height: 1; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.lg { width: 48px; height: 48px; font-size: 19px; }
+.avatar-menu { position: fixed; z-index: 2000; overflow-y: auto; min-width: 240px; max-width: calc(100vw - 16px); display: grid; padding: 6px; background: var(--paper); border: 2px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+.am-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.am-head strong { display: block; font-size: 16px; }
+.am-item { display: flex; align-items: center; gap: 10px; padding: 11px 10px; color: var(--ink); text-decoration: none; background: none; border: 0; border-radius: 6px; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.am-item:hover, .am-item:focus-visible { background: var(--paper-2, rgba(255,255,255,.06)); }
+.am-ico { width: 22px; text-align: center; color: var(--brass); }
+.am-out { color: var(--danger, #e5484d); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; }
+.am-out .am-ico { color: inherit; }
+@media (orientation: landscape) and (max-height: 560px) {
+  body[data-view="mappa"] .avatar { width: 32px; height: 32px; font-size: 13px; }
+}
