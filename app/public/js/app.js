@@ -1156,13 +1156,18 @@ function viewTestArmi() {
           h('span', { class: 'small mono' }, w.ok ? (w.manual ? 'passa (a mano)' : `${nJ(w.j)}`) : w.failed ? (w.j == null ? 'non passa (a mano)' : `${nJ(w.j)} · non passa`) : 'da provare')),
         w.j != null ? h('div', { class: 'tiny muted' }, [w.n > 1 ? `media di ${w.n} tiri` : null, w.v ? fmtV(w.v) : null, w.g ? `pallino ${w.g.toFixed(2).replace('.', ',')} g` : null, w.max != null ? `max ${nJ(w.max)}` : null, w.testedAt ? `alle ${fmtTime(w.testedAt)}` : null].filter(Boolean).join(' · ')) : null,
         reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null,
-        canEdit && !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, 'Non ce l\'ho: togli') : null);
+        canEdit ? h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => {
+            const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: label, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
+            if (nn && nn.trim() && nn.trim() !== label) editWeapon({ action: 'rename', key: k, label: nn.trim() });
+          } }, '✎ Rinomina'),
+          !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, 'Non ce l\'ho: togli') : null) : null);
     }),
     canEdit ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
       const name = await dialog({ title: 'Aggiungi un\'arma', text: 'Ogni replica che porti va provata al cronografo.', input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
       if (name && name.trim()) editWeapon({ action: 'add', label: name.trim() });
     } }, '＋ Aggiungi un\'arma') : null,
-    canEdit ? h('p', { class: 'tiny muted' }, 'Togli le armi che non hai e aggiungi quelle in più: l\'arbitro vedrà la tua lista.') : null);
+    canEdit ? h('p', { class: 'tiny muted' }, 'Rinomina le tue armi, togli quelle che non hai e aggiungi quelle in più: l\'arbitro vedrà la tua lista.') : null);
 }
 
 function viewLobbyHome(st) {

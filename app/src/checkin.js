@@ -165,9 +165,14 @@ function editWeapons(gameId, playerId, { action, label, key } = {}, actor) {
   const list = ES.weaponsOf(p);
   let shots = {};
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
-  if (action === 'add') {
-    const name = String(label || '').trim().replace(/\s+/g, ' ').slice(0, 40);
-    if (!name) throw err(400, 'Scrivi il nome dell\'arma (es. «Pistola», «Secondo fucile»)');
+  const name = String(label || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (['add', 'rename'].includes(action) && !name) throw err(400, 'Scrivi il nome dell\'arma (es. «Pistola», «Secondo fucile»)');
+  if (action === 'rename') {
+    // Il nome si può cambiare sempre (anche dopo la prova): resta la stessa arma, con le sue letture.
+    const w = list.find((x) => x.key === key);
+    if (!w) throw err(404, 'Arma non trovata');
+    w.label = name;
+  } else if (action === 'add') {
     if (list.length >= MAX_WEAPONS) throw err(409, `Al massimo ${MAX_WEAPONS} armi`);
     let n = 1;
     while (list.some((w) => w.key === `w${n}`)) n++;
@@ -179,7 +184,7 @@ function editWeapons(gameId, playerId, { action, label, key } = {}, actor) {
     list.splice(list.indexOf(w), 1);
   } else throw err(400, 'Azione non valida');
   q.run('UPDATE players SET weapons = ? WHERE id = ?', JSON.stringify(list), p.id);
-  G.log(gameId, actor, action === 'add' ? 'weapon_added' : 'weapon_removed', { name: p.name, arma: action === 'add' ? list[list.length - 1].label : key });
+  G.log(gameId, actor, `weapon_${action === 'add' ? 'added' : action === 'rename' ? 'renamed' : 'removed'}`, { name: p.name, arma: action === 'remove' ? key : action === 'rename' ? name : list[list.length - 1].label });
   G.notifyState(gameId);
   return { ok: true, weapons: list };
 }

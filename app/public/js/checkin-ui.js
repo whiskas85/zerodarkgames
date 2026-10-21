@@ -594,6 +594,11 @@ function chronoSession(ctx) {
       r.length ? h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: ss.saving, onclick: save }, ok ? 'Salva ora (positivo)' : 'Salva ora (negativo)') : null,
       h('button', { class: 'btn', type: 'button', onclick: () => manual(true) }, '✓ Passa a mano'),
       h('button', { class: 'btn btn-danger', type: 'button', onclick: () => manual(false) }, '✗ Non passa a mano'),
+      h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => {
+        const cur = weaponsOf(p).find((w) => w.key === ss.weapon)?.label || '';
+        const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: cur, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
+        if (nn && nn.trim() && nn.trim() !== cur && await ctx.call('POST', `/weapons/${p.id}`, { action: 'rename', key: ss.weapon, label: nn.trim() }, 'Arma rinominata')) { ss.label = `${personLabel(p)} · ${nn.trim()}`; ctx.render(); }
+      } }, '✎ Rinomina'),
       r.length ? null : h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => {
         if (!(await dialog({ title: 'Togliere quest\'arma?', text: `${ss.label}: la persona non ce l'ha, non va provata.`, okLabel: 'Togli', danger: true }))) return;
         if (await ctx.call('POST', `/weapons/${p.id}`, { action: 'remove', key: ss.weapon }, 'Arma tolta')) close();

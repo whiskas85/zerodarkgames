@@ -1899,6 +1899,10 @@ test('test armi: la persona toglie le armi che non ha e ne aggiunge altre (anche
   assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'remove', key: 'w1' }, 'giocatore'), /già stata provata/);
   assert.throws(() => CK.setChrono(g.id, p.id, 'backup', true, 'arbitro'), /Arma non valida/);
   assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'add', label: ' ' }, 'giocatore'), /nome/);
+  // Rinomina: anche un'arma già provata, che resta con il suo esito.
+  CK.editWeapons(g.id, p.id, { action: 'rename', key: 'w1', label: 'Glock 17' }, 'giocatore');
+  const w1 = ES.eventStatus(q.get('SELECT * FROM players WHERE id = ?', p.id)).weapons.w1;
+  assert.deepEqual([w1.label, w1.ok], ['Glock 17', true]);
 });
 
 test('test armi: più letture salvano media e massimo; la persona si chiude e si riapre', () => {
