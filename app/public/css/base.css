@@ -40,7 +40,7 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 17px; line-height: 1.45; }
 a { color: var(--blood); }
 :focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
