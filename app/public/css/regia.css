@@ -902,3 +902,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .shot-dots i.ok { background: #46c46a; border-color: #46c46a; }
 .shot-dots i.bad { background: #e5484d; border-color: #e5484d; }
 @media (max-width: 520px) { .cs-top .cs-big strong.mono { font-size: 21px; } }
+
+/* Persone: filtri a riquadri con il numero e righe con contatti e azioni */
+.people-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.people-tab { display: grid; gap: 2px; min-width: 96px; padding: 8px 12px; text-align: left; border: 2px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; }
+.people-tab strong { font-size: 20px; }
+.people-tab.on { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 14%, var(--paper)); }
+.people-tab.warn strong { color: #f2c94c; }
+.people-list { display: grid; gap: 6px; }
+.person-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid var(--line); border-left-width: 6px; background: var(--paper); }
+.person-row.cat-daiscrivere { border-left-color: #f2c94c; } .person-row.cat-attesa { border-left-color: #e5484d; }
+.person-row.cat-coppie { border-left-color: #46c46a; } .person-row.cat-senza { border-left-color: var(--brass); } .person-row.cat-eletti { border-left-color: #9b6cf0; }
+.person-main { flex: 1 1 280px; display: grid; gap: 3px; min-width: 0; }

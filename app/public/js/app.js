@@ -75,7 +75,11 @@ function boot() {
   window.addEventListener('hashchange', render);
   window.addEventListener('online', () => { S.online = true; refresh(); flushQueue(); render(); });
   window.addEventListener('offline', () => { S.online = false; render(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); flushQueue(); clearNotifications(route().view); } });
+  document.addEventListener('visibilitychange', () => {
+    // In secondo piano si spegne il GPS dell'app (Traccar continua); al ritorno si riaccende se serve.
+    updateTracking(S.state);
+    if (!document.hidden) { refresh(); flushQueue(); clearNotifications(route().view); }
+  });
   navigator.serviceWorker?.addEventListener('message', (e) => {
     if (e.data?.type === 'refresh') refresh();
     if (e.data?.type === 'navigate' && e.data.hash) location.hash = e.data.hash;
@@ -858,6 +862,8 @@ function updateClocks() {
 }
 
 function tickSecond() {
+  // App in secondo piano: niente aggiornamenti dello schermo (si ridisegna tutto al ritorno), solo i timer.
+  if (document.hidden) { checkTimers(); return; }
   updateClocks();
   const rt = document.getElementById('rec-time');
   if (rt && S.rec) rt.textContent = fmtSec(Date.now() - S.rec.startedAt);
@@ -1536,8 +1542,10 @@ function sendPosition(pos) {
   api('POST', '/api/team/position', { deviceId, lat: pos.lat, lng: pos.lng, acc: pos.acc }).catch(() => { lastSent.at = 0; });
 }
 
+// Batteria: il GPS dell'app serve solo se Traccar Client non sta già mandando la posizione, e solo con l'app in primo
+// piano (con lo schermo spento ci pensa Traccar). Sulla mappa il GPS resta acceso a parte (startMapGps).
 function updateTracking(st) {
-  const on = trackingOn(st);
+  const on = trackingOn(st) && !document.hidden && !st?.tracking?.on;
   if (on && !trackStop) {
     trackStop = watchPosition((pos) => {
       const hint = pos.acc > SEND_MAX_ACC ? accuracyHint(pos.acc) : null;
@@ -3061,10 +3069,10 @@ function traccarPrompt(st) {
 
 // Mentre una Skill o un Dono vi mostra altre coppie, le posizioni si aggiornano ogni 8 secondi (e spariscono subito
 // se il bersaglio entra nell'Ombra, anche se l'aggiornamento in tempo reale si fosse perso).
-setInterval(() => { const sk = S.state?.skills; if (!document.hidden && (sk?.sightings?.length || sk?.giftHints?.length || sk?.indicators?.length)) refresh(); }, 8000);
+setInterval(() => { const sk = S.state?.skills; if (!document.hidden && (sk?.sightings?.length || sk?.giftHints?.length || sk?.indicators?.length)) refresh(); }, 20000);
 
 // Con l'avviso Traccar aperto l'app ricontrolla da sola ogni 20 secondi: sparisce appena arrivano i segnali.
-setInterval(() => { if (!document.hidden && S.state?.tracking?.prompt) refresh(); }, 20000);
+setInterval(() => { if (!document.hidden && S.state?.tracking?.prompt) refresh(); }, 30000);
 
 // L'avviso nelle schermate principali: resta finché Traccar non è verificato (o se smette di mandare durante la partita).
 function trackFlag(st) {

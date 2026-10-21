@@ -500,15 +500,15 @@ body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 /* Effetti su di voi accanto all'orologio: icone e alone (neon, vetro e fumo) dei colori degli effetti, che si sommano */
 .top-clock.fx-on { position: relative; isolation: isolate; padding: 4px 8px; border-radius: 10px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--fx-a) 22%, transparent), color-mix(in srgb, var(--fx-b) 22%, transparent));
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgba(255, 255, 255, .18);
+  border: 1px solid rgba(255, 255, 255, .18);
   box-shadow: 0 0 10px color-mix(in srgb, var(--fx-a) 60%, transparent), 0 0 22px color-mix(in srgb, var(--fx-b) 40%, transparent), inset 0 0 12px rgba(255, 255, 255, .08);
-  animation: fx-glow 2.4s ease-in-out infinite; }
+  animation: fx-glow 2.4s ease-in-out 4; }
 .top-clock.fx-on { overflow: hidden; }
 /* Fumo colorato che scorre dentro il riquadro: niente rotazioni né parti che escono (nessuna barra di scorrimento). */
 .top-clock.fx-on::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; filter: blur(10px); opacity: .7;
-  background: var(--fx-grad); background-size: 300% 300%; animation: fx-smoke 6s ease-in-out infinite alternate; pointer-events: none; }
+  background: var(--fx-grad); background-size: 300% 300%; pointer-events: none; }
 .fx-icons { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px; }
-.fx-ico { font-size: 16px; line-height: 1; display: inline-block; animation: fx-buzz 1.4s ease-in-out infinite; filter: drop-shadow(0 0 6px var(--c)); }
+.fx-ico { font-size: 16px; line-height: 1; display: inline-block; animation: fx-buzz 1.4s ease-in-out 4; filter: drop-shadow(0 0 6px var(--c)); }
 .fx-ico:nth-child(2) { animation-delay: .3s; } .fx-ico:nth-child(3) { animation-delay: .6s; }
 @keyframes fx-glow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
 @keyframes fx-smoke { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
@@ -584,8 +584,8 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 .alliance .battle-burst { background: radial-gradient(circle, rgba(90, 160, 224, .45), rgba(90, 160, 224, 0) 65%); }
 
 /* Privilegio del Cuore: primi o ultimi agli armamenti */
-.track-card.heart { border-color: #e5484d; background: linear-gradient(135deg, rgba(229, 72, 77, .24), rgba(229, 72, 77, .05)); animation: heart-glow 2.4s ease-in-out infinite; }
-.track-card.heart .track-ico { filter: drop-shadow(0 0 10px rgba(229, 72, 77, .9)); animation: heart-beat 1.2s ease-in-out infinite; }
+.track-card.heart { border-color: #e5484d; background: linear-gradient(135deg, rgba(229, 72, 77, .24), rgba(229, 72, 77, .05)); animation: heart-glow 2.4s ease-in-out 4; }
+.track-card.heart .track-ico { filter: drop-shadow(0 0 10px rgba(229, 72, 77, .9)); animation: heart-beat 1.2s ease-in-out 6; }
 .track-card.heart .cd-bar.fx i { background: #e5484d; }
 .track-card.heart.last { border-style: dashed; }
 @keyframes heart-glow { 0%, 100% { box-shadow: 0 0 0 rgba(229, 72, 77, 0); } 50% { box-shadow: 0 0 18px rgba(229, 72, 77, .45); } }
@@ -597,7 +597,7 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 .battle-overlay.mastery .battle-title { color: #c084fc; text-shadow: 0 0 22px rgba(192, 132, 252, .7); }
 .mastery-banner { display: grid; justify-items: center; gap: 6px; margin: 0 auto 10px; padding: 16px 16px 18px; max-width: 360px; border-radius: 6px;
   background: linear-gradient(135deg, #f5c84b, #e8833a 45%, #a855f7); color: #1a0d24; box-shadow: 0 0 34px rgba(245, 200, 75, .55), 0 0 60px rgba(168, 85, 247, .45);
-  animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both, mastery-glow 2.2s ease-in-out .9s infinite; }
+  animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both, mastery-glow 2.2s ease-in-out .9s 4; }
 .mastery-swords { display: flex; gap: 0; font-size: 52px; line-height: 1; }
 .mastery-swords span:first-child { transform: scaleX(-1); animation: sword-l .7s ease-out both; }
 .mastery-swords span:last-child { animation: sword-r .7s ease-out both; }
@@ -622,7 +622,7 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 .alliance.broken:not(.poisoned) .battle-burst { background: radial-gradient(circle, rgba(224, 96, 63, .35), rgba(224, 96, 63, 0) 65%); }
 .alliance.broken:not(.poisoned) .poison-by strong { color: #e0603f; }
 /* Presagio del Dono */
-.track-card.presage { border-color: #d1ad62; background: linear-gradient(135deg, rgba(209, 173, 98, .28), rgba(209, 173, 98, .05)); animation: presage-glow 2.4s ease-in-out infinite; }
+.track-card.presage { border-color: #d1ad62; background: linear-gradient(135deg, rgba(209, 173, 98, .28), rgba(209, 173, 98, .05)); animation: presage-glow 2.4s ease-in-out 4; }
 .track-card.presage .track-ico { filter: drop-shadow(0 0 10px rgba(209, 173, 98, .9)); }
 .track-card.presage .cd-bar.fx i { background: #d1ad62; }
 @keyframes presage-glow { 0%, 100% { box-shadow: 0 0 0 rgba(209, 173, 98, 0); } 50% { box-shadow: 0 0 18px rgba(209, 173, 98, .5); } }
@@ -656,7 +656,7 @@ button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; 
 
 /* Avviso di sicurezza pre-gara (OFF GAME) */
 button.banner-safety { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; background: #b00012; color: #fff; display: grid; gap: 2px;
-  border-top: 3px solid #ff4d4d; border-bottom: 3px solid #ff4d4d; animation: safety-pulse 2s ease-in-out infinite; }
+  border-top: 3px solid #ff4d4d; border-bottom: 3px solid #ff4d4d; animation: safety-pulse 2s ease-in-out 5; }
 button.banner-safety strong { letter-spacing: .08em; }
 @keyframes safety-pulse { 0%, 100% { background: #b00012; } 50% { background: #d0021b; } }
 @media (prefers-reduced-motion: reduce) { button.banner-safety { animation: none; } }
@@ -827,3 +827,5 @@ button.banner-safety strong { letter-spacing: .08em; }
 .not-accepted h2 { margin: 0; color: #e5484d; }
 .swipeable { touch-action: pan-y; user-select: none; }
 .traccar-off { display: grid; gap: 8px; border-color: var(--brass); }
+
+/* Batteria: le animazioni continue si fermano dopo pochi cicli (sopra), le icone restano visibili. */

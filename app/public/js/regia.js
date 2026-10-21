@@ -20,6 +20,7 @@ const R = {
 const TABS = [
   ['live', 'Regia'],
   ['emergenze', '🚨 Emergenze'],
+  ['persone', 'Persone'],
   ['coppie', 'Iscrizioni e coppie'],
   ['accettazione', 'Accettazione'],
   ['squadre', 'Squadre Eletti'],
@@ -241,7 +242,7 @@ function render() {
   preserve(() => {
     const ms = R.ms;
     const body = tab() === 'settori' ? viewSectors() : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
-      live: viewLive, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
+      live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
@@ -1241,6 +1242,77 @@ function viewSectors() {
       h('p', { class: 'muted tiny' }, 'Settori usati in partite passate e poi eliminati: non compaiono nelle scelte.'),
       h('ul', { class: 'users' }, archived.map((s) => h('li', null, h('span', { class: 'mono' }, s.roman), h('strong', null, s.name), h('span', { class: 'tiny muted' }, s.altar),
         h('button', { class: 'btn btn-sm', onclick: () => sectorCall('POST', `/api/m/sectors/${s.id}/restore`, {}, `${s.name} ripristinato`) }, 'Ripristina'))))) : null);
+}
+
+// ---------------------------------------------------------------- PERSONE
+// Tutti in un posto: chi si è registrato ma non si è ancora iscritto a questa partita, chi aspetta l'approvazione,
+// i Legati in coppia, chi è accettato ma senza coppia, gli Eletti. Con telefono e WhatsApp per contattarli.
+const PEOPLE_TABS = [['tutti', 'Tutti'], ['daiscrivere', 'Da iscrivere'], ['attesa', 'In attesa'], ['coppie', 'Legati in coppia'], ['senza', 'Senza coppia'], ['eletti', 'Eletti']];
+let peopleTab = 'tutti';
+let peopleQ = '';
+function peopleRows() {
+  const ms = R.ms;
+  const electId = ms.elect?.id;
+  const teamById = Object.fromEntries(ms.teams.map((t) => [t.id, t]));
+  const squads = Object.fromEntries((ms.squads || []).map((x) => [x.id, x]));
+  const accById = Object.fromEntries((accountsCache || []).map((a) => [a.id, a]));
+  const rows = ms.players.filter((p) => ['pending', 'accepted'].includes(p.status)).map((p) => {
+    const acc = p.accountId ? accById[p.accountId] : null;
+    const elect = p.teamId === electId || (p.requestedRole === 'elect' && p.status === 'accepted' && !p.teamId);
+    const team = teamById[p.teamId];
+    const cat = p.status === 'pending' ? 'attesa' : elect ? 'eletti' : team ? 'coppie' : 'senza';
+    const where = cat === 'eletti' ? (squads[p.squadId] ? `Eletti · Squadra ${squads[p.squadId].name}` : 'Eletti') : team ? `${team.roman || ''} Settore ${team.sectorName || '?'}` : null;
+    return { key: `p${p.id}`, cat, pid: p.id, accountId: p.accountId, name: p.name, nickname: p.nickname, username: p.username || acc?.username, softairTeam: p.softairTeam,
+      phone: p.phone || acc?.phone, role: ROLE_LABELS[p.requestedRole] || null, where, checkinAt: p.checkinAt, ops: acc?.ops, createdAt: p.createdAt };
+  });
+  const enrolled = new Set(ms.players.map((p) => p.accountId).filter(Boolean));
+  for (const a of accountsCache || []) {
+    if (enrolled.has(a.id) || a.staff) continue;
+    rows.push({ key: `a${a.id}`, cat: 'daiscrivere', accountId: a.id, name: a.name, nickname: a.nickname, username: a.username, softairTeam: a.softairTeam, phone: a.phone, ops: a.ops, createdAt: a.createdAt, other: a.games });
+  }
+  return rows;
+}
+function viewPeople() {
+  if (!accountsCache) loadAccounts();
+  const rows = peopleRows();
+  const q = peopleQ.trim().toLowerCase();
+  const count = (k) => (k === 'tutti' ? rows.length : rows.filter((r) => r.cat === k).length);
+  const shown = rows.filter((r) => (peopleTab === 'tutti' || r.cat === peopleTab) && (!q || [r.name, r.nickname, r.username, r.softairTeam, r.phone].some((x) => String(x || '').toLowerCase().includes(q))))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const CAT = { daiscrivere: ['Da iscrivere', 'chip-warn'], attesa: ['In attesa', 'chip-blood'], coppie: ['In coppia', 'chip-ok'], senza: ['Senza coppia', 'chip-brass'], eletti: ['Eletto', 'chip'] };
+  const invite = (r) => `Ciao ${r.nickname || r.name}, ti sei registrato ai Giochi del Buio ma non hai ancora scelto come partecipare (coppia, temerario solitario o Eletti). Completa l'iscrizione qui: ${R.baseUrl}/iscrizione`;
+  const pwd = async (r) => {
+    const v = await dialog({ title: `Nuova password per @${r.username}`, text: `${r.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
+    if (v) call('POST', `/api/m/accounts/${r.accountId}/password`, { password: v }, 'Password reimpostata');
+  };
+  const delAcc = async (r) => {
+    if (!(await dialog({ title: `Eliminare @${r.username}?`, text: `${r.name} non potrà più entrare con questo account.`, okLabel: 'Elimina', danger: true }))) return;
+    try { await api('DELETE', `/api/m/accounts/${r.accountId}`); toast('Account eliminato', 'ok'); await loadAccounts(); } catch (e) { toast(e.message, 'error', 7000); }
+  };
+  return h('div', { class: 'stack' },
+    section('Persone',
+      h('p', { class: 'muted tiny' }, 'Tutte le persone di questa partita e chi si è registrato senza iscriversi. «Da iscrivere»: hanno l\'account ma non hanno scelto come partecipare: contattali con WhatsApp (messaggio già pronto).'),
+      h('div', { class: 'people-tabs' }, PEOPLE_TABS.map(([k, label]) => h('button', { type: 'button', class: `people-tab ${peopleTab === k ? 'on' : ''} ${k === 'daiscrivere' && count(k) ? 'warn' : ''}`, onclick: () => { peopleTab = k; render(); } },
+        h('span', null, label), h('strong', { class: 'mono' }, String(count(k)))))),
+      h('div', { class: 'row-actions' },
+        h('input', { class: 'input input-sm grow', type: 'search', placeholder: 'Cerca per nome, soprannome, username, team, telefono…', value: peopleQ, 'data-keep': 'people-q', oninput: (e) => { peopleQ = e.target.value; render(); } }),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'))),
+    !accountsCache ? h('p', { class: 'empty' }, 'Caricamento…') : shown.length ? h('div', { class: 'people-list' }, shown.map((r) => h('div', { class: `person-row cat-${r.cat}` },
+      h('div', { class: 'person-main' },
+        h('div', null, h('strong', null, r.name), r.nickname ? h('span', { class: 'muted' }, ` «${r.nickname}»`) : null, ' ', h('span', { class: `chip ${CAT[r.cat][1]}` }, CAT[r.cat][0]),
+          r.checkinAt ? h('span', { class: 'chip chip-ok', title: 'Accettato all\'arrivo' }, '✓ arrivato') : null),
+        h('div', { class: 'tiny muted' }, [r.username ? `@${r.username}` : 'senza account', r.softairTeam, r.ops, r.role, r.where].filter(Boolean).join(' · ')),
+        r.cat === 'daiscrivere' ? h('div', { class: 'tiny muted' }, `Registrato il ${new Date(r.createdAt).toLocaleDateString('it-IT')}${r.other ? ` · altre partite: ${r.other}` : ' · mai iscritto'}`) : null,
+        r.phone ? phoneLinks(r.phone) : h('span', { class: 'tiny warn-text' }, 'nessun telefono')),
+      h('div', { class: 'row-actions' },
+        r.cat === 'attesa' ? [
+          h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', `/api/m/players/${r.pid}/review`, { decision: 'accept' }, 'Iscrizione accettata') }, 'Accetta'),
+          h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
+        r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm btn-primary', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
+        r.cat === 'coppie' || r.cat === 'senza' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : null,
+        r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
+        r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
+      : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
 }
 
 // ---------------------------------------------------------------- ALTARI E PAROLA
@@ -3100,9 +3172,11 @@ function opsSection() {
 // Account dei giocatori: restano tra una partita e l'altra; qui si cercano, si eliminano, si reimposta la password.
 let accountsCache = null;
 let accountsFilter = '';
-async function loadAccounts() {
-  try { accountsCache = await api('GET', '/api/m/accounts'); } catch (e) { toast(e.message, 'error'); accountsCache = []; }
-  if (tab() === 'impostazioni') render();
+let accountsLoading = null;
+function loadAccounts() {
+  accountsLoading ||= api('GET', '/api/m/accounts').then((r) => { accountsCache = r; }).catch((e) => { toast(e.message, 'error'); accountsCache = []; })
+    .finally(() => { accountsLoading = null; if (['impostazioni', 'persone'].includes(tab())) render(); });
+  return accountsLoading;
 }
 function accountsSection() {
   if (!accountsCache) { loadAccounts(); return section('Account dei giocatori', h('p', { class: 'muted' }, 'Caricamento…')); }
