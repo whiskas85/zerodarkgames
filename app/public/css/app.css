@@ -826,3 +826,4 @@ button.banner-safety strong { letter-spacing: .08em; }
 .not-accepted { display: grid; gap: 8px; border-color: #e5484d; }
 .not-accepted h2 { margin: 0; color: #e5484d; }
 .swipeable { touch-action: pan-y; user-select: none; }
+.traccar-off { display: grid; gap: 8px; border-color: var(--brass); }

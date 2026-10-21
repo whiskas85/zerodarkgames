@@ -1134,6 +1134,8 @@ function endGame(g, actor, now = Date.now()) {
   q.run("UPDATE revelations SET status = 'skipped' WHERE gameId = ? AND status = 'scheduled'", g.id);
   log(g.id, actor, 'game_ended');
   announce(g.id, 'end');
+  // Fine partita: a tutti i telefoni, «spegnete Traccar» (la posizione non serve più).
+  rt.pushTeams(g.id, { title: 'Spegnete Traccar Client', body: 'La partita è finita: aprite Traccar Client e fermate il tracciamento.', tag: 'traccar-off', url: '/#/home' });
 }
 
 // ---------------------------------------------------------------- rivelazioni e doni

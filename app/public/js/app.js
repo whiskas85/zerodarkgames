@@ -1213,6 +1213,7 @@ function viewElectHome(st) {
     supplyCard(st),
     trackFlag(st),
     locationInvite(st),
+    traccarOffCard(st),
     trackingNote(st),
     st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
@@ -1269,6 +1270,7 @@ function viewHome() {
     supplyCard(st),
     trackFlag(st),
     locationInvite(st),
+    traccarOffCard(st),
     trackingNote(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/alleanze' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
@@ -1539,7 +1541,7 @@ function updateTracking(st) {
   if (on && !trackStop) {
     trackStop = watchPosition((pos) => {
       const hint = pos.acc > SEND_MAX_ACC ? accuracyHint(pos.acc) : null;
-      if (hint !== trackMsg) { trackMsg = hint; const el = document.getElementById('track-msg'); if (el) el.textContent = hint ? ` ${hint}` : ''; }
+      if (hint !== trackMsg) { const had = !!trackMsg; trackMsg = hint; const el = document.getElementById('track-msg'); if (el && hint) el.textContent = hint; else if (had !== !!hint) render(); }
       sendPosition(pos);
     }, (msg) => { trackMsg = msg; });
   } else if (!on && trackStop) {
@@ -1548,11 +1550,21 @@ function updateTracking(st) {
   }
 }
 
+// Solo se c'è un problema con la posizione (GPS negato o assente): il messaggio e il link a Traccar.
 function trackingNote(st) {
-  if (!trackingOn(st)) return null;
-  return h('p', { class: 'track-note small' }, '📍 ', st.team.kind === 'elect' ? 'La posizione di questo telefono è visibile alla regia e agli altri Eletti.' : 'Durante la partita la posizione di questo telefono è visibile al Consiglio.',
-    h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg ? ` ${trackMsg}` : ''),
-    st.player ? [' ', h('a', { href: '#/traccar' }, 'Anche a schermo spento →')] : null);
+  if (!trackingOn(st) || !trackMsg) return null;
+  return h('p', { class: 'track-note small' }, '📍 ', h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg),
+    st.player ? [' ', h('a', { href: '#/traccar' }, 'Traccar →')] : null);
+}
+
+// A partita finita: ricordare di spegnere Traccar Client (si toglie con «Fatto»).
+function traccarOffCard(st) {
+  const key = `zdg_trk_off_${st?.game?.id}`;
+  if (st?.clock?.status !== 'ended' || store.get(key, false)) return null;
+  return h('div', { class: 'card traccar-off' },
+    h('strong', null, '📍 Spegnete Traccar Client'),
+    h('p', { class: 'small' }, 'La partita è finita: aprite Traccar Client e fermate il tracciamento, così il telefono smette di mandare la posizione e risparmia batteria.'),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { store.set(key, true); render(); } }, 'Fatto, l\'ho spento'));
 }
 
 // ---------------------------------------------------------------- Mappa
