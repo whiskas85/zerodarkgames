@@ -182,6 +182,19 @@ function deleteGift(id, actor) {
   rt.toTeams(g.gameId, 'state', {});
 }
 
+// Partita riportata in preparazione: i doni già piazzati (o presi) tornano tutti da piazzare, senza posizione
+// né foto; le copie dei doni «per tutti» lette dalle coppie si tolgono.
+function resetAllGifts(gameId, actor) {
+  const list = q.all("SELECT id, photoFile FROM gifts WHERE gameId = ? AND parentGiftId IS NULL AND (status != 'draft' OR lat IS NOT NULL)", gameId);
+  q.run('DELETE FROM gifts WHERE gameId = ? AND parentGiftId IS NOT NULL', gameId);
+  q.run(`UPDATE gifts SET status = 'draft', lat = NULL, lng = NULL, accuracy = NULL, photoFile = NULL, placedAt = NULL, placedBy = NULL, placedSquadId = NULL,
+         placeSource = NULL, provisional = 0, moveRequestedAt = NULL, revealedAt = NULL, revealElapsedMs = NULL, expiredAt = NULL, publicAt = NULL,
+         hintLat = NULL, hintLng = NULL, claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL WHERE gameId = ?`, gameId);
+  for (const g of list) removePhoto(g.photoFile);
+  if (list.length) G.log(gameId, actor, 'gifts_reset_all', { count: list.length });
+  return list.length;
+}
+
 // Riporta il dono a "da piazzare" (es. piazzato nel posto sbagliato).
 function resetGift(id, actor) {
   const g = getGift(id);
@@ -320,8 +333,15 @@ const landmarkOut = (l) => ({
 });
 
 // Cartello scansionato sul campo: Altare (/a/…) o Dono (/d/…).
-function resolveToken(gameId, text) {
+// anyGame (regia): un cartello di un'altra partita aperta si riconosce lo stesso e si dice di quale partita è.
+function resolveToken(gameId, text, anyGame = false) {
   const s = String(text || '');
+  if (anyGame) {
+    const tok = s.match(/\/(a|d)\/([\w-]+)/);
+    const row = tok && q.get(`SELECT x.id, x.label, x.gameId, g.name AS gameName FROM ${tok[1] === 'a' ? 'points' : 'gifts'} x JOIN games g ON g.id = x.gameId
+      WHERE x.qrToken = ? AND g.status != 'ended'`, tok[2]);
+    if (row && row.gameId !== Number(gameId)) return { kind: tok[1] === 'a' ? 'point' : 'gift', id: row.id, label: row.label, gameId: row.gameId, gameName: row.gameName };
+  }
   const a = s.match(/\/a\/([\w-]+)/);
   if (a) {
     const pt = q.get('SELECT id, label FROM points WHERE gameId = ? AND qrToken = ?', Number(gameId), a[1]);
@@ -940,6 +960,6 @@ function useGift(team, giftId, params = {}) {
 
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
-  giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, revealGift, tickAll,
+  giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, resetAllGifts, revealGift, tickAll,
   createPoi, updatePoi, deletePoi, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

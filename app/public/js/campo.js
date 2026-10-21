@@ -26,6 +26,7 @@ window.addEventListener('hashchange', () => { F.tab = location.hash.slice(1) || 
     return mount($root, viewLogin());
   }
   if (F.who.role === 'elect') { location.replace('/#/campo'); return; }
+  F.switchGame = async (id) => { F.gameId = id; store.set('zdg_campo_game', id); F.data = null; render(); await field.load(); };
   if (!F.who.games.some((g) => g.id === F.gameId)) F.gameId = F.who.games[0]?.id || null;
   store.set('zdg_campo_game', F.gameId);
   stream('/api/stream?as=staff', {

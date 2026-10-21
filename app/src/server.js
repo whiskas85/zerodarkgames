@@ -523,7 +523,7 @@ app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.par
 app.get('/api/field/positions', needField, wrap((req) => (fieldStaff(req) ? F.positionsOf(fieldGame(req), 'master')
   : [...F.positionsOf(fieldGame(req), 'elect'), ...(req.player?.squadId ? F.taskTargetPositions(req.player.squadId) : [])])));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
-app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text)));
+app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text, fieldStaff(req))));
 // La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.
 const placement = (req) => ({ buffer: Buffer.isBuffer(req.body) ? req.body : null, mime: req.headers['content-type'], lat: req.query.lat, lng: req.query.lng, acc: req.query.acc, source: req.query.source, photoOptional: req.user?.role === 'master', provisional: req.query.provisional === '1' });
 const placerSquad = (req) => req.player?.squadId || req.query.squadId || null;

@@ -1056,6 +1056,8 @@ function control(gameId, action, actor) {
       // Di nuovo in preparazione: gli Altari visitati (anche le prove) si azzerano.
       q.run('DELETE FROM team_visits WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', g.id);
       q.run('DELETE FROM altar_rejections WHERE gameId = ?', g.id);
+      // I doni piazzati per la prova si tolgono: si ripiazzano per la partita vera.
+      require('./field').resetAllGifts(g.id, actor);
       setStatus(g, 'draft');
       break;
     case 'circle':

@@ -347,6 +347,12 @@ export function createField(F, { rerender }) {
     if (!text) return;
     try {
       const r = await api('GET', `/api/field/resolve?gameId=${F.gameId}&text=${encodeURIComponent(text)}`);
+      // Cartello di un'altra partita aperta (regia): si passa a quella, così il piazzamento finisce nella partita giusta.
+      if (r.gameId && r.gameId !== F.gameId) {
+        if (!F.switchGame) throw new Error('Cartello di un\'altra partita');
+        await F.switchGame(r.gameId);
+        toast(`Questo cartello è della partita «${r.gameName}»: sei passato a quella`, 'info', 7000);
+      }
       const item = r.kind === 'gift' ? F.data?.gifts.find((g) => g.id === r.id) : F.data?.points.find((p) => p.id === r.id);
       openPlacement({ kind: r.kind, id: r.id, label: item?.name ? `${item.label} · ${item.name}` : r.label, item });
     } catch (e) { toast(e.message, 'error', 6000); }

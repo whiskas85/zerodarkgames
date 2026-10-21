@@ -501,6 +501,41 @@ test('doni QR: piazzamento con foto e posizione, comparsa, presa, scadenza', () 
   assert.ok(F.teamMap(B).points.some((x) => x.id === p.id));
 });
 
+test('preparazione: Altare piazzato visto in regia, alle coppie solo dal via; tornando in preparazione i doni piazzati si tolgono', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const g2 = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), mime: 'image/jpeg', lat: 45.1, lng: 9.2, acc: 8 };
+  const p = pointOf(g.id, A.sectorId);
+  F.placePoint(p.id, g.id, photo, 'master');
+  // In regia risulta piazzato (mappa, elenco, preparazione).
+  const ms = G.masterState(g.id);
+  assert.equal(ms.points.find((x) => x.id === p.id).lat, 45.1);
+  assert.equal(ms.altarsPlaced.placed, 1);
+  assert.equal(F.fieldState(g.id).points.find((x) => x.id === p.id).lat, 45.1);
+  // Alle coppie: non prima del via, poi sì (anche agli altri).
+  assert.equal(F.teamMap(B).points.length, 0);
+  // Cartello di un'altra partita aperta: la regia lo riconosce e sa di quale partita è.
+  const r = F.resolveToken(g2.id, `https://x/a/${p.qrToken}`, true);
+  assert.deepEqual([r.kind, r.id, r.gameId], ['point', p.id, g.id]);
+  assert.throws(() => F.resolveToken(g2.id, `https://x/a/${p.qrToken}`), /non riconosciuto/);
+  // Doni piazzati in prova: tornando in preparazione tornano da piazzare.
+  const type = F.giftTypes()[0];
+  const { ids } = F.createGifts(g.id, { typeId: type.id, count: 1, revealMode: 'manual' }, 'test');
+  F.placeGift(ids[0], g.id, photo, 'master');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'draft', 'test');
+  const gift = q.get('SELECT status, lat FROM gifts WHERE id = ?', ids[0]);
+  assert.deepEqual([gift.status, gift.lat], ['draft', null]);
+  // L'Altare resta piazzato.
+  assert.equal(q.get('SELECT lat FROM points WHERE id = ?', p.id).lat, 45.1);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  assert.ok(F.teamMap(B).points.some((x) => x.id === p.id));
+});
+
 test('alleanze e scontri: Sigilli condivisi, vinti dalla parte vincente, timer di rientro', () => {
   const K = require('../src/combat');
   const g = setupGame(4);
