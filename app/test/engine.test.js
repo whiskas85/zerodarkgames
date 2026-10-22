@@ -982,6 +982,15 @@ test('partita finita: in test riparte da capo, in produzione no', () => {
   // Si rigioca: cerchio, via.
   for (const a of ['circle', 'start']) G.control(g.id, a, 'test');
   assert.equal(G.getGame(g.id).status, 'truce');
+  // In test, tornando in preparazione il gioco è di nuovo pulito: niente emergenze, frammenti, annunci.
+  scanUnlock(A, p.qrToken, codeOf(g.id, A.sectorId));
+  q.run("INSERT INTO emergencies (gameId, teamId, who, source, createdAt) VALUES (?, ?, 'x', 'app', ?)", g.id, A.id, Date.now());
+  G.control(g.id, 'end', 'test');
+  process.env.ZDG_ENV = 'test';
+  try { G.control(g.id, 'restart', 'test'); q.run('INSERT INTO emergencies (gameId, teamId, who, source, createdAt) VALUES (?, ?, \'x\', \'app\', ?)', g.id, A.id, Date.now()); G.control(g.id, 'draft', 'test'); } finally { delete process.env.ZDG_ENV; }
+  assert.equal(G.getGame(g.id).status, 'draft');
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM emergencies WHERE gameId = ?', g.id).n, 0);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM team_fragments WHERE teamId = ?', A.id).n, 0);
 });
 
 test('punti di interesse: creati dal campo, modificati, nel KMZ, usati come posizione', () => {

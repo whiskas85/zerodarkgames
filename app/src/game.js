@@ -1026,13 +1026,25 @@ function setStatus(g, status, extra = {}) {
 const isTestEnv = () => process.env.ZDG_ENV === 'test';
 function restartGame(g, actor) {
   if (!isTestEnv()) throw err(403, 'Far ripartire una partita finita è possibile solo nell\'ambiente di test');
+  tx(() => {
+    wipePlay(g);
+    setStatus(g, 'ready', { startedAt: null, totalPausedMs: 0, pausedAt: null, pausedFrom: null, endedAt: null });
+  });
+  log(g.id, actor, 'game_restarted');
+  pushTraccarOn(g);
+}
+
+// Tutto quello che il gioco ha prodotto (setup escluso): visite, frammenti, scontri, alleanze, emergenze, annunci,
+// incarichi nati da Skill e Doni, tradimenti e armamenti di nuovo in calendario, doni di nuovo da far comparire.
+function wipePlay(g) {
   const teamIds = teamsOf(g.id).map((t) => t.id);
   const inTeams = teamIds.length ? `(${teamIds.map(() => '?').join(',')})` : '(NULL)';
   tx(() => {
     for (const t of ['team_fragments', 'team_code_notes', 'team_visits', 'team_timers']) q.run(`DELETE FROM ${t} WHERE teamId IN ${inTeams}`, ...teamIds);
     q.run("UPDATE teams SET status = 'active', finishPosition = NULL, wonAt = NULL WHERE gameId = ?", g.id);
     q.run('DELETE FROM engagement_steals WHERE engagementId IN (SELECT id FROM engagements WHERE gameId = ?)', g.id);
-    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions', 'altar_rejections']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
+    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions', 'altar_rejections', 'emergencies']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
+    q.run("DELETE FROM squad_tasks WHERE gameId = ? AND source <> 'regia'", g.id);
     // Tradimenti: quelli aggiunti a mano spariscono, gli altri tornano in calendario.
     q.run('DELETE FROM revelations WHERE gameId = ? AND scheduledMin IS NULL', g.id);
     q.run("UPDATE revelations SET status = 'scheduled', firedAt = NULL WHERE gameId = ?", g.id);
@@ -1041,10 +1053,7 @@ function restartGame(g, actor) {
     q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
            claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
     require('./skills').resetGame(g.id);
-    setStatus(g, 'ready', { startedAt: null, totalPausedMs: 0, pausedAt: null, pausedFrom: null, endedAt: null });
   });
-  log(g.id, actor, 'game_restarted');
-  pushTraccarOn(g);
 }
 
 // Si parte a breve: a tutti i telefoni della partita, «accendi Traccar» (l'avviso nell'app sparisce dopo due segnali).
@@ -1077,6 +1086,8 @@ function control(gameId, action, actor) {
       break;
     case 'draft':
       need('ready', 'circle');
+      // Nell'ambiente di test il gioco torna pulito (come «Fai ripartire»): emergenze, scontri, frammenti…
+      if (isTestEnv()) wipePlay(g);
       // Di nuovo in preparazione: gli Altari visitati (anche le prove) si azzerano.
       q.run('DELETE FROM team_visits WHERE teamId IN (SELECT id FROM teams WHERE gameId = ?)', g.id);
       q.run('DELETE FROM altar_rejections WHERE gameId = ?', g.id);
