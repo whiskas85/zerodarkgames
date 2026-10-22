@@ -159,6 +159,9 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 /* Punto di interesse: rombo viola. */
 .pin-poi { width: 22px; height: 22px; background: #b07ad9; border: 2px solid #fff; transform: rotate(45deg); box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
 .pin-poi span { display: none; }
+.pin-guide { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #1f7ae0; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+.pin-guide .mdi { display: block; }
+.mdi-wrap { display: inline-flex; vertical-align: middle; line-height: 0; }
 .pin-place { width: 32px; height: 32px; border-radius: 50%; background: #111; color: #d1ad62; border: 3px solid #d1ad62; font-size: 17px; }
 .pin-place.pin-soglia { background: #8e2a1f; color: #fff; border-color: #fff; }
 /* Persone in mappa: pallini colorati senza testo */

@@ -322,6 +322,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS pois (
   createdAt INTEGER NOT NULL, createdBy TEXT, updatedAt INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_pois_game ON pois(gameId);`);
+// Indicazioni campo (parcheggio, accettazione…): punti con icona MDI che coppie e iscritti vedono prima del Cerchio.
+db.exec(`CREATE TABLE IF NOT EXISTS guide_points (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  label TEXT NOT NULL, description TEXT, icon TEXT, lat REAL NOT NULL, lng REAL NOT NULL,
+  createdAt INTEGER NOT NULL, createdBy TEXT, updatedAt INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_guide_game ON guide_points(gameId);`);
 // Identificativo personale per l'app di tracciamento (Traccar Client): posizione anche a schermo spento.
 addColumn('players', 'trackToken', 'TEXT');
 addColumn('players', 'trackSeenAt', 'INTEGER');

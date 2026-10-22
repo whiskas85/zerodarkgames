@@ -1,6 +1,8 @@
 // Mappe OpenTopoMap (Leaflet servito localmente). Una vista persiste tra i ridisegni della pagina:
 // l'elemento della mappa viene riagganciato, i segnaposto si aggiornano senza ricreare la mappa.
 
+import { mdiSvg } from './mdi.js';
+
 let leafletLoading = null;
 export function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
@@ -45,6 +47,7 @@ export function pinHtml(item) {
   // Emergenza reale: segnaposto rosso che pulsa (grigio se chiusa).
   if (item.kind === 'emergency') return `<span class="pin-sos ${item.state || ''}">${esc(item.text || '!')}</span>`;
   if (item.kind === 'poi') return '<span class="pin pin-poi"><span>◆</span></span>';
+  if (item.kind === 'guide') return `<span class="pin pin-guide">${mdiSvg(item.icon, 18)}</span>`;
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
   // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
   // Coppie magenta, Eletti del colore della squadra; chi è, lo dice il popup.

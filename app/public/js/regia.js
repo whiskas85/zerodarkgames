@@ -2,6 +2,7 @@
 import * as CKUI from './checkin-ui.js';
 import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet } from './map.js';
+import { mdi, GUIDE_ICONS } from './mdi.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -1588,6 +1589,10 @@ function fieldMapItems(d) {
     ...(d.pois || []).filter((x) => !x.occupied).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label,
       popup: `<strong>◆ ${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>${escHtml(String(x.createdBy || '').replace('eletti:', ''))} · ${fmtTime(x.createdAt)}</small>
         <div class="popup-actions">${actBtn('pick', 'poi', x.id, 'Sposta: clicca sulla mappa')}${actBtn('edit', 'poi', x.id, 'Rinomina')}${actBtn('del', 'poi', x.id, 'Elimina')}</div>` })),
+    // Indicazioni campo (parcheggio, accettazione…): le coppie le vedono fino al Cerchio.
+    ...(d.guide || []).map((x) => ({ key: `gd${x.id}`, kind: 'guide', icon: x.icon, lat: x.lat, lng: x.lng, title: x.label,
+      popup: `<strong>${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>Indicazione campo: la vedono le coppie fino al Cerchio</small>
+        <div class="popup-actions">${actBtn('pick', 'guide', x.id, 'Sposta: clicca sulla mappa')}${actBtn('edit', 'guide', x.id, 'Modifica')}${actBtn('del', 'guide', x.id, 'Elimina')}</div>` })),
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
       popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
@@ -1621,7 +1626,7 @@ function viewFieldMapItems() {
 const findFieldItem = (kind, id) => {
   const d = fieldData;
   if (!d) return null;
-  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : kind === 'poi' ? d.pois || [] : d.points).find((x) => x.id === Number(id)) || null;
+  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : kind === 'poi' ? d.pois || [] : kind === 'guide' ? d.guide || [] : d.points).find((x) => x.id === Number(id)) || null;
 };
 
 // Pulsanti dentro i popup della mappa (in cattura: Leaflet ferma i clic nei popup prima che risalgano).
@@ -1634,8 +1639,8 @@ fieldMap.el.addEventListener('click', (e) => {
   fieldMap.map?.closePopup();
   if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
   if (b.dataset.act === 'pick') startPick(x, b.dataset.kind);
-  if (b.dataset.act === 'edit') editPoi(x);
-  if (b.dataset.act === 'del') deletePoiDialog(x);
+  if (b.dataset.act === 'edit') (b.dataset.kind === 'guide' ? guideDialog(x) : editPoi(x));
+  if (b.dataset.act === 'del') (b.dataset.kind === 'guide' ? deleteGuideDialog(x) : deletePoiDialog(x));
 }, true);
 
 // Punti di interesse dalla regia: rinomina (e descrizione) ed elimina.
@@ -1651,6 +1656,34 @@ async function deletePoiDialog(x) {
   await loadField();
 }
 
+// Indicazioni campo: nome, nota e icona (MDI); per una nuova si sceglie poi il punto sulla mappa.
+async function guideDialog(x = null) {
+  let icon = x?.icon || 'parking';
+  const label = h('input', { class: 'input', value: x?.label || '', placeholder: 'Es. Parcheggio, Accettazione', maxlength: 60, required: true });
+  const description = h('input', { class: 'input', value: x?.description || '', placeholder: 'Nota facoltativa (es. «seguite i cartelli»)', maxlength: 300 });
+  const grid = h('div', { class: 'icon-grid', role: 'radiogroup', 'aria-label': 'Icona' });
+  const paint = () => grid.replaceChildren(...GUIDE_ICONS.map(([k, name]) => h('button', { type: 'button', class: `icon-pick ${k === icon ? 'on' : ''}`, title: name, 'aria-label': name, 'aria-checked': String(k === icon), role: 'radio',
+    onclick: () => { icon = k; if (!x && (!label.value.trim() || GUIDE_ICONS.some(([, n]) => n === label.value.trim()))) label.value = name; paint(); } }, mdi(k, 24))));
+  paint();
+  const ok = await modal({
+    title: x ? 'Modifica indicazione' : 'Nuova indicazione campo', okLabel: x ? 'Salva' : 'Scegli il punto sulla mappa',
+    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Nome'), label), h('label', { class: 'field' }, h('span', null, 'Nota'), description),
+      h('div', { class: 'field' }, h('span', null, 'Icona'), grid),
+      h('p', { class: 'tiny muted' }, 'Le coppie (e chi è iscritto) la vedono nell\'app, in «Indicazioni campo» con il pulsante Naviga, fino a quando la partita passa al Cerchio.')),
+    onOk: () => { if (!label.value.trim()) throw new Error('Dai un nome al punto'); return true; },
+  });
+  if (!ok) return;
+  const data = { label: label.value.trim(), description: description.value.trim(), icon };
+  if (!x) { R.mapPick = { kind: 'guide-new', label: data.label, data }; render(); return; }
+  try { await api('PATCH', `/api/field/guide/${x.id}?gameId=${R.gameId}`, data); toast('Indicazione salvata', 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
+  await loadField();
+}
+async function deleteGuideDialog(x) {
+  if (!(await dialog({ title: `Eliminare «${x.label}»?`, text: 'L\'indicazione sparisce dalla mappa della regia e dall\'app delle coppie.', okLabel: 'Elimina', danger: true }))) return;
+  try { await api('DELETE', `/api/field/guide/${x.id}?gameId=${R.gameId}`); toast('Indicazione eliminata', 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
+  await loadField();
+}
+
 // Soglia e Cerchio si possono segnare direttamente dalla regia: un clic sulla mappa (foto facoltativa, si aggiunge dal telefono).
 function startPick(x, kind = 'landmark') {
   R.mapPick = { id: x.id, kind, label: kind === 'gift' ? `${x.label} · ${x.name}` : x.label };
@@ -1658,7 +1691,7 @@ function startPick(x, kind = 'landmark') {
 }
 // Spostando un oggetto si può toccare un punto di interesse: l'oggetto prende il suo posto (e il punto non si vede più).
 fieldMap.onMarkerTap((key) => {
-  if (!R.mapPick || R.mapPick.kind === 'poi' || !key.startsWith('poi')) return false;
+  if (!R.mapPick || ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) || !key.startsWith('poi')) return false;
   const x = (fieldData?.pois || []).find((p) => `poi${p.id}` === key);
   if (!x) return false;
   placePicked({ lat: x.lat, lng: x.lng }, x.label);
@@ -1669,6 +1702,15 @@ async function placePicked(ll, poiLabel = null) {
   const pick = R.mapPick;
   if (!pick) return;
   R.mapPick = null;
+  if (pick.kind === 'guide-new' || pick.kind === 'guide') {
+    try {
+      if (pick.kind === 'guide') await api('PATCH', `/api/field/guide/${pick.id}?gameId=${R.gameId}`, { lat: ll.lat, lng: ll.lng });
+      else await api('POST', `/api/field/guide?gameId=${R.gameId}`, { ...pick.data, lat: ll.lat, lng: ll.lng });
+      toast(pick.kind === 'guide' ? `${pick.label} spostato` : `${pick.label} aggiunto: le coppie lo vedono fino al Cerchio`, 'ok');
+    } catch (e) { toast(e.message, 'error', 6000); }
+    await loadField();
+    return;
+  }
   if (pick.kind === 'poi') {
     try { await api('PATCH', `/api/field/pois/${pick.id}?gameId=${R.gameId}`, { lat: ll.lat, lng: ll.lng }); toast(`${pick.label} spostato`, 'ok'); } catch (e) { toast(e.message, 'error', 6000); }
     await loadField();
@@ -1720,6 +1762,7 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
     h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato'),
     h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse (si aggiunge dal campo)'),
+    h('span', null, h('span', { class: 'pin pin-guide' }, mdi('parking', 16)), ' Indicazione campo (le coppie la vedono fino al Cerchio)'),
     h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
@@ -1734,10 +1777,11 @@ function viewFieldMap() {
       // Quando è tutto piazzato il pannello e il suo pulsante spariscono.
       toPlace.length ? h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`) : null,
       h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
+      h('button', { class: 'btn btn-sm btn-blue', title: 'Parcheggio, accettazione…: le coppie li vedono fino al Cerchio, con il pulsante Naviga', onclick: () => guideDialog() }, mdi('signDirection', 16), ` Indicazione campo${d.guide?.length ? ` (${d.guide.length})` : ''}`),
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
-    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, R.mapPick.kind === 'poi' ? `Clicca sulla mappa il nuovo posto di: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
+    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) ? `Clicca sulla mappa ${R.mapPick.kind === 'guide-new' ? 'dove si trova' : 'il nuovo posto di'}: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
     R.mapSide === false || !toPlace.length ? null : h('aside', { class: 'map-side' },
       h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),

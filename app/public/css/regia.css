@@ -914,3 +914,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .person-row.cat-daiscrivere { border-left-color: #f2c94c; } .person-row.cat-attesa { border-left-color: #e5484d; }
 .person-row.cat-coppie { border-left-color: #46c46a; } .person-row.cat-senza { border-left-color: var(--brass); } .person-row.cat-eletti { border-left-color: #9b6cf0; }
 .person-main { flex: 1 1 280px; display: grid; gap: 3px; min-width: 0; }
+
+/* Indicazioni campo: pulsante blu e scelta dell'icona (MDI) */
+.btn-blue { background: #1f7ae0; border-color: #1f7ae0; color: #fff; display: inline-flex; align-items: center; gap: 4px; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.icon-pick { all: unset; cursor: pointer; height: 44px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 6px; color: var(--ink); }
+.icon-pick:hover { border-color: #6fb2ff; }
+.icon-pick.on { background: #1f7ae0; border-color: #1f7ae0; color: #fff; }
+.icon-pick:focus-visible { outline: 2px solid #6fb2ff; outline-offset: 2px; }

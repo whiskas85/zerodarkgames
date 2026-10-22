@@ -363,9 +363,10 @@ app.get('/api/team/state', needMember, wrap((req) => {
   // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
   const openNew = req.account && G.getGame(req.player?.gameId ?? req.team.gameId).status === 'ended'
     && q.get("SELECT 1 FROM games g WHERE g.registrationOpen = 1 AND g.status = 'draft' AND NOT EXISTS (SELECT 1 FROM players p WHERE p.gameId = g.id AND p.accountId = ?)", req.account.id);
-  if (!req.team) return { ...G.lobbyState(req.player), account: A.publicAccount(req.account), council: councilFlag(req), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
+  if (!req.team) return { ...G.lobbyState(req.player), guide: F.teamGuide(req.player.gameId), account: A.publicAccount(req.account), council: councilFlag(req), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
   const st = G.teamState(req.team, req.player);
   st.map = F.teamMap(req.team);
+  st.guide = st.map?.guide || [];
   // Stato di Traccar Client per questa persona (il «flag» resta finché la prova non riesce).
   st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
   st.council = councilFlag(req);
@@ -535,6 +536,9 @@ app.get('/api/field/export.kmz', needField, (req, res, next) => { try { sendKmz(
 app.post('/api/field/pois', needField, wrap((req) => F.createPoi(fieldGame(req), req.body || {}, fieldWho(req))));
 app.patch('/api/field/pois/:id', needField, wrap((req) => F.updatePoi(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
+app.post('/api/field/guide', needField, wrap((req) => F.createGuide(fieldGame(req), req.body || {}, fieldWho(req))));
+app.patch('/api/field/guide/:id', needField, wrap((req) => F.updateGuide(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
+app.delete('/api/field/guide/:id', needField, wrap((req) => { F.deleteGuide(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
 // Agli Eletti: gli altri Eletti e, finché un incarico della loro squadra è aperto, la coppia bersaglio.
 app.get('/api/field/positions', needField, wrap((req) => (fieldStaff(req) ? F.positionsOf(fieldGame(req), 'master')
   : [...F.positionsOf(fieldGame(req), 'elect'), ...(req.player?.squadId ? F.taskTargetPositions(req.player.squadId) : [])])));

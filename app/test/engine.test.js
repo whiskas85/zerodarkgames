@@ -805,7 +805,20 @@ test('incarichi: punto indicato sulla mappa, spostamento alla squadra che ha pia
   F.assignToSquad('landmark', soglia.id, nord, 'test');
   F.placeLandmark(soglia.id, g.id, { lat: 45.3, lng: 9.3, acc: 4 }, 'regia');
   const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  // Nessun punto del gioco prima del tempo: la Soglia compare alle coppie solo dal via.
+  assert.deepEqual(F.teamMap(A).landmarks, []);
+  // Indicazioni campo (parcheggio…): visibili in preparazione, spariscono al Cerchio.
+  assert.throws(() => F.createGuide(g.id, { label: 'Parcheggio' }, 'regia'), /mappa/);
+  const gd = F.createGuide(g.id, { label: 'Parcheggio', icon: 'parking', lat: 45.1, lng: 9.1 }, 'regia');
+  assert.deepEqual(F.teamMap(A).guide.map((x) => [x.label, x.icon]), [['Parcheggio', 'parking']]);
+  F.updateGuide(gd.id, g.id, { icon: 'car<script>' }, 'regia');
+  assert.equal(F.teamGuide(g.id)[0].icon, 'carscript');
+  q.run("UPDATE games SET status = 'circle' WHERE id = ?", g.id);
+  assert.deepEqual(F.teamMap(A).guide, []);
+  q.run("UPDATE games SET status = 'hunt' WHERE id = ?", g.id);
   assert.deepEqual(F.teamMap(A).landmarks.map((l) => l.kind), ['soglia']);
+  F.deleteGuide(gd.id, g.id, 'regia');
+  assert.equal(F.fieldState(g.id).guide.length, 0);
   assert.equal(F.fieldState(g.id).landmarks.find((l) => l.kind === 'soglia').hasPhoto, false);
   assert.throws(() => F.placePoint(p.id, g.id, { lat: 45, lng: 9 }, 'x'), /Foto/);
 });

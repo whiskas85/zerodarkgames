@@ -386,7 +386,62 @@ function fieldState(gameId) {
     openTasks: q.all('SELECT * FROM squad_tasks WHERE gameId = ? AND squadId IS NULL AND doneAt IS NULL AND cancelledAt IS NULL ORDER BY id', game.id),
     landmarks: G.landmarksOf(game.id).map(landmarkOut),
     pois: poisOf(game.id),
+    guide: guideOf(game.id),
   };
+}
+
+// ---------------------------------------------------------------- indicazioni campo
+
+// Parcheggio, accettazione e simili: le coppie (e chi è iscritto ma non ancora in coppia) li vedono fino al Cerchio.
+const GUIDE_STATUSES = ['draft', 'ready'];
+const guideOut = (x) => ({ id: x.id, label: x.label, description: x.description, icon: x.icon || 'mapMarker', lat: x.lat, lng: x.lng });
+const guideOf = (gameId) => q.all('SELECT * FROM guide_points WHERE gameId = ? ORDER BY id', gameId).map(guideOut);
+function teamGuide(gameId) {
+  return GUIDE_STATUSES.includes(G.getGame(gameId).status) ? guideOf(gameId) : [];
+}
+
+function readGuide(body, old = null) {
+  const label = body.label !== undefined ? String(body.label || '').trim().slice(0, 60) : old?.label;
+  if (!label) throw err(400, 'Dai un nome al punto');
+  const description = body.description !== undefined ? String(body.description || '').trim().slice(0, 300) || null : old?.description ?? null;
+  const icon = body.icon !== undefined ? String(body.icon || '').replace(/[^\w]/g, '').slice(0, 40) || null : old?.icon ?? null;
+  let { lat, lng } = old || {};
+  if (body.lat !== undefined || body.lng !== undefined) {
+    lat = parseFloat(body.lat);
+    lng = parseFloat(body.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw err(400, 'Posizione non valida');
+  }
+  if (lat == null || lng == null) throw err(400, 'Scegli il punto sulla mappa');
+  return { label, description, icon, lat, lng };
+}
+
+const guideChanged = (gameId) => { rt.toStaff(gameId, 'guide'); rt.toTeams(gameId, 'state', {}); };
+
+function createGuide(gameId, body, who) {
+  const g = G.getGame(gameId);
+  const p = readGuide(body || {});
+  const id = Number(q.run('INSERT INTO guide_points (gameId, label, description, icon, lat, lng, createdAt, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, p.label, p.description, p.icon, p.lat, p.lng, Date.now(), who).lastInsertRowid);
+  G.log(g.id, who, 'guide_created', { label: p.label });
+  guideChanged(g.id);
+  return guideOut(q.get('SELECT * FROM guide_points WHERE id = ?', id));
+}
+
+function updateGuide(id, gameId, body, who) {
+  const old = q.get('SELECT * FROM guide_points WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
+  if (!old) throw err(404, 'Indicazione non trovata');
+  const p = readGuide(body || {}, old);
+  q.run('UPDATE guide_points SET label = ?, description = ?, icon = ?, lat = ?, lng = ?, updatedAt = ? WHERE id = ?', p.label, p.description, p.icon, p.lat, p.lng, Date.now(), old.id);
+  guideChanged(old.gameId);
+  return guideOut(q.get('SELECT * FROM guide_points WHERE id = ?', old.id));
+}
+
+function deleteGuide(id, gameId, who) {
+  const old = q.get('SELECT * FROM guide_points WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
+  if (!old) throw err(404, 'Indicazione non trovata');
+  q.run('DELETE FROM guide_points WHERE id = ?', old.id);
+  G.log(old.gameId, who, 'guide_deleted', { label: old.label });
+  guideChanged(old.gameId);
 }
 
 // ---------------------------------------------------------------- punti di interesse
@@ -887,12 +942,16 @@ function electSummary(team, player) {
 // Gli Altari compaiono alle coppie solo dal via: prima li vede solo l'organizzazione (regia ed Eletti).
 function teamMap(team) {
   if (team.kind === 'lobby') return null;
-  const started = team.kind === 'elect' || !C.PRE_START.includes(G.getGame(team.gameId).status);
+  const { status } = G.getGame(team.gameId);
+  const started = team.kind === 'elect' || !C.PRE_START.includes(status);
   return {
     points: !started ? [] : q.all(`SELECT p.id, p.label, p.lat, p.lng, p.sectorId, s.name AS sectorName, s.roman FROM points p JOIN sectors s ON s.id = p.sectorId
                    WHERE p.gameId = ? AND p.lat IS NOT NULL ORDER BY s.ord`, team.gameId)
       .map((p) => ({ ...p, mine: p.sectorId === team.sectorId })),
-    landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId),
+    // Nessun punto del gioco prima del tempo: il Cerchio compare dal Cerchio, la Soglia dal via (gli Eletti li vedono sempre).
+    landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId)
+      .filter((l) => team.kind === 'elect' || started || (l.kind === 'cerchio' && status === 'circle')),
+    guide: teamGuide(team.gameId),
     gifts: q.all("SELECT id, label, lat, lng, revealedAt, expiresAfterMin, revealElapsedMs FROM gifts WHERE gameId = ? AND status = 'revealed' AND lat IS NOT NULL AND (publicAt IS NULL OR publicAt <= ? OR ? = 'elect')", team.gameId, Date.now(), team.kind)
       .map((g) => ({ id: g.id, label: g.label, lat: g.lat, lng: g.lng, revealedAt: g.revealedAt, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null })),
   };
@@ -961,5 +1020,5 @@ function useGift(team, giftId, params = {}) {
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
   giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, resetAllGifts, revealGift, tickAll,
-  createPoi, updatePoi, deletePoi, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
+  createPoi, updatePoi, deletePoi, createGuide, updateGuide, deleteGuide, teamGuide, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

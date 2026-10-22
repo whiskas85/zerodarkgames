@@ -792,6 +792,14 @@ button.banner-safety strong { letter-spacing: .08em; }
 /* Menu prima della gara: accettazione e test armi in azzurro */
 .tile-azure { border-color: #3aa0e8; background: linear-gradient(135deg, rgba(58, 160, 232, .2), transparent); }
 .tile-azure .tile-ico { color: #4fb3ff; }
+.tile-blue { border-color: #1f7ae0; background: linear-gradient(135deg, rgba(31, 122, 224, .38), rgba(31, 122, 224, .08)); }
+.tile-blue .tile-ico { color: #6fb2ff; }
+.btn-blue { background: #1f7ae0; border-color: #1f7ae0; color: #fff; display: inline-flex; align-items: center; gap: 6px; }
+.leaflet-popup-content .btn-blue { margin-top: 8px; color: #fff; text-decoration: none; }
+.guide-wrap .guide-map { height: 46dvh; min-height: 240px; }
+.guide-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.guide-card { display: flex; align-items: center; gap: 12px; }
+.guide-ico { all: unset; cursor: pointer; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #1f7ae0; color: #fff; flex: none; }
 .tile-live { box-shadow: 0 0 0 2px #e5484d inset; }
 .tile-live .tiny { color: #ff6b6b; font-weight: 700; }
 /* Il mio test armi: pannello come quello dell'arbitro */

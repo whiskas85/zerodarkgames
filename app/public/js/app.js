@@ -1,5 +1,6 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
+import { mdi, mdiSvg } from './mdi.js';
 import { createField } from './field-ui.js';
 import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
 
@@ -460,7 +461,7 @@ function render() {
   if (isLobby() && ['skill', 'uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
   if (isElect() && ['scontri', 'alleanze'].includes(view)) view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
-  if (view === 'mappa' && !isElect()) startMapGps(); else stopMapGps();
+  if ((view === 'mappa' && !isElect()) || view === 'indicazioni') startMapGps(); else stopMapGps();
   if (isElect() && FIELD_VIEWS.includes(view)) { field.startGps(); if (!FE.data) field.load(); } else field.stopGps();
   if (view !== 'mappa') field.leaveMap();
   if (view === 'sigillo') openSeal(); else closeSeal();
@@ -468,7 +469,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -1075,9 +1076,13 @@ const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
 function prepTiles() {
   const st = S.state;
   const ev = st?.player?.event;
-  if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return [];
+  // Indicazioni campo (parcheggio, accettazione…): per tutti, finché la partita non passa al Cerchio.
+  const guide = st?.guide?.length ? [h('a', { class: 'tile tile-blue', href: '#/indicazioni' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('signDirection', 26)), h('span', null, 'Indicazioni campo'),
+    h('span', { class: 'tiny' }, st.guide.slice(0, 3).map((g) => g.label).join(' · ')))] : [];
+  if (!ev || st.player.status !== 'accepted' || !PRE.includes(st.clock?.status)) return guide;
   const live = ev.live?.open;
   return [
+    ...guide,
     h('a', { class: 'tile tile-azure', href: '#/accettazione' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, ev.checkinAt ? '✓' : '☐'), h('span', null, 'Accettazione'),
       h('span', { class: 'tiny' }, ev.checkinAt ? `fatta alle ${fmtTime(ev.checkinAt)}` : 'da fare all\'arrivo')),
     h('a', { class: `tile tile-azure ${live ? 'tile-live' : ''}`, href: '#/testarmi' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌁'), h('span', null, 'Test armi'),
@@ -1588,6 +1593,7 @@ function startMapGps() {
     myPos = p;
     gpsMsg = null;
     teamMapView.setMe(p);
+    guideMapView.setMe(p);
     const el = document.getElementById('map-gps');
     if (el) el.hidden = true;
   }, (msg) => { gpsMsg = msg; const el = document.getElementById('map-gps'); if (el) { el.textContent = msg; el.hidden = false; } });
@@ -1679,10 +1685,31 @@ async function tryExit(token) {
       h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'));
 }
 
+// Indicazioni campo: mappa con i punti utili (parcheggio, accettazione…) e «Naviga» per aprirli in Google Maps.
+const guideMapView = createMapView({ className: 'team-map guide-map' });
+const navUrl = (g) => `https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}`;
+const guideItem = (g) => ({ key: `gd${g.id}`, kind: 'guide', icon: g.icon, lat: g.lat, lng: g.lng, title: g.label,
+  popup: `<strong>${escHtml(g.label)}</strong>${g.description ? `<br>${escHtml(g.description)}` : ''}<br><a class="btn btn-sm btn-blue" href="${navUrl(g)}" target="_blank" rel="noopener">${mdiSvg('navigation', 16)} Naviga</a>` });
+function viewGuide() {
+  const list = S.state?.guide || [];
+  guideMapView.setItems(list.map(guideItem));
+  if (myPos) guideMapView.setMe(myPos);
+  guideMapView.refresh();
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Indicazioni campo'),
+    list.length ? null : h('p', { class: 'empty' }, 'Nessuna indicazione: il Consiglio non ne ha ancora segnate, oppure la partita è già al Cerchio.'),
+    list.length ? h('div', { class: 'map-wrap guide-wrap' }, guideMapView.el) : null,
+    h('ul', { class: 'guide-list' }, list.map((g) => h('li', { class: 'card guide-card' },
+      h('button', { class: 'guide-ico', type: 'button', title: 'Mostra sulla mappa', onclick: () => guideMapView.focus([`gd${g.id}`]) }, mdi(g.icon, 26)),
+      h('div', { class: 'grow' }, h('strong', null, g.label), g.description ? h('div', { class: 'small muted' }, g.description) : null),
+      h('a', { class: 'btn btn-blue', href: navUrl(g), target: '_blank', rel: 'noopener' }, mdi('navigation', 18), ' Naviga')))));
+}
+
 function viewMap(focus = null) {
   const m = S.state?.map || { points: [], gifts: [] };
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
+    ...(m.guide || []).map(guideItem),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? null : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
