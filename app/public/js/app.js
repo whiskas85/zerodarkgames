@@ -537,6 +537,13 @@ function perksModal(fx) {
     onOpen: () => updateClocks() });
 }
 
+// Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
+const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni' };
+function upOf(view) {
+  const { arg } = route();
+  return (arg && UP[view]) || '#/home';
+}
+
 function header(view) {
   const st = S.state;
   const sec = st?.team.sector;
@@ -548,7 +555,7 @@ function header(view) {
   // Veglia dopo una sconfitta: piccolo conto alla rovescia nella barra in alto, al posto della fase.
   const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
-    view !== 'home' ? h('a', { class: 'back', href: '#/home', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
+    view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' ? 'Torna alla home' : 'Torna indietro' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? sec.name : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
@@ -2079,11 +2086,10 @@ function viewSkillDetail(id) {
   const sk = S.state?.skills;
   if (!sk) return h('p', { class: 'empty' }, 'Caricamento…');
   const s = sk.mine.find((x) => x.id === id) || sk.catalog.find((x) => x.id === id);
-  if (!s) return h('div', { class: 'stack' }, h('a', { class: 'back-link', href: '#/skill' }, '‹ Le vostre Skill'), h('p', { class: 'empty' }, 'Skill non trovata.'));
+  if (!s) return h('p', { class: 'empty' }, 'Skill non trovata.');
   const g = guideOf(s);
   const sec = (title, ...body) => h('section', { class: 'skill-sec' }, h('h3', null, title), ...body);
   return h('div', { class: 'stack skill-page' },
-    h('a', { class: 'back-link', href: '#/skill' }, '‹ Le vostre Skill'),
     h('div', { class: `skill-hero big skill-${s.kind}` }, h('span', { class: 'skill-hero-ico', 'aria-hidden': 'true' }, s.icon),
       h('div', null, h('h2', null, s.name), h('span', { class: 'chip' }, SKILL_KIND[s.kind]), ' ', skillState(s),
         skillMeta(s) ? h('div', { class: 'tiny muted mono' }, skillMeta(s)) : null)),

@@ -887,7 +887,6 @@ button.banner-safety strong { letter-spacing: .08em; }
 .skill-sec h3 { margin: 6px 0; }
 .skill-sec p { margin: 0 0 8px; }
 .skill-tip { border-left: 4px solid var(--brass); padding-left: 10px; font-style: italic; }
-.back-link { color: var(--muted); text-decoration: none; font-weight: 700; }
 /* «Schermate» illustrate */
 .sh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .sh { margin: 0; display: grid; gap: 6px; }
