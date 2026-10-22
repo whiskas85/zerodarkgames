@@ -1,6 +1,7 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { mdi, mdiSvg } from './mdi.js';
+import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
 
@@ -469,7 +470,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: viewSkills, scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -2002,7 +2003,99 @@ function skillCard(s, ...actions) {
       h('div', { class: 'skill-head' }, h('strong', null, s.name), h('span', { class: 'chip' }, SKILL_KIND[s.kind]), s.available === false ? h('span', { class: 'chip chip-warn' }, 'in arrivo') : null),
       h('p', { class: 'small' }, s.description),
       skillMeta(s) ? h('div', { class: 'tiny muted mono' }, skillMeta(s)) : null,
-      acts.length ? h('div', { class: 'row-actions' }, ...acts) : null));
+      acts.length ? h('div', { class: 'row-actions' }, ...acts) : null,
+      h('a', { class: 'skill-more', href: `#/skill/${s.id}` }, 'Maggiori dettagli ›')));
+}
+
+// ---- Slot delle Skill (come nei videogiochi): attive (più uno slot «+» che si può aprire in gioco) e passiva.
+async function chooseSkill(s, on) {
+  try { await api('POST', `/api/team/skill/${s.id}/choose`, { on }); refresh(); } catch (e) { toast(e.offline ? 'Serve la rete per scegliere le Skill' : e.message, 'error', 6000); }
+}
+const closeDlg = (el) => { const d = el?.closest?.('dialog'); d?.close(); d?.remove(); };
+const skillPlaying = () => ACTIVE.includes(S.state?.clock.status) && S.state?.team.status === 'active';
+
+// Stato della Skill posseduta in gioco: pronta, in ricarica, in corso, automatica, da usare in un'altra pagina.
+function skillState(s) {
+  const left = (until) => h('span', { class: 'mono', 'data-abs': until }, '—');
+  if (S.state?.skills?.canChoose) return null;
+  if (s.kind === 'passive') return h('span', { class: 'slot-st ok' }, 'Sempre attiva');
+  if (s.active && s.activeUntil) return h('span', { class: 'slot-st fx' }, 'In corso ', left(s.activeUntil));
+  if (s.readyAt) return h('span', { class: 'slot-st cd' }, 'Ricarica ', left(s.readyAt));
+  if (s.auto) return h('span', { class: 'slot-st ok' }, 'Automatica');
+  return h('span', { class: 'slot-st ok' }, 'Pronta');
+}
+
+// Le azioni della Skill: Usa (in gioco), Togli (prima del via), o dove si usa.
+function skillActions(s, done = () => {}) {
+  const sk = S.state?.skills;
+  if (sk?.canChoose) {
+    return (sk.mine || []).some((m) => m.id === s.id && m.source === 'chosen')
+      ? h('button', { class: 'btn btn-block', type: 'button', onclick: (e) => { done(e.target); chooseSkill(s, false); } }, '✕ Togli dallo slot') : null;
+  }
+  const mine = (sk?.mine || []).find((m) => m.id === s.id);
+  if (!mine || mine.kind === 'passive' || mine.auto) return null;
+  if (mine.where) return h('a', { class: 'btn btn-block', href: `#/${mine.where}`, onclick: (e) => done(e.target) }, `Si usa da ${mine.where === 'alleanze' ? 'Alleanze' : 'Scontri'} ›`);
+  if (mine.readyAt) return null;
+  return h('button', { class: 'btn btn-primary btn-block btn-xl', type: 'button', disabled: !skillPlaying() || mine.available === false,
+    onclick: (e) => { done(e.target); useSkillFlow(mine); } }, skillPlaying() ? `Usa ${mine.name}` : 'Si usa a partita in corso');
+}
+
+function skillModal(s) {
+  modal({
+    okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'skill-modal' },
+      h('div', { class: `skill-hero skill-${s.kind}` }, h('span', { class: 'skill-hero-ico', 'aria-hidden': 'true' }, s.icon),
+        h('div', null, h('h3', null, s.name), h('span', { class: 'chip' }, SKILL_KIND[s.kind]), ' ', skillState(s))),
+      h('p', null, s.description),
+      skillMeta(s) ? h('div', { class: 'tiny muted mono' }, skillMeta(s)) : null,
+      skillActions(s, closeDlg),
+      h('a', { class: 'btn btn-ghost btn-block', href: `#/skill/${s.id}`, onclick: (e) => closeDlg(e.target) }, 'Maggiori dettagli ›')),
+  });
+}
+
+function skillSlots(sk) {
+  const choosing = sk.canChoose;
+  const mine = choosing ? sk.mine.filter((x) => x.source === 'chosen') : sk.mine;
+  const act = mine.filter((x) => x.kind !== 'passive');
+  const pas = mine.filter((x) => x.kind === 'passive');
+  const filled = (x) => h('button', { type: 'button', class: `slot slot-${x.kind} ${x.readyAt ? 'is-cd' : ''} ${x.active ? 'is-fx' : ''}`, onclick: () => skillModal(x) },
+    h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, x.icon), h('span', { class: 'slot-name' }, x.name), skillState(x));
+  const empty = (kind) => h('button', { type: 'button', class: `slot slot-empty slot-${kind}`,
+    onclick: () => (choosing ? document.getElementById(`sk-${kind}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('Slot vuoto: le Skill si scelgono prima del via', 'info')) },
+  h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, '◇'), h('span', { class: 'slot-name' }, 'Vuoto'), h('span', { class: 'slot-st' }, choosing ? 'Scegli sotto' : '—'));
+  const locked = h('button', { type: 'button', class: 'slot slot-locked', 'aria-disabled': 'true', title: 'Slot da sbloccare in gioco',
+    onclick: () => toast('Questo slot si può aprire durante il gioco: un Dono come il Maestro vi aggiunge una Skill.', 'info', 6000) },
+  h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, '+'), h('span', { class: 'slot-name' }, 'Bloccato'), h('span', { class: 'slot-st' }, '🔒 in gioco'));
+  const n = (limit, list) => Math.max(limit, list.length);
+  return h('section', { class: 'slot-bar' },
+    h('div', { class: 'slot-row' }, h('div', { class: 'eyebrow' }, 'Attive · Ultimate'),
+      h('div', { class: 'slots' }, Array.from({ length: n(sk.limits.active, act) }, (_, i) => (act[i] ? filled(act[i]) : empty('active'))), locked)),
+    h('div', { class: 'slot-row' }, h('div', { class: 'eyebrow' }, 'Passiva'),
+      h('div', { class: 'slots' }, Array.from({ length: n(sk.limits.passive, pas) }, (_, i) => (pas[i] ? filled(pas[i]) : empty('passive'))))));
+}
+
+// Pagina della Skill: descrizione dettagliata, come si usa, cosa succede e le «schermate» dei comportamenti.
+function viewSkillDetail(id) {
+  const sk = S.state?.skills;
+  if (!sk) return h('p', { class: 'empty' }, 'Caricamento…');
+  const s = sk.mine.find((x) => x.id === id) || sk.catalog.find((x) => x.id === id);
+  if (!s) return h('div', { class: 'stack' }, h('a', { class: 'back-link', href: '#/skill' }, '‹ Le vostre Skill'), h('p', { class: 'empty' }, 'Skill non trovata.'));
+  const g = guideOf(s);
+  const sec = (title, ...body) => h('section', { class: 'skill-sec' }, h('h3', null, title), ...body);
+  return h('div', { class: 'stack skill-page' },
+    h('a', { class: 'back-link', href: '#/skill' }, '‹ Le vostre Skill'),
+    h('div', { class: `skill-hero big skill-${s.kind}` }, h('span', { class: 'skill-hero-ico', 'aria-hidden': 'true' }, s.icon),
+      h('div', null, h('h2', null, s.name), h('span', { class: 'chip' }, SKILL_KIND[s.kind]), ' ', skillState(s),
+        skillMeta(s) ? h('div', { class: 'tiny muted mono' }, skillMeta(s)) : null)),
+    h('p', { class: 'skill-lede' }, s.description),
+    skillActions(s),
+    g ? [
+      sec('Come si usa', h('p', null, g.how)),
+      sec('Cosa succede', ...g.effect.map((t) => h('p', null, t))),
+      g.shots?.length ? sec('Come appare', h('div', { class: 'sh-grid' }, g.shots.map(skillShot))) : null,
+      sec('Consiglio', h('p', { class: 'skill-tip' }, g.tips)),
+    ] : null,
+    sec(KIND_TITLE[s.kind], h('p', { class: 'small muted' }, kindInfo(s.kind, sk.catalog))));
 }
 
 // Cosa sono i tre tipi di Skill (spiegato ai concorrenti). Ricarica delle Ultimate dal catalogo della partita.
@@ -2026,19 +2119,15 @@ function viewSkills() {
     const chosen = sk.mine.filter((s) => s.source === 'chosen');
     const nAct = chosen.filter((s) => s.kind !== 'passive').length;
     const nPas = chosen.filter((s) => s.kind === 'passive').length;
-    const toggle = async (s, on) => {
-      try { await api('POST', `/api/team/skill/${s.id}/choose`, { on }); refresh(); } catch (e) { toast(e.offline ? 'Serve la rete per scegliere le Skill' : e.message, 'error', 6000); }
-    };
-    const group = (title, list, full, kind) => [h('h3', null, title), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map((s) => skillCard(s,
+    const toggle = chooseSkill;
+    const group = (title, list, full, kind) => [h('h3', { id: `sk-${kind === 'ultimate' ? 'ultimate' : kind}` }, title), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map((s) => skillCard(s,
       mineIds.has(s.id) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => toggle(s, false) }, '✓ Scelta · togli')
         : h('button', { class: 'btn btn-sm', disabled: !s.available || full, onclick: () => toggle(s, true) }, 'Scegli')))];
     const many = (n, one, more) => (n === 1 ? one : `${n} ${more}`);
     return h('div', { class: 'stack' },
       h('h2', null, 'Le vostre Skill'),
       h('p', { class: 'muted' }, `Scegliete insieme ${many(sk.limits.active, '1 Skill attiva o Ultimate', 'Skill attive o Ultimate')} e ${many(sk.limits.passive, '1 Skill passiva', 'Skill passive')}. I telefoni della coppia vedono e cambiano la stessa scelta, fino al via. Altre Skill si vincono con i Doni.`),
-      h('div', { class: 'skill-count' },
-        h('span', { class: `chip ${nAct >= sk.limits.active ? 'chip-ok' : 'chip-brass'}` }, `Attive/Ultimate ${nAct}/${sk.limits.active}`),
-        h('span', { class: `chip ${nPas >= sk.limits.passive ? 'chip-ok' : 'chip-brass'}` }, `Passive ${nPas}/${sk.limits.passive}`)),
+      skillSlots(sk),
       group('Skill attive', sk.catalog.filter((s) => s.kind === 'active'), nAct >= sk.limits.active, 'active'),
       group('Skill Ultimate', sk.catalog.filter((s) => s.kind === 'ultimate'), nAct >= sk.limits.active, 'ultimate'),
       group('Skill passive · sempre attive', sk.catalog.filter((s) => s.kind === 'passive'), nPas >= sk.limits.passive, 'passive'));
@@ -2062,6 +2151,7 @@ function viewSkills() {
   const others = sk.catalog.filter((s) => !mineIds.has(s.id));
   return h('div', { class: 'stack' },
     h('h2', null, 'Le vostre Skill'),
+    skillSlots(sk),
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
       const list = sk.mine.filter((s) => s.kind === kind);
