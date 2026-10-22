@@ -133,7 +133,7 @@ export function createMapView({ className = '' } = {}) {
       for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
       if (!fitted && keep.size) { view.fit(); fitted = true; } else if (changed) autoFit();
     },
-    // Aree circolari (posizioni sfocate, presagi): [{ key, lat, lng, radius, color, title }]
+    // Aree circolari (posizioni sfocate, presagi, copertura degli Altari): [{ key, lat, lng, radius, color, title, fill, weight, dash, interactive }]
     setCircles(list) {
       if (!map) return;
       const keep = new Set();
@@ -141,7 +141,7 @@ export function createMapView({ className = '' } = {}) {
         keep.add(c.key);
         let ci = circles.get(c.key);
         if (!ci) {
-          ci = L.circle([c.lat, c.lng], { radius: c.radius, color: c.color || '#d1ad62', weight: 2, fillOpacity: 0.18, dashArray: '6 6' }).addTo(map);
+          ci = L.circle([c.lat, c.lng], { radius: c.radius, color: c.color || '#d1ad62', weight: c.weight ?? 2, fillOpacity: c.fill ?? 0.18, dashArray: c.dash || '6 6', interactive: c.interactive ?? true }).addTo(map);
           if (c.title) ci.bindTooltip(c.title, { sticky: true });
           circles.set(c.key, ci);
         } else { ci.setLatLng([c.lat, c.lng]); ci.setRadius(c.radius); }

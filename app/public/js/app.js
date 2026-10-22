@@ -1687,7 +1687,10 @@ function viewMap(focus = null) {
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? null : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
   ]);
+  // Intorno a ogni Altare la linea di copertura: la lettura del QR vale entro questo raggio (30 m se non scelto).
+  const cover = S.state?.game?.altarRadiusM || 30;
   teamMapView.setCircles([
+    ...m.points.filter((p) => p.lat != null).map((p) => ({ key: `c${p.id}`, lat: p.lat, lng: p.lng, radius: cover, color: '#d1ad62', fill: 0.06, weight: 1.5, dash: '5 6', interactive: false })),
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius != null).map((x) => ({ key: `s${x.key}`, lat: x.lat, lng: x.lng, radius: x.radius, color: x.color || '#ff4fa3', title: `${x.roman} ${x.sectorName} · ${x.source} (area di 100 m)` })),
     ...(S.state?.skills?.giftHints || []).map((x) => ({ key: `h${x.id}`, lat: x.lat, lng: x.lng, radius: x.radius, color: '#d1ad62', title: 'Presagio del Dono: il dono è qui dentro' })),
   ]);
