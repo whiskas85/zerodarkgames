@@ -1195,16 +1195,11 @@ function viewLobbyHome(st) {
     pushInvite(),
     latestNotice(st),
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, '?'), 'Il vostro Sigillo'),
-    h('nav', { class: 'grid' },
-      ...prepTiles(),
-      h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app')),
-      tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
-      tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
-      tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙'),
-      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
-      iceTile()),
+    tileGroups(
+      ['Prima del via', 'g-prep', prepTiles()],
+      ['Gioco', 'g-game', [tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
+      ['Comunicazioni', 'g-com', [tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot), tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn)]],
+      ['Info e impostazioni', 'g-info', [...infoTiles(), h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app'))]]),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
 }
@@ -1235,19 +1230,15 @@ function viewElectHome(st) {
       h('ol', { class: 'final-list' }, st.standings.map((r) => h('li', { class: r.status === 'won' ? 'won-row' : '' }, h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`), h('span', { class: 'mono' }, r.status === 'won' ? 'Soglia' : r.fragments))))) : null,
     lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
-    h('nav', { class: 'grid' },
-      ...prepTiles(),
-      h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
-      tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
-      tile('#/mappa', 'Mappa del campo', '⛰'),
-      tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
-      tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
-      tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
-      tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙'),
-      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
-      iceTile()),
+    tileGroups(
+      ['Prima del via', 'g-prep', prepTiles()],
+      ['Gioco', 'g-game', [
+        h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
+        tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
+        tile('#/mappa', 'Mappa del campo', '⛰'),
+        tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
+      ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
+      ['Info e impostazioni', 'g-info', infoTiles()]),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
       h('ul', { class: 'elect-members' }, st.team.members.map((m) => h('li', null, m.name, m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null)))));
 }
@@ -1305,8 +1296,9 @@ function viewHome() {
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
     lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
-    h('nav', { class: 'grid' },
-      ...prepTiles(),
+    tileGroups(
+      ['Prima del via', 'g-prep', prepTiles()],
+      ['Gioco', 'g-game', [
       h('button', { class: 'tile tile-scan', type: 'button', onclick: openScanner }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
       tile('#/mappa', 'Mappa', '⛰', (st.map?.gifts.length || null), st.map?.gifts.length),
       tile('#/altari', 'Altari visitati', '⛬', allVisited().length || null),
@@ -1317,15 +1309,27 @@ function viewHome() {
       // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco: apre il taccuino.
       tile('#/codici', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
-      tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
-      tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
-      tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg),
-      tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null),
-      tile('#/regolamento', 'Regolamento', '§'),
-      tile('#/impostazioni', 'Impostazioni', '⚙'),
-      S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
-      iceTile()));
+      tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
+      ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
+      ['Info e impostazioni', 'g-info', infoTiles()]));
 }
+
+// La home a gruppi: prima del via (blu), gioco (giallo), comunicazioni, info e impostazioni. I gruppi vuoti spariscono.
+function tileGroups(...groups) {
+  return h('div', { class: 'tile-groups' }, groups.map(([title, cls, tiles]) => {
+    const list = tiles.filter(Boolean);
+    return list.length ? h('section', { class: `tile-group ${cls}` }, h('div', { class: 'eyebrow' }, title), h('nav', { class: 'grid' }, list)) : null;
+  }));
+}
+const comTiles = (unreadNot, unreadAnn, unreadMsg) => [
+  tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
+  tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
+  tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg)];
+const infoTiles = () => [
+  tile('#/regolamento', 'Regolamento', '§'),
+  tile('#/impostazioni', 'Impostazioni', '⚙'),
+  S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
+  iceTile()];
 
 function supplyCard(st) {
   const open = (st.supplyOpen || []).filter((x) => x.closesAt > clock.serverNow());
