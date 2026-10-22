@@ -1,6 +1,5 @@
 // La Soglia: validazione finale dei frammenti (validatore o regia).
-import * as CKUI from './checkin-ui.js';
-import { h, mount, api, fmtTime, fmtDuration, makeClock, toast, dialog, stream, store, STATUS_LABELS } from './lib.js';
+import { h, mount, api, fmtTime, fmtDuration, makeClock, toast, dialog, stream, store, STATUS_LABELS, wordCeremony, exitDenied } from './lib.js';
 
 const $root = document.getElementById('root');
 // Countdown di gara (orologio del server, come in regia e nell'app).
@@ -8,21 +7,16 @@ const clock = makeClock();
 setInterval(() => {
   for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
 }, 1000);
-// Schede: la Soglia (validazione), l'Accettazione all'arrivo e il Test armi.
-// Solo le schede che il Consiglio ha aperto a questa persona (il master le vede tutte).
-const ALL_TABS = [['', 'Soglia', 'soglia'], ['accettazione', 'Accettazione', 'accettazione']];
+// Solo la Soglia (validazione e uscita): accettazione e test armi hanno le loro pagine.
 const can = (p) => V.me?.role === 'master' || !!V.me?.perms?.includes(p);
-const tabs = () => ALL_TABS.filter(([, , p]) => can(p));
-const tab = () => { const t = tabs(); return t.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : t[0]?.[0] ?? ''; };
-window.addEventListener('hashchange', () => load());
-const V = { ck: null, me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
+const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 
 (async function boot() {
   // Service worker: serve anche per installare la pagina come app (telefono, tablet, computer).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try { V.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
-  // Né Soglia né Accettazione: le sue azioni sono nella pagina del Consiglio.
-  if (V.me && !tabs().length) { location.replace('/consiglio'); return; }
+  // Senza la Soglia: le sue azioni sono nella pagina del Consiglio.
+  if (V.me && !can('soglia')) { location.replace('/consiglio'); return; }
   if (V.me) await start(); else render();
 })();
 
@@ -32,16 +26,16 @@ async function start() {
   const live = V.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready'].includes(g.status));
   const kept = V.games.find((g) => g.id === V.gameId);
   if (!kept || (kept.status === 'ended' && live)) V.gameId = (live || V.games[0])?.id || null;
-  stream('/api/stream?as=staff', { refresh: (d) => { if (d.gameId === V.gameId) load(); } });
+  stream('/api/stream?as=staff', {
+    refresh: (d) => { if (d.gameId === V.gameId) load(); },
+    // Una coppia ha inquadrato il codice di uscita: la Soglia si apre (la Parola si compone) o nega l'uscita.
+    soglia: (d) => { if (d.gameId === V.gameId) sogliaEffect(d); },
+  });
   await load();
 }
 
 async function load() {
   if (!V.gameId) return render();
-  if (tab()) {
-    try { V.ck = await api('GET', `/api/v/games/${V.gameId}/checkin`); } catch (e) { toast(e.message, 'error'); }
-    return render();
-  }
   try {
     V.data = await api('GET', `/api/v/games/${V.gameId}/teams`);
     clock.set(V.data.clock);
@@ -55,14 +49,10 @@ function render() {
   mount($root,
     h('header', { class: 'topbar soglia-top' },
       h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'La Soglia'), h('div', { class: 'eyebrow' }, `Ufficiale del Consiglio · ${V.me.username}`))),
-      h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; V.ck = null; load(); } },
+      h('select', { class: 'input game-select', onchange: (e) => { V.gameId = Number(e.target.value); store.set('zdg_soglia_game', V.gameId); V.teamId = null; V.team = null; load(); } },
         V.games.map((g) => h('option', { value: g.id, selected: g.id === V.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
       h('div', { class: 'top-actions' }, h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'))),
-    h('nav', { class: 'soglia-tabs' }, tabs().map(([k, label]) => h('a', { href: `#${k}`, class: tab() === k ? 'on' : '' }, label)),
-      can('armi') ? h('a', { href: `/armi${V.gameId ? `?g=${V.gameId}` : ''}` }, 'Test armi ↗') : null,
-      V.me.role === 'master' ? null : h('a', { href: '/consiglio' }, 'Consiglio ↗')),
-    tab() ? h('main', { class: 'content soglia' }, !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !V.ck ? h('p', { class: 'empty' }, 'Caricamento…')
-      : CKUI.viewCheckin(ckCtx())) :
+    V.me.role === 'master' ? null : h('nav', { class: 'soglia-tabs' }, h('a', { href: '/consiglio' }, 'Consiglio ↗')),
     h('main', { class: 'content soglia' },
       // Countdown di gara ben visibile, sopra a tutto.
       V.data?.clock ? h('div', { class: 'race-clock' },
@@ -72,23 +62,6 @@ function render() {
       h('div', { class: 'reminder' }, h('strong', null, 'Si presenta una sola coppia: le alleanze vanno sciolte prima.'), ' Alla Soglia non si combatte.'),
       !V.gameId ? h('p', { class: 'empty' }, 'Nessuna partita avviata.')
         : h('div', { class: 'soglia-cols' }, h('div', { class: 'soglia-main' }, V.team ? teamView() : teamList()), exitPanel())));
-}
-
-// Accettazione e test armi: stesse pagine della regia, con le API dello staff.
-function ckCtx() {
-  return {
-    data: V.ck,
-    render,
-    base: `/api/v/games/${V.gameId}`,
-    call: async (method, path, body, okMsg) => {
-      try {
-        const r = await api(method, `/api/v/games/${V.gameId}${path}`, body);
-        if (okMsg) toast(okMsg, 'ok');
-        await load();
-        return r ?? true;
-      } catch (e) { toast(e.message, 'error', 7000); return null; }
-    },
-  };
 }
 
 // A fianco: il QR del codice di uscita, da far inquadrare alla coppia con la Parola intera (come il cartello).
@@ -103,6 +76,17 @@ function exitPanel() {
     d.exitCode ? h('div', { class: 'mono exit-code' }, `${d.game.name} · codice ${d.exitCode}`) : null,
     d.exitCode ? h('p', { class: 'tiny muted' }, 'Lo stesso codice è scritto sotto il QR del cartello stampato: se non coincide, avete scelto un\'altra partita in alto.') : null,
     h('p', { class: 'small' }, 'Con la Parola intera la coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'));
+}
+
+function sogliaEffect(d) {
+  const who = `${d.roman ? `${d.roman} · ` : ''}Settore ${d.sectorName}`;
+  if (d.ok) {
+    wordCeremony(d.word, { eyebrow: `${who} · la Soglia si apre`, title: d.position ? `${d.position}° posto` : 'Esfiltrati' });
+    return;
+  }
+  exitDenied({ lines: [who, d.reason === 'alliance'
+    ? `Ancora alleati${d.allies?.length ? ` con ${d.allies.map((n) => `il Settore ${n}`).join(', ')}` : ''}: un'alleanza non passa la Soglia.`
+    : `Parola incompleta: mancano ${d.missing === 1 ? '1 frammento' : `${d.missing} frammenti`}${d.total ? ` (${d.total - d.missing} / ${d.total})` : ''}.`] });
 }
 
 // Niente login proprio: tutto passa dal login principale.

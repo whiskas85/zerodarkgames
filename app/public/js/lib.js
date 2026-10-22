@@ -735,3 +735,47 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
       step(!!ev.chronoDoneAt, 'Test armi', chronoSub, ev.chronoStarted && !ev.chronoDoneAt)),
     ev.chronoStarted || ev.chronoDoneAt ? h('div', { class: 'ev-weapons' }, W.map(weapon)) : null);
 }
+
+// La Parola che si compone (~10 s): i frammenti affiorano sparsi nel buio uno dopo l'altro,
+// poi scivolano al loro posto e formano la Parola. Un tocco salta l'attesa. done() alla fine.
+export function wordCeremony(word, { eyebrow = 'La Soglia', title = '', done } = {}) {
+  document.querySelector('.word-ceremony')?.remove();
+  const parts = (word || []).filter(Boolean);
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const frags = parts.map((t) => h('span', { class: 'wc-frag mono' }, t));
+  const line = h('div', { class: 'wc-word' }, frags);
+  const el = h('div', { class: 'word-ceremony', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'La Parola' },
+    h('div', { class: 'wc-box' }, h('div', { class: 'eyebrow wc-eyebrow' }, eyebrow), line, h('div', { class: 'wc-title' }, title)));
+  document.body.append(el);
+  const timers = [];
+  let over = false;
+  const finish = () => { if (over) return; over = true; timers.forEach(clearTimeout); el.remove(); done?.(); };
+  el.addEventListener('click', finish);
+  const at = (ms, fn) => timers.push(setTimeout(fn, still ? Math.min(ms, 600) : ms));
+  // Punto di partenza casuale di ogni frammento, lontano dal suo posto nella Parola.
+  frags.forEach((f) => {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.25 + Math.random() * 0.2;
+    f.style.transform = `translate(${Math.cos(a) * r * innerWidth}px, ${Math.sin(a) * r * innerHeight}px) rotate(${(Math.random() - 0.5) * 50}deg) scale(1.6)`;
+  });
+  const step = Math.min(700, 4200 / Math.max(1, frags.length));
+  frags.forEach((f, i) => at(600 + i * step, () => { f.classList.add('seen'); vibrate(30); }));
+  at(5400, () => { el.classList.add('gather'); frags.forEach((f) => { f.style.transform = ''; }); });
+  at(8200, () => { el.classList.add('formed'); vibrate([80, 40, 200]); });
+  at(10400, finish);
+  return el;
+}
+
+// Uscita negata: lampo rosso a tutto schermo (pagina della Soglia). Si chiude da sola o con un tocco.
+export function exitDenied({ title = 'Uscita negata', lines = [], ms = 7000 } = {}) {
+  document.querySelector('.exit-denied')?.remove();
+  const el = h('div', { class: 'exit-denied', role: 'alertdialog', 'aria-label': title },
+    h('div', { class: 'ed-box' }, h('div', { class: 'ed-icon', 'aria-hidden': 'true' }, '✕'), h('div', { class: 'ed-title' }, title),
+      lines.filter(Boolean).map((l, i) => h('p', { class: i ? 'muted' : 'big' }, l))));
+  const close = () => { clearTimeout(t); el.remove(); };
+  const t = setTimeout(close, ms);
+  el.addEventListener('click', close);
+  document.body.append(el);
+  vibrate([400, 150, 400]);
+  return el;
+}

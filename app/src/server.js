@@ -867,6 +867,7 @@ app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve
 app.get('/regia', sendPage('regia.html'));
 app.get('/soglia', sendPage('soglia.html'));
 app.get('/armi', sendPage('armi.html'));
+app.get('/accettazione', sendPage('armi.html'));
 app.get('/consiglio', sendPage('consiglio.html'));
 app.get('/iscrizione', sendPage('iscrizione.html'));
 app.get('/tabellone', sendPage('tabellone.html'));

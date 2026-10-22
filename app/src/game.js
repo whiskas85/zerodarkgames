@@ -1708,7 +1708,7 @@ function exfiltrate(team, token) {
   if (g.status === 'paused') throw err(409, 'Partita sospesa: non si esce adesso');
   if (!C.ACTIVE.includes(g.status)) throw err(409, 'Si esfiltra solo a partita in corso');
   const t = q.get('SELECT * FROM teams WHERE id = ?', team.id);
-  if (t.status === 'won') return { exfiltrated: true, already: true, position: t.finishPosition };
+  if (t.status === 'won') return { exfiltrated: true, already: true, position: t.finishPosition, word: teamFragmentsBoard(t).map((f) => f.text) };
   if (t.status !== 'active') throw err(409, 'Coppia ritirata');
   const s = sectorById(t.sectorId);
   const ally = q.get('SELECT allianceId FROM alliance_members WHERE teamId = ? AND leftAt IS NULL', t.id);
@@ -1716,12 +1716,14 @@ function exfiltrate(team, token) {
     const allies = q.all(`SELECT s.name FROM alliance_members m JOIN teams t ON t.id = m.teamId JOIN sectors s ON s.id = t.sectorId
                           WHERE m.allianceId = ? AND m.leftAt IS NULL AND m.teamId <> ?`, ally.allianceId, t.id).map((r) => r.name);
     log(g.id, `coppia:${t.id}`, 'exit_denied', { settore: s.name, reason: 'alleanza', allies });
+    rt.toStaffEvent('soglia', { gameId: g.id, ok: false, reason: 'alliance', allies, sectorName: s.name, roman: s.roman });
     return { exfiltrated: false, reason: 'alliance', allies };
   }
   const board = teamFragmentsBoard(t);
   const missing = board.filter((f) => !f.source).length;
   if (!board.length || missing) {
     log(g.id, `coppia:${t.id}`, 'exit_denied', { settore: s.name, reason: 'frammenti', missing });
+    rt.toStaffEvent('soglia', { gameId: g.id, ok: false, reason: 'missing', missing, total: board.length, sectorName: s.name, roman: s.roman });
     return { exfiltrated: false, reason: 'missing', missing, total: board.length };
   }
   const now = Date.now();
@@ -1739,7 +1741,10 @@ function exfiltrate(team, token) {
   let revealed = false;
   try { revealSector(g.id, t.sectorId, 'esfiltrazione'); revealed = true; } catch { /* già rivelato */ }
   notifyState(g.id);
-  return { exfiltrated: true, position, revealed };
+  // La Soglia (pagina dello staff) mostra la Parola che si compone, come l'app della coppia.
+  const word = board.map((f) => f.text);
+  rt.toStaffEvent('soglia', { gameId: g.id, ok: true, position, word, sectorName: s.name, roman: s.roman });
+  return { exfiltrated: true, position, revealed, word };
 }
 
 // ---------------------------------------------------------------- classifica (7.2)

@@ -1,4 +1,5 @@
-// Test armi in una pagina a sé (regia e staff): conto alla rovescia all'inizio dell'evento e cruscotto del cronografo.
+// Test armi e Accettazione in una pagina a sé (regia e staff): conto alla rovescia all'inizio dell'evento,
+// poi il cruscotto del cronografo (/armi) o l'accettazione all'arrivo (/accettazione).
 import * as CKUI from './checkin-ui.js';
 import { h, mount, api, makeClock, fmtDuration, toast, stream, store, STATUS_LABELS } from './lib.js';
 
@@ -6,7 +7,10 @@ const $root = document.getElementById('root');
 const clock = makeClock();
 const PRE = ['created', 'draft', 'ready', 'circle'];
 const params = new URLSearchParams(location.search);
-const A = { me: null, games: [], gameId: Number(params.get('g')) || store.get('zdg_armi_game'), data: null };
+const ACC = location.pathname.startsWith('/accettazione');
+const PAGE = ACC ? { perm: 'accettazione', title: 'Accettazione', key: 'zdg_acc_game' } : { perm: 'armi', title: 'Test armi', key: 'zdg_armi_game' };
+document.title = PAGE.title;
+const A = { me: null, games: [], gameId: Number(params.get('g')) || store.get(PAGE.key), data: null };
 
 // Conto alla rovescia: all'inizio previsto se la partita è in preparazione, altrimenti il tempo di gara rimanente.
 const pad = (n) => String(n).padStart(2, '0');
@@ -26,7 +30,7 @@ setInterval(() => { for (const el of document.querySelectorAll('[data-cd]')) el.
 (async function boot() {
   try { A.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
   if (!A.me) { location.replace('/'); return; }
-  if (A.me.role !== 'master' && !A.me.perms?.includes('armi')) { location.replace('/consiglio'); return; }
+  if (A.me.role !== 'master' && !A.me.perms?.includes(PAGE.perm)) { location.replace('/consiglio'); return; }
   A.games = await api('GET', '/api/v/games');
   const live = A.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'draft'].includes(g.status));
   if (!A.games.some((g) => g.id === A.gameId)) A.gameId = (live || A.games[0])?.id || null;
@@ -62,8 +66,8 @@ function render() {
   const pre = d && PRE.includes(d.game.status) && d.game.scheduledStart;
   mount($root,
     h('header', { class: 'topbar soglia-top' },
-      h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Test armi'), h('div', { class: 'eyebrow' }, `Consiglio Zero · ${A.me?.username || ''}`))),
-      h('select', { class: 'input game-select', onchange: (e) => { A.gameId = Number(e.target.value); store.set('zdg_armi_game', A.gameId); A.data = null; load(); } },
+      h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, PAGE.title), h('div', { class: 'eyebrow' }, `Consiglio Zero · ${A.me?.username || ''}`))),
+      h('select', { class: 'input game-select', onchange: (e) => { A.gameId = Number(e.target.value); store.set(PAGE.key, A.gameId); A.data = null; load(); } },
         A.games.map((g) => h('option', { value: g.id, selected: g.id === A.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`))),
       h('div', { class: 'top-actions' }, h('a', { class: 'btn btn-sm btn-ghost', href: A.me?.role === 'master' ? '/regia' : '/consiglio' }, A.me?.role === 'master' ? 'Regia' : 'Consiglio'))),
     h('main', { class: 'content armi' },
@@ -71,5 +75,5 @@ function render() {
         h('div', { class: 'eyebrow' }, pre ? 'Inizio dell\'evento tra' : 'Tempo di gara rimanente'),
         h('div', { class: 'mono cd-time', 'data-cd': '1' }, countdown()),
         h('span', { class: `chip status-${d.game.status}` }, STATUS_LABELS[d.game.status])) : null,
-      !A.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !d ? h('p', { class: 'empty' }, 'Caricamento…') : CKUI.viewChrono(ctx())));
+      !A.gameId ? h('p', { class: 'empty' }, 'Nessuna partita.') : !d ? h('p', { class: 'empty' }, 'Caricamento…') : (ACC ? CKUI.viewCheckin(ctx()) : CKUI.viewChrono(ctx()))));
 }

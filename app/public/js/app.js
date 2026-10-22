@@ -1,7 +1,7 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
 import { createField } from './field-ui.js';
-import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported } from './lib.js';
+import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -1625,6 +1625,20 @@ function viewExit(token) {
     h('a', { class: 'btn', href: '#/mappa/soglia' }, 'Torna alla mappa'));
 }
 
+function exitVictory(r) {
+  let el;
+  const close = () => el.remove();
+  vibrate([120, 60, 120, 60, 400]);
+  beep();
+  el = battleOverlay('victory',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'eyebrow' }, 'La Soglia'),
+    h('h2', { class: 'battle-title' }, 'Esfiltrati'),
+    h('p', null, `Avete portato la Parola oltre la Soglia${r.position ? `: ${r.position}° posto` : ''}. Il vostro Settore è libero.`),
+    r.already ? null : h('p', { class: 'muted' }, 'Il vostro Sigillo ora è rivelato a tutte le coppie, come in un tradimento.'),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: close }, 'Chiudi'));
+}
+
 async function tryExit(token) {
   let r;
   try { r = await api('POST', '/api/team/exit', { token }); } catch (e) {
@@ -1637,15 +1651,13 @@ async function tryExit(token) {
   const close = () => el.remove();
   let el;
   if (r.exfiltrated) {
-    vibrate([120, 60, 120, 60, 400]);
-    beep();
-    el = battleOverlay('victory',
-      h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
-      h('div', { class: 'eyebrow' }, 'La Soglia'),
-      h('h2', { class: 'battle-title' }, 'Esfiltrati'),
-      h('p', null, `Avete portato la Parola oltre la Soglia${r.position ? `: ${r.position}° posto` : ''}. Il vostro Settore è libero.`),
-      r.already ? null : h('p', { class: 'muted' }, 'Il vostro Sigillo ora è rivelato a tutte le coppie, come in un tradimento.'),
-      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: close }, 'Chiudi'));
+    // Prima la Parola che si compone dai frammenti (~10 s), poi l'esito.
+    const word = r.word?.length ? r.word : (S.state?.fragments || []).map((f) => f.text);
+    if (word.length && !r.already) {
+      wordCeremony(word, { eyebrow: 'La Soglia si apre', title: 'La Parola', done: () => exitVictory(r) });
+      return;
+    }
+    exitVictory(r);
     return;
   }
   vibrate([600, 200, 600]);

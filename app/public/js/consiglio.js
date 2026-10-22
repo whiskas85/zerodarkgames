@@ -8,7 +8,7 @@ const LIVE = ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'd
 // Le azioni: dove portano (pagina) o la scheda qui dentro (#doni, #annunci).
 const ACTIONS = [
   { key: 'regia', label: 'Regia', hint: 'La regia completa', ico: '◉', href: () => '/regia' },
-  { key: 'accettazione', label: 'Accettazione', hint: 'Iscritti e squadre all\'arrivo', ico: '✓', href: () => '/soglia#accettazione' },
+  { key: 'accettazione', label: 'Accettazione', hint: 'Iscritti e squadre all\'arrivo', ico: '✓', href: () => `/accettazione${C.gameId ? `?g=${C.gameId}` : ''}` },
   { key: 'armi', label: 'Test armi', hint: 'Cronografo e spunte', ico: '⌁', href: () => `/armi${C.gameId ? `?g=${C.gameId}` : ''}` },
   { key: 'soglia', label: 'Soglia', hint: 'Validazione all\'uscita', ico: '⛩', href: () => '/soglia' },
   { key: 'campo', label: 'Campo', hint: 'Piazza Altari, punti e doni', ico: '⛰', href: () => '/campo' },

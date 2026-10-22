@@ -1232,6 +1232,8 @@ test('esfiltrazione con il QR della Soglia e rottura delle alleanze per distanza
   assert.equal(out.exfiltrated, true);
   assert.equal(out.position, 1);
   assert.equal(out.revealed, true);
+  // La Parola completa, in ordine, per la cerimonia alla Soglia.
+  assert.ok(out.word.length > 0 && out.word.every(Boolean));
   assert.equal(q.get('SELECT status FROM teams WHERE id = ?', A.id).status, 'won');
   assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === A.sectorId));
   assert.equal(G.exfiltrate(A, token).already, true);

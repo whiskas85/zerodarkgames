@@ -231,3 +231,28 @@ body.no-scroll { overflow: hidden; }
 @media (max-width: 520px) { .ev-weapons { grid-template-columns: 1fr; } }
 .ev-card ol.ev-steps > li.ev-step { display: flex; flex-direction: row; align-items: center; gap: 10px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
 .ev-card ol.ev-steps > li.ev-step::before { content: none; }
+
+/* La Parola che si compone alla Soglia */
+.word-ceremony { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 20px; overflow: hidden; background: radial-gradient(circle at 50% 50%, #151a14 0%, #050605 70%); color: #f2ead8; cursor: pointer; animation: wc-in .6s ease-out both; }
+.wc-box { display: grid; gap: 22px; justify-items: center; text-align: center; max-width: 960px; }
+.wc-eyebrow { color: #d1ad62; letter-spacing: .3em; }
+.wc-word { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; transition: gap 1s ease-in-out; }
+.word-ceremony.formed .wc-word { gap: 10px 0; }
+.wc-frag { font-size: clamp(22px, 6vw, 56px); font-weight: 600; letter-spacing: .08em; padding: 4px 10px; opacity: 0; filter: blur(14px); color: #d1ad62; transition: padding 1s ease-in-out, opacity 1.2s ease-out, filter 1.4s ease-out, transform 2.6s cubic-bezier(.6, 0, .2, 1), text-shadow 1s, color 1s; }
+.wc-frag.seen { opacity: .9; filter: blur(0); text-shadow: 0 0 18px rgba(209, 173, 98, .8); }
+.word-ceremony.gather .wc-frag { opacity: 1; }
+.word-ceremony.formed .wc-word { animation: wc-pulse 1.6s ease-in-out both; }
+.word-ceremony.formed .wc-frag { padding: 4px 0; color: #fff7e2; text-shadow: 0 0 28px rgba(255, 224, 150, .95), 0 0 60px rgba(209, 173, 98, .7); }
+.wc-title { min-height: 1.2em; font-family: var(--f-display); font-weight: 900; font-size: clamp(28px, 8vw, 60px); text-transform: uppercase; color: #d1ad62; opacity: 0; transition: opacity 1s; }
+.word-ceremony.formed .wc-title { opacity: 1; }
+@keyframes wc-in { from { opacity: 0; } }
+@keyframes wc-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
+
+/* Uscita negata alla Soglia: lampo rosso e scossone */
+.exit-denied { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 20px; text-align: center; background: #120404; color: #fff; cursor: pointer; animation: ed-flash 1.4s ease-out both; }
+.exit-denied .ed-box { display: grid; gap: 14px; justify-items: center; animation: ed-shake .7s ease-in-out .1s both; }
+.exit-denied .ed-icon { width: 120px; height: 120px; border-radius: 50%; border: 8px solid #ff3b2f; display: grid; place-items: center; font-size: 76px; line-height: 1; color: #ff3b2f; box-shadow: 0 0 40px rgba(255, 59, 47, .7); }
+.exit-denied .ed-title { font-family: var(--f-display); font-weight: 900; font-size: clamp(48px, 13vw, 120px); line-height: .9; text-transform: uppercase; color: #ff3b2f; text-shadow: 0 0 30px rgba(255, 59, 47, .6); }
+@keyframes ed-flash { 0%, 30%, 60% { background: #7a0a06; } 15%, 45% { background: #120404; } 100% { background: #120404; } }
+@keyframes ed-shake { 0%, 100% { transform: none; } 15%, 55% { transform: translateX(-18px); } 35%, 75% { transform: translateX(18px); } }
+@media (prefers-reduced-motion: reduce) { .word-ceremony, .exit-denied, .exit-denied .ed-box, .word-ceremony.formed .wc-word { animation: none; } .wc-frag { transition-duration: .2s; } }
