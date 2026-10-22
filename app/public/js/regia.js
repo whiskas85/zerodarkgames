@@ -578,7 +578,7 @@ function rejectionMap(r) {
     const t = [r.lat, r.lng];
     const map = L.map(el, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
     el._map = map;
-    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, subdomains: 'abc' }).addTo(map);
+    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc' }).addTo(map);
     L.circle(a, { radius: r.radiusM || 0, color: '#46c46a', weight: 1, fillOpacity: 0.08 }).addTo(map);
     L.polyline([a, t], { color: '#e5484d', weight: 3, dashArray: '6 6' }).addTo(map)
       .bindTooltip(`${r.distM} m`, { permanent: true, direction: 'center', className: 'rej-dist' });

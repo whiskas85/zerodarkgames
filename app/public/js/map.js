@@ -95,7 +95,8 @@ export function createMapView({ className = '' } = {}) {
   const ready = loadLeaflet().then((lib) => {
     L = lib;
     map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, 6);
-    L.tileLayer(TILES, { maxZoom: 17, subdomains: 'abc', attribution: ATTRIBUTION, crossOrigin: true }).addTo(map);
+    // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
+    L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', attribution: ATTRIBUTION, crossOrigin: true }).addTo(map);
     map.on('click', (e) => onTap?.(e.latlng));
     if (pending) { view.setItems(pending); pending = null; }
     return view;
