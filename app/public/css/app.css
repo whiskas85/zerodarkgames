@@ -919,3 +919,8 @@ button.banner-safety strong { letter-spacing: .08em; }
 .sh-pick { width: 100%; display: grid; gap: 6px; font-size: 13px; }
 .sh-opt { padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 6px; background: var(--paper); }
 .sh-opt.on { border-color: var(--brass); background: rgba(209, 173, 98, .15); font-weight: 700; }
+.mdi-g { display: inline-block; line-height: 0; vertical-align: -0.125em; }
+.mdi-g svg { display: block; }
+/* Gruppo Gioco: tutti i pulsanti oro */
+.g-game .tile { border-color: var(--brass); background: linear-gradient(135deg, rgba(209, 173, 98, .16), transparent); }
+.g-game .tile-ico { color: var(--brass); }

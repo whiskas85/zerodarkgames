@@ -1,6 +1,6 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
 import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
-import { mdi, mdiSvg } from './mdi.js';
+import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
@@ -39,6 +39,8 @@ const field = createField(FE, { rerender: (tab) => { if (tab === 'mappa') locati
 const FIELD_VIEWS = ['campo', 'incarichi', 'mappa'];
 
 const $app = document.getElementById('app');
+// Tutte le icone dell'app sono MDI: i simboli e le emoji che compaiono a schermo diventano icone MDI.
+watchGlyphs();
 const $overlay = document.getElementById('overlay');
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
@@ -1216,7 +1218,7 @@ function viewLobbyHome(st) {
     tileGroups(
       ['Prima del via', 'g-prep', prepTiles()],
       ['Gioco', 'g-game', [tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
-      ['Comunicazioni', 'g-com', [tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot), tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn)]],
+      ['Comunicazioni', 'g-com', [tile('#/avvisi', 'Avvisi', mdi('bell', 28), unreadNot || null, unreadNot), tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn)]],
       ['Info e impostazioni', 'g-info', [...infoTiles(), h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app'))]]),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
@@ -1340,7 +1342,7 @@ function tileGroups(...groups) {
   }));
 }
 const comTiles = (unreadNot, unreadAnn, unreadMsg) => [
-  tile('#/avvisi', 'Avvisi', '!', unreadNot || null, unreadNot),
+  tile('#/avvisi', 'Avvisi', mdi('bell', 28), unreadNot || null, unreadNot),
   tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
   tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg)];
 const infoTiles = () => [
