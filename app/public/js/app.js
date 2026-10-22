@@ -630,7 +630,7 @@ function openAvatarMenu(anchor) {
         } }, h('span', { class: 'theme-knob', 'aria-hidden': 'true' }))),
     item('#/impostazioni', '⚙', 'Impostazioni'),
 
-    item('#/regolamento', '§', 'Regolamento'),
+    item('#/regolamento', mdi('fileDocument', 18), 'Regolamento'),
     S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
     acc?.staff === 'master' ? item('/regia', '◉', 'Regia') : null,
     item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: () => logout() }));
@@ -1344,7 +1344,7 @@ const comTiles = (unreadNot, unreadAnn, unreadMsg) => [
   tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn),
   tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg)];
 const infoTiles = () => [
-  tile('#/regolamento', 'Regolamento', '§'),
+  tile('#/regolamento', 'Regolamento', mdi('fileDocument', 28)),
   tile('#/impostazioni', 'Impostazioni', '⚙'),
   S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
   iceTile()];
