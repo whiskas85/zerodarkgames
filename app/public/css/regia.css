@@ -522,7 +522,7 @@ tr.gift-row-claimed td { opacity: .6; }
 }
 
 /* Timeline degli stati della gara (nel pannello dello stato) */
-.phase-steps { grid-column: 1 / -1; list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; counter-reset: none; }
+.phase-steps { grid-column: 1 / -1; list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; counter-reset: none; }
 .phase-steps li { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; padding: 0 2px; min-width: 0; }
 .phase-steps li::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 3px; background: var(--line); z-index: 0; }
 .phase-steps li:first-child::before { display: none; }
@@ -536,7 +536,7 @@ tr.gift-row-claimed td { opacity: .6; }
 .ps-time { font-size: 11px; color: var(--muted); }
 .phase-steps li.now .ps-time { color: var(--ink); font-weight: 700; }
 @media (max-width: 620px) {
-  .phase-steps { grid-template-columns: 1fr; gap: 6px; }
+  .phase-steps { grid-template-columns: 1fr; grid-auto-flow: row; gap: 6px; }
   .phase-steps li { grid-template-columns: 28px 1fr auto; justify-items: start; text-align: left; align-items: center; gap: 10px; }
   .phase-steps li::before { top: -6px; left: 13px; width: 3px; height: 6px; }
 }
