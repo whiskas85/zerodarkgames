@@ -736,7 +736,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
     ev.chronoStarted || ev.chronoDoneAt ? h('div', { class: 'ev-weapons' }, W.map(weapon)) : null);
 }
 
-// La Parola che si compone (~10 s): i frammenti affiorano sparsi nel buio uno dopo l'altro,
+// La Parola che si compone (~10 s, poi resta a schermo altri ~10 s): i frammenti affiorano sparsi nel buio uno dopo l'altro,
 // poi scivolano al loro posto e formano la Parola. Un tocco salta l'attesa. done() alla fine.
 export function wordCeremony(word, { eyebrow = 'La Soglia', title = '', done } = {}) {
   document.querySelector('.word-ceremony')?.remove();
@@ -762,7 +762,7 @@ export function wordCeremony(word, { eyebrow = 'La Soglia', title = '', done } =
   frags.forEach((f, i) => at(600 + i * step, () => { f.classList.add('seen'); vibrate(30); }));
   at(5400, () => { el.classList.add('gather'); frags.forEach((f) => { f.style.transform = ''; }); });
   at(8200, () => { el.classList.add('formed'); vibrate([80, 40, 200]); });
-  at(10400, finish);
+  at(20400, finish); // la Parola composta resta a schermo una decina di secondi
   return el;
 }
 
