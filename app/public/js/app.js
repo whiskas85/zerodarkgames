@@ -1253,7 +1253,7 @@ function viewElectHome(st) {
       ['Gioco', 'g-game', [
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
-        tile('#/mappa', 'Mappa del campo', '⛰'),
+        tile('#/mappa', 'Mappa del campo', mdi('map', 28)),
         tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
       ['Info e impostazioni', 'g-info', infoTiles()]),
@@ -1318,7 +1318,7 @@ function viewHome() {
       ['Prima del via', 'g-prep', prepTiles()],
       ['Gioco', 'g-game', [
       h('button', { class: 'tile tile-scan', type: 'button', onclick: openScanner }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌖'), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
-      tile('#/mappa', 'Mappa', '⛰', (st.map?.gifts.length || null), st.map?.gifts.length),
+      tile('#/mappa', 'Mappa', mdi('map', 28), (st.map?.gifts.length || null), st.map?.gifts.length),
       tile('#/altari', 'Altari visitati', '⛬', allVisited().length || null),
       tile('#/skill', 'Skill', '✧', skillBadge(st), st.skills?.canChoose && skillBadge(st)),
       tile('#/doni', 'I vostri doni', '✦', (st.gifts || []).filter((g) => !g.usedAt).length || null),
