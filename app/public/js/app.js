@@ -538,10 +538,18 @@ function perksModal(fx) {
 }
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
-const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni' };
+// Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
+const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia' };
+// Pagine che stanno sotto un'altra anche senza argomento.
+const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
   const { arg } = route();
-  return (arg && UP[view]) || '#/home';
+  return (arg && UP[view]) || UP_PAGE[view] || '#/home';
+}
+// Passi interni di una pagina (configurazione di Traccar): il ‹ torna al passo prima, poi alla pagina di sopra.
+function upStep(view) {
+  if (view === 'traccar' && S.state?.player && !(trackInfo?.verifiedAt && trk().step !== 4) && trk().step > 0) return () => setTrk({ step: trk().step - 1 });
+  return null;
 }
 
 function header(view) {
@@ -555,7 +563,8 @@ function header(view) {
   // Veglia dopo una sconfitta: piccolo conto alla rovescia nella barra in alto, al posto della fase.
   const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
-    view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' ? 'Torna alla home' : 'Torna indietro' }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
+    view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' && !upStep(view) ? 'Torna alla home' : 'Torna indietro',
+      onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); } } }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? sec.name : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
@@ -1640,8 +1649,7 @@ function viewExit(token) {
   if (token && !exitTried.has(token)) { exitTried.add(token); setTimeout(() => tryExit(token)); }
   return h('div', { class: 'stack' },
     h('h2', null, 'Uscita dalla Soglia'),
-    h('p', { class: 'muted' }, 'Verifica del codice di uscita…'),
-    h('a', { class: 'btn', href: '#/mappa/soglia' }, 'Torna alla mappa'));
+    h('p', { class: 'muted' }, 'Verifica del codice di uscita…'));
 }
 
 function exitVictory(r) {
@@ -3252,7 +3260,7 @@ function viewTraccar() {
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => navigator.clipboard?.writeText(value).then(() => toast(`${label}: copiato`, 'ok')) }, 'Copia')));
   const steps = ['Posizione', 'Installa', 'Configura', 'Permessi', 'Prova'];
   const nav = (back, next, nextLabel = 'Avanti →') => h('div', { class: 'row wiz-nav' },
-    back != null ? h('button', { class: 'btn', type: 'button', onclick: () => setTrk({ step: back }) }, '‹ Indietro') : h('span'),
+    h('span'), // indietro: il ‹ del titolo torna al passo prima
     next != null ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => setTrk({ step: next }) }, nextLabel) : null);
   const head = h('div', { class: 'wiz-steps', 'aria-label': 'Passi' }, steps.map((x, i) => h('button', { type: 'button', class: `wiz-step ${i === step ? 'on' : i < step ? 'done' : ''}`, onclick: () => setTrk({ step: i }) }, h('span', { class: 'mono' }, i + 1), x)));
 
