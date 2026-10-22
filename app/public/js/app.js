@@ -3004,6 +3004,10 @@ function viewRules() {
       h('li', null, h('b', null, 'Alleanza: '), 'braccio alzato per proporla, braccia incrociate per rifiutarla.'),
       h('li', null, 'Alla Soglia si arriva come coppia singola: l\'alleanza va sciolta prima.')),
     h('a', { class: 'btn btn-primary btn-block', href: st?.game.bookUrl || '/regolamento.html', target: '_blank', rel: 'noopener' }, 'Leggi il regolamento completo'),
+    // Scaricabile: in PDF dalla pagina del regolamento (pulsante «PDF», stampa → Salva come PDF) o come pagina HTML.
+    h('div', { class: 'row-2' },
+      h('a', { class: 'btn btn-block', href: '/regolamento.html?pdf=1', target: '_blank', rel: 'noopener' }, '⇩ Scarica PDF'),
+      h('a', { class: 'btn btn-block', href: '/regolamento.html', download: 'Regolamento - I Giochi del Buio.html' }, '⇩ Scarica HTML')),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Canale radio d\'emergenza'), h('div', { class: 'mono big-text' }, st?.game.emergencyRadioChannel || 'chiedete alla regia')));
 }
 

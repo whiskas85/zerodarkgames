@@ -850,3 +850,4 @@ button.banner-safety strong { letter-spacing: .08em; }
 .traccar-off { display: grid; gap: 8px; border-color: var(--brass); }
 
 /* Batteria: le animazioni continue si fermano dopo pochi cicli (sopra), le icone restano visibili. */
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

@@ -105,7 +105,12 @@ footer .motto{margin:0}
 footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.emblem::before{animation:pulse 4s ease-in-out infinite}}
 @keyframes pulse{50%{inset:16px;opacity:.5}}
+/* Scarica: PDF (stampa del browser → «Salva come PDF») o la pagina HTML. Non compare nella stampa. */
+.dl-bar{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dl-bar a,.dl-bar button{font:600 15px/1 var(--f-ui,system-ui,sans-serif);padding:12px 16px;border-radius:8px;border:2px solid var(--ink);background:var(--paper,#fff);color:var(--ink);text-decoration:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.dl-bar .pdf{background:var(--blood,#8e2a1f);border-color:var(--blood,#8e2a1f);color:#fff}
 @media print{
+  .dl-bar{display:none}
   body{background:#fff}
   .rule,.place,.stamp,.callout,.quick{break-inside:avoid}
   .sec-head{break-after:avoid}
@@ -114,6 +119,10 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
+<div class="dl-bar">
+  <button type="button" class="pdf" onclick="window.print()" title="Si apre la stampa: scegliete «Salva come PDF»">⇩ PDF</button>
+  <a href="/regolamento.html" download="Regolamento - I Giochi del Buio.html" title="Scarica la pagina, si legge anche senza rete">⇩ HTML</a>
+</div>
 
 <div class="wrap">
 <header class="hero">
@@ -531,5 +540,9 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
   <span>Zero Dark Games · I Giochi del Buio · Consiglio Zero</span>
 </footer>
 </div>
+<script>
+// Dall'app («Scarica PDF»): si apre subito la stampa, da cui si sceglie «Salva come PDF».
+if (/[?&]pdf=1/.test(location.search)) addEventListener('load', () => setTimeout(() => window.print(), 300));
+</script>
 </body>
 </html>
