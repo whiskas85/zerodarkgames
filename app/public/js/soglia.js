@@ -76,10 +76,10 @@ function exitPanel() {
     d.exitCode ? h('div', { class: 'mono exit-code' }, `${d.game.name} · codice ${d.exitCode}`) : null,
     d.exitCode ? h('p', { class: 'tiny muted' }, 'Lo stesso codice è scritto sotto il QR del cartello stampato: se non coincide, avete scelto un\'altra partita in alto.') : null,
     h('p', { class: 'small' }, 'Con la Parola intera la coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'),
-    // Prova a schermo, senza toccare la partita: gli stessi effetti che partono quando una coppia inquadra il codice.
-    h('div', { class: 'exit-try' }, h('div', { class: 'eyebrow' }, 'Prova gli effetti'),
+    // Prova a schermo (solo in test), senza toccare la partita: gli stessi effetti che partono quando una coppia inquadra il codice.
+    d.tryEffects ? h('div', { class: 'exit-try' }, h('div', { class: 'eyebrow' }, 'Prova gli effetti'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => sogliaEffect({ ok: false, reason: 'missing', missing: 2, total: 6, sectorName: 'di prova', roman: '' }) }, '✕ Uscita negata'),
-      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => sogliaEffect({ ok: true, position: 1, word: d.word?.filter(Boolean).length ? d.word : ['LA', 'PA', 'RO', 'LA'], sectorName: 'di prova', roman: '' }) }, '✦ La Parola si compone')));
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => sogliaEffect({ ok: true, position: 1, word: d.word?.filter(Boolean).length ? d.word : ['LA', 'PA', 'RO', 'LA'], sectorName: 'di prova', roman: '' }) }, '✦ La Parola si compone')) : null);
 }
 
 function sogliaEffect(d) {

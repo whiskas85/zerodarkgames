@@ -814,7 +814,9 @@ v.get('/games/:id/teams', needPerm('soglia'), wrap(async (req) => {
   const exitCode = soglia ? soglia.exitToken.slice(-6).toUpperCase() : null;
   // Per provare la cerimonia a schermo: la Parola vera solo al master, agli altri una parola d'esempio.
   const word = req.user.role === 'master' ? q.all('SELECT text FROM fragments WHERE gameId = ? ORDER BY position', g.id).map((f) => f.text) : null;
-  return { exitUrl, exitSvg, exitCode, word, clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
+  // I pulsanti «Prova gli effetti» compaiono solo nell'ambiente di test.
+  const tryEffects = process.env.ZDG_ENV === 'test';
+  return { exitUrl, exitSvg, exitCode, word, tryEffects, clock: G.clockOf(g), game: { id: g.id, name: g.name }, teams: G.standings(g.id).concat(G.teamsOf(g.id).filter((t) => t.status === 'withdrawn').map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status }))) };
 }));
 v.get('/teams/:tid', needPerm('soglia'), wrap((req) => G.validatorView(Number(req.params.tid))));
 // Accettazione e test armi anche per lo staff (validatori), dalla pagina Soglia.
