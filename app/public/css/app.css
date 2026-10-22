@@ -329,6 +329,7 @@ body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 .side-menu-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
 .side-menu .tile { min-height: 64px; padding: 10px; font-size: 15px; gap: 4px; }
 .side-menu .tile .tiny { display: none; }
+.side-menu .tile-groups { grid-column: 1 / -1; gap: 12px; }
 
 
 /* Doni del Consiglio */

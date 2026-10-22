@@ -675,13 +675,14 @@ window.addEventListener('resize', () => { if (document.body.dataset.view === 'ma
 // Menu laterale (in orizzontale): le stesse voci della home, che si apre da destra.
 function openMenu() {
   document.querySelector('.side-menu')?.remove();
-  const grid = viewHome().querySelector?.('nav.grid');
+  // Le stesse voci della home, gruppo per gruppo (con i loro colori).
+  const groups = viewHome().querySelector?.('.tile-groups');
   const close = () => { ov.classList.remove('open'); setTimeout(() => ov.remove(), 200); };
   const ov = h('div', { class: 'side-menu', onclick: (e) => { if (e.target === ov || e.target.closest('a, button')) close(); } },
     h('nav', { class: 'side-menu-panel' },
       h('div', { class: 'side-menu-head' }, h('strong', null, 'Menu'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi' }, '✕')),
       h('a', { class: 'tile', href: '#/home' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌂'), h('span', null, 'Home')),
-      grid ? [...grid.children] : null));
+      groups || null));
   document.body.append(ov);
   requestAnimationFrame(() => ov.classList.add('open'));
 }
