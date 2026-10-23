@@ -229,8 +229,8 @@ function connect() {
     announcement: (a) => {
       vibrate([220, 100, 220, 100, 220]);
       beep();
-      toast(a.text, 'blood', 9000);
-      if (document.hidden) localNotify('Consiglio Zero', a.text, `ann-${a.id}`);
+      toast(h('a', { href: `#/annunci/${a.id}` }, a.text), 'blood', 9000);
+      if (document.hidden) localNotify('Consiglio Zero', a.text, `ann-${a.id}`, `/#/annunci/${a.id}`);
       else closeTag(`ann-${a.id}`);
       refresh();
     },
@@ -239,9 +239,9 @@ function connect() {
       if (!st || !noticeForMe(n, st.team)) return;
       vibrate([300, 120, 300, 120, 300]);
       beep();
-      toast(`Avviso del Consiglio: ${n.title}`, 'blood', 9000);
+      toast(h('a', { href: `#/avvisi/${n.id}` }, `Avviso del Consiglio: ${n.title}`), 'blood', 9000);
       if (!document.hidden) closeTag(`notice-${n.id}`);
-      if (document.hidden) localNotify(`Avviso · ${n.title}`, n.body || 'Toccate per leggere l\'avviso.', `notice-${n.id}`, '/#/avvisi');
+      if (document.hidden) localNotify(`Avviso · ${n.title}`, n.body || 'Toccate per leggere l\'avviso.', `notice-${n.id}`, `/#/avvisi/${n.id}`);
       refresh();
     },
     message: (m) => {
@@ -251,8 +251,8 @@ function connect() {
       const preview = m.audioMime ? '🎤 Messaggio vocale' : m.text;
       const from = m.fromRole === 'master' ? 'Consiglio' : m.author || 'Eletto';
       const where = isElect() ? (m.squadId ? ' · squadra' : ' · Tutti gli Eletti') : '';
-      if (route().view !== 'messaggi') toast(`${from}${where}: ${preview}`, 'info', 8000);
-      if (document.hidden) localNotify(`${from}${where}`, preview, `msg-${m.id}`, '/#/messaggi');
+      if (route().view !== 'messaggi') toast(h('a', { href: `#/messaggi/${m.id}` }, `${from}${where}: ${preview}`), 'info', 8000);
+      if (document.hidden) localNotify(`${from}${where}`, preview, `msg-${m.id}`, `/#/messaggi/${m.id}`);
       S.chatScroll = true;
       refresh();
     },
@@ -481,8 +481,9 @@ function render() {
     document.body.dataset.view = view;
     if (view === 'mappa' && !isElect()) requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', view === 'messaggi');
-    if (view === 'messaggi' && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
+    if (view === 'messaggi' && !arg && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
   });
+  applyFocus(view, arg);
   if (view === 'annunci') markSeen('ann');
   if (view === 'messaggi') markSeen('msg');
   if (view !== 'messaggi') S.chatScroll = true;
@@ -541,7 +542,7 @@ function perksModal(fx) {
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
 // Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
-const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia' };
+const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
 // Pagine che stanno sotto un'altra anche senza argomento.
 const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
@@ -552,6 +553,18 @@ function upOf(view) {
 function upStep(view) {
   if (view === 'traccar' && S.state?.player && !(trackInfo?.verifiedAt && trk().step !== 4) && trk().step > 0) return () => setTrk({ step: trk().step - 1 });
   return null;
+}
+
+// Dal tocco su un annuncio, un avviso o un messaggio: la sua pagina scorre fino a lui e lo fa brillare un momento.
+const FOCUS_VIEWS = ['annunci', 'avvisi', 'messaggi'];
+function applyFocus(view, arg) {
+  if (!FOCUS_VIEWS.includes(view) || !arg) return;
+  const el = document.getElementById(`${view}-${arg}`);
+  if (!el) return;
+  if (S.focus?.key !== location.hash) { S.focus = { key: location.hash, at: Date.now() }; requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' })); }
+  // Anche se la pagina si ridisegna, l'effetto continua da dove era (non riparte).
+  const dt = Date.now() - S.focus.at;
+  if (dt < 2600) { el.classList.add('flash-focus'); el.style.animationDelay = `-${dt}ms`; }
 }
 
 function header(view) {
@@ -1019,7 +1032,7 @@ function latestNotice(st) {
   const n = st.notices?.[0];
   if (!n || n.id <= S.seenNotice) return null;
   // Il testo è in markdown (con pulsanti): la scheda non è un link unico, il tocco fuori dai pulsanti apre gli Avvisi.
-  return h('div', { class: 'last-ann new notice-card', role: 'link', tabindex: 0, onclick: (e) => { if (!e.target.closest('a, button')) location.hash = '#/avvisi'; } },
+  return h('div', { class: 'last-ann new notice-card', role: 'link', tabindex: 0, onclick: (e) => { if (!e.target.closest('a, button')) location.hash = `#/avvisi/${n.id}`; } },
     h('div', { class: 'eyebrow' }, `${n.poll ? 'Sondaggio' : 'Avviso'} · ${fmtTime(n.createdAt)}`), h('strong', null, n.title), n.body ? h('div', { class: 'md' }, md(n.body)) : null,
     n.poll && !n.myVote ? h('p', { class: 'tiny' }, 'Rispondete nella pagina Avvisi.') : null);
 }
@@ -1248,7 +1261,7 @@ function viewElectHome(st) {
     latestNotice(st),
     st.standings ? h('div', { class: 'card final' }, h('div', { class: 'eyebrow' }, 'Classifica finale'),
       h('ol', { class: 'final-list' }, st.standings.map((r) => h('li', { class: r.status === 'won' ? 'won-row' : '' }, h('span', { class: 'mono' }, r.rank), h('strong', null, `${r.roman} ${r.sectorName}`), h('span', { class: 'mono' }, r.status === 'won' ? 'Soglia' : r.fragments))))) : null,
-    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
+    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: `#/annunci/${lastAnn.id}` }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/campo' }, h('span', { class: 'seal-ico' }, '⌖'), 'Piazza Altari e Doni'),
     tileGroups(
       ['Prima del via', 'g-prep', prepTiles()],
@@ -1314,7 +1327,7 @@ function viewHome() {
     presageCards(st),
     trackingCards(st),
     st.skills?.dirty ? h('a', { class: 'supply-card', href: '#/mappa' }, h('span', { class: 'eyebrow' }, 'Alleanze sporche'), dirtyLine(st.skills.dirty)) : null,
-    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: '#/annunci' }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
+    lastAnn ? swipeAway(h('a', { class: `last-ann ${lastAnn.id > S.seenAnn ? 'new' : ''}`, href: `#/annunci/${lastAnn.id}` }, h('div', { class: 'eyebrow' }, `Consiglio Zero · ${fmtTime(lastAnn.createdAt)}`), h('p', null, lastAnn.text)), () => hideAnn(lastAnn.id)) : null,
     h('a', { class: 'btn btn-primary btn-seal', href: '#/sigillo' }, h('span', { class: 'seal-ico' }, st.team.sector?.roman || '0'), 'Il mio Sigillo'),
     tileGroups(
       ['Prima del via', 'g-prep', prepTiles()],
@@ -2917,7 +2930,7 @@ function viewNotices() {
     h('h2', null, 'Avvisi'),
     h('p', { class: 'muted small' }, 'Comunicazioni del Consiglio: ritrovi, cambi di programma, istruzioni.'),
     pushInvite(),
-    list.length ? h('ul', { class: 'feed' }, list.map((n) => h('li', { class: `ann notice ${n.id > S.seenNotice ? 'new' : ''}` },
+    list.length ? h('ul', { class: 'feed' }, list.map((n) => h('li', { id: `avvisi-${n.id}`, class: `ann notice ${n.id > S.seenNotice ? 'new' : ''}` },
       h('div', { class: 'ann-head' }, h('span', { class: `chip ${n.target === 'team' ? 'chip-blood' : 'chip-brass'}` }, forLabel(n)), h('span', { class: 'mono muted small' }, `${new Date(n.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · ${fmtTime(n.createdAt)}`)),
       h('h3', { class: 'notice-title' }, n.poll ? '📊 ' : '', n.title),
       n.body ? h('div', { class: 'md' }, md(n.body)) : null,
@@ -2967,7 +2980,7 @@ function viewAnnouncements() {
   return h('div', { class: 'stack' },
     h('h2', null, 'Annunci del Consiglio'),
     list.length ? h('p', { class: 'tiny muted' }, 'Scorrete un annuncio di lato per toglierlo.') : null,
-    list.length ? h('ul', { class: 'feed' }, list.map((a) => swipeAway(h('li', { class: `ann ann-${a.type} ${a.id > S.seenAnn ? 'new' : ''}` },
+    list.length ? h('ul', { class: 'feed' }, list.map((a) => swipeAway(h('li', { id: `annunci-${a.id}`, class: `ann ann-${a.type} ${a.id > S.seenAnn ? 'new' : ''}` },
       h('div', { class: 'ann-head' }, h('span', { class: `chip ${a.type === 'revelation' || a.type === 'pause' ? 'chip-blood' : ''}` }, ANN_LABEL[a.type] || a.type), h('span', { class: 'mono muted small' }, fmtTime(a.createdAt, true))),
       h('p', null, a.text),
       a.type === 'revelation' && a.payload ? h('div', { class: 'ann-code mono' }, `${a.payload.sectorName}: `, h('strong', null, a.payload.code)) : null), () => hideAnn(a.id))))
@@ -2991,7 +3004,7 @@ function viewMessages() {
     const me = S.state.player ? S.state.player.nickname || S.state.player.name : null;
     const mine = m.fromRole === 'team' && (!isElect() || !m.author || m.author === me);
     const who = m.fromRole === 'master' ? 'Consiglio' : mine ? null : m.author;
-    items.push(h('li', { class: `bubble ${mine ? 'mine' : 'theirs'} ${m.audioMime ? 'voice' : ''}` },
+    items.push(h('li', { id: `messaggi-${m.id}`, class: `bubble ${mine ? 'mine' : 'theirs'} ${m.audioMime ? 'voice' : ''}` },
       who ? h('div', { class: 'bubble-who' }, who) : null,
       m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'bubble-text' }, m.text),
       h('div', { class: 'bubble-time mono' }, fmtTime(m.createdAt))));

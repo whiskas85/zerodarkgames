@@ -259,3 +259,14 @@ body.no-scroll { overflow: hidden; }
 @keyframes ed-flash { 0%, 30%, 60% { background: #7a0a06; } 15%, 45% { background: #120404; } 100% { background: #120404; } }
 @keyframes ed-shake { 0%, 100% { transform: none; } 15%, 55% { transform: translateX(-18px); } 35%, 75% { transform: translateX(18px); } }
 @media (prefers-reduced-motion: reduce) { .word-ceremony, .exit-denied, .exit-denied .ed-box, .word-ceremony.formed .wc-word { animation: none; } .wc-frag { transition-duration: .2s; } }
+
+/* L'elemento raggiunto da un link (annuncio, avviso, messaggio): un bagliore oro che pulsa due volte e si spegne. */
+.flash-focus { animation: flash-focus 2.6s ease-out both; position: relative; z-index: 1; }
+@keyframes flash-focus {
+  0% { box-shadow: 0 0 0 0 rgba(209, 173, 98, 0); transform: scale(1); }
+  12% { box-shadow: 0 0 0 4px rgba(209, 173, 98, .9), 0 0 28px rgba(209, 173, 98, .6); transform: scale(1.02); }
+  30% { box-shadow: 0 0 0 2px rgba(209, 173, 98, .5), 0 0 12px rgba(209, 173, 98, .3); transform: scale(1); }
+  48% { box-shadow: 0 0 0 4px rgba(209, 173, 98, .9), 0 0 28px rgba(209, 173, 98, .6); transform: scale(1.02); }
+  100% { box-shadow: 0 0 0 0 rgba(209, 173, 98, 0); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .flash-focus { animation: none; outline: 3px solid #d1ad62; outline-offset: 2px; } }

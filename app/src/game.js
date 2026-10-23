@@ -86,7 +86,7 @@ function announce(gameId, type, vars = {}, payload = null, customText = null) {
     gameId, type, text, payload ? JSON.stringify(payload) : null, now);
   const a = { id: Number(r.lastInsertRowid), type, text, payload, createdAt: now };
   rt.toTeams(gameId, 'announcement', a);
-  rt.pushTeams(gameId, { title: 'Consiglio Zero', body: text, tag: `ann-${a.id}`, url: '/#/annunci' });
+  rt.pushTeams(gameId, { title: 'Consiglio Zero', body: text, tag: `ann-${a.id}`, url: `/#/annunci/${a.id}` });
   log(gameId, 'sistema', 'announcement', { type, text });
   return a;
 }
@@ -532,7 +532,7 @@ function createNotice(gameId, data, actor) {
     || (target === 'elect' && s.teamKind === 'elect') || (target === 'team' && s.effTeamId === teamId));
   // Nella notifica il testo va senza i segni del markdown: [testo](link) → testo, niente asterischi.
   const plain = body ? body.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\*\*?([^*]+)\*\*?/g, '$1').replace(/\s*\n+\s*/g, ' ').trim() : '';
-  rt.pushSubs(subs, { title: `${poll ? 'Sondaggio' : 'Avviso'} · ${title}`, body: plain || (poll ? 'Rispondete nell\'app: Sì, No o Forse.' : 'Toccate per leggere l\'avviso del Consiglio.'), tag: `notice-${id}`, url: '/#/avvisi' });
+  rt.pushSubs(subs, { title: `${poll ? 'Sondaggio' : 'Avviso'} · ${title}`, body: plain || (poll ? 'Rispondete nell\'app: Sì, No o Forse.' : 'Toccate per leggere l\'avviso del Consiglio.'), tag: `notice-${id}`, url: `/#/avvisi/${id}` });
   log(g.id, actor, 'notice', { title, target });
   return { ...n, devices: subs.length };
 }
@@ -1584,21 +1584,23 @@ function postMessage(team, fromRole, text, author, audio = null, squadId = null,
     const members = new Set(q.all('SELECT id FROM players WHERE squadId = ?', squad.id).map((x) => x.id));
     rt.toTeamsWhere(team.gameId, 'message', m, (c) => c.teamId === team.id && members.has(c.playerId));
     rt.pushSubs(q.all('SELECT ps.* FROM push_subs ps JOIN players p ON p.id = ps.playerId WHERE p.squadId = ?', squad.id),
-      { title: `Consiglio, squadra ${squad.name}`, body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' });
+      { title: `Consiglio, squadra ${squad.name}`, body: preview, tag: `msg-${m.id}`, url: `/#/messaggi/${m.id}` });
   } else if (fromRole === 'master') {
     rt.toTeams(team.gameId, 'message', m, team.id);
-    rt.pushTeams(team.gameId, { title: 'Messaggio dal Consiglio', body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' }, team.id);
+    rt.pushTeams(team.gameId, { title: 'Messaggio dal Consiglio', body: preview, tag: `msg-${m.id}`, url: `/#/messaggi/${m.id}` }, team.id);
   } else {
     // Canali degli Eletti: il messaggio arriva subito a tutti i membri del canale (tutti gli Eletti o la squadra).
     if (team.kind === 'elect') {
       const members = squad ? new Set(q.all('SELECT id FROM players WHERE squadId = ?', squad.id).map((x) => x.id)) : null;
       rt.toTeamsWhere(team.gameId, 'message', m, (c) => c.teamId === team.id && (!members || members.has(c.playerId)));
       const subs = rt.gameSubs(team.gameId).filter((x) => x.effTeamId === team.id && x.playerId !== senderId && (!members || members.has(x.playerId)));
-      rt.pushSubs(subs, { title: `${author || 'Eletto'} · ${squad ? `squadra ${squad.name}` : 'Tutti gli Eletti'}`, body: preview, tag: `msg-${m.id}`, url: '/#/messaggi' });
+      rt.pushSubs(subs, { title: `${author || 'Eletto'} · ${squad ? `squadra ${squad.name}` : 'Tutti gli Eletti'}`, body: preview, tag: `msg-${m.id}`, url: `/#/messaggi/${m.id}` });
     }
     const s = team.sectorId ? sectorById(team.sectorId) : null;
     const from = team.kind === 'elect' ? (squad ? `squadra ${squad.name}` : 'Eletti del Consiglio') : s ? 'Settore ' + s.name : 'coppia';
-    rt.pushMasters({ title: `Messaggio da ${from}${author ? ` (${author})` : ''}`, body: preview, url: '/regia#comunicazioni' });
+    // Il tocco sulla notifica apre la conversazione e fa brillare il messaggio.
+    const chat = team.kind === 'elect' ? (squad ? `squad/${squad.id}` : `elect/${team.id}`) : `team/${team.id}`;
+    rt.pushMasters({ title: `Messaggio da ${from}${author ? ` (${author})` : ''}`, body: preview, url: `/regia#comunicazioni/${chat}/${m.id}` });
   }
   log(team.gameId, fromRole === 'master' ? author : `coppia:${team.id}`, 'message', { teamId: team.id, fromRole });
   return m;

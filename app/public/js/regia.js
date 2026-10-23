@@ -46,7 +46,8 @@ const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE'
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const PRE = ['created', 'draft', 'ready', 'circle'];
 
-const tab = () => (location.hash.slice(1) || 'live');
+// #pagina oppure #pagina/… (es. #comunicazioni/team/4/123 apre una conversazione su un messaggio).
+const tab = () => (location.hash.slice(1).split('/')[0] || 'live');
 
 // ---------------------------------------------------------------- avvio
 
@@ -56,6 +57,8 @@ window.addEventListener('appinstalled', () => { R.install = null; toast('Regia i
 
 (async function boot() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // Tocco su una notifica con la regia già aperta: si va alla pagina (e al messaggio) indicati.
+  navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'navigate' && e.data.hash) location.hash = e.data.hash; });
   window.addEventListener('hashchange', () => { render(); if (FIELD_TABS.includes(tab())) loadField(); });
   setInterval(tick, 1000);
   try {
@@ -2728,9 +2731,17 @@ function chatTarget() {
 
 function viewComms() {
   const ms = R.ms;
+  // Da una notifica o da un avviso: #comunicazioni/<tipo>/<id>/<messaggio> apre la conversazione e fa brillare quel messaggio.
+  const [, fKind, fId, fMsg] = location.hash.slice(1).split('/');
+  if (fKind) {
+    R.chat = { kind: fKind, id: Number(fId) || null };
+    R.chatOpen = true;
+    R.focus = fMsg ? { id: fMsg, at: Date.now(), scrolled: false } : null;
+    history.replaceState(null, '', '#comunicazioni');
+  }
   const cur = chatTarget();
   const key = `${cur.kind}-${cur.id ?? ''}`;
-  if (R.chatKey !== key) { R.chatKey = key; R.chatStick = true; }
+  if (R.chatKey !== key) { R.chatKey = key; R.chatStick = !R.focus; }
   R.chat = { kind: cur.kind, id: cur.id };
   if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
   const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
@@ -2742,7 +2753,17 @@ function viewComms() {
     ? [...ms.announcements].reverse().map((a) => ({ id: `a${a.id}`, mine: true, who: null, tag: ms.templateLabels[a.type] || 'Annuncio', text: a.text, createdAt: a.createdAt }))
     : cur.msgs.map((m) => ({ id: m.id, mine: m.fromRole === 'master', who: m.fromRole === 'master' ? m.author || 'regia' : m.author || cur.who, text: m.text, audioMime: m.audioMime, audioMs: m.audioMs, createdAt: m.createdAt }));
   const thread = chatThread(list, cur.kind === 'all' ? 'Nessun annuncio: quello che scrivi qui arriva a tutte le coppie.' : 'Nessun messaggio.');
-  queueMicrotask(() => { if (R.chatStick !== false) thread.scrollTop = thread.scrollHeight; });
+  queueMicrotask(() => {
+    const f = R.focus;
+    const el = f && thread.querySelector(`[data-mid="${f.id}"]`);
+    if (el && Date.now() - f.at < 2600) {
+      if (!f.scrolled) { f.scrolled = true; R.chatStick = false; thread.scrollTop = el.offsetTop - thread.clientHeight / 2 + el.offsetHeight / 2; }
+      el.classList.add('flash-focus');
+      el.style.animationDelay = `-${Date.now() - f.at}ms`;
+      return;
+    }
+    if (R.chatStick !== false) thread.scrollTop = thread.scrollHeight;
+  });
   thread.addEventListener('scroll', () => { R.chatStick = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 40; });
 
   // Sul telefono: elenco delle conversazioni oppure la conversazione aperta, come nelle app di messaggi.
@@ -2766,7 +2787,7 @@ function chatThread(list, empty) {
   for (const m of list) {
     const day = new Date(m.createdAt).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
     if (day !== lastDay) { box.append(h('div', { class: 'wa-day' }, h('span', null, day))); lastDay = day; }
-    box.append(h('div', { class: `wa-bubble ${m.mine ? 'mine' : 'theirs'}` },
+    box.append(h('div', { class: `wa-bubble ${m.mine ? 'mine' : 'theirs'}`, 'data-mid': String(m.id) },
       m.who && !m.mine ? h('div', { class: 'wa-who' }, m.who) : null,
       m.tag ? h('div', { class: 'wa-who' }, m.tag) : null,
       m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'wa-text' }, m.text),
