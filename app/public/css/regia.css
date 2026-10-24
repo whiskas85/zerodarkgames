@@ -922,3 +922,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .icon-pick:hover { border-color: #6fb2ff; }
 .icon-pick.on { background: #1f7ae0; border-color: #1f7ae0; color: #fff; }
 .icon-pick:focus-visible { outline: 2px solid #6fb2ff; outline-offset: 2px; }
+/* Emergenze: gravità scelta da chi chiama */
+.chip.sev-lieve { background: rgba(224, 176, 79, .25); border-color: #e0b04f; }
+.chip.sev-seria { background: rgba(249, 115, 22, .3); border-color: #f97316; }
+.chip.sev-grave { background: #d0021b; border-color: #ff3b2f; color: #fff; font-weight: 800; }
+.sos-comment-r { padding: 6px 10px; border-left: 4px solid #d0021b; background: rgba(208, 2, 27, .1); }

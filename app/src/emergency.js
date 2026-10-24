@@ -42,7 +42,12 @@ function iceOf(player) {
   return JSON.stringify({ blood: a.iceBlood, conditions: a.iceConditions, contactName: a.iceContactName, contactPhone: a.iceContactPhone });
 }
 
-function raise({ gameId, team = null, player = null, pos = null, source = 'app' }) {
+// Gravità scelta da chi chiama: lieve, seria o grave (pericolo di vita). Il commento dice di cosa si tratta.
+const SEVERITY = { lieve: 'Lieve', seria: 'Seria', grave: 'GRAVE' };
+const readSeverity = (v) => (SEVERITY[v] ? v : null);
+const readComment = (v) => String(v ?? '').trim().slice(0, 300) || null;
+
+function raise({ gameId, team = null, player = null, pos = null, source = 'app', severity = null, comment = null }) {
   const lat = parseFloat(pos?.lat);
   const lng = parseFloat(pos?.lng);
   const given = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng, acc: Number.isFinite(parseFloat(pos.acc)) ? Math.round(parseFloat(pos.acc)) : null } : null;
@@ -52,15 +57,20 @@ function raise({ gameId, team = null, player = null, pos = null, source = 'app' 
     gameId, player ? player.id : team?.id ?? -1, Date.now() - 10 * 60000);
   if (open) {
     if (p) q.run('UPDATE emergencies SET lat = ?, lng = ?, acc = ? WHERE id = ?', p.lat, p.lng, p.acc ?? null, open.id);
+    // Gravità e commento si possono aggiornare (anche dopo la chiamata).
+    if (severity || comment) {
+      q.run('UPDATE emergencies SET severity = COALESCE(?, severity), comment = COALESCE(?, comment) WHERE id = ?', severity, comment, open.id);
+      rt.toStaff(gameId, 'emergency');
+    }
     rt.toStaffEvent('emergency', { gameId, id: open.id, repeat: true });
     return { ok: true, id: open.id, repeat: true, located: !!p };
   }
   const who = whoOf(player, team);
   const where = whereOf(team, player);
-  const id = Number(q.run(`INSERT INTO emergencies (gameId, teamId, playerId, who, phone, source, lat, lng, acc, createdAt, ice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    gameId, team?.id ?? null, player?.id ?? null, where ? `${who} (${where})` : who, player?.phone || null, source, p?.lat ?? null, p?.lng ?? null, p?.acc ?? null, Date.now(), iceOf(player)).lastInsertRowid);
+  const id = Number(q.run(`INSERT INTO emergencies (gameId, teamId, playerId, who, phone, source, lat, lng, acc, createdAt, ice, severity, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    gameId, team?.id ?? null, player?.id ?? null, where ? `${who} (${where})` : who, player?.phone || null, source, p?.lat ?? null, p?.lng ?? null, p?.acc ?? null, Date.now(), iceOf(player), severity, comment).lastInsertRowid);
   G.log(gameId, player ? `giocatore:${player.id}` : team ? `coppia:${team.id}` : 'traccar', 'emergency', { id, who, source });
-  rt.pushMasters({ title: '🚨 EMERGENZA (OFF GAME)', body: `${who}${where ? ` · ${where}` : ''}${source === 'traccar' ? ' · SOS da Traccar' : ''}${p ? '' : ' · posizione sconosciuta'}`,
+  rt.pushMasters({ title: `🚨 EMERGENZA${severity ? ` ${SEVERITY[severity]}` : ''} (OFF GAME)`, body: `${who}${where ? ` · ${where}` : ''}${source === 'traccar' ? ' · SOS da Traccar' : ''}${p ? '' : ' · posizione sconosciuta'}${comment ? ` · «${comment}»` : ''}`,
     tag: `emergency-${id}`, url: '/regia#emergenze', requireInteraction: true });
   rt.toStaffEvent('emergency', { gameId, id });
   rt.toStaff(gameId, 'emergency');
@@ -71,7 +81,8 @@ function raise({ gameId, team = null, player = null, pos = null, source = 'app' 
 function fromApp(team, player, body) {
   const gameId = team?.gameId ?? player?.gameId;
   if (!gameId) throw err(400, 'Partita non trovata');
-  return raise({ gameId, team: team || (player?.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null), player, pos: body, source: 'app' });
+  return raise({ gameId, team: team || (player?.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null), player, pos: body, source: 'app',
+    severity: readSeverity(body?.severity), comment: readComment(body?.comment) });
 }
 
 // Da Traccar Client (pulsante SOS): il giocatore è riconosciuto dal suo identificativo.

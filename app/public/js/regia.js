@@ -330,8 +330,10 @@ function viewEmergencies() {
     h('div', { class: 'sos-card-head' },
       h('strong', null, `🚨 ${e.who}`),
       h('span', { class: 'chip' }, e.source === 'traccar' ? 'SOS Traccar' : 'pulsante app'),
+      e.severity ? h('span', { class: `chip sev-${e.severity}` }, { lieve: 'Lieve', seria: 'Seria', grave: 'GRAVE · pericolo di vita' }[e.severity]) : null,
       h('span', { class: `chip ${e.closedAt ? '' : e.ackAt ? 'chip-warn' : 'chip-blood'}` }, e.closedAt ? `chiusa ${fmtTime(e.closedAt)}` : e.ackAt ? `in carico (${e.ackBy})` : 'DA PRENDERE IN CARICO')),
     h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ', phoneLinks(e.phone, { cls: '' })] : null),
+    e.comment ? h('div', { class: 'sos-comment-r' }, h('span', { class: 'muted small' }, 'Cosa succede: '), h('strong', null, e.comment)) : null,
     e.lat != null ? h('div', { class: 'small mono' }, `Posizione: ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${e.acc ? ` (±${e.acc} m)` : ''} · `, h('a', { href: gmaps(e.lat, e.lng), target: '_blank', rel: 'noopener' }, 'Apri in Google Maps'))
       : h('div', { class: 'small bad' }, 'Posizione sconosciuta: chiedetela via radio.'),
     // ICE: i dati sanitari arrivano solo con l'emergenza che la persona ha chiamato.

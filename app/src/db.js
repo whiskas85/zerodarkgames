@@ -509,6 +509,9 @@ CREATE TABLE IF NOT EXISTS emergencies (
 );
 CREATE INDEX IF NOT EXISTS ix_emergencies_game ON emergencies(gameId, closedAt);
 `);
+// Gravità (lieve | seria | grave) e commento scelti da chi chiama l'emergenza dall'app.
+addColumn('emergencies', 'severity', 'TEXT');
+addColumn('emergencies', 'comment', 'TEXT');
 
 // Memoria del Nodo: validità della scansione di un Altare per chi ha la Skill (minuti, configurabile per partita).
 addColumn('games', 'nodeScanMin', 'INTEGER NOT NULL DEFAULT 30');

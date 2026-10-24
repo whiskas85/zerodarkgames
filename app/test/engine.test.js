@@ -1584,6 +1584,11 @@ test('emergenze reali: pulsante dell\'app e SOS di Traccar arrivano alla regia c
   assert.equal(list.length, 1);
   assert.equal(list[0].lat, 45.2);
   assert.match(list[0].who, /Settore/);
+  // Gravità e commento: scelti da chi chiama, aggiornabili; una gravità sconosciuta non passa.
+  EM.fromApp(A, p, { severity: 'grave', comment: '  caviglia rotta  ' });
+  EM.fromApp(A, p, { severity: 'boh' });
+  list = EM.list(g.id);
+  assert.deepEqual([list[0].severity, list[0].comment], ['grave', 'caviglia rotta']);
   EM.ack(r.id, 'master');
   EM.close(r.id, 'master', 'tutto a posto');
   assert.ok(EM.list(g.id)[0].closedAt);

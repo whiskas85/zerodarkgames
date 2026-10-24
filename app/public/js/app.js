@@ -689,8 +689,12 @@ function radioBar() {
   return h('footer', { class: 'radio' },
     S.state ? h('button', { class: 'rail-menu', type: 'button', 'aria-label': 'Menu', onclick: openMenu }, '☰') : null,
     h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
-    S.state ? h('button', { class: 'btn-sos', type: 'button', onclick: emergencyModal }, 'EMERGENZA') : null);
+    S.state ? h('button', { class: `btn-sos ${sosOn() ? '' : 'off'}`, type: 'button', 'aria-disabled': sosOn() ? null : 'true', onclick: emergencyModal }, 'EMERGENZA') : null);
 }
+
+// Il pulsante EMERGENZA si attiva quando l'evento si avvia (dall'apertura del Cerchio); prima resta spento.
+const SOS_OFF = ['created', 'draft', 'ready'];
+const sosOn = () => !SOS_OFF.includes(S.state?.clock?.status);
 
 // La mappa occupa tutto lo spazio libero sotto i banner (sopra la barra radio, se è in fondo).
 function fitMap() {
@@ -780,11 +784,31 @@ function safetyModal() {
 }
 
 // EMERGENZA reale (OFF GAME): manda alla Direzione (DE) chi siete e dove siete. Non è un'emergenza di gioco.
+// A tutto schermo, senza scorrere: gravità, commento facoltativo e il grande pulsante tondo.
+const SOS_LEVELS = [['lieve', 'Lieve', 'piccolo infortunio'], ['seria', 'Seria', 'serve aiuto'], ['grave', 'Grave', 'pericolo di vita']];
 function emergencyModal() {
   const ch = S.state?.game.emergencyRadioChannel;
-  const ov = h('div', { class: 'sos-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
-  const close = () => ov.remove();
+  if (!sosOn()) {
+    dialog({ title: 'EMERGENZA non ancora attiva', text: `Il pulsante EMERGENZA si attiva quando l'evento si avvia, all'apertura del Cerchio. Prima, per un'emergenza reale, chiamate la Direzione ${ch ? `via radio sul canale ${ch}` : 'via radio'} o al telefono.`, okLabel: 'Ho capito', cancelLabel: null });
+    return;
+  }
+  const ov = h('div', { class: 'sos-overlay sos-full', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
+  // Finché è aperta la pagina sotto non scorre.
+  document.documentElement.classList.add('sos-open');
+  const close = () => { ov.remove(); document.documentElement.classList.remove('sos-open'); };
+  let severity = null;
+  let sent = false;
   const status = h('p', { class: 'sos-status', 'aria-live': 'polite' });
+  const comment = h('textarea', { class: 'input sos-comment', rows: 2, maxlength: 300, placeholder: 'Di cosa si tratta? (facoltativo) es. caviglia slogata, persona a terra…' });
+  const levels = h('div', { class: 'sos-levels', role: 'radiogroup', 'aria-label': 'Gravità' });
+  const update = h('button', { class: 'btn btn-block sos-update', type: 'button', hidden: true, onclick: async () => {
+    try { await api('POST', '/api/team/emergency', { ...(myPos || {}), severity, comment: comment.value }); toast('Direzione aggiornata', 'ok'); update.hidden = true; } catch (e) { toast(e.message, 'error', 6000); }
+  } }, 'Aggiorna gravità e commento');
+  const changed = () => { if (sent) update.hidden = false; };
+  const paint = () => levels.replaceChildren(...SOS_LEVELS.map(([k, label, sub]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(severity === k), class: `sos-level lv-${k} ${severity === k ? 'on' : ''}`,
+    onclick: () => { severity = severity === k ? null : k; paint(); changed(); } }, h('strong', null, label), h('span', null, sub))));
+  paint();
+  comment.addEventListener('input', changed);
   const send = async () => {
     if (!(await dialog({ title: 'Confermi l\'EMERGENZA?', text: 'La Direzione riceve subito la tua posizione e chi sei. Usalo solo per un\'emergenza reale.', okLabel: 'Sì, invia', danger: true }))) return;
     status.textContent = 'Invio…';
@@ -794,14 +818,14 @@ function emergencyModal() {
     const gpsLine = h('span');
     navigator.geolocation?.getCurrentPosition((p) => {
       api('POST', '/api/team/emergency', { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy })
-        .then(() => { gpsLine.textContent = ` Posizione GPS inviata (±${Math.round(p.coords.accuracy)} m).`; }).catch(() => {});
-    }, () => { gpsLine.textContent = ' GPS non disponibile: comunica la posizione via radio.'; }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+        .then(() => { gpsLine.textContent = ` GPS inviato (±${Math.round(p.coords.accuracy)} m).`; }).catch(() => {});
+    }, () => { gpsLine.textContent = ' GPS non disponibile: di\' la posizione via radio.'; }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     try {
-      const r = await api('POST', '/api/team/emergency', myPos || {});
+      const r = await api('POST', '/api/team/emergency', { ...(myPos || {}), severity, comment: comment.value });
+      sent = true;
       vibrate([300, 100, 300]);
-      status.replaceChildren(h('strong', null, 'Emergenza inviata alla Direzione.'), h('br'),
-        `Resta dove sei${ch ? ` e chiama sul canale ${ch}` : ' e tieni la radio accesa'}.`,
-        r.located ? ' L\'ultima posizione nota è arrivata.' : ' Ricerca della posizione GPS…', gpsLine);
+      status.replaceChildren(h('strong', null, 'Inviata alla Direzione.'), ` Resta dove sei${ch ? ` e chiama sul canale ${ch}` : ' con la radio accesa'}.`,
+        r.located ? '' : ' Ricerca del GPS…', gpsLine);
       big.textContent = 'INVIATA';
     } catch (e) {
       status.textContent = e.offline ? 'Senza rete: chiama subito via radio' + (ch ? ` sul canale ${ch}` : '') + ' o al telefono.' : e.message;
@@ -809,18 +833,18 @@ function emergencyModal() {
     }
   };
   const big = h('button', { class: 'sos-big', type: 'button', onclick: send }, 'EMERGENZA');
+  const iceOk = S.state?.account?.ice && Object.values(S.state.account.ice).some(Boolean);
   ov.append(h('div', { class: 'sos-box' },
     offGameStripe(),
-    h('div', { class: 'eyebrow' }, 'Evento OFF GAME'),
-    h('h2', null, 'Emergenza reale'),
-    h('p', null, 'Questo pulsante manda la tua posizione in DE (Direzione). È un evento ', h('strong', null, 'OFF GAME'), ': non è un\'emergenza di gioco, ma una cosa seria — infortunio, malore, pericolo reale.'),
-    h('p', { class: 'small' }, S.state?.account?.ice && Object.values(S.state.account.ice).some(Boolean)
-      ? 'Con la chiamata arrivano alla Direzione anche i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza).'
-      : ['Puoi aggiungere i tuoi dati ICE (gruppo sanguigno, patologie, contatto di emergenza) nella ', h('a', { href: '#/ice', onclick: () => close() }, 'pagina ICE'), ': arrivano alla Direzione solo se premi questo pulsante.']),
-    big,
-    status,
-    ch ? h('p', { class: 'small' }, 'Se puoi, chiama anche via radio: ', h('strong', { class: 'mono' }, ch)) : null,
-    h('button', { class: 'btn btn-block', type: 'button', onclick: close }, 'Chiudi'),
+    h('div', { class: 'sos-head' },
+      h('div', null, h('div', { class: 'eyebrow' }, 'Evento OFF GAME'), h('h2', null, 'Emergenza reale')),
+      h('button', { class: 'btn btn-sm btn-ghost sos-x', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
+    h('p', { class: 'small sos-lede' }, 'Infortunio, malore, pericolo reale: la Direzione riceve chi sei e dove sei. ',
+      iceOk ? 'Arrivano anche i tuoi dati ICE.' : ['Nessun dato ICE: ', h('a', { href: '#/ice', onclick: close }, 'compilali'), '.']),
+    h('div', { class: 'sos-main' },
+      h('div', { class: 'sos-form' }, h('div', { class: 'eyebrow' }, 'Gravità'), levels, comment, update),
+      h('div', { class: 'sos-action' }, big, status)),
+    ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch)) : null,
     offGameStripe()));
   document.body.append(ov);
 }
