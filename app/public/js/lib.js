@@ -707,7 +707,7 @@ export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8
   return { el: home, textarea: ta, get value() { return ta.value; }, set value(v) { ta.value = v; changed(); } };
 }
 
-// Stato della persona all'evento (profilo): iscrizione, accettazione, test armi e joule per arma col pallino usato.
+// Stato della persona all'evento (profilo): iscrizione, accettazione, test repliche e joule per replica col pallino usato.
 export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameName = null } = {}) {
   if (!ev) return null;
   const n2 = (x) => Number(x).toFixed(2).replace('.', ',');
@@ -716,7 +716,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
     h('span', { class: 'ev-dot', 'aria-hidden': 'true' }, done ? '✓' : ''), h('div', null, h('strong', null, label), sub ? h('div', { class: 'tiny muted' }, sub) : null));
   const enrolled = ev.enrolled === 'accepted';
   const chronoSub = ev.chronoDoneAt ? `Chiuso alle ${t(ev.chronoDoneAt)}` : ev.chronoStarted ? 'In corso' : 'Da fare al cronografo';
-  const W = ev.weaponList ? ev.weaponList.map((w) => [w.key, w.label]) : [['main', 'Arma primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Arma secondaria']];
+  const W = ev.weaponList ? ev.weaponList.map((w) => [w.key, w.label]) : [['main', 'Replica primaria'], ['backup', 'Primaria di riserva'], ['secondary', 'Replica secondaria']];
   const weapon = ([k, label]) => {
     const w = ev.weapons?.[k] || {};
     const val = w.ok ? (w.manual ? 'provata · spunta manuale' : `${n2(w.j)} J${w.n > 1 ? ` (media di ${w.n})` : ''}`) : w.failed ? (w.j == null ? 'non passa · segnata a mano' : `${n2(w.j)} J · non passa`) : 'da provare';
@@ -732,7 +732,7 @@ export function eventStatusCard(ev, { title = 'Il tuo stato all\'evento', gameNa
     h('ol', { class: 'ev-steps' },
       step(enrolled, enrolled ? 'Iscritto' : 'Iscrizione inviata', enrolled ? 'Approvato dal Consiglio' : 'In attesa di approvazione', !enrolled),
       step(!!ev.checkinAt, 'Accettazione', ev.checkinAt ? `Fatta alle ${t(ev.checkinAt)}` : 'Da fare all\'arrivo al campo'),
-      step(!!ev.chronoDoneAt, 'Test armi', chronoSub, ev.chronoStarted && !ev.chronoDoneAt)),
+      step(!!ev.chronoDoneAt, 'Test repliche', chronoSub, ev.chronoStarted && !ev.chronoDoneAt)),
     ev.chronoStarted || ev.chronoDoneAt ? h('div', { class: 'ev-weapons' }, W.map(weapon)) : null);
 }
 

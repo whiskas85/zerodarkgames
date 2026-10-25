@@ -9,7 +9,7 @@ const LIVE = ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'd
 const ACTIONS = [
   { key: 'regia', label: 'Regia', hint: 'La regia completa', ico: '◉', href: () => '/regia' },
   { key: 'accettazione', label: 'Accettazione', hint: 'Iscritti e squadre all\'arrivo', ico: '✓', href: () => `/accettazione${C.gameId ? `?g=${C.gameId}` : ''}` },
-  { key: 'armi', label: 'Test armi', hint: 'Cronografo e spunte', ico: '⌁', href: () => `/armi${C.gameId ? `?g=${C.gameId}` : ''}` },
+  { key: 'armi', label: 'Test repliche', hint: 'Cronografo e spunte', ico: '⌁', href: () => `/armi${C.gameId ? `?g=${C.gameId}` : ''}` },
   { key: 'soglia', label: 'Soglia', hint: 'Validazione all\'uscita', ico: '⛩', href: () => '/soglia' },
   { key: 'campo', label: 'Campo', hint: 'Piazza Altari, punti e doni', ico: '⛰', href: () => '/campo' },
   { key: 'doni', label: 'Lancio doni', hint: 'Fai comparire i doni', ico: '✦', href: () => '#doni' },
@@ -68,12 +68,12 @@ function outside() {
   }
   if (s.requestedAt) {
     return h('div', { class: 'card stack' }, h('h2', null, 'Richiesta inviata'),
-      h('p', null, `Dal ${new Date(s.requestedAt).toLocaleDateString('it-IT')} alle ${fmtTime(s.requestedAt)} la tua richiesta aspetta il master: sceglierà le azioni che potrai fare (Accettazione, Test armi, Soglia, Campo, Doni, Annunci).`),
+      h('p', null, `Dal ${new Date(s.requestedAt).toLocaleDateString('it-IT')} alle ${fmtTime(s.requestedAt)} la tua richiesta aspetta il master: sceglierà le azioni che potrai fare (Accettazione, Test repliche, Soglia, Campo, Doni, Annunci).`),
       h('p', { class: 'muted small' }, 'Quando ti accetta, riapri questa pagina: vedrai le tue azioni.'),
       h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => location.reload() }, 'Controlla'), h('button', { class: 'btn btn-ghost', onclick: () => send('DELETE') }, 'Ritira la richiesta')));
   }
   return h('div', { class: 'card stack' }, h('h2', null, 'Entra nel Consiglio Zero'),
-    h('p', null, 'Fai parte del club e dai una mano all\'evento? Chiedi l\'accesso: il master sceglierà cosa potrai fare (accettazione, test armi, soglia, campo, lancio dei doni, annunci).'),
+    h('p', null, 'Fai parte del club e dai una mano all\'evento? Chiedi l\'accesso: il master sceglierà cosa potrai fare (accettazione, test repliche, soglia, campo, lancio dei doni, annunci).'),
     h('button', { class: 'btn btn-primary btn-block', onclick: () => send('POST') }, 'Chiedi di entrare'));
 }
 

@@ -1382,7 +1382,7 @@ test('Skill negli scontri e nelle alleanze (fase 2): Maestria, Immunità, Reliqu
   assert.equal(ask.skill, null);
   assert.ok(!known(A, Cc));
   assert.equal(K.respondEngagement(Cc, m.id, true).flipped, true);
-  assert.match(timer(Cc, 'veglia').reason, /Maestria delle armi/);
+  assert.match(timer(Cc, 'veglia').reason, /Maestria delle repliche/);
   assert.equal(K.combatState(A).victories.find((x) => x.id === m.id).skill, 'maestria');
   assert.equal(known(A, Cc), codeOf(g.id, Cc.sectorId));
   assert.ok(!known(Cc, A));
@@ -1844,7 +1844,7 @@ test('accettazione e test armi: presenza, conferma coppia, armi sotto 1 joule so
   CK.setChrono(g.id, p1.id, 'secondary', true, 'test');
   const row = q.get('SELECT chronoMain, chronoBackup, chronoSecondary FROM players WHERE id = ?', p1.id);
   assert.ok(row.chronoMain && !row.chronoBackup && row.chronoSecondary);
-  assert.throws(() => CK.setChrono(g.id, p1.id, 'bazooka', true, 'test'), /Arma non valida/);
+  assert.throws(() => CK.setChrono(g.id, p1.id, 'bazooka', true, 'test'), /Replica non valida/);
   // Tolta la presenza, la coppia torna da confermare.
   CK.setPlayerCheckin(g.id, p2.id, false, 'test');
   assert.equal(q.get('SELECT checkinAt FROM teams WHERE id = ?', A.id).checkinAt, null);
@@ -1940,14 +1940,14 @@ test('test armi: la persona toglie le armi che non ha e ne aggiunge altre (anche
   CK.editWeapons(g.id, p.id, { action: 'add', label: 'Pistola' }, 'giocatore');
   CK.editWeapons(g.id, p.id, { action: 'add', label: 'Secondo fucile' }, 'giocatore');
   let row = q.get('SELECT * FROM players WHERE id = ?', p.id);
-  assert.deepEqual(ES.weaponList(row).map((w) => w.label), ['Arma principale', 'Arma secondaria', 'Pistola', 'Secondo fucile']);
+  assert.deepEqual(ES.weaponList(row).map((w) => w.label), ['Replica principale', 'Replica secondaria', 'Pistola', 'Secondo fucile']);
   // L'arma aggiunta si prova come le altre e passa.
   assert.equal(CK.setChrono(g.id, p.id, 'w1', true, 'arbitro', { joule: 0.8, mps: 90, grams: 0.2 }).ok, true);
   row = q.get('SELECT * FROM players WHERE id = ?', p.id);
   assert.equal(ES.eventStatus(row).weapons.w1.ok, true);
   // Un'arma già provata non si toglie; quella tolta non si prova più.
   assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'remove', key: 'w1' }, 'giocatore'), /già stata provata/);
-  assert.throws(() => CK.setChrono(g.id, p.id, 'backup', true, 'arbitro'), /Arma non valida/);
+  assert.throws(() => CK.setChrono(g.id, p.id, 'backup', true, 'arbitro'), /Replica non valida/);
   assert.throws(() => CK.editWeapons(g.id, p.id, { action: 'add', label: ' ' }, 'giocatore'), /nome/);
   // Rinomina: anche un'arma già provata, che resta con il suo esito.
   CK.editWeapons(g.id, p.id, { action: 'rename', key: 'w1', label: 'Glock 17' }, 'giocatore');

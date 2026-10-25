@@ -1,6 +1,6 @@
 'use strict';
 // Accettazione a inizio evento: la regia conferma chi è presente (iscritti) e le coppie al completo.
-// Test armi: per ogni persona accettata, arma principale, principale di riserva e secondaria sotto 1 joule.
+// Test repliche: per ogni persona accettata, replica principale, principale di riserva e secondaria sotto 1 joule.
 const { q, tx } = require('./db');
 const rt = require('./realtime');
 const G = require('./game');
@@ -47,12 +47,12 @@ function setTeamCheckin(gameId, teamId, on, actor) {
   return { ok: true };
 }
 
-// Spunta di un'arma: manuale (on/off) oppure dal cronografo (misura con joule, velocità e peso del pallino).
-// Una misura da 1 joule in su non passa: l'arma resta (o torna) da provare e il tentativo finisce nel registro.
+// Spunta di una replica: manuale (on/off) oppure dal cronografo (misura con joule, velocità e peso del pallino).
+// Una misura da 1 joule in su non passa: la replica resta (o torna) da provare e il tentativo finisce nel registro.
 // manualFail: test segnato a mano come negativo (da 1 J in su), senza letture del cronografo.
 function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail = false) {
   const p = playerOf(gameId, playerId);
-  if (!weaponLabel(p, weapon)) throw err(400, 'Arma non valida');
+  if (!weaponLabel(p, weapon)) throw err(400, 'Replica non valida');
   const col = WEAPONS[weapon];
   if (!p.checkinAt) throw err(409, 'Prima va accettato all\'ingresso');
   let shots = {};
@@ -73,13 +73,13 @@ function setChrono(gameId, playerId, weapon, on, actor, shot = null, manualFail 
     if (passed) pass[weapon] = Date.now(); else delete pass[weapon];
     q.run('UPDATE players SET chronoPass = ?, chronoBy = ?, chronoShots = ? WHERE id = ?', JSON.stringify(pass), actor, JSON.stringify(shots), p.id);
   }
-  const data = { name: p.name, arma: weaponLabel(p, weapon), ...(manualFail ? { manuale: true } : shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
+  const data = { name: p.name, replica: weaponLabel(p, weapon), ...(manualFail ? { manuale: true } : shot ? { joule: j.toFixed(2), 'm/s': Number(shot.mps).toFixed(2), ...(readings?.length > 1 ? { letture: readings.length, media: true } : {}) } : { manuale: true }) };
   G.log(gameId, actor, fail ? 'chrono_fail' : passed ? 'chrono_ok' : 'chrono_undo', data);
   G.notifyState(gameId);
   return { ok: !fail, joule: shot ? j : null };
 }
 
-// Persona finita al test armi: si chiude (sparisce dalla lista) o si riapre.
+// Persona finita al test repliche: si chiude (sparisce dalla lista) o si riapre.
 function setChronoDone(gameId, playerId, on, actor) {
   const p = playerOf(gameId, playerId);
   q.run('UPDATE players SET chronoDoneAt = ? WHERE id = ?', on ? Date.now() : null, p.id);
@@ -130,7 +130,7 @@ function placePlayer(gameId, playerId, dest = {}, actor) {
   return { ok: true };
 }
 
-// Dati per le pagine di accettazione e test armi dello staff (stessa forma dello stato della regia).
+// Dati per le pagine di accettazione e test repliche dello staff (stessa forma dello stato della regia).
 function checkinData(gameId) {
   const g = G.getGame(gameId);
   const elect = G.electOf(g.id);
@@ -147,7 +147,7 @@ function checkinData(gameId) {
   };
 }
 
-// Letture del cronografo mentre si prova un'arma: la persona le vede in tempo reale nella sua app.
+// Letture del cronografo mentre si prova una replica: la persona le vede in tempo reale nella sua app.
 function setChronoLive(gameId, playerId, weapon, readings, { open = true, grams = null } = {}) {
   const p = playerOf(gameId, playerId);
   const label = weaponLabel(p, weapon);
@@ -157,34 +157,34 @@ function setChronoLive(gameId, playerId, weapon, readings, { open = true, grams 
   return { ok: true };
 }
 
-// Armi della persona: la persona stessa (dall'app) o lo staff ne aggiunge (anche più di tre) o ne toglie una non ancora provata.
+// Repliche della persona: la persona stessa (dall'app) o lo staff ne aggiunge (anche più di tre) o ne toglie una non ancora provata.
 const MAX_WEAPONS = 8;
 function editWeapons(gameId, playerId, { action, label, key } = {}, actor) {
   const p = playerOf(gameId, playerId);
-  if (p.chronoDoneAt) throw err(409, 'Test armi già chiuso: chiedi all\'arbitro di riaprirlo');
+  if (p.chronoDoneAt) throw err(409, 'Test repliche già chiuso: chiedi all\'arbitro di riaprirlo');
   const list = ES.weaponsOf(p);
   let shots = {};
   try { shots = JSON.parse(p.chronoShots || '{}') || {}; } catch { shots = {}; }
   const name = String(label || '').trim().replace(/\s+/g, ' ').slice(0, 40);
-  if (['add', 'rename'].includes(action) && !name) throw err(400, 'Scrivi il nome dell\'arma (es. «Pistola», «Secondo fucile»)');
+  if (['add', 'rename'].includes(action) && !name) throw err(400, 'Scrivi il nome della replica (es. «Pistola», «Secondo fucile»)');
   if (action === 'rename') {
-    // Il nome si può cambiare sempre (anche dopo la prova): resta la stessa arma, con le sue letture.
+    // Il nome si può cambiare sempre (anche dopo la prova): resta la stessa replica, con le sue letture.
     const w = list.find((x) => x.key === key);
-    if (!w) throw err(404, 'Arma non trovata');
+    if (!w) throw err(404, 'Replica non trovata');
     w.label = name;
   } else if (action === 'add') {
-    if (list.length >= MAX_WEAPONS) throw err(409, `Al massimo ${MAX_WEAPONS} armi`);
+    if (list.length >= MAX_WEAPONS) throw err(409, `Al massimo ${MAX_WEAPONS} repliche`);
     let n = 1;
     while (list.some((w) => w.key === `w${n}`)) n++;
     list.push({ key: `w${n}`, label: name });
   } else if (action === 'remove') {
     const w = list.find((x) => x.key === key);
-    if (!w) throw err(404, 'Arma non trovata');
+    if (!w) throw err(404, 'Replica non trovata');
     if (ES.passOf(p, key) || shots[key]) throw err(409, `«${w.label}» è già stata provata: per toglierla l'arbitro deve prima azzerarne il test`);
     list.splice(list.indexOf(w), 1);
   } else throw err(400, 'Azione non valida');
   q.run('UPDATE players SET weapons = ? WHERE id = ?', JSON.stringify(list), p.id);
-  G.log(gameId, actor, `weapon_${action === 'add' ? 'added' : action === 'rename' ? 'renamed' : 'removed'}`, { name: p.name, arma: action === 'remove' ? key : action === 'rename' ? name : list[list.length - 1].label });
+  G.log(gameId, actor, `weapon_${action === 'add' ? 'added' : action === 'rename' ? 'renamed' : 'removed'}`, { name: p.name, replica: action === 'remove' ? key : action === 'rename' ? name : list[list.length - 1].label });
   G.notifyState(gameId);
   return { ok: true, weapons: list };
 }

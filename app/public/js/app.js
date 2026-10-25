@@ -597,7 +597,7 @@ function header(view) {
 }
 
 // Avatar in alto a destra: la foto di Zero Dark Ops se c'è, altrimenti le iniziali. Toccandolo si apre il menu
-// della persona (profilo, ICE, test armi, impostazioni, Consiglio, esci).
+// della persona (profilo, ICE, test repliche, impostazioni, Consiglio, esci).
 function meInfo() {
   const st = S.state;
   const acc = st?.account;
@@ -628,7 +628,7 @@ function openAvatarMenu(anchor) {
     acc ? item('#/profilo', '👤', 'Profilo') : null,
     acc ? item('#/ice', '✚', 'ICE · In Case of Emergency') : null,
     item('#/accettazione', '✓', 'La mia accettazione'),
-    item('#/testarmi', '⌁', 'Il mio test armi'),
+    item('#/testarmi', '⌁', 'Il mio test repliche'),
     // Modalità sole (chiara) o notte (scura): interruttore, cambia subito.
     h('div', { class: 'am-item am-theme', role: 'menuitemcheckbox', 'aria-checked': S.settings.sun ? 'true' : 'false' },
       h('span', { class: 'am-ico', 'aria-hidden': 'true' }, S.settings.sun ? '☀' : '☾'), h('span', { class: 'grow' }, S.settings.sun ? 'Modalità sole' : 'Modalità notte'),
@@ -1099,7 +1099,7 @@ function partnerCard(m) {
     h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { store.set('zdg_partner_seen', partnerKey(m)); render(); } }, 'Letto'));
 }
 
-// Prima della gara: le cose da fare (test armi, partenza…), scritte dalla regia in markdown.
+// Prima della gara: le cose da fare (test repliche, partenza…), scritte dalla regia in markdown.
 function prepCard(st) {
   const text = st.game?.prepInfo;
   if (!text || !PRE.includes(st.clock?.status)) return null;
@@ -1126,10 +1126,10 @@ function viewNotAccepted() {
       h('a', { class: 'btn btn-block', href: '#/accettazione' }, 'La mia accettazione')));
 }
 
-// Prima della gara: accettazione e test armi si aprono dai pulsanti azzurri del menu.
+// Prima della gara: accettazione e test repliche si aprono dai pulsanti azzurri del menu.
 const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/impostazioni', 'Come installarla'] };
 const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
-// Pulsanti azzurri del menu prima della gara: accettazione e test armi (in tempo reale).
+// Pulsanti azzurri del menu prima della gara: accettazione e test repliche (in tempo reale).
 function prepTiles() {
   const st = S.state;
   const ev = st?.player?.event;
@@ -1142,7 +1142,7 @@ function prepTiles() {
     ...guide,
     h('a', { class: 'tile tile-azure', href: '#/accettazione' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, ev.checkinAt ? '✓' : '☐'), h('span', null, 'Accettazione'),
       h('span', { class: 'tiny' }, ev.checkinAt ? `fatta alle ${fmtTime(ev.checkinAt)}` : 'da fare all\'arrivo')),
-    h('a', { class: `tile tile-azure ${live ? 'tile-live' : ''}`, href: '#/testarmi' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌁'), h('span', null, 'Test armi'),
+    h('a', { class: `tile tile-azure ${live ? 'tile-live' : ''}`, href: '#/testarmi' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌁'), h('span', null, 'Test repliche'),
       h('span', { class: 'tiny' }, live ? '● in prova adesso' : ev.chronoDoneAt ? 'chiuso' : 'al cronografo')),
   ];
 }
@@ -1166,11 +1166,11 @@ function viewAcceptance() {
       h('p', { class: 'tiny muted' }, 'Si aggiorna da solo: quando sistemate qualcosa o il Consiglio spunta una voce, lo vedete qui. Nessuna voce è obbligatoria: decide il Consiglio.')));
 }
 
-// Il mio test armi, in tempo reale: quello che vede l'arbitro al cronografo (pallino, letture, media, massimo, over).
+// Il mio test repliche, in tempo reale: quello che vede l'arbitro al cronografo (pallino, letture, media, massimo, over).
 function viewTestArmi() {
   const st = S.state;
   const ev = st?.player?.event;
-  if (!ev) return h('div', { class: 'stack' }, h('h2', null, 'Test armi'), h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
+  if (!ev) return h('div', { class: 'stack' }, h('h2', null, 'Test repliche'), h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
   const lv = ev.live?.open ? ev.live : null;
   const r = lv?.readings || [];
   const avgOf = (a) => (a.length ? a.reduce((x, y) => x + y.j, 0) / a.length : null);
@@ -1182,14 +1182,14 @@ function viewTestArmi() {
   const g = last?.g || lv?.g;
   const W = (ev.weaponList || []).map((w) => [w.key, w.label]);
   const fmtV = (v) => (v ? `${v.toFixed(1).replace('.', ',')} m/s` : '');
-  // La persona sistema la sua lista di armi finché il test non è chiuso (serve il suo accesso personale).
+  // La persona sistema la sua lista di repliche finché il test non è chiuso (serve il suo accesso personale).
   const canEdit = !ev.chronoDoneAt && !!st.player?.id && !lv;
   const editWeapon = async (body, confirmTitle, confirmText) => {
     if (confirmTitle && !(await dialog({ title: confirmTitle, text: confirmText, okLabel: 'Togli' }))) return;
     try { await api('POST', '/api/team/weapons', body); await refresh(); render(); } catch (e) { toast(e.offline ? 'Serve la rete' : e.message, 'error', 6000); }
   };
   return h('div', { class: 'stack' },
-    h('h2', null, 'Il mio test armi'),
+    h('h2', null, 'Il mio test repliche'),
     lv ? h('div', { class: `card live-panel ${!r.length ? 'wait' : mj >= 1 ? 'bad' : 'ok'}` },
       h('div', { class: 'eyebrow live-dot' }, `● In prova adesso · ${lv.label}`),
       h('div', { class: 'live-top' },
@@ -1204,8 +1204,8 @@ function viewTestArmi() {
       h('strong', { class: 'live-verdict' }, !r.length ? 'In attesa del primo tiro…' : mj < 1 ? '✓ Media minore di 1 joule' : '✗ Media da 1 joule in su: OVER'),
       over ? h('strong', { class: 'bad-text' }, `⚠ ${over === 1 ? '1 colpo' : `${over} colpi`} sopra 1 joule (max ${nJ(max)})`) : null,
       r.length ? h('div', { class: 'live-reads' }, r.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null,
-      h('p', { class: 'tiny muted' }, 'Al terzo tiro il test di quest\'arma si chiude da solo con il risultato.'))
-      : h('p', { class: 'muted small' }, ev.chronoDoneAt ? `Test armi chiuso alle ${fmtTime(ev.chronoDoneAt)}.` : 'Nessuna arma in prova adesso: quando l\'arbitro la mette al cronografo, qui vedete le letture in tempo reale.'),
+      h('p', { class: 'tiny muted' }, 'Al terzo tiro il test di questa replica si chiude da solo con il risultato.'))
+      : h('p', { class: 'muted small' }, ev.chronoDoneAt ? `Test repliche chiuso alle ${fmtTime(ev.chronoDoneAt)}.` : 'Nessuna replica in prova adesso: quando l\'arbitro la mette al cronografo, qui vedete le letture in tempo reale.'),
     W.map(([k, label]) => {
       const w = ev.weapons?.[k] || {};
       const reads = w.readings || [];
@@ -1214,7 +1214,7 @@ function viewTestArmi() {
         h('div', { class: 'weapon-head' }, h('span', { class: 'ab', 'aria-hidden': 'true' }, w.ok ? '✓' : w.failed ? '✕' : ''), h('strong', { class: 'grow' }, label),
           canEdit ? h('div', { class: 'row-actions' },
             h('button', { class: 'btn btn-sm btn-icon', type: 'button', title: `Rinomina ${label}`, 'aria-label': `Rinomina ${label}`, onclick: async () => {
-              const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: label, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
+              const nn = await dialog({ title: 'Rinomina la replica', input: { value: label, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
               if (nn && nn.trim() && nn.trim() !== label) editWeapon({ action: 'rename', key: k, label: nn.trim() });
             } }, '✎'),
             !w.ok && !w.failed && w.j == null ? h('button', { class: 'btn btn-sm btn-trash', type: 'button', title: `Togli ${label}`, 'aria-label': `Togli ${label}`, onclick: () => editWeapon({ action: 'remove', key: k }, `Togliere «${label}»?`, 'Non ce l\'hai: non va provata al cronografo.') }, '🗑') : null) : null),
@@ -1223,10 +1223,10 @@ function viewTestArmi() {
         reads.length ? h('div', { class: 'live-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j >= 1 ? 'bad' : 'ok'}` }, `#${i + 1} ${nJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''}`))) : null);
     }),
     canEdit ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
-      const name = await dialog({ title: 'Aggiungi un\'arma', text: 'Ogni replica che porti va provata al cronografo.', input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
+      const name = await dialog({ title: 'Aggiungi una replica', text: 'Ogni replica che porti va provata al cronografo.', input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
       if (name && name.trim()) editWeapon({ action: 'add', label: name.trim() });
-    } }, '＋ Aggiungi un\'arma') : null,
-    canEdit ? h('p', { class: 'tiny muted' }, 'Rinomina le tue armi, togli quelle che non hai e aggiungi quelle in più: l\'arbitro vedrà la tua lista.') : null);
+    } }, '＋ Aggiungi una replica') : null,
+    canEdit ? h('p', { class: 'tiny muted' }, 'Rinomina le tue repliche, togli quelle che non hai e aggiungi quelle in più: l\'arbitro vedrà la tua lista.') : null);
 }
 
 function viewLobbyHome(st) {
@@ -1317,7 +1317,7 @@ function viewHome() {
   if (startAt() && startAt() > clock.serverNow()) phase = startCountdown(st);
   else if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
   else if (c.status === 'circle') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Nel cerchio'), h('div', { class: 'phase-big' }, 'In attesa del via'), h('p', { class: 'muted' }, 'Il vostro Sigillo è svelato. Memorizzatelo e non mostratelo a nessuno.'));
-  else if (c.status === 'ended') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, st.team.finishPosition ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][st.team.finishPosition] || st.team.finishPosition + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le armi e tornate al Cuore.'));
+  else if (c.status === 'ended') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, st.team.finishPosition ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][st.team.finishPosition] || st.team.finishPosition + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le repliche e tornate al Cuore.'));
   else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));
 
   return h('div', { class: 'home' },
@@ -1504,18 +1504,18 @@ function viewCombat() {
     if (r) combatOpp = null;
   };
   const other = (e) => (e.mine === 'won' ? e.losers : e.mine === 'lost' ? e.winners : [...e.winners, ...e.losers].filter((x) => !c.alliance?.members.some((m) => m.teamId === x.teamId) && x.teamId !== st.team.id));
-  // Skill da scontro: Maestria delle armi e Immunità (sulla sconfitta), Velenoso (dopo lo scontro).
+  // Skill da scontro: Maestria delle repliche e Immunità (sulla sconfitta), Velenoso (dopo lo scontro).
   const maestria = skillReady('maestria');
   const immunita = skillReady('immunita');
   const lostWith = (skill) => {
     if (!opp) return toast('Scegliete prima la coppia avversaria', 'error');
-    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Perso con Maestria delle armi: quando ${opp.sectorName} conferma, lo scontro è vostro` : `Sconfitta con Immunità: il vostro Sigillo resterà coperto. In attesa della conferma di ${opp.sectorName}`).then((r) => { if (r) combatOpp = null; });
+    combatCall('/api/team/engagement', { opponentTeamId: opp.teamId, result: 'lost', skill }, skill === 'maestria' ? `Perso con Maestria delle repliche: quando ${opp.sectorName} conferma, lo scontro è vostro` : `Sconfitta con Immunità: il vostro Sigillo resterà coperto. In attesa della conferma di ${opp.sectorName}`).then((r) => { if (r) combatOpp = null; });
   };
   const outcome = (e) => {
     const vs = other(e).map((x) => x.sectorName).join(', ');
-    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id && e.status === 'pending') return `Perso con Maestria delle armi contro ${vs}: quando confermano, vincete voi`;
-    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id) return `Perso contro ${vs} → vinto con Maestria delle armi`;
-    if (e.skill === 'maestria' && e.mine === 'lost') return `Perso contro ${vs}: vittoria ribaltata dalla Maestria delle armi`;
+    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id && e.status === 'pending') return `Perso con Maestria delle repliche contro ${vs}: quando confermano, vincete voi`;
+    if (e.skill === 'maestria' && e.skillBy?.teamId === st.team.id) return `Perso contro ${vs} → vinto con Maestria delle repliche`;
+    if (e.skill === 'maestria' && e.mine === 'lost') return `Perso contro ${vs}: vittoria ribaltata dalla Maestria delle repliche`;
     return `${e.mine === 'draw' ? 'Pareggio con' : e.mine === 'won' ? 'Vinto contro' : 'Perso contro'} ${vs}${e.hidden?.[st.team.id] ? ` · Sigillo coperto (${e.hidden[st.team.id] === 'reliquia' ? 'Reliquia Antica' : 'Immunità'})` : ''}`;
   };
 
@@ -1544,7 +1544,7 @@ function viewCombat() {
         h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true }, 'Sconfitta confermata: Veglia') }, 'Confermo, abbiamo perso'),
         h('button', { class: 'btn btn-danger', onclick: () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto')),
       maestria || immunita ? h('div', { class: 'skill-holds' },
-        maestria ? holdButton('⚔️ Maestria delle armi: vinciamo noi', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'maestria' }, 'Maestria delle armi: lo scontro è vostro')) : null,
+        maestria ? holdButton('⚔️ Maestria delle repliche: vinciamo noi', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'maestria' }, 'Maestria delle repliche: lo scontro è vostro')) : null,
         immunita ? holdButton('🧿 Confermo con Immunità', () => combatCall(`/api/team/engagement/${e.id}/respond`, { confirm: true, skill: 'immunita' }, 'Sconfitta con Immunità: il vostro Sigillo resta coperto')) : null,
         h('p', { class: 'tiny muted' }, 'Tenete premuto finché la barra si riempie.')) : null)))) : null,
 
@@ -1559,7 +1559,7 @@ function viewCombat() {
           h('button', { class: 'btn btn-xl res-lost', disabled: !opp, onclick: () => report('lost') }, 'PERSO'),
           h('button', { class: 'btn res-draw', disabled: !opp, onclick: () => report('draw') }, 'Pareggio')),
         maestria || immunita ? h('div', { class: 'skill-holds' },
-          maestria ? holdButton('⚔️ Perso, ma Maestria delle armi', () => lostWith('maestria'), !opp) : null,
+          maestria ? holdButton('⚔️ Perso, ma Maestria delle repliche', () => lostWith('maestria'), !opp) : null,
           immunita ? holdButton('🧿 Perso con Immunità', () => lostWith('immunita'), !opp) : null,
           h('p', { class: 'tiny muted' }, 'Skill: tenete premuto finché la barra si riempie.')) : null,
         h('p', { class: 'tiny muted' }, 'Niente scambio di Sigilli a mano: l\'esito vale quando l\'altra coppia lo conferma, poi chi vince riceve i Sigilli nel taccuino (anche i suoi alleati) e chi perde fa la Veglia.'),
@@ -2694,9 +2694,9 @@ function showVictory(won, against, maestria = false) {
   beep();
   const el = battleOverlay('victory',
     h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
-    h('div', { class: 'eyebrow' }, maestria ? 'Maestria delle armi' : 'Scontro vinto'),
+    h('div', { class: 'eyebrow' }, maestria ? 'Maestria delle repliche' : 'Scontro vinto'),
     h('h2', { class: 'battle-title' }, 'Vittoria'),
-    against ? h('p', null, maestria ? `Avevate perso contro il Settore ${against.sectorName}: la Maestria delle armi ha ribaltato lo scontro.` : `Avete battuto il Settore ${against.sectorName}.`) : null,
+    against ? h('p', null, maestria ? `Avevate perso contro il Settore ${against.sectorName}: la Maestria delle repliche ha ribaltato lo scontro.` : `Avete battuto il Settore ${against.sectorName}.`) : null,
     h('p', { class: 'muted' }, won.length > 1 ? 'Il Consiglio vi consegna i Sigilli della parte sconfitta:' : 'Il Consiglio vi consegna il Sigillo dello sconfitto:'),
     battleSeals(won, 'won'),
     h('p', { class: 'small muted' }, 'Lo trovate anche nel taccuino dei Codici.'),
@@ -2753,24 +2753,24 @@ function showDefeat(timerUid, reason) {
   beep();
   const left = h('div', { class: 'battle-count mono', 'data-timer': timerUid }, '—');
   const note = h('p', { class: 'battle-note' }, 'Tornate in battaglia tra');
-  // «Sconfitta contro X ⚔ Maestria delle armi · Veglia 2 minuti + 2 minuti …»: chi, se con la Maestria, la durata in chiaro.
+  // «Sconfitta contro X ⚔ Maestria delle repliche · Veglia 2 minuti + 2 minuti …»: chi, se con la Maestria, la durata in chiaro.
   const [head, extra] = String(reason || '').split(' · ');
-  const mastery = head.includes('⚔ Maestria delle armi');
-  const who = head.replace(' ⚔ Maestria delle armi', '');
+  const mastery = head.includes('⚔ Maestria delle repliche');
+  const who = head.replace(' ⚔ Maestria delle repliche', '');
   const foe = who.replace('Sconfitta contro ', '');
   const el = battleOverlay(`defeat ${mastery ? 'mastery' : ''}`,
-    // Maestria delle armi dell'avversario: lo scontro che credevate vinto si è ribaltato. Deve saltare all'occhio.
+    // Maestria delle repliche dell'avversario: lo scontro che credevate vinto si è ribaltato. Deve saltare all'occhio.
     mastery ? h('div', { class: 'mastery-banner' },
       h('div', { class: 'mastery-swords', 'aria-hidden': 'true' }, h('span', null, '🗡️'), h('span', null, '🗡️')),
       h('div', { class: 'mastery-kicker' }, 'Scontro ribaltato'),
-      h('div', { class: 'mastery-name' }, 'Maestria delle armi'),
-      h('p', { class: 'mastery-text' }, 'Credevate di aver vinto, ma il Settore ', h('strong', null, foe), ' ha usato la ', h('strong', null, 'Maestria delle armi'), ': la vittoria è sua, i vostri Sigilli vanno a loro.')) : null,
+      h('div', { class: 'mastery-name' }, 'Maestria delle repliche'),
+      h('p', { class: 'mastery-text' }, 'Credevate di aver vinto, ma il Settore ', h('strong', null, foe), ' ha usato la ', h('strong', null, 'Maestria delle repliche'), ': la vittoria è sua, i vostri Sigilli vanno a loro.')) : null,
     h('div', { class: 'eyebrow' }, 'Scontro perso'),
     h('h2', { class: 'battle-title' }, 'Sconfitta'),
     ...(() => {
       const t = S.timers.find((x) => x.uid === timerUid);
       return [
-        h('p', { class: 'muted' }, `${who}${mastery ? ' (Maestria delle armi)' : ''}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
+        h('p', { class: 'muted' }, `${who}${mastery ? ' (Maestria delle repliche)' : ''}. Cappellino in testa: Veglia, poi rientrate in gioco.`),
         extra ? h('p', { class: 'battle-forced' }, `⛓️ ${extra}${t?.minutes ? ` — in tutto ${t.minutes} minuti` : ''}.`) : null,
       ];
     })(),
@@ -2910,15 +2910,15 @@ function viewProfile() {
     form,
     a.ops?.length ? h('div', { class: 'card stack-sm' }, h('div', { class: 'eyebrow' }, 'Gestionale collegato'),
       a.ops.map((o) => h('div', null, h('strong', null, o.providerName), h('div', { class: 'muted small' }, [o.opsName, o.squadra].filter(Boolean).join(' · '))))) : null,
-    h('nav', { class: 'grid' }, tile('#/ice', 'ICE', '✚'), tile('#/statoarmi', 'Il mio test armi', '⌁')));
+    h('nav', { class: 'grid' }, tile('#/ice', 'ICE', '✚'), tile('#/statoarmi', 'Il mio test repliche', '⌁')));
 }
 
-// Stato all'evento (iscrizione, accettazione, test armi con i joule) dentro l'app.
+// Stato all'evento (iscrizione, accettazione, test repliche con i joule) dentro l'app.
 function viewEventStatus() {
   const st = S.state;
   return h('div', { class: 'stack' },
-    h('h2', null, 'Il mio test armi'),
-    h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test armi al cronografo: per ogni arma i joule misurati e il pallino usato.'),
+    h('h2', null, 'Il mio test repliche'),
+    h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test repliche al cronografo: per ogni replica i joule misurati e il pallino usato.'),
     st?.player?.event ? eventStatusCard(st.player.event, { gameName: st.game?.name }) : h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.'));
 }
 

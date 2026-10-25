@@ -361,7 +361,7 @@ function applyEngagement(e, by) {
       }
     }
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
-    const mastery = e.skill === 'maestria' ? ' ⚔ Maestria delle armi' : '';
+    const mastery = e.skill === 'maestria' ? ' ⚔ Maestria delle repliche' : '';
     for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${mastery}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
@@ -371,14 +371,14 @@ function applyEngagement(e, by) {
   }
   notify(winners.filter((w) => !stealers.includes(w)), e.gameId, { title: 'Scontro vinto', body: `Sigilli conquistati: ${names(losers).join(', ')}. Li trovate nel taccuino.`, tag: `eng-${e.id}`, url: '/#/codici' });
   notify(stealers, e.gameId, { title: 'Scontro vinto', body: 'I loro Sigilli li conoscete già: scegliete quale rubare.', tag: `eng-${e.id}`, url: '/#/scontri' });
-  notify(losers, e.gameId, { title: 'Scontro perso', body: `${e.skill === 'maestria' ? `Il Settore ${team(e.skillTeamId)?.sectorName} ha ribaltato lo scontro con Maestria delle armi. ` : ''}Cappellino: ${forced ? `${forcedText} (in tutto ${vegliaMin} minuti)` : `Veglia di ${baseMin} minuti`}, poi tornate in gioco.`, tag: `eng-${e.id}`, url: '/#/timer' });
+  notify(losers, e.gameId, { title: 'Scontro perso', body: `${e.skill === 'maestria' ? `Il Settore ${team(e.skillTeamId)?.sectorName} ha ribaltato lo scontro con Maestria delle repliche. ` : ''}Cappellino: ${forced ? `${forcedText} (in tutto ${vegliaMin} minuti)` : `Veglia di ${baseMin} minuti`}, poi tornate in gioco.`, tag: `eng-${e.id}`, url: '/#/timer' });
 }
 
 function reportEngagement(me, opponentTeamId, result, opts = {}) {
   requireCouple(me);
   requirePlaying(me.gameId, { engagement: true });
   if (!['won', 'lost', 'draw'].includes(result)) throw err(400, 'Esito non valido');
-  // Perso, ma con una Skill: Maestria delle armi (diventa vittoria) o Immunità (il Sigillo resta coperto).
+  // Perso, ma con una Skill: Maestria delle repliche (diventa vittoria) o Immunità (il Sigillo resta coperto).
   const skill = result === 'lost' && ['maestria', 'immunita'].includes(opts.skill) ? opts.skill : null;
   if (skill) SK().checkSkill(me, skill);
   const opp = team(opponentTeamId);
@@ -390,7 +390,7 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   const winners = result === 'lost' ? theirs : mine;
   const losers = result === 'lost' ? mine : theirs;
   // "Vinto" va confermato dallo sconfitto, "perso" dal vincitore; il pareggio vale subito.
-  // Perso con Maestria delle armi: l'avversario vede un normale «perso» da confermare (crede di aver vinto);
+  // Perso con Maestria delle repliche: l'avversario vede un normale «perso» da confermare (crede di aver vinto);
   // alla conferma lo scontro si ribalta e a lui compare la Sconfitta, con la Maestria ben in vista.
   const status = result === 'draw' ? 'confirmed' : 'pending';
   const id = Number(q.run('INSERT INTO engagements (gameId, reporterTeamId, opponentTeamId, result, status, winners, losers, createdAt, skill, skillTeamId, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -430,7 +430,7 @@ function respondEngagement(me, engagementId, confirm, opts = {}) {
     }
     SK().consumeSkill(me, skill, team(e.reporterTeamId)?.sectorName);
   }
-  // Chi ha dichiarato «perso» aveva usato la Maestria delle armi: confermando, lo scontro si ribalta.
+  // Chi ha dichiarato «perso» aveva usato la Maestria delle repliche: confermando, lo scontro si ribalta.
   const flipped = confirm && !skill && e.skill === 'maestria' && e.skillTeamId === e.reporterTeamId;
   if (flipped) q.run("UPDATE engagements SET winners = ?, losers = ?, result = 'won' WHERE id = ?", e.losers, e.winners, e.id);
   if (confirm) {

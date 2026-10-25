@@ -1,4 +1,4 @@
-// Accettazione a inizio evento e Test armi: condivisi tra la regia e lo staff (pagina Soglia).
+// Accettazione a inizio evento e Test repliche: condivisi tra la regia e lo staff (pagina Soglia).
 // ctx = { data: { players, teams, elect, squads }, call(method, path, body, okMsg), render() }.
 import { h, fmtTime, dialog, toast, modal, api } from './lib.js';
 
@@ -37,7 +37,7 @@ export function viewCheckin(ctx) {
   };
   return h('div', { class: 'stack' },
     section('Accettazione',
-      h('p', { class: 'muted tiny' }, 'All\'arrivo al campo: segna chi è presente, poi conferma la coppia quando ci sono tutti e due. Solo gli iscritti già approvati; chi è presente compare nel Test armi.'),
+      h('p', { class: 'muted tiny' }, 'All\'arrivo al campo: segna chi è presente, poi conferma la coppia quando ci sono tutti e due. Solo gli iscritti già approvati; chi è presente compare nel Test repliche.'),
       h('div', { class: 'ck-counts' }, ckCount(present, accepted.length, 'presenti'), ckCount(teamsOk, ms.teams.length, 'coppie confermate')),
       pending ? h('p', { class: 'small warn-text' }, `${pending} iscrizioni ancora da approvare: le trovi in «Iscrizioni e coppie».`) : null,
       ckSearch(ctx)),
@@ -127,8 +127,8 @@ function ckDrag(ctx, e, p) {
   window.addEventListener('pointercancel', end);
 }
 
-// Armi della persona (dal server): di base le tre, ma se ne possono togliere o aggiungere.
-const DEFAULT_WEAPONS = [{ key: 'main', label: 'Arma principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Arma secondaria' }];
+// Repliche della persona (dal server): di base le tre, ma se ne possono togliere o aggiungere.
+const DEFAULT_WEAPONS = [{ key: 'main', label: 'Replica principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Replica secondaria' }];
 const weaponsOf = (p) => p.weaponList || DEFAULT_WEAPONS;
 const passed = (p, key) => !!weaponsOf(p).find((w) => w.key === key)?.ok;
 // ---------------------------------------------------------------- cronografo Bluetooth: registrazione dei dati grezzi
@@ -225,8 +225,8 @@ const btLive = () => !!(BT.ready && BT.device?.gatt?.connected);
 function btRefresh() { if (BT.ctx && !document.activeElement?.matches?.('input, textarea')) BT.ctx.render(); }
 function btStatus(text) { BT.status = text; if (BT.statusEl) BT.statusEl.textContent = text; btRefresh(); }
 
-// Un tiro: velocità → joule con il peso del pallino scelto. Con una sessione aperta (persona + arma) si aggiunge
-// alle sue letture; la media decide se l'arma passa (sotto 1 J). Al terzo tiro il test di quell'arma si chiude da solo.
+// Un tiro: velocità → joule con il peso del pallino scelto. Con una sessione aperta (persona + replica) si aggiunge
+// alle sue letture; la media decide se la replica passa (sotto 1 J). Al terzo tiro il test di quella replica si chiude da solo.
 const AUTO_SHOTS = 3;
 // Letture in corso alla persona provata: le vede in tempo reale nella sua app (senza ricaricare la pagina qui).
 // open false = prova chiusa (sparisce dall'app della persona).
@@ -239,7 +239,7 @@ function btShot(mps) {
   const g = bbGrams();
   const j = 0.5 * (g / 1000) * mps * mps;
   const ok = j < 1;
-  // Persona già chiusa: l'arma si guarda soltanto, i tiri non si aggiungono.
+  // Persona già chiusa: la replica si guarda soltanto, i tiri non si aggiungono.
   const target = BT.session?.view || BT.session?.locked ? null : BT.session;
   btAdd({ kind: 'shot', text: `${mps.toFixed(2)} m/s · ${(mps * 3.28084).toFixed(0)} fps · ${j.toFixed(2)} J (${g.toFixed(2)} g)${target ? ` → ${target.label}` : ''}`, ok });
   BT.last = { j, v: mps, g, ok, at: Date.now() };
@@ -464,7 +464,7 @@ function chronoDash(ctx) {
       h('div', { class: 'dash-state' },
         h('span', { class: `dot ${live ? 'on' : ''}`, 'aria-hidden': 'true' }),
         h('div', null, h('strong', { class: 'small' }, live ? (BT.device?.name || 'Cronografo collegato') : 'Cronografo non collegato'),
-          h('div', { class: 'tiny muted' }, live ? 'Pronto: apri un\'arma qui sotto e spara' : note || BT.status)))),
+          h('div', { class: 'tiny muted' }, live ? 'Pronto: apri una replica qui sotto e spara' : note || BT.status)))),
     h('div', { class: 'dash-grid2' },
       bbTile(ctx, 'dash'),
       h('div', { class: `cs-big dash-tile ${last && last.j >= 1 ? 'over' : ''}` },
@@ -493,7 +493,7 @@ async function saveSession(ctx) {
   ctx.render();
 }
 
-// Esito dell'ultimo test salvato: resta finché non si apre un'altra arma.
+// Esito dell'ultimo test salvato: resta finché non si apre un'altra replica.
 function chronoResult() {
   const x = BT.result;
   if (!x || BT.session) return null;
@@ -504,13 +504,13 @@ function chronoResult() {
     h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: () => { BT.result = null; BT.ctx?.render(); } }, '✕'));
 }
 
-// Azzera il test di un'arma: via spunta, media e letture salvate; si può rifare da capo.
+// Azzera il test di una replica: via spunta, media e letture salvate; si può rifare da capo.
 async function resetWeapon(ctx, p, weapon, label) {
   if (!(await dialog({ title: 'Azzerare il test?', text: `${label}: si tolgono la spunta e le letture salvate, il test va rifatto.`, okLabel: 'Azzera', danger: true }))) return false;
   return !!(await ctx.call('POST', `/chrono/${p.id}`, { weapon, on: false }, `${label}: test azzerato`));
 }
 
-// L'ultimo test salvato di un'arma: quando, chi, pallino, media e i singoli tiri (potenza, velocità, grammatura).
+// L'ultimo test salvato di una replica: quando, chi, pallino, media e i singoli tiri (potenza, velocità, grammatura).
 function savedTest(p, weapon) {
   const s = shotsOf(p)[weapon];
   if (!s) return passed(p, weapon) ? h('div', { class: 'cs-saved ok' }, h('div', { class: 'eyebrow' }, 'Test salvato'), h('strong', null, '✓ Passa · segnata a mano'), h('span', { class: 'small' }, `Minore di 1 joule${p.chronoBy ? ` (${p.chronoBy})` : ''}: nessuna lettura del cronografo.`)) : null;
@@ -525,7 +525,7 @@ function savedTest(p, weapon) {
     h('div', { class: 'cs-reads' }, reads.map((x, i) => h('span', { class: `cs-read ${x.j < 1 ? 'ok' : 'bad'}` }, `#${i + 1} ${fmtJ(x.j)}${x.v ? ` · ${fmtV(x.v)}` : ''} · ${num(x.g || s.g || 0)} g`))));
 }
 
-// Sessione di prova: persona + arma; i tiri si sommano, la media decide. Al terzo tiro si salva da sola.
+// Sessione di prova: persona + replica; i tiri si sommano, la media decide. Al terzo tiro si salva da sola.
 function chronoSession(ctx) {
   const ss = BT.session;
   if (!ss) return null;
@@ -542,13 +542,13 @@ function chronoSession(ctx) {
     return h('div', { class: 'panel chrono-session' },
       h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Persona chiusa · solo lettura'), h('strong', null, ss.label)),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
-      savedTest(p, ss.weapon) || h('p', { class: 'empty' }, 'Quest\'arma non è stata provata.'),
+      savedTest(p, ss.weapon) || h('p', { class: 'empty' }, 'Questa replica non è stata provata.'),
       h('p', { class: 'small muted' }, 'Per rifare o azzerare il test, prima «Riapri» la persona.'));
   }
   const save = () => saveSession(ctx);
   const saved = shotsOf(p)[ss.weapon];
   const reset = async () => { if (await resetWeapon(ctx, p, ss.weapon, ss.label)) { r.length = 0; ctx.render(); } };
-  // Test già fatto (positivo o negativo): si guarda il risultato; per rifarlo prima si azzera l'arma.
+  // Test già fatto (positivo o negativo): si guarda il risultato; per rifarlo prima si azzera la replica.
   ss.locked = !!(passed(p, ss.weapon) || saved) && !ss.saving;
   if (ss.locked) {
     const ok = passed(p, ss.weapon);
@@ -556,7 +556,7 @@ function chronoSession(ctx) {
       h('div', { class: 'cs-head' }, h('div', null, h('div', { class: 'eyebrow' }, ok ? 'Test fatto · positivo' : 'Test fatto · negativo'), h('strong', null, ss.label)),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
       savedTest(p, ss.weapon),
-      h('p', { class: 'small muted' }, 'Per rifare il test azzera l\'arma: si tolgono esito e letture, poi si spara di nuovo.'),
+      h('p', { class: 'small muted' }, 'Per rifare il test azzera la replica: si tolgono esito e letture, poi si spara di nuovo.'),
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-primary', type: 'button', onclick: reset }, 'Azzera e rifai il test'),
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Chiudi')));
@@ -582,7 +582,7 @@ function chronoSession(ctx) {
         h('div', { class: `cs-big cs-lastread ${r.length && r[r.length - 1].j >= 1 ? 'over' : ''}` }, h('span', { class: 'eyebrow' }, 'Ultima lettura'),
           h('strong', { class: 'mono' }, r.length ? fmtJ(r[r.length - 1].j) : '—'),
           r.length ? h('span', { class: 'tiny mono' }, fmtV(r[r.length - 1].v)) : null),
-        // Contatore dei tiri di quest'arma: 1, 2, 3 (al terzo il test si chiude da solo), un pallino per tiro.
+        // Contatore dei tiri di questa replica: 1, 2, 3 (al terzo il test si chiude da solo), un pallino per tiro.
         h('div', { class: 'cs-big cs-count' }, h('span', { class: 'eyebrow' }, 'Tiro'),
           h('strong', { class: 'mono' }, `${r.length}/${AUTO_SHOTS}`),
           h('span', { class: 'shot-dots', 'aria-hidden': 'true' }, Array.from({ length: Math.max(AUTO_SHOTS, r.length) }, (_, i) => h('i', { class: i < r.length ? (r[i].j >= 1 ? 'bad' : 'ok') : '' }))))),
@@ -598,14 +598,14 @@ function chronoSession(ctx) {
       r.length ? h('button', { class: `btn ${ok ? 'btn-primary' : 'btn-danger'}`, type: 'button', disabled: ss.saving, onclick: save }, ok ? 'Salva ora (positivo)' : 'Salva ora (negativo)') : null,
       h('button', { class: 'btn', type: 'button', onclick: () => manual(true) }, '✓ Passa a mano'),
       h('button', { class: 'btn btn-danger', type: 'button', onclick: () => manual(false) }, '✗ Non passa a mano'),
-      h('button', { class: 'btn btn-icon', type: 'button', title: 'Rinomina l\'arma', 'aria-label': 'Rinomina l\'arma', onclick: async () => {
+      h('button', { class: 'btn btn-icon', type: 'button', title: 'Rinomina la replica', 'aria-label': 'Rinomina la replica', onclick: async () => {
         const cur = weaponsOf(p).find((w) => w.key === ss.weapon)?.label || '';
-        const nn = await dialog({ title: 'Rinomina l\'arma', input: { value: cur, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
-        if (nn && nn.trim() && nn.trim() !== cur && await ctx.call('POST', `/weapons/${p.id}`, { action: 'rename', key: ss.weapon, label: nn.trim() }, 'Arma rinominata')) { ss.label = `${personLabel(p)} · ${nn.trim()}`; ctx.render(); }
+        const nn = await dialog({ title: 'Rinomina la replica', input: { value: cur, placeholder: 'es. M4, Pistola Glock' }, okLabel: 'Salva' });
+        if (nn && nn.trim() && nn.trim() !== cur && await ctx.call('POST', `/weapons/${p.id}`, { action: 'rename', key: ss.weapon, label: nn.trim() }, 'Replica rinominata')) { ss.label = `${personLabel(p)} · ${nn.trim()}`; ctx.render(); }
       } }, '✎'),
-      r.length ? null : h('button', { class: 'btn btn-trash', type: 'button', title: 'Togli quest\'arma', 'aria-label': 'Togli quest\'arma', onclick: async () => {
-        if (!(await dialog({ title: 'Togliere quest\'arma?', text: `${ss.label}: la persona non ce l'ha, non va provata.`, okLabel: 'Togli', danger: true }))) return;
-        if (await ctx.call('POST', `/weapons/${p.id}`, { action: 'remove', key: ss.weapon }, 'Arma tolta')) close();
+      r.length ? null : h('button', { class: 'btn btn-trash', type: 'button', title: 'Togli questa replica', 'aria-label': 'Togli questa replica', onclick: async () => {
+        if (!(await dialog({ title: 'Togliere questa replica?', text: `${ss.label}: la persona non ce l'ha, non va provata.`, okLabel: 'Togli', danger: true }))) return;
+        if (await ctx.call('POST', `/weapons/${p.id}`, { action: 'remove', key: ss.weapon }, 'Replica tolta')) close();
       } }, '🗑'),
       r.length ? h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { r.length = 0; liveSend(ss, []); ctx.render(); } }, 'Ricomincia i tiri') : null,
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
@@ -625,16 +625,16 @@ export function viewChrono(ctx) {
   const open = (p, weapon, label) => { BT.result = null; const prev = BT.session; if (prev && !prev.view && (prev.playerId !== p.id || prev.weapon !== weapon)) liveSend(prev, [], false); BT.session = { playerId: p.id, weapon, label: `${personLabel(p)} · ${label}`, readings: [], view: !!p.chronoDoneAt }; liveSend(BT.session); ctx.render(); };
   const closeP = async (p) => {
     if (p.chronoDoneAt) return ctx.call('POST', `/chrono/${p.id}/done`, { on: false }, `${p.nickname || p.name}: riaperta`);
-    if (!weaponsOf(p).some((w) => w.ok) && !(await dialog({ title: 'Chiudere senza armi passate?', text: `${personLabel(p)} non ha nessuna arma provata e passata.`, okLabel: 'Chiudi comunque' }))) return;
+    if (!weaponsOf(p).some((w) => w.ok) && !(await dialog({ title: 'Chiudere senza repliche passate?', text: `${personLabel(p)} non ha nessuna replica provata e passata.`, okLabel: 'Chiudi comunque' }))) return;
     if (BT.session?.playerId === p.id) BT.session = null;
     return ctx.call('POST', `/chrono/${p.id}/done`, { on: true }, `${p.nickname || p.name}: chiusa`);
   };
   const tile = (key, title, done, tot, color) => h('button', { type: 'button', class: `chrono-tile ${chronoGroup === key ? 'on' : ''} ${tot && done === tot ? 'full' : ''}`, style: { '--c': color || 'var(--line)' }, onclick: () => { chronoGroup = chronoGroup === key ? null : key; ctx.render(); } },
     h('strong', null, title), h('span', { class: 'mono small' }, `${done}/${tot}`), h('span', { class: 'tiny muted' }, 'chiuse'));
   return h('div', { class: 'stack' },
-    section('Test armi',
+    section('Test repliche',
       h('details', { class: 'muted tiny chrono-help' }, h('summary', null, 'Come funziona'),
-        h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca un\'arma e spara 3 tiri: al terzo il test si chiude da solo col risultato: positivo se la media è sotto 1 joule, negativo da 1 joule in su. Senza cronografo: «Passa a mano» o «Non passa a mano». Un test fatto (positivo o negativo) si rifà solo dopo «Azzera e rifai il test». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
+        h('p', null, 'Ogni replica va provata al cronografo, persona per persona. Tocca una replica e spara 3 tiri: al terzo il test si chiude da solo col risultato: positivo se la media è sotto 1 joule, negativo da 1 joule in su. Senza cronografo: «Passa a mano» o «Non passa a mano». Un test fatto (positivo o negativo) si rifà solo dopo «Azzera e rifai il test». Quando una persona ha finito, «Chiudi» e sparisce dalla lista.'),
         h('p', null, 'Cronografo Bluetooth (Acetech AC6000-BT): Chrome su Android o computer; su iPhone con l\'app Bluefy. Chiudi l\'app AceSoft prima di collegarlo.')),
       h('div', { class: 'ck-counts' }, ckCount(closed, present.length, 'persone chiuse'), h('div', { class: 'ck-count' }, h('strong', { class: 'mono' }, String(tested)), h('span', { class: 'tiny muted' }, 'repliche provate')))),
     chronoDash(ctx),
@@ -659,11 +659,11 @@ export function viewChrono(ctx) {
             h('span', { class: 'ck-box', 'aria-hidden': 'true' }, pass ? '✓' : s && s.ok === false ? '✕' : cur ? '🎯' : ''), h('span', null, h('span', { class: 'w-long' }, label), h('span', { class: 'w-short' }, SHORT_LABEL[weapon] || label), h('span', { class: 'tiny' }, sub),
               overN && s ? h('span', { class: 'tiny w-over' }, `⚠ ${overN} sopra 1 J · max ${fmtJ(s.max ?? s.j)}`) : null));
         }),
-        // Arma in più (anche oltre le tre): si aggiunge qui; quelle non provate si tolgono dalla prova.
-        p.chronoDoneAt ? null : h('button', { type: 'button', class: 'chrono-wbtn chrono-add', title: 'Aggiungi un\'arma', onclick: async () => {
-          const name = await dialog({ title: `Nuova arma per ${personLabel(p)}`, input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
+        // Replica in più (anche oltre le tre): si aggiunge qui; quelle non provate si tolgono dalla prova.
+        p.chronoDoneAt ? null : h('button', { type: 'button', class: 'chrono-wbtn chrono-add', title: 'Aggiungi una replica', onclick: async () => {
+          const name = await dialog({ title: `Nuova replica per ${personLabel(p)}`, input: { placeholder: 'es. Pistola, Secondo fucile' }, okLabel: 'Aggiungi' });
           if (name && name.trim()) ctx.call('POST', `/weapons/${p.id}`, { action: 'add', label: name.trim() }, `${name.trim()} aggiunta`);
-        } }, h('span', { class: 'ck-box', 'aria-hidden': 'true' }, '＋'), h('span', null, h('span', { class: 'w-long' }, 'Aggiungi arma'), h('span', { class: 'w-short' }, 'Arma')))),
+        } }, h('span', { class: 'ck-box', 'aria-hidden': 'true' }, '＋'), h('span', null, h('span', { class: 'w-long' }, 'Aggiungi replica'), h('span', { class: 'w-short' }, 'Replica')))),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
     })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
     btDiag(),

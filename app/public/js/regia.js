@@ -418,7 +418,7 @@ function sidebar() {
     R.gameId ? h('a', { href: `/tabellone?g=${R.gameId}`, target: '_blank', rel: 'noopener' }, 'Tabellone ↗') : h('span', { class: 'off' }, 'Tabellone ↗'),
     h('a', { href: '/soglia', target: '_blank', rel: 'noopener' }, 'Soglia ↗'),
     h('a', { href: '/campo', target: '_blank', rel: 'noopener', title: 'Strumento di campo: piazzare Altari e Doni dal telefono' }, 'Campo ↗'),
-    R.gameId ? h('a', { href: `/armi?g=${R.gameId}`, target: '_blank', rel: 'noopener', title: 'Test armi col cronografo' }, 'Test armi ↗') : h('span', { class: 'off' }, 'Test armi ↗')))];
+    R.gameId ? h('a', { href: `/armi?g=${R.gameId}`, target: '_blank', rel: 'noopener', title: 'Test repliche col cronografo' }, 'Test repliche ↗') : h('span', { class: 'off' }, 'Test repliche ↗')))];
 }
 const installedApp = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -496,7 +496,7 @@ function controlButtons() {
   const st = R.ms.clock.status;
   const b = [];
   const act = (action, label, cls = '', title, text, danger) => h('button', { class: `btn ${cls}`, onclick: () => confirmCall(title, text, 'POST', G('/action'), { action }, null, danger) }, label);
-  if (st === 'created') b.push(act('prepare', 'Porta in preparazione', 'btn-primary', 'Portare in preparazione?', 'La partita diventa visibile alle app di campo (Campo, Soglia, Test armi, Consiglio) e si possono aprire le iscrizioni.'));
+  if (st === 'created') b.push(act('prepare', 'Porta in preparazione', 'btn-primary', 'Portare in preparazione?', 'La partita diventa visibile alle app di campo (Campo, Soglia, Test repliche, Consiglio) e si possono aprire le iscrizioni.'));
   if (st === 'draft') b.push(act('ready', 'Segna pronta', 'btn-primary', 'Partita pronta?', 'Le coppie potranno accedere e leggere il regolamento. Le iscrizioni si chiudono.'),
     act('created', 'Torna a «Creata»', '', 'Tornare a «Creata»?', 'La partita sparisce dalle app di campo e le iscrizioni si chiudono. Resta tutto in regia.'));
   if (st === 'ready') b.push(act('circle', 'Apri il cerchio', 'btn-primary', 'Aprire il cerchio?', 'Ogni coppia vedrà il proprio Sigillo.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', `La partita torna modificabile.${draftWipe()}`));
@@ -865,7 +865,7 @@ const EVENT_LABELS = {
   team_sector_changed: 'Settore cambiato', team_members_changed: 'Membri cambiati', player_updated: 'Giocatore modificato', player_deleted: 'Giocatore eliminato',
   free_announcement: 'Annuncio libero', squad_created: 'Squadra creata', squad_updated: 'Squadra modificata', squad_deleted: 'Squadra eliminata',
   squad_member: 'Squadra', squad_assigned: 'Incarico di piazzamento', squad_move: 'Spostamento richiesto', squad_unassigned: 'Incarico annullato',
-  point_moved: 'Altare spostato', checkin_player: 'Presente all\'accettazione', checkin_player_undo: 'Presenza annullata', checkin_team: 'Coppia confermata', checkin_team_undo: 'Conferma coppia annullata', chrono_ok: 'Arma sotto 1 joule', chrono_undo: 'Prova arma annullata', chrono_fail: 'Arma sopra 1 joule: non passa', chrono_closed: 'Test armi: persona chiusa', chrono_reopened: 'Test armi: persona riaperta', catalog_edited: 'Skill o Dono modificato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
+  point_moved: 'Altare spostato', checkin_player: 'Presente all\'accettazione', checkin_player_undo: 'Presenza annullata', checkin_team: 'Coppia confermata', checkin_team_undo: 'Conferma coppia annullata', chrono_ok: 'Replica sotto 1 joule', chrono_undo: 'Prova replica annullata', chrono_fail: 'Replica sopra 1 joule: non passa', chrono_closed: 'Test repliche: persona chiusa', chrono_reopened: 'Test repliche: persona riaperta', catalog_edited: 'Skill o Dono modificato', gift_scheduled: 'Annuncio dono programmato', gift_schedule_cancelled: 'Annuncio dono annullato',
   supply_closed: 'Armamenti chiusi', supply_shifted: 'Armamenti spostati', squad_task: 'Incarico', squad_task_done: 'Incarico fatto', squad_task_reopened: 'Incarico riaperto', squad_task_deleted: 'Incarico eliminato', demo_created: 'Partita di prova', demo_advance: 'Tempo avanzato',
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
@@ -2590,7 +2590,7 @@ function viewCatalog() {
     section(`Doni (${c.gifts.length})`, h('div', { class: 'cat-grid' }, c.gifts.map(card))));
 }
 
-// ---------------------------------------------------------------- ACCETTAZIONE E TEST ARMI (modulo condiviso con lo staff, in Soglia)
+// ---------------------------------------------------------------- ACCETTAZIONE E TEST REPLICHE (modulo condiviso con lo staff, in Soglia)
 
 const ckCtx = () => ({ data: R.ms, base: `/api/m/games/${R.gameId}`, call: (method, path, body, msg) => call(method, G(path), body, msg), render });
 const viewCheckin = () => CKUI.viewCheckin(ckCtx());
@@ -3529,16 +3529,16 @@ function viewNewGame(first) {
       h('button', { class: 'btn btn-primary', onclick: createDemo }, 'Crea partita di prova')));
 }
 
-// Prima della gara: testo in markdown (test armi, partenza…) che le coppie vedono nell'app finché la partita è in preparazione.
+// Prima della gara: testo in markdown (test repliche, partenza…) che le coppie vedono nell'app finché la partita è in preparazione.
 function prepSection(g) {
-  const editor = mdEditor({ value: g.prepInfo || '', rows: 12, maxlength: 8000, keep: 'prep-info', placeholder: '## Test armi\nAlle 8:30 al cronografo…', extra: ICE_TOOL });
+  const editor = mdEditor({ value: g.prepInfo || '', rows: 12, maxlength: 8000, keep: 'prep-info', placeholder: '## Test repliche\nAlle 8:30 al cronografo…', extra: ICE_TOOL });
   const preview = h('div', { class: 'np-card' });
   const draw = () => mount(preview, editor.value.trim() ? h('div', { class: 'md' }, md(editor.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui, come nell\'app.'));
   editor.textarea.addEventListener('input', draw);
   queueMicrotask(draw);
   return h('div', { class: 'cols-2' },
     section('Prima della gara · cosa fare',
-      h('p', { class: 'muted tiny' }, 'Le coppie (e gli Eletti) lo vedono in home finché la partita è in preparazione: test armi, ritrovo, partenza, cosa portare. Al via sparisce.'),
+      h('p', { class: 'muted tiny' }, 'Le coppie (e gli Eletti) lo vedono in home finché la partita è in preparazione: test repliche, ritrovo, partenza, cosa portare. Al via sparisce.'),
       h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { prepInfo: editor.value }, 'Testo salvato'); } },
         editor.el,
         h('p', { class: 'tiny muted' }, 'Markdown: # titolo, **grassetto**, *corsivo*, - elenco, 1. elenco numerato, > citazione, --- linea; [testo](https://…) diventa un pulsante. «Schermo intero» apre l\'editor grande con l\'anteprima.'),

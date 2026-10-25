@@ -1,23 +1,23 @@
 'use strict';
-// Stato della persona all'evento, per il suo profilo: iscrizione, accettazione all'arrivo, test armi
-// (per ogni arma: passata, joule, velocità e peso del pallino usato). Solo lettura, nessuna dipendenza.
-// Armi della persona: di base principale, principale di riserva e secondaria; se ne possono togliere o aggiungere.
+// Stato della persona all'evento, per il suo profilo: iscrizione, accettazione all'arrivo, test repliche
+// (per ogni replica: passata, joule, velocità e peso del pallino usato). Solo lettura, nessuna dipendenza.
+// Repliche della persona: di base principale, principale di riserva e secondaria; se ne possono togliere o aggiungere.
 const LEGACY = { main: 'chronoMain', backup: 'chronoBackup', secondary: 'chronoSecondary' };
-const DEFAULT_WEAPONS = [{ key: 'main', label: 'Arma principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Arma secondaria' }];
+const DEFAULT_WEAPONS = [{ key: 'main', label: 'Replica principale' }, { key: 'backup', label: 'Principale di riserva' }, { key: 'secondary', label: 'Replica secondaria' }];
 const parseJson = (v, d) => { try { return JSON.parse(v || '') ?? d; } catch { return d; } };
 function weaponsOf(p) {
   const list = parseJson(p.weapons, null);
   return Array.isArray(list) ? list.filter((w) => w && w.key && w.label) : DEFAULT_WEAPONS.slice();
 }
-// Quando l'arma è passata (spunta): le tre di base nelle loro colonne, le altre in chronoPass.
+// Quando la replica è passata (spunta): le tre di base nelle loro colonne, le altre in chronoPass.
 const passOf = (p, key) => (LEGACY[key] ? p[LEGACY[key]] : parseJson(p.chronoPass, {})[key]) || null;
-// Elenco per l'Accettazione/Test armi: chiave, nome e spunta.
+// Elenco per l'Accettazione/Test repliche: chiave, nome e spunta.
 const weaponList = (p) => weaponsOf(p).map((w) => ({ key: w.key, label: w.label, custom: !LEGACY[w.key], ok: passOf(p, w.key) }));
 
 // Letture del cronografo in corso, persona per persona (solo in memoria): la persona le vede in tempo reale nell'app.
 const LIVE_TTL = 10 * 60000;
 const live = new Map();
-// data null = prova chiusa; con open la prova è aperta anche prima del primo tiro (l'arbitro ha scelto l'arma).
+// data null = prova chiusa; con open la prova è aperta anche prima del primo tiro (l'arbitro ha scelto la replica).
 function setLive(playerId, data) {
   if (!data || (!data.open && !data.readings?.length)) live.delete(Number(playerId));
   else live.set(Number(playerId), { ...data, at: Date.now() });

@@ -7,7 +7,7 @@ const clock = makeClock();
 setInterval(() => {
   for (const el of document.querySelectorAll('[data-clock="remaining"]')) el.textContent = clock.snap?.startedAt ? fmtDuration(clock.remaining()) : clock.snap ? fmtDuration(clock.snap.durationMs) : '—';
 }, 1000);
-// Solo la Soglia (validazione e uscita): accettazione e test armi hanno le loro pagine.
+// Solo la Soglia (validazione e uscita): accettazione e test repliche hanno le loro pagine.
 const can = (p) => V.me?.role === 'master' || !!V.me?.perms?.includes(p);
 const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: null, teamId: null, team: null, typed: {}, check: null, mode: 'app' };
 

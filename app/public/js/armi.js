@@ -1,4 +1,4 @@
-// Test armi e Accettazione in una pagina a sé (regia e staff): conto alla rovescia all'inizio dell'evento,
+// Test repliche e Accettazione in una pagina a sé (regia e staff): conto alla rovescia all'inizio dell'evento,
 // poi il cruscotto del cronografo (/armi) o l'accettazione all'arrivo (/accettazione).
 import * as CKUI from './checkin-ui.js';
 import { h, mount, api, makeClock, fmtDuration, toast, stream, store, STATUS_LABELS } from './lib.js';
@@ -8,7 +8,7 @@ const clock = makeClock();
 const PRE = ['created', 'draft', 'ready', 'circle'];
 const params = new URLSearchParams(location.search);
 const ACC = location.pathname.startsWith('/accettazione');
-const PAGE = ACC ? { perm: 'accettazione', title: 'Accettazione', key: 'zdg_acc_game' } : { perm: 'armi', title: 'Test armi', key: 'zdg_armi_game' };
+const PAGE = ACC ? { perm: 'accettazione', title: 'Accettazione', key: 'zdg_acc_game' } : { perm: 'armi', title: 'Test repliche', key: 'zdg_armi_game' };
 document.title = PAGE.title;
 const A = { me: null, games: [], gameId: Number(params.get('g')) || store.get(PAGE.key), data: null };
 

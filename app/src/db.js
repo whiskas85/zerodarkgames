@@ -276,9 +276,9 @@ for (const t of ['points', 'gifts', 'landmarks']) addColumn(t, 'provisional', 'I
 addColumn('points', 'manual', 'INTEGER NOT NULL DEFAULT 0');
 // Codice di uscita della Soglia: il QR che le coppie inquadrano per esfiltrare con la Parola intera.
 addColumn('landmarks', 'exitToken', 'TEXT');
-// Testo per le coppie prima della gara (markdown): test armi, partenza, cose da fare.
+// Testo per le coppie prima della gara (markdown): test repliche, partenza, cose da fare.
 addColumn('games', 'prepInfo', 'TEXT');
-// Accettazione a inizio evento (presenza di iscritti e coppie) e test armi (sotto 1 joule) sul singolo.
+// Accettazione a inizio evento (presenza di iscritti e coppie) e test repliche (sotto 1 joule) sul singolo.
 addColumn('players', 'checkinAt', 'INTEGER');
 addColumn('players', 'checkinBy', 'TEXT');
 addColumn('teams', 'checkinAt', 'INTEGER');
@@ -287,9 +287,9 @@ addColumn('players', 'chronoMain', 'INTEGER');
 addColumn('players', 'chronoBackup', 'INTEGER');
 addColumn('players', 'chronoSecondary', 'INTEGER');
 addColumn('players', 'chronoBy', 'TEXT');
-// Misure del cronografo per arma: { main: { j, v, g, at, by }, … } (assenti se la spunta è manuale).
+// Misure del cronografo per replica: { main: { j, v, g, at, by }, … } (assenti se la spunta è manuale).
 addColumn('players', 'chronoShots', 'TEXT');
-// Persona «chiusa» al test armi (finito con tutte le sue repliche): sparisce dalla lista.
+// Persona «chiusa» al test repliche (finito con tutte le sue repliche): sparisce dalla lista.
 addColumn('players', 'chronoDoneAt', 'INTEGER');
 // Skill delle coppie (scelte prima del via o vinte con i Doni) ed effetti in corso di Skill e Doni.
 db.exec(`
@@ -347,8 +347,11 @@ addColumn('users', 'lastGameId', 'INTEGER');
 addColumn('team_visits', 'geoOk', 'INTEGER NOT NULL DEFAULT 0');
 // Checklist dell'accettazione spuntata dal Consiglio (le voci non cambiate seguono lo stato rilevato dall'app).
 addColumn('players', 'checkinChecks', 'TEXT');
-// Armi della persona per il test (null = le tre di base) e spunte delle armi aggiunte (le tre di base hanno le loro colonne).
+// Repliche della persona per il test (null = le tre di base) e spunte delle repliche aggiunte (le tre di base hanno le loro colonne).
 addColumn('players', 'weapons', 'TEXT');
+// «Arma» non si dice più: nelle liste già salvate i nomi di base diventano «Replica …».
+db.exec(`UPDATE players SET weapons = replace(replace(replace(weapons, 'Arma principale', 'Replica principale'), 'Arma secondaria', 'Replica secondaria'), 'Arma primaria', 'Replica primaria')
+         WHERE weapons LIKE '%Arma %'`);
 addColumn('players', 'chronoPass', 'TEXT');
 addColumn('account_identities', 'picture', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (

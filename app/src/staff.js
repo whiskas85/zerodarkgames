@@ -12,10 +12,10 @@ const INVITE_TTL = 24 * 3600000;
 const ROLE_LABEL = { master: 'master', validator: 'validatore' };
 
 // Consiglio Zero: le azioni che il master può aprire a ciascuno. Il master le ha tutte; i validatori di prima
-// (senza scelta salvata) restano con Soglia, Accettazione e Test armi.
+// (senza scelta salvata) restano con Soglia, Accettazione e Test repliche.
 const PERMS = [
   ['accettazione', 'Accettazione', 'Conferma iscritti e squadre all\'arrivo'],
-  ['armi', 'Test armi', 'Cronografo e spunta delle armi'],
+  ['armi', 'Test repliche', 'Cronografo e spunta delle repliche'],
   ['soglia', 'Soglia', 'Validazione dei frammenti all\'uscita'],
   ['campo', 'Campo', 'Strumento di campo: piazza Altari, punti e doni'],
   ['doni', 'Lancio doni', 'Fa comparire i doni già piazzati'],

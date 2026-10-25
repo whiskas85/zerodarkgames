@@ -105,7 +105,7 @@ export const SKILL_GUIDE = {
     effect: ['Lo scontro diventa una vittoria per voi, qualunque esito abbia dichiarato l\'avversario: è lui a mostrare il Sigillo.'],
     tips: 'È l\'asso nella manica: tenetela per lo scontro che non potete permettervi di perdere.',
     shots: [
-      { t: 'card', ico: '⚔️', eyebrow: 'Scontro con II Acqua', title: 'Perso → Vinto con Maestria delle armi', tone: 'win', cap: 'L\'esito ribaltato nello storico degli scontri.' },
+      { t: 'card', ico: '⚔️', eyebrow: 'Scontro con II Acqua', title: 'Perso → Vinto con Maestria delle repliche', tone: 'win', cap: 'L\'esito ribaltato nello storico degli scontri.' },
     ],
   }),
   immunita: () => ({

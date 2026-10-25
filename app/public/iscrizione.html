@@ -330,8 +330,8 @@
       ];
     }
 
-    // ---- profilo, diviso in pagine: Account e dati · Test armi · ICE
-    const PROFILE_TABS = [['profilo', 'Account e dati'], ['profilo-armi', 'Test armi'], ['profilo-ice', 'ICE']];
+    // ---- profilo, diviso in pagine: Account e dati · Test repliche · ICE
+    const PROFILE_TABS = [['profilo', 'Account e dati'], ['profilo-armi', 'Test repliche'], ['profilo-ice', 'ICE']];
     function profileHead(key) {
       return [whoBar(), h('a', { class: 'btn btn-sm btn-ghost back', href: '#scelta' }, '‹ Indietro'), h('h2', null, 'Il tuo profilo'),
         h('nav', { class: 'profile-tabs' }, PROFILE_TABS.map(([k, label]) => h('a', { href: `#${k}`, class: k === key ? 'on' : '' }, label)),
@@ -368,11 +368,11 @@
       return [...profileHead('profilo'), form, opsSection()];
     }
 
-    // Test armi (e il resto dello stato all'evento) per le partite non ancora finite.
+    // Test repliche (e il resto dello stato all'evento) per le partite non ancora finite.
     function pageProfileArmi() {
       const list = S.enrollments.filter((e) => e.gameStatus !== 'ended');
       return [...profileHead('profilo-armi'),
-        h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test armi al cronografo: per ogni arma i joule misurati e il pallino usato.'),
+        h('p', { class: 'muted small' }, 'Iscrizione, accettazione all\'arrivo e test repliche al cronografo: per ogni replica i joule misurati e il pallino usato.'),
         list.length ? list.map((e) => eventStatusCard(e.event, { gameName: e.gameName })) : h('p', { class: 'empty' }, 'Nessuna iscrizione a una partita in corso.')];
     }
 
