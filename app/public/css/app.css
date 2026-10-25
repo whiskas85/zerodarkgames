@@ -1018,3 +1018,4 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .zones-legend li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-left: 4px solid var(--c); border-radius: 4px; }
 .zones-legend li.here { background: color-mix(in srgb, var(--c) 18%, transparent); }
 .zl-ico { font-size: 22px; line-height: 1.2; }
+.ev-place { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

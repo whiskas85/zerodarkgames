@@ -3447,6 +3447,66 @@ function viewPrints() {
 const EVENT_STATUS = { draft: ['Da lanciare', ''], open: ['Candidature', 'chip-brass'], running: ['In corso', 'chip-blood'], closing: ['Chiusura: conferme', 'chip-warn'], truce: ['Tregua', 'chip-ok'], done: ['Concluso', ''] };
 const rewardText = (r) => (!r ? '' : r.kind === 'gift' ? `${r.icon || ''} ${r.name}` : r.kind === 'fragment' ? `frammento «${r.text}»` : `Sigillo ${r.roman} ${r.sectorName}`);
 
+// Luogo di un evento: un luogo del gioco (Cerchio, Soglia, Altari, indicazioni), un punto di interesse
+// piazzato sul campo, oppure un punto toccato sulla mappa. Risolve { label, lat, lng }, null (nessun luogo) o undefined (annulla).
+async function eventLocationDialog(current = null) {
+  if (!fieldData) await loadField(false);
+  const d = fieldData || {};
+  const opts = [
+    ['Luoghi del gioco', [
+      ...(R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => ({ label: l.kind === 'soglia' ? 'La Soglia' : l.label || 'Cerchio di inizio', lat: l.lat, lng: l.lng })),
+      ...(R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ label: p.label, lat: p.lat, lng: p.lng })),
+      ...(d.guide || []).filter((g) => g.lat != null).map((g) => ({ label: g.label, lat: g.lat, lng: g.lng })),
+    ]],
+    ['Punti di interesse (dal campo)', (d.pois || []).filter((x) => x.lat != null).map((x) => ({ label: x.label, lat: x.lat, lng: x.lng }))],
+  ].filter(([, l]) => l.length);
+  const flat = opts.flatMap(([, l]) => l);
+  let target = current ? { ...current } : null;
+  const label = h('input', { class: 'input', maxlength: 80, placeholder: 'Nome del luogo (es. Radura dei castagni)', value: current?.label || '' });
+  const sel = h('select', { class: 'input', onchange: () => {
+    const x = flat[Number(sel.value)];
+    if (!x) return;
+    target = { ...x };
+    label.value = x.label;
+    draw();
+    pickMap.focus?.(['target']);
+  } }, h('option', { value: '' }, flat.length ? 'Scegli un luogo esistente…' : 'Nessun luogo esistente: tocca la mappa'),
+  opts.map(([g, l]) => h('optgroup', { label: g }, l.map((x) => h('option', { value: flat.indexOf(x) }, x.label)))));
+  const info = h('p', { class: 'tiny muted' });
+  const pickMap = createMapView({ className: 'pick-map' });
+  const draw = () => {
+    pickMap.setItems([
+      ...(d.pois || []).filter((x) => x.lat != null).map((x) => ({ key: `poi${x.id}`, kind: 'poi', lat: x.lat, lng: x.lng, title: x.label })),
+      ...(R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => landmarkItem(l)),
+      ...(R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label })),
+      ...(target ? [{ key: 'target', kind: 'target', lat: target.lat, lng: target.lng, title: label.value || 'Luogo dell\'evento' }] : []),
+    ]);
+    info.textContent = target ? `Luogo: ${target.lat.toFixed(5)}, ${target.lng.toFixed(5)} (tocca la mappa per spostarlo)` : 'Scegli un luogo dall\'elenco o tocca la mappa.';
+  };
+  pickMap.ready.then(() => {
+    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; sel.value = ''; if (!label.value.trim() || flat.some((x) => x.label === label.value)) label.value = 'Punto sulla mappa'; draw(); });
+    draw();
+    setTimeout(() => { pickMap.refresh(); if (target) pickMap.focus(['target']); else pickMap.fit(); }, 60);
+    setTimeout(() => pickMap.refresh(), 400);
+  });
+  let result;
+  let remove = false;
+  const ok = await modal({ title: 'Luogo dell\'evento', wide: true, okLabel: 'Usa questo luogo',
+    body: h('div', { class: 'stack-sm' },
+      flat.length ? h('label', { class: 'field' }, h('span', null, 'Tra quelli esistenti'), sel) : null,
+      pickMap.el, info,
+      h('label', { class: 'field' }, h('span', null, 'Nome che vedono le coppie'), label),
+      current ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => { remove = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, 'Togli il luogo') : null),
+    onOk: () => {
+      if (remove) { result = null; return true; }
+      if (!target) { toast('Scegli un luogo o tocca la mappa', 'error'); return false; }
+      result = { label: label.value.trim() || 'Luogo dell\'evento', lat: target.lat, lng: target.lng };
+      return true;
+    } });
+  return ok ? result : undefined;
+}
+
+let evLocation = null;
 function viewEvents() {
   const ms = R.ms;
   const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
@@ -3467,9 +3527,9 @@ function viewEvents() {
     if (!name.value.trim()) return toast('Dai un nome all\'evento', 'error');
     if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) return;
     const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
-      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, launch }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
+      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location: evLocation, launch }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
     // La pagina si è già ridisegnata: si svuotano i campi nuovi.
-    if (r) for (const k of ['ev-name', 'ev-desc']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; }
+    if (r) { for (const k of ['ev-name', 'ev-desc']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
   };
   const form = h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); save(false); } },
   h('label', { class: 'field' }, h('span', null, 'Nome'), name),
@@ -3481,7 +3541,10 @@ function viewEvents() {
     giftWrap,
     h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
     h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
-    h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin)),
+    h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin),
+    h('div', { class: 'field' }, h('span', null, 'Luogo'),
+      h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(evLocation); if (r !== undefined) { evLocation = r; render(); } } },
+        evLocation ? `📍 ${evLocation.label}` : '📍 Scegli il luogo…'))),
   h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento: a ogni coppia compare una schermata che blocca l\'app finché non conferma; chi conferma prende subito il premio. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
   h('div', { class: 'row-actions' },
     h('button', { class: 'btn', type: 'submit' }, 'Salva, lo lancio dopo'),
@@ -3494,6 +3557,8 @@ function viewEvents() {
         h('div', { class: 'notice-head' }, h('strong', null, ev.name), h('span', { class: `chip ${cls}` }, label), h('span', { class: 'chip' }, `${ev.joined}/${ev.slots} coppie`),
           ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
         ev.description ? h('p', { class: 'small' }, ev.description) : null,
+        h('div', { class: 'small' }, ev.location ? `📍 ${ev.location.label}` : h('span', { class: 'muted' }, 'Nessun luogo indicato'), ' ',
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const r = await eventLocationDialog(ev.location); if (r !== undefined) call('PATCH', `/api/m/events/${ev.id}/location`, { location: r }, r ? 'Luogo aggiornato' : 'Luogo tolto'); } }, ev.location ? 'Cambia luogo' : 'Indica il luogo')),
         h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
           ev.status === 'draft' ? ` · candidature ${ev.windowMin ? `per ${ev.windowMin}′ dal lancio` : 'fino all\'avvio'} · le coppie non lo vedono ancora` : null,
           ev.status === 'open' && ev.openUntil ? [' · candidature ', ev.open ? ['chiudono tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.openUntil}` }, '—')] : 'chiuse'] : null,

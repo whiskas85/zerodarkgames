@@ -631,4 +631,9 @@ CREATE TABLE IF NOT EXISTS event_entries (
 addColumn('game_events', 'windowMin', 'INTEGER');
 addColumn('game_events', 'launchedAt', 'INTEGER');
 
+// Luogo dell'evento: un luogo del gioco, un punto di interesse o un punto scelto sulla mappa.
+addColumn('game_events', 'locLabel', 'TEXT');
+addColumn('game_events', 'locLat', 'REAL');
+addColumn('game_events', 'locLng', 'REAL');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

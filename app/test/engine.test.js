@@ -2046,7 +2046,10 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   // B e C alleati.
   K.respondRequest(Cc, K.requestAlliance(B, Cc.id).id, true);
   // Salvato per dopo: le coppie non lo vedono e non si candidano finché la regia non lo lancia.
-  const ev = EV.createEvent(g.id, { name: 'Assalto alla Cassa', slots: 3, rewardKind: 'code', confirmMin: 2, truceMin: 5, windowMin: 10 }, 'test');
+  const ev = EV.createEvent(g.id, { name: 'Assalto alla Cassa', slots: 3, rewardKind: 'code', confirmMin: 2, truceMin: 5, windowMin: 10, location: { label: 'Radura', lat: 45.1, lng: 9.1 } }, 'test');
+  assert.deepEqual(ev.location, { label: 'Radura', lat: 45.1, lng: 9.1 });
+  assert.equal(EV.setLocation(ev.id, { label: 'Il Cuore', lat: 45.2, lng: 9.2 }, 'test').location.label, 'Il Cuore');
+  assert.throws(() => EV.setLocation(ev.id, { lat: 'x', lng: 9 }, 'test'), /Luogo non valido/);
   assert.equal(ev.status, 'draft');
   assert.ok(!EV.teamEvents(A).some((x) => x.id === ev.id));
   assert.throws(() => EV.joinEvent(A, null, ev.id), /chiuse/);

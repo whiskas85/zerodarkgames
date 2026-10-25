@@ -504,5 +504,5 @@ export function createField(F, { rerender }) {
       + sq.tasks.filter((t) => !t.doneAt).length;
   }
 
-  return { load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, viewPois, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
+  return { load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, viewPois, openPoi, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
 }

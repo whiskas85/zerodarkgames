@@ -59,10 +59,31 @@ function createEvent(gameId, data, actor) {
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
   g.id, name, String(data.description || '').trim().slice(0, 2000) || null, squadId, slots, rewardKind, rewardGiftType,
   windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), now, actor || null).lastInsertRowid);
+  if (data.location) writeLocation(id, data.location);
   G.log(g.id, actor, 'event_created', { name, slots, launch: !!data.launch });
   if (data.launch) return launchEvent(id, actor);
   changed(getEvent(id));
   return masterEvent(getEvent(id));
+}
+
+// Luogo: { label, lat, lng } oppure null per toglierlo.
+function readLocation(loc) {
+  if (!loc) return { label: null, lat: null, lng: null };
+  const lat = Number(loc.lat); const lng = Number(loc.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw err(400, 'Luogo non valido');
+  return { label: String(loc.label || '').trim().slice(0, 80) || 'Luogo dell\'evento', lat, lng };
+}
+function writeLocation(id, loc) {
+  const l = readLocation(loc);
+  q.run('UPDATE game_events SET locLabel = ?, locLat = ?, locLng = ? WHERE id = ?', l.label, l.lat, l.lng, id);
+}
+function setLocation(id, loc, actor) {
+  const ev = getEvent(id);
+  if (!ev) throw err(404, 'Evento non trovato');
+  writeLocation(ev.id, loc);
+  G.log(ev.gameId, actor, 'event_location', { name: ev.name, place: loc?.label || null });
+  changed(ev);
+  return masterEvent(getEvent(ev.id));
 }
 
 // Lancio: l'evento arriva a tutte le coppie (notifica) e alla squadra custode; da qui corre la finestra di candidatura.
@@ -297,7 +318,8 @@ function baseOut(ev) {
     id: ev.id, name: ev.name, description: ev.description, status: ev.status, slots: ev.slots,
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
     rewardKind: ev.rewardKind, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
-    openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
+    openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt,
+    location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
     startedAt: ev.startedAt, closingAt: ev.closingAt, closeDeadline: ev.closeDeadline, truceUntil: ev.truceUntil, doneAt: ev.doneAt,
     squadId: ev.squadId, squadName: squadName(ev.squadId), createdAt: ev.createdAt,
   };
@@ -344,4 +366,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { REWARDS, createEvent, launchEvent, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { REWARDS, createEvent, launchEvent, setLocation, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

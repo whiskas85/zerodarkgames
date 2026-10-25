@@ -1306,6 +1306,8 @@ function viewElectHome(st) {
       ['Gioco', 'g-game', [
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
+        // Punto di interesse: si segna dove si è (GPS) o toccando la mappa; lo vedono regia ed Eletti.
+        h('button', { class: 'tile', type: 'button', onclick: () => field.openPoi() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('mapMarker', 28)), h('span', null, 'Punto di interesse'), h('span', { class: 'tiny muted' }, 'piazzalo qui')),
         (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
         tile('#/mappa', 'Mappa del campo', mdi('map', 28)),
         tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
@@ -1475,6 +1477,9 @@ function eventCard(e) {
     h('h3', { class: 'ev-title' }, e.name),
     e.description ? h('div', { class: 'md' }, md(e.description)) : null,
     h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
+    e.location ? h('div', { class: 'ev-place' }, h('span', null, mdi('mapMarker', 18), ' ', h('strong', null, e.location.label)),
+      h('a', { class: 'btn btn-sm btn-blue', href: navUrl(e.location), target: '_blank', rel: 'noopener' }, mdi('navigation', 16), ' Naviga'),
+      elect ? null : h('a', { class: 'btn btn-sm', href: '#/mappa' }, mdi('map', 16), ' Mappa')) : null,
     e.status === 'open' && e.openUntil ? h('p', { class: 'small muted' }, e.open ? ['Candidature aperte ancora ', h('span', { class: 'mono', 'data-abs': e.openUntil }, '—')] : 'Candidature chiuse') : null,
     e.status !== 'done' ? h('p', { class: 'ev-warn small' }, `⚠ Al termine dell'evento scatterà una tregua obbligatoria di ${e.truceMin} minuti prima di potersi ingaggiare.`) : null];
   let body = null;
@@ -1914,6 +1919,10 @@ function viewMap(focus = null) {
     ...(m.guide || []).map(guideItem),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? null : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
+    // Luoghi degli eventi aperti, o in corso per chi partecipa.
+    ...(S.state?.events || []).filter((e) => e.location && ['open', 'running', 'closing'].includes(e.status) && (e.status === 'open' || e.mine))
+      .map((e) => ({ key: `ev${e.id}`, kind: 'event', lat: e.location.lat, lng: e.location.lng, title: e.name,
+        popup: `<strong>${escHtml(e.name)}</strong><br>${escHtml(e.location.label)}<br><a class="btn btn-sm btn-blue" href="${navUrl(e.location)}" target="_blank" rel="noopener">${mdiSvg('navigation', 16)} Naviga</a> <a class="btn btn-sm" href="#/eventi/${e.id}">Evento</a>` })),
     ...m.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: '✦', color: '#d1ad62', state: 'revealed', title: 'Dono del Consiglio', popup: '<strong>Dono del Consiglio</strong><br>Chi arriva primo lo prende: scansionatelo con l\'app.' })),
   ]);
   // Intorno a ogni Altare la linea di copertura: la lettura del QR vale entro questo raggio (30 m se non scelto).

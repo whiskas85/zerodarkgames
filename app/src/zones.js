@@ -137,10 +137,12 @@ function appliedZones(teamId) {
 
 // Visibilità decisa dalle zone: 'hidden' (Cono d'Ombra), 'shown' (Campo di Luce) o null; vince lo strato più alto.
 function visibilityOf(teamId) {
+  const g = q.get('SELECT g.status FROM games g JOIN teams t ON t.gameId = g.id WHERE t.id = ?', teamId);
+  if (!g || !(C.ACTIVE.includes(g.status) || g.status === 'paused')) return null;
   const top = appliedZones(teamId).filter((z) => z.kind === 'ombra' || z.kind === 'luce').at(-1);
   return top ? (top.kind === 'ombra' ? 'hidden' : 'shown') : null;
 }
-const inEmp = (teamId) => appliedZones(teamId).some((z) => z.kind === 'emp');
+const inEmp = (teamId) => { const g = q.get('SELECT g.status FROM games g JOIN teams t ON t.gameId = g.id WHERE t.id = ?', teamId); return !!g && C.ACTIVE.includes(g.status) && appliedZones(teamId).some((z) => z.kind === 'emp'); };
 
 // Ogni pochi secondi: Santuario (la ricarica corre al doppio) e Conquista (chi resta dentro abbastanza vince).
 let lastTick = Date.now();
@@ -192,7 +194,9 @@ function teamZones(t) {
   // Prima del Cerchio le coppie non vedono le zone (come gli altri luoghi del gioco).
   if (['created', 'draft', 'ready'].includes(G.getGame(t.gameId).status)) return null;
   const now = Date.now();
-  const mine = appliedZones(t.id);
+  // Effetti (e animazioni) solo a partita in corso: a fine partita restano le zone sulla mappa.
+  const g = G.getGame(t.gameId);
+  const mine = C.ACTIVE.includes(g.status) || g.status === 'paused' ? appliedZones(t.id) : [];
   return {
     list: zonesOf(t.gameId).filter((z) => !(z.kind === 'conquista' && z.winnerTeamId)).map(zoneOut),
     here: mine.map((z) => ({ id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,

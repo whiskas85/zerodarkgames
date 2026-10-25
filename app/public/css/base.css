@@ -280,3 +280,7 @@ body.no-scroll { overflow: hidden; }
 .omni-count { flex: none; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(209, 173, 98, .18); color: var(--brass, #d1ad62); font-weight: 700; }
 .omni-clear { flex: none; display: inline-flex; border: 0; background: transparent; color: var(--muted, #999); cursor: pointer; padding: 6px; border-radius: 6px; }
 .omni-clear:hover { color: inherit; background: rgba(255, 255, 255, .06); }
+
+/* Luogo di un evento */
+.pin-event { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #e5484d; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(229, 72, 77, .35), 0 2px 6px rgba(0, 0, 0, .45); }
+.pin-event .mdi { display: block; }
