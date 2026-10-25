@@ -23,8 +23,8 @@ const TABS = [
   ['emergenze', '🚨 Emergenze'],
   ['persone', 'Persone'],
   ['coppie', 'Squadre Legati'],
-  ['accettazione', 'Accettazione'],
   ['squadre', 'Squadre Eletti'],
+  ['accettazione', 'Accettazione'],
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
@@ -37,7 +37,6 @@ const TABS = [
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['regolamento', 'Regolamento'],
-  ['consiglio', 'Consiglio Zero'],
   ['impostazioni', 'Impostazioni'],
 ];
 // Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
@@ -1340,7 +1339,7 @@ function viewPeople() {
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accetta…'),
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
-        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
+        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre/consiglio' }, 'Consiglio →') : null,
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
@@ -2049,9 +2048,17 @@ async function newElectDialog() {
     } });
 }
 
+// Squadre Eletti: tre schede (#squadre, #squadre/incarichi, #squadre/consiglio).
+const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi'], ['consiglio', 'Consiglio Zero']];
+const squadPage = () => { const k = location.hash.slice(1).split('/')[1]; return SQUAD_PAGES.some(([x]) => x === k) ? k : 'squadre'; };
+const squadNav = (page) => h('nav', { class: 'settings-nav', 'aria-label': 'Squadre Eletti' }, SQUAD_PAGES.map(([k, label]) => h('a', { href: k === 'squadre' ? '#squadre' : `#squadre/${k}`, class: k === page ? 'on' : '' }, label)));
+
 function viewSquads() {
+  const page = squadPage();
+  if (page === 'consiglio') return h('div', { class: 'stack' }, squadNav(page), viewCouncil());
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento delle squadre…'); }
+  if (page === 'incarichi') return h('div', { class: 'stack' }, squadNav(page), viewTaskBoard(d));
   const ms = R.ms;
   const members = ms.elect.members;
   const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
@@ -2066,6 +2073,7 @@ function viewSquads() {
   const openTasks = d.openTasks || [];
 
   return h('div', { class: 'stack' },
+    squadNav(page),
     candidates.length ? h('div', { class: 'panel pending-panel' },
       h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${candidates.length})`)),
       h('p', { class: 'muted tiny' }, 'Arrivano dal modulo di iscrizione. Accettando, la persona entra tra gli Eletti (nella squadra scelta) e il suo telefono passa subito all\'app degli Eletti con il suo accesso personale.'),
@@ -2083,10 +2091,7 @@ function viewSquads() {
               h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare la candidatura?', `${p.name}: la candidatura verrà cancellata.`, 'POST', `/api/m/players/${p.id}/review`, { decision: 'reject' }, 'Candidatura rifiutata', true) }, 'Rifiuta')));
         }))))) : null,
 
-    openTasks.length ? h('div', { class: 'panel pending-panel' },
-      h('div', { class: 'panel-head' }, h('h2', null, `Incarichi da assegnare (${openTasks.length})`)),
-      h('p', { class: 'muted tiny' }, 'Generati dalle Skill e dai Doni delle coppie (Maestro della caccia, Alleanze sporche) o creati senza squadra. La squadra scelta vede il bersaglio sulla sua mappa finché l\'incarico è aperto; la coppia bersaglio lo scopre 1 minuto dopo l\'assegnazione.'),
-      d.squads.length ? h('ul', { class: 'squad-tasks' }, openTasks.map((t) => taskLine(t, { assign: true }))) : h('p', { class: 'empty' }, 'Crea prima una squadra di Eletti.')) : null,
+    openTasks.length ? h('a', { class: 'people-info people-link', href: '#squadre/incarichi' }, `${openTasks.length} ${openTasks.length === 1 ? 'incarico' : 'incarichi'} da assegnare: trascinali su una squadra in Incarichi →`) : null,
 
     sectionActions(`Squadre degli Eletti (${d.squads.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newSquadDialog }, '+ Nuova squadra')],
       h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare o spostare Altari e Doni (dalle sezioni Altari e Doni) o a svolgere incarichi: liberi, raggiungere un punto o raggiungere una coppia (che la squadra vede in mappa finché l\'incarico è aperto). I membri ricevono una notifica e trovano tutto nella loro app, nella voce Incarichi.'),
@@ -2137,19 +2142,80 @@ function viewSquads() {
                   h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                   ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)))),
             h('td', { class: 'row-actions' }, resetBtn(m), ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm', title: 'Sposta in una coppia, da solo o in scambio', onclick: () => moveToCoupleDialog(m) }, '↔ Settore…') : null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
-        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')),
+        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')));
+}
 
-    section('Chi piazza cosa',
-      h('p', { class: 'muted tiny' }, 'Assegna Altari e Doni alle squadre, con un punto preciso sulla mappa o lasciandoli liberi. Per i punti già piazzati puoi chiedere uno spostamento.'),
-      h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['Punto', 'Stato e incarico', ''].map((x) => h('th', null, x)))),
-        h('tbody', null,
-          (d.landmarks || []).map((l) => h('tr', null, h('td', null, h('strong', null, l.label)), h('td', null, placementChips(l, l.lat != null)), h('td', { class: 'row-actions' }, ...placementButtons('landmark', l, l.lat != null)))),
-          d.points.map((p) => h('tr', null, h('td', null, h('strong', null, p.label)), h('td', null, placementChips(p, p.lat != null)), h('td', { class: 'row-actions' }, ...placementButtons('point', p, p.lat != null)))),
-          d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((g) => h('tr', null,
-            h('td', null, h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` ${g.icon} ${g.name}`)),
-            h('td', null, placementChips(g, g.status !== 'draft')),
-            h('td', { class: 'row-actions' }, ...placementButtons('gift', g, g.status !== 'draft')))))))));
+// Incarichi: a sinistra le attività da svolgere (piazzamenti, spostamenti, incarichi); a destra le squadre.
+// Si trascina un'attività su una squadra per affidargliela (dal telefono: il menu «→ squadra» sulla scheda).
+let dragTask = null;
+function viewTaskBoard(d) {
+  const placeTodo = (kind, x) => (kind === 'gift' ? x.status === 'draft' || x.moveRequestedAt : x.lat == null || x.moveRequestedAt);
+  const items = [
+    ...(d.landmarks || []).map((x) => ['landmark', x]), ...d.points.map((x) => ['point', x]),
+    ...d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((x) => ['gift', x]),
+  ].filter(([k, x]) => placeTodo(k, x)).map(([kind, x]) => ({
+    key: `${kind}${x.id}`, kind, x, squadId: x.squadId || null,
+    icon: kind === 'gift' ? x.icon : kind === 'landmark' ? (x.kind === 'soglia' ? '⛩' : '◯') : x.roman,
+    title: kind === 'gift' ? `${x.label} · ${x.name}` : x.label,
+    what: x.moveRequestedAt ? 'Da spostare' : 'Da piazzare', point: x.targetLat != null,
+  }));
+  const allTasks = [...(d.openTasks || []), ...d.squads.flatMap((sq) => sq.tasks.map((t) => ({ ...t, squadId: sq.id })))]
+    .filter((t) => !t.doneAt && !t.cancelledAt)
+    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', hunt: '🎯', meet: '🤝' }[t.kind] || '☰', title: t.text, what: t.source === 'skill' ? 'Da una Skill' : t.source === 'gift' ? 'Da un Dono' : 'Incarico' }));
+  const all = [...items, ...allTasks];
+  const assign = async (it, squadId) => {
+    if ((it.squadId || null) === (squadId || null)) return;
+    if (it.kind === 'task' && !squadId) { toast('Un incarico già affidato resta alla squadra: annullalo dalla sua scheda', 'error', 6000); return; }
+    try {
+      if (it.kind === 'task') await api('POST', `/api/m/tasks/${it.x.id}/assign`, { squadId });
+      else await api('POST', '/api/m/assign', { kind: it.kind, id: it.x.id, squadId: squadId || null, move: !!it.x.moveRequestedAt });
+      toast(squadId ? `Affidato alla squadra ${d.squads.find((q) => q.id === squadId)?.name}` : 'Tolto dalla squadra', 'ok');
+      await Promise.all([load(), loadField(false)]);
+    } catch (e) { toast(e.message, 'error', 7000); }
+  };
+  const card = (it) => h('div', { class: `task-card kind-${it.kind}`, draggable: 'true',
+    ondragstart: (e) => { dragTask = it; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.key); e.currentTarget.classList.add('dragging'); },
+    ondragend: (e) => { e.currentTarget.classList.remove('dragging'); dragTask = null; } },
+    h('span', { class: 'task-ico', 'aria-hidden': 'true' }, it.icon || '•'),
+    h('div', { class: 'grow' }, h('strong', null, it.title), h('div', { class: 'tiny muted' }, it.what, it.point ? ' · punto indicato' : '')),
+    h('div', { class: 'task-actions' },
+      it.kind === 'task' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
+      h('select', { class: 'input input-sm', 'aria-label': 'Affida a una squadra', onchange: (e) => assign(it, Number(e.target.value) || null) },
+        h('option', { value: '' }, it.squadId ? '— togli —' : '→ squadra'), d.squads.map((q) => h('option', { value: q.id, selected: q.id === it.squadId }, q.name)))));
+  const zone = (squadId, head, list, extra = {}) => h('div', { class: `task-zone ${extra.cls || ''}`, style: extra.color ? { '--c': extra.color } : null,
+    ondragover: (e) => { if (dragTask && (dragTask.squadId || null) !== squadId && !(dragTask.kind === 'task' && !squadId)) { e.preventDefault(); e.currentTarget.classList.add('drop'); } },
+    ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drop'); },
+    ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('drop'); const it = dragTask; dragTask = null; if (it) assign(it, squadId); } },
+  head, list.length ? h('div', { class: 'task-list' }, list.map(card)) : h('p', { class: 'tiny muted task-empty' }, extra.empty || 'Trascina qui un\'attività'));
+  const free = all.filter((it) => !it.squadId);
+  return h('div', { class: 'stack' },
+    sectionActions('Incarichi', [h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: newTaskDialog }, '＋ Nuovo incarico')],
+      h('p', { class: 'muted tiny' }, 'Le attività da svolgere: prima del via soprattutto piazzare Altari, Soglia, Cerchio e Doni; durante il gioco spostare doni, dare la caccia a una coppia e gli incarichi che crei tu. Trascina un\'attività su una squadra per affidargliela: la squadra riceve una notifica e la trova nella sua app. «Punto…» indica anche dove piazzarla.')),
+    d.squads.length ? null : h('p', { class: 'people-info' }, 'Crea prima una squadra nella scheda «Squadre ed Eletti».'),
+    h('div', { class: 'task-board' },
+      zone(null, h('div', { class: 'task-head' }, h('strong', null, 'Da affidare'), h('span', { class: 'chip chip-warn' }, String(free.length))), free, { cls: 'free', empty: 'Tutto affidato.' }),
+      h('div', { class: 'task-squads' }, d.squads.map((q) => {
+        const list = all.filter((it) => it.squadId === q.id);
+        return zone(q.id, h('div', { class: 'task-head' }, h('strong', null, `Squadra ${q.name}`), h('span', { class: 'tiny muted' }, `${q.members.length} Eletti`), h('span', { class: 'chip' }, String(list.length))), list, { color: q.color });
+      }))));
+}
+
+// Nuovo incarico libero (senza squadra): poi si trascina sulla squadra che deve svolgerlo.
+async function newTaskDialog() {
+  const text = h('input', { class: 'input', placeholder: 'es. Presidiate il Cuore dalle 10', maxlength: 300 });
+  const target = targetSelect('new-task-target');
+  await modal({
+    title: 'Nuovo incarico', okLabel: 'Crea',
+    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('label', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
+      h('p', { class: 'tiny muted' }, 'Compare tra quelli «Da affidare»: trascinalo sulla squadra che deve svolgerlo.')),
+    onOk: async () => {
+      if (!text.value.trim() && !target.value) throw new Error('Scrivi l\'incarico');
+      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: null, text: text.value, target: target.value || null });
+      toast('Incarico creato', 'ok');
+      await Promise.all([load(), loadField(false)]);
+      return true;
+    },
+  });
 }
 
 // ---------------------------------------------------------------- TIMELINE DEL TORNEO
@@ -3476,7 +3542,7 @@ function accountsSection() {
 // ---------------------------------------------------------------- CONSIGLIO ZERO
 // Chi entra con Zero Dark Ops chiede l'accesso; qui il master lo accetta e sceglie le azioni che può fare.
 let council = null;
-const loadCouncil = () => api('GET', '/api/m/council').then((c) => { council = c; if (tab() === 'consiglio') render(); }).catch((e) => toast(e.message, 'error'));
+const loadCouncil = () => api('GET', '/api/m/council').then((c) => { council = c; if (tab() === 'consiglio' || (tab() === 'squadre' && squadPage() === 'consiglio')) render(); }).catch((e) => toast(e.message, 'error'));
 const opsLine = (ops) => (ops || []).map((o) => [o.providerName, o.opsName, o.squadra].filter(Boolean).join(' · ')).join(' — ');
 async function councilCall(method, url, body, okMsg) {
   try { await api(method, url, body); if (okMsg) toast(okMsg, 'ok'); } catch (e) { toast(e.message, 'error', 7000); }
