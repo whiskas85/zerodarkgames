@@ -3534,6 +3534,34 @@ async function eventOutcomeDialog(ev) {
   return ok ? out : null;
 }
 
+const fmtWhen = (t) => new Date(t).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const toLocalInput = (t) => { if (!t) return ''; const d = new Date(t); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+
+async function eventScheduleDialog(ev) {
+  const start = h('input', { class: 'input', type: 'datetime-local', value: toLocalInput(ev.startAt) });
+  const dur = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza durata', value: ev.durationMin || '' });
+  const ok = await modal({ title: `Orario · ${ev.name}`, okLabel: 'Salva',
+    body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Inizio (vuoto = lo avvii tu)'), start),
+      h('label', { class: 'field' }, h('span', null, 'Durata in minuti (facoltativa)'), dur),
+      h('p', { class: 'tiny muted' }, 'All\'orario l\'evento parte da solo se almeno una coppia ha accettato. A fine durata a te e agli Eletti custodi arriva «Tempo scaduto»: chiudi l\'evento indicando chi ha vinto.')),
+    onOk: async () => { await api('PATCH', `/api/m/events/${ev.id}/schedule`, { startAt: start.value ? new Date(start.value).getTime() : null, durationMin: dur.value || null }); return true; } });
+  if (ok) { toast('Orario salvato', 'ok'); load(); }
+}
+
+// Anteprima a scomparsa del luogo: una piccola mappa che si apre solo quando serve (e resta aperta tra un aggiornamento e l'altro).
+const previewMaps = new Map();
+const previewOpen = new Set();
+function locationPreview(key, loc) {
+  let v = previewMaps.get(key);
+  if (!v) { v = createMapView({ className: 'loc-preview-map' }); previewMaps.set(key, v); }
+  const show = () => { v.setItems([{ key: 'loc', kind: 'event', lat: loc.lat, lng: loc.lng, title: loc.label }]); v.ready.then(() => { v.refresh(); v.map?.setView([loc.lat, loc.lng], 17); }); };
+  const det = h('details', { class: 'loc-preview', open: previewOpen.has(key) || null, ontoggle: (e) => { if (e.target.open) { previewOpen.add(key); show(); } else previewOpen.delete(key); } },
+    h('summary', { class: 'tiny' }, 'Mostra la posizione'), v.el);
+  if (previewOpen.has(key)) queueMicrotask(show);
+  return det;
+}
+
 let evLocation = null;
 function viewEvents() {
   const ms = R.ms;
@@ -3550,14 +3578,17 @@ function viewEvents() {
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', 'data-keep': 'ev-window' });
   const confirmMin = num('ev-confirm', 3, 1, 60);
   const truceMin = num('ev-truce', 5, 0, 60);
+  const startAt = h('input', { class: 'input', type: 'datetime-local', 'data-keep': 'ev-start' });
+  const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata', 'data-keep': 'ev-duration' });
   // Due strade: salvarlo e lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
   const save = async (launch) => {
     if (!name.value.trim()) return toast('Dai un nome all\'evento', 'error');
     if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) return;
     const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
-      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location: evLocation, launch }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
+      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location: evLocation, launch,
+      startAt: startAt.value ? new Date(startAt.value).getTime() : null, durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
     // La pagina si è già ridisegnata: si svuotano i campi nuovi.
-    if (r) { for (const k of ['ev-name', 'ev-desc']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
+    if (r) { for (const k of ['ev-name', 'ev-desc', 'ev-start', 'ev-duration']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
   };
   const form = h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); save(false); } },
   h('label', { class: 'field' }, h('span', null, 'Nome'), name),
@@ -3570,6 +3601,8 @@ function viewEvents() {
     h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
     h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
     h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin),
+    h('label', { class: 'field' }, h('span', null, 'Inizio (parte da solo; vuoto = lo avvii tu)'), startAt),
+    h('label', { class: 'field' }, h('span', null, 'Durata (min, facoltativa)'), durationMin),
     h('div', { class: 'field' }, h('span', null, 'Luogo'),
       h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(evLocation); if (r !== undefined) { evLocation = r; render(); } } },
         evLocation ? `📍 ${evLocation.label}` : '📍 Scegli il luogo…'))),
@@ -3585,8 +3618,14 @@ function viewEvents() {
         h('div', { class: 'notice-head' }, h('strong', null, ev.name), h('span', { class: `chip ${cls}` }, label), h('span', { class: 'chip' }, `${ev.joined}/${ev.slots} coppie`),
           ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
         ev.description ? h('p', { class: 'small' }, ev.description) : null,
+        h('div', { class: 'small ev-loc' }, ev.startAt ? `🕒 Inizio ${fmtWhen(ev.startAt)}` : h('span', { class: 'muted' }, 'Avvio a mano'),
+          ev.durationMin ? ` · durata ${ev.durationMin}′` : '',
+          ev.status === 'running' && ev.endsAt ? [' · finisce tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.endsAt}` }, '—')] : null,
+          ev.timeUp && ev.status === 'running' ? h('span', { class: 'chip chip-blood' }, 'tempo scaduto: chiudi') : null,
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => eventScheduleDialog(ev) }, 'Orario…')),
         h('div', { class: 'small ev-loc' }, ev.location ? `📍 ${ev.location.label}` : h('span', { class: 'muted' }, 'Nessun luogo indicato'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const r = await eventLocationDialog(ev.location); if (r !== undefined) call('PATCH', `/api/m/events/${ev.id}/location`, { location: r }, r ? 'Luogo aggiornato' : 'Luogo tolto'); } }, ev.location ? 'Cambia luogo' : 'Indica il luogo')),
+        ev.location ? locationPreview(`ev${ev.id}`, ev.location) : null,
         h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
           ev.status === 'draft' ? ` · candidature ${ev.windowMin ? `per ${ev.windowMin}′ dal lancio` : 'fino all\'avvio'} · le coppie non lo vedono ancora` : null,
           ev.status === 'open' && ev.openUntil ? [' · candidature ', ev.open ? ['chiudono tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.openUntil}` }, '—')] : 'chiuse'] : null,

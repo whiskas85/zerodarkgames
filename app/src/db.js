@@ -646,4 +646,9 @@ addColumn('map_zones', 'beaconEndsAt', 'INTEGER');
 addColumn('map_zones', 'beaconBy', 'TEXT');
 addColumn('map_zones', 'beaconPlayerId', 'INTEGER');
 
+// Orario dell'evento: inizio (parte da solo se ci sono coppie iscritte) e durata facoltativa (avviso a fine tempo).
+addColumn('game_events', 'startAt', 'INTEGER');
+addColumn('game_events', 'durationMin', 'INTEGER');
+addColumn('game_events', 'endNotifiedAt', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

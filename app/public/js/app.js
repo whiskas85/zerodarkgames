@@ -1557,6 +1557,34 @@ async function eventCall(e, path, body, okMsg) {
   } catch (err) { toast(err.offline ? 'Serve la rete: riprovate appena c\'è segnale' : err.message, 'error', 7000); return null; }
 }
 
+// Orario: inizio (con il conto alla rovescia) e durata; durante l'evento, quanto manca alla fine.
+const fmtWhen = (t) => new Date(t).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function eventWhen(e) {
+  if (!e.startAt && !e.durationMin) return null;
+  const now = clock.serverNow();
+  return h('div', { class: 'ev-when small' }, mdi('timerOutline', 18), ' ',
+    e.status === 'running' && e.endsAt
+      ? (e.timeUp || e.endsAt <= now ? h('strong', null, 'Tempo scaduto: attendete la chiusura') : ['Finisce tra ', h('strong', { class: 'mono', 'data-abs': e.endsAt }, '—')])
+      : e.startAt && ['draft', 'open'].includes(e.status)
+        ? [`Inizio ${fmtWhen(e.startAt)}`, e.startAt > now ? [' · tra ', h('strong', { class: 'mono', 'data-abs': e.startAt }, '—')] : null]
+        : e.startAt ? `Iniziato ${fmtWhen(e.startedAt || e.startAt)}` : null,
+    e.durationMin ? ` · durata ${e.durationMin}′` : '');
+}
+
+// Anteprima a scomparsa del luogo (mappa piccola, creata solo la prima volta che si apre).
+const evPreviewMaps = new Map();
+const evPreviewOpen = new Set();
+function eventLocPreview(e) {
+  const key = e.id;
+  const loc = e.location;
+  let v = evPreviewMaps.get(key);
+  if (!v) { v = createMapView({ className: 'loc-preview-map' }); evPreviewMaps.set(key, v); }
+  const show = () => { v.setItems([{ key: 'loc', kind: 'event', lat: loc.lat, lng: loc.lng, title: loc.label }]); v.ready.then(() => { v.refresh(); v.map?.setView([loc.lat, loc.lng], 17); }); };
+  if (evPreviewOpen.has(key)) queueMicrotask(show);
+  return h('details', { class: 'loc-preview', open: evPreviewOpen.has(key) || null, ontoggle: (ev) => { if (ev.target.open) { evPreviewOpen.add(key); show(); } else evPreviewOpen.delete(key); } },
+    h('summary', null, 'Mostra la posizione'), v.el);
+}
+
 function eventCard(e) {
   const st = S.state;
   const elect = isElect();
@@ -1567,9 +1595,11 @@ function eventCard(e) {
     h('h3', { class: 'ev-title' }, e.name),
     e.description ? h('div', { class: 'md' }, md(e.description)) : null,
     h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
+    eventWhen(e),
     e.location ? h('div', { class: 'ev-place' }, h('span', null, mdi('mapMarker', 18), ' ', h('strong', null, e.location.label)),
       h('a', { class: 'btn btn-sm btn-blue', href: navUrl(e.location), target: '_blank', rel: 'noopener' }, mdi('navigation', 16), ' Naviga'),
       elect ? null : h('a', { class: 'btn btn-sm', href: '#/mappa' }, mdi('map', 16), ' Mappa')) : null,
+    e.location ? eventLocPreview(e) : null,
     e.status === 'open' && e.openUntil ? h('p', { class: 'small muted' }, e.open ? ['Candidature aperte ancora ', h('span', { class: 'mono', 'data-abs': e.openUntil }, '—')] : 'Candidature chiuse') : null,
     e.status !== 'done' ? h('p', { class: 'ev-warn small' }, `⚠ Al termine dell'evento scatterà una tregua obbligatoria di ${e.truceMin} minuti prima di potersi ingaggiare.`) : null];
   let body = null;

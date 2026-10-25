@@ -60,11 +60,47 @@ function createEvent(gameId, data, actor) {
   g.id, name, String(data.description || '').trim().slice(0, 2000) || null, squadId, slots, rewardKind, rewardGiftType,
   windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), now, actor || null).lastInsertRowid);
   if (data.location) writeLocation(id, data.location);
+  writeSchedule(id, data);
   G.log(g.id, actor, 'event_created', { name, slots, launch: !!data.launch });
   if (data.launch) return launchEvent(id, actor);
   changed(getEvent(id));
   return masterEvent(getEvent(id));
 }
+
+// Orario: startAt (istante in ms o data leggibile; vuoto = parte a mano) e durationMin (vuoto = senza durata).
+function readSchedule(data, ev = {}) {
+  let startAt = ev.startAt ?? null;
+  if (data.startAt !== undefined) {
+    if (data.startAt === null || data.startAt === '') startAt = null;
+    else {
+      const t = typeof data.startAt === 'number' ? data.startAt : Date.parse(data.startAt);
+      if (!Number.isFinite(t)) throw err(400, 'Orario di inizio non valido');
+      startAt = t;
+    }
+  }
+  let durationMin = ev.durationMin ?? null;
+  if (data.durationMin !== undefined) {
+    const n = Math.round(Number(data.durationMin));
+    durationMin = data.durationMin === null || data.durationMin === '' || !n ? null : Math.max(1, Math.min(600, n));
+  }
+  return { startAt, durationMin };
+}
+function writeSchedule(id, data) {
+  const ev = getEvent(id);
+  const sc = readSchedule(data, ev);
+  q.run('UPDATE game_events SET startAt = ?, durationMin = ?, endNotifiedAt = CASE WHEN ? IS durationMin THEN endNotifiedAt ELSE NULL END WHERE id = ?', sc.startAt, sc.durationMin, sc.durationMin, id);
+}
+function setSchedule(id, data, actor) {
+  const ev = getEvent(id);
+  if (!ev) throw err(404, 'Evento non trovato');
+  writeSchedule(ev.id, data || {});
+  const nx = getEvent(ev.id);
+  G.log(ev.gameId, actor, 'event_schedule', { name: ev.name, startAt: nx.startAt, durationMin: nx.durationMin });
+  changed(ev);
+  return masterEvent(nx);
+}
+// Fine prevista: dall'avvio vero (o dall'orario d'inizio) più la durata.
+const endsAtOf = (ev) => (ev.durationMin ? (ev.startedAt || ev.startAt || 0) + ev.durationMin * 60000 || null : null);
 
 // Luogo: { label, lat, lng } oppure null per toglierlo.
 function readLocation(loc) {
@@ -291,6 +327,22 @@ function startTruce(ev) {
 
 // Ogni pochi secondi: chiusure scadute (conferma d'ufficio, premio a tutti) e tregue finite.
 function tickAll(now = Date.now()) {
+  // Orario d'inizio raggiunto: l'evento parte da solo se qualcuno ha accettato la sfida.
+  for (const ev of q.all("SELECT * FROM game_events WHERE status = 'open' AND startAt IS NOT NULL AND startAt <= ?", now)) {
+    if (!q.get("SELECT 1 FROM event_entries WHERE eventId = ? AND status = 'accepted'", ev.id)) continue;
+    try { startEvent(ev.id, { master: true, actor: 'orario' }); } catch (e) { /* già partito */ }
+  }
+  // Durata finita: regia ed Eletti custodi chiudono l'evento indicando chi ha vinto.
+  for (const ev of q.all("SELECT * FROM game_events WHERE status = 'running' AND durationMin IS NOT NULL AND endNotifiedAt IS NULL")) {
+    const end = endsAtOf(ev);
+    if (!end || end > now) continue;
+    q.run('UPDATE game_events SET endNotifiedAt = ? WHERE id = ?', now, ev.id);
+    const msg = { title: `Tempo scaduto · ${ev.name}`, body: 'Chiudete l\'evento indicando chi ha vinto e chi ha perso.', tag: `evento-fine-${ev.id}` };
+    rt.pushMasters({ ...msg, url: '/regia#eventi' });
+    pushSquad(ev, msg);
+    G.log(ev.gameId, 'orario', 'event_time_up', { name: ev.name });
+    changed(ev);
+  }
   for (const ev of q.all("SELECT * FROM game_events WHERE status = 'closing' AND closeDeadline <= ?", now)) {
     tx(() => {
       for (const e of q.all("SELECT * FROM event_entries WHERE eventId = ? AND status = 'accepted' AND confirmedAt IS NULL", ev.id)) confirmEntry(ev, e, true);
@@ -327,7 +379,8 @@ function baseOut(ev) {
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
     rewardKind: ev.rewardKind, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
     openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt,
-    location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
+    location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null,
+    startAt: ev.startAt, durationMin: ev.durationMin, endsAt: endsAtOf(ev), timeUp: !!ev.endNotifiedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
     startedAt: ev.startedAt, closingAt: ev.closingAt, closeDeadline: ev.closeDeadline, truceUntil: ev.truceUntil, doneAt: ev.doneAt,
     squadId: ev.squadId, squadName: squadName(ev.squadId), createdAt: ev.createdAt,
   };
@@ -374,4 +427,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { REWARDS, createEvent, launchEvent, setLocation, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

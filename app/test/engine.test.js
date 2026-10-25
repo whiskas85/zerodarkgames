@@ -2097,6 +2097,17 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   K.reportEngagement(A, D.id, 'draw');
   EV.tickAll(Date.now() + 9 * 60000);
   assert.equal(EV.teamEvents(B).find((x) => x.id === ev.id).status, 'done');
+  // Orario: parte da solo all'ora d'inizio (se qualcuno ha accettato); a fine durata avviso a regia ed Eletti.
+  const ev3 = EV.createEvent(g.id, { name: 'A orario', slots: 2, launch: true, startAt: Date.now() + 60000, durationMin: 10 }, 'test');
+  assert.equal(ev3.durationMin, 10);
+  EV.joinEvent(E, null, ev3.id);
+  EV.tickAll(Date.now() + 61000);
+  const run3 = EV.teamEvents(E).find((x) => x.id === ev3.id);
+  assert.equal(run3.status, 'running');
+  EV.tickAll(Date.now() + 11 * 60000);
+  assert.equal(EV.teamEvents(E).find((x) => x.id === ev3.id).timeUp, true);
+  assert.equal(EV.setSchedule(ev3.id, { durationMin: '' }, 'test').durationMin, null);
+  assert.throws(() => EV.setSchedule(ev3.id, { startAt: 'domani forse' }, 'test'), /non valido/);
   // Premio Dono: finisce tra i doni della coppia.
   const ev2 = EV.createEvent(g.id, { name: 'Corsa', slots: 1, rewardKind: 'gift', rewardGiftType: 'archivio', truceMin: 0, launch: true }, 'test');
   assert.equal(ev2.status, 'open');

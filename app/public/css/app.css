@@ -1044,3 +1044,6 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 @keyframes bt-glitch { 0% { transform: translate(-3px, 1px); filter: hue-rotate(0); } 100% { transform: translate(3px, -1px); filter: hue-rotate(40deg); } }
 @keyframes bt-flash { 0%, 100% { background: #020803; } 50% { background: #0c3a18; } }
 .beacon-term [hidden] { display: none !important; }
+.ev-when { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.loc-preview summary { cursor: pointer; font-size: 14px; color: var(--brass); }
+.loc-preview-map { height: 190px; border-radius: 8px; margin-top: 8px; }
