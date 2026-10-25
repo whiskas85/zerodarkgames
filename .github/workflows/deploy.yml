@@ -189,7 +189,9 @@ jobs:
               echo "::notice::Dati di $DOMAIN azzerati; copia in ~/$DIR/backup/zdg-data-$TS.tgz"
             fi
           fi
-          $SSH "cd '$DIR' && $COMPOSE $FILES up -d --remove-orphans && $DOCKER image prune -f"
+          $SSH "cd '$DIR' && $COMPOSE $FILES up -d --remove-orphans"
+          # Pulizia delle immagini vecchie: se ne sta già girando un'altra (deploy di test in parallelo) non è un errore.
+          $SSH "$DOCKER image prune -f" || echo "::warning::Pulizia immagini rimandata (un'altra era in corso)"
           $SSH "$DOCKER logout ghcr.io >/dev/null"
 
       - name: Controllo di salute
