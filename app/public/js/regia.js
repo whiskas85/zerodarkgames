@@ -3535,18 +3535,37 @@ async function eventOutcomeDialog(ev) {
   return ok ? out : null;
 }
 
+// Data e ora in due campi separati: la data parte già dal giorno del torneo (si scrive solo l'ora).
+const isoDay = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const tournamentDay = () => (R.ms?.game?.scheduledStart || '').slice(0, 10) || isoDay();
+function dateTimeInputs({ keep = null, value = null, defDate = tournamentDay(), name = null, defTime = '' } = {}) {
+  const local = typeof value === 'number' ? toLocalInput(value) : String(value || '');
+  const date = h('input', { class: 'input', type: 'date', value: local.slice(0, 10) || defDate, 'aria-label': 'Data', ...(keep ? { 'data-keep': `${keep}-d` } : {}) });
+  const time = h('input', { class: 'input', type: 'time', value: local.slice(11, 16) || defTime, 'aria-label': 'Ora', ...(keep ? { 'data-keep': `${keep}-t` } : {}) });
+  const hidden = name ? h('input', { type: 'hidden', name }) : null;
+  // Senza ora non c'è un orario (per la partita basta la data: vale da mezzanotte).
+  const str = () => (date.value && time.value ? `${date.value}T${time.value}` : date.value && name ? `${date.value}T00:00` : '');
+  const sync = () => { if (hidden) hidden.value = str(); };
+  date.addEventListener('input', sync);
+  time.addEventListener('input', sync);
+  sync();
+  const el = h('div', { class: 'dt-pair' }, date, time, hidden);
+  el._sync = sync;
+  return { el, date, time, get: () => { const v = str(); return v && time.value ? new Date(v).getTime() : null; } };
+}
+
 const fmtWhen = (t) => new Date(t).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const toLocalInput = (t) => { if (!t) return ''; const d = new Date(t); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 
 async function eventScheduleDialog(ev) {
-  const start = h('input', { class: 'input', type: 'datetime-local', value: toLocalInput(ev.startAt) });
+  const start = dateTimeInputs({ value: ev.startAt });
   const dur = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza durata', value: ev.durationMin || '' });
   const ok = await modal({ title: `Orario · ${ev.name}`, okLabel: 'Salva',
     body: h('div', { class: 'stack-sm' },
-      h('label', { class: 'field' }, h('span', null, 'Inizio (vuoto = lo avvii tu)'), start),
+      h('div', { class: 'field' }, h('span', null, 'Inizio: data e ora (senza ora lo avvii tu)'), start.el),
       h('label', { class: 'field' }, h('span', null, 'Durata in minuti (facoltativa)'), dur),
       h('p', { class: 'tiny muted' }, 'All\'orario l\'evento parte da solo se almeno una coppia ha accettato. A fine durata a te e agli Eletti custodi arriva «Tempo scaduto»: chiudi l\'evento indicando chi ha vinto.')),
-    onOk: async () => { await api('PATCH', `/api/m/events/${ev.id}/schedule`, { startAt: start.value ? new Date(start.value).getTime() : null, durationMin: dur.value || null }); return true; } });
+    onOk: async () => { await api('PATCH', `/api/m/events/${ev.id}/schedule`, { startAt: start.get(), durationMin: dur.value || null }); return true; } });
   if (ok) { toast('Orario salvato', 'ok'); load(); }
 }
 
@@ -3579,7 +3598,7 @@ function viewEvents() {
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', 'data-keep': 'ev-window' });
   const confirmMin = num('ev-confirm', 3, 1, 60);
   const truceMin = num('ev-truce', 5, 0, 60);
-  const startAt = h('input', { class: 'input', type: 'datetime-local', 'data-keep': 'ev-start' });
+  const startAt = dateTimeInputs({ keep: 'ev-start' });
   const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata', 'data-keep': 'ev-duration' });
   // Due strade: salvarlo e lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
   const save = async (launch) => {
@@ -3587,9 +3606,9 @@ function viewEvents() {
     if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) return;
     const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
       windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location: evLocation, launch,
-      startAt: startAt.value ? new Date(startAt.value).getTime() : null, durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
+      startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
     // La pagina si è già ridisegnata: si svuotano i campi nuovi.
-    if (r) { for (const k of ['ev-name', 'ev-desc', 'ev-start', 'ev-duration']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
+    if (r) { for (const k of ['ev-name', 'ev-desc', 'ev-start-t', 'ev-duration']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
   };
   const form = h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); save(false); } },
   h('label', { class: 'field' }, h('span', null, 'Nome'), name),
@@ -3602,7 +3621,7 @@ function viewEvents() {
     h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
     h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
     h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin),
-    h('label', { class: 'field' }, h('span', null, 'Inizio (parte da solo; vuoto = lo avvii tu)'), startAt),
+    h('div', { class: 'field' }, h('span', null, 'Inizio: data e ora (parte da solo; senza ora lo avvii tu)'), startAt.el),
     h('label', { class: 'field' }, h('span', null, 'Durata (min, facoltativa)'), durationMin),
     h('div', { class: 'field' }, h('span', null, 'Luogo'),
       h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(evLocation); if (r !== undefined) { evLocation = r; render(); } } },
@@ -3826,6 +3845,7 @@ function gameForm(g, isNew, only = null) {
     h('input', { class: 'input', name: key, type, value: g?.[key] ?? extra.def ?? '', disabled: locked && extra.lock, 'data-keep': `gf-${key}`, ...extra.attrs }));
   return h('form', { class: 'form-grid wide', onsubmit: async (e) => {
     e.preventDefault();
+    for (const x of e.target.querySelectorAll('.dt-pair')) x._sync?.();
     const data = Object.fromEntries(new FormData(e.target).entries());
     if (isNew) {
       const r = await call('POST', '/api/m/games', data, 'Partita creata');
@@ -3838,7 +3858,7 @@ function gameForm(g, isNew, only = null) {
   ...(() => {
     const all = {
       name: () => f('name', 'Nome della partita', 'text', { attrs: { required: true, placeholder: 'Zero Dark Games – ottobre 2026' } }),
-      scheduledStart: () => f('scheduledStart', 'Data e ora previste', 'datetime-local'),
+      scheduledStart: () => h('div', { class: 'field' }, h('span', null, 'Data e ora previste'), dateTimeInputs({ keep: 'gf-scheduledStart', value: g?.scheduledStart || '', defDate: '', name: 'scheduledStart' }).el),
       emergencyRadioChannel: () => f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } }),
       bookUrl: () => f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
       durationMin: () => f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
