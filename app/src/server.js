@@ -605,7 +605,13 @@ m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? 
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
-m.post('/games/:id/players', wrap((req) => ({ id: G.addPlayer(gameId(req), req.body || {}, { actor: actor(req) }) })));
+// Giocatore aggiunto a mano dalla regia (già accettato), con il ruolo: Legato, Temerario solitario o Eletto.
+m.post('/games/:id/players', wrap((req) => {
+  const role = ['pair', 'single', 'elect'].includes(req.body?.role) ? req.body.role : null;
+  const id = G.addPlayer(gameId(req), req.body || {}, { actor: actor(req), requestedRole: role });
+  if (role === 'elect') G.addToElect(gameId(req), [id], actor(req));
+  return { id };
+}));
 // Accettazione a inizio evento e test repliche.
 // on assente con la sola checklist: si salvano le spunte senza cambiare l'accettazione.
 const ckOn = (b) => (b?.on === undefined ? (b?.checks ? null : true) : b.on !== false);

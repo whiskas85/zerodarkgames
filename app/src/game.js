@@ -340,7 +340,7 @@ function createTeam(gameId, data, actor) {
     if (pls.some((p) => p.status !== 'accepted')) throw err(409, 'Prima accetta l\'iscrizione dei giocatori');
     if (pls.some((p) => p.teamId)) throw err(409, 'Uno dei giocatori è già in coppia o tra gli Eletti');
     const sector = data.sectorId ? sectorById(Number(data.sectorId)) : firstFreeSector(g.id);
-    if (!sector) throw err(409, 'Non ci sono più Settori liberi: aggiungine uno in "Settori e Altari"');
+    if (!sector) throw err(409, 'Non ci sono più Settori liberi: aggiungine uno in Impostazioni → Settori e Altari');
     if (q.get('SELECT 1 FROM teams WHERE gameId = ? AND sectorId = ?', g.id, sector.id)) throw err(409, `Il Settore ${sector.name} è già assegnato`);
     const name = data.displayName?.trim() || pls[0].requestedTeamName || null;
     const r = q.run(`INSERT INTO teams (gameId, sectorId, displayName, loginToken, accessCode, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,

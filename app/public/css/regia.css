@@ -941,3 +941,22 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .person-row[draggable="true"] { cursor: grab; }
 .person-row.dragging { opacity: .45; }
 .people-tab.drop { outline: 3px dashed var(--brass); outline-offset: 2px; background: rgba(209, 173, 98, .18); }
+/* Piazzando o spostando un punto, i segnaposto esistenti non intralciano: si clicca sopra o accanto */
+.regia-map.picking .leaflet-marker-icon, .regia-map.picking .leaflet-interactive { pointer-events: none !important; }
+.regia-map.picking .leaflet-marker-icon { opacity: .55; }
+.regia-map.picking .leaflet-container, .regia-map.picking { cursor: crosshair; }
+/* Squadre Legati: stato delle iscrizioni e coppie da assegnare, in grande */
+.reg-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; align-items: center; border-left: 6px solid var(--line); }
+.reg-hero.open { border-left-color: var(--ok); } .reg-hero.closed { border-left-color: var(--danger, #e5484d); }
+.reg-state { display: grid; gap: 8px; justify-items: start; }
+.reg-state-t { font-family: var(--f-display); font-size: 34px; text-transform: uppercase; line-height: 1; }
+.reg-hero.open .reg-state-t { color: var(--ok); } .reg-hero.closed .reg-state-t { color: var(--danger, #e5484d); }
+.reg-big { display: flex; align-items: center; gap: 16px; }
+.reg-big > div:last-child { display: grid; gap: 4px; justify-items: start; }
+.reg-num { font-size: clamp(56px, 8vw, 96px); font-weight: 700; line-height: 1; color: var(--brass); }
+.people-link { display: block; text-decoration: none; color: inherit; }
+@media (max-width: 700px) { .reg-hero { grid-template-columns: 1fr; } }
+/* Impostazioni: schede delle pagine tematiche */
+.settings-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings-nav a { padding: 8px 12px; border: 2px solid var(--line); border-radius: 6px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14px; background: var(--paper); }
+.settings-nav a.on { border-color: var(--brass); background: rgba(209, 173, 98, .16); }

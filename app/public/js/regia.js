@@ -22,10 +22,9 @@ const TABS = [
   ['live', 'Regia'],
   ['emergenze', '🚨 Emergenze'],
   ['persone', 'Persone'],
-  ['coppie', 'Iscrizioni e coppie'],
+  ['coppie', 'Squadre Legati'],
   ['accettazione', 'Accettazione'],
   ['squadre', 'Squadre Eletti'],
-  ['settori', 'Settori e Altari'],
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
@@ -245,7 +244,8 @@ function render() {
   if (tab() === 'regolamento' && frame && frame.getAttribute('src') === (R.ms?.game?.bookUrl || '/regolamento.html')) return tick();
   preserve(() => {
     const ms = R.ms;
-    const body = tab() === 'settori' ? viewSectors() : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
+    // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
+    const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
@@ -374,7 +374,9 @@ function topbar() {
       h('option', { value: 'new' }, '+ Nuova partita')),
     ms ? h('div', { class: 'top-clock' },
       h('span', { class: `chip status-${st}` }, STATUS_LABELS[st]),
-      h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, '—'), h('div', { class: 'mono muted tiny' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')))) : null,
+      // Prima del Cerchio il tempo di gara non serve: conto alla rovescia all'evento (data e ora previste).
+      preCircle() ? h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'event' }, '—'), h('div', { class: 'mono muted tiny' }, eventAtLabel()))
+        : h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, '—'), h('div', { class: 'mono muted tiny' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')))) : null,
     h('div', { class: 'top-actions' },
       // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
       R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
@@ -400,7 +402,7 @@ function sidebar() {
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
-  const always = ['settori', 'regolamento', 'consiglio', 'impostazioni'];
+  const always = ['regolamento', 'consiglio', 'impostazioni'];
   return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
     h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
@@ -422,6 +424,17 @@ function sidebar() {
 }
 const installedApp = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 
+// Prima del Cerchio (creata, in preparazione, pronta): conto alla rovescia all'evento invece del tempo di gara.
+const preCircle = () => ['created', 'draft', 'ready'].includes(R.ms?.clock.status);
+const eventAt = () => { const t = R.ms?.game.scheduledStart ? new Date(R.ms.game.scheduledStart).getTime() : null; return Number.isFinite(t) ? t : null; };
+const eventAtLabel = () => (eventAt() ? `all'evento · ${new Date(eventAt()).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'data da fissare');
+function fmtCountdown(ms) {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(sec / 86400);
+  const hms = [Math.floor(sec / 3600) % 24, Math.floor(sec / 60) % 60, sec % 60].map((n) => String(n).padStart(2, '0')).join(':');
+  return d ? `${d}g ${hms}` : hms;
+}
+
 function tick() {
   tickTimeline();
   const recEl = document.getElementById('rec-time-regia');
@@ -432,6 +445,7 @@ function tick() {
     let t = '—';
     if (c) {
       if (k === 'remaining') t = c.startedAt ? fmtDuration(clock.remaining()) : fmtDuration(c.durationMs);
+      else if (k === 'event') t = eventAt() ? fmtCountdown(eventAt() - clock.serverNow()) : '—';
       else if (k === 'elapsed') t = fmtDuration(clock.elapsed());
       else if (k.startsWith('abs:')) t = fmtDuration(Math.max(0, Number(k.slice(4)) - clock.serverNow()));
       else if (k.startsWith('until:')) {
@@ -648,7 +662,8 @@ function viewLive() {
     h('div', { class: `control status-bg-${st}` },
       h('div', null, h('div', { class: 'eyebrow' }, ms.game.name), h('div', { class: 'control-status' }, STATUS_LABELS[st]),
         c.startedAt ? h('div', { class: 'muted mono' }, ms.game.isDemo ? `Tempo simulato · durata ${ms.game.durationMin} min` : `Via alle ${fmtTime(c.startedAt)} · durata ${ms.game.durationMin} min`) : h('div', { class: 'muted mono' }, `Durata ${ms.game.durationMin} min · ${ms.teams.length} coppie`)),
-      h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'Rimanente'), h('div', { class: 'mono huge', 'data-clock': 'remaining' }, '—')),
+      preCircle() ? h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'All\'evento'), h('div', { class: 'mono huge', 'data-clock': 'event' }, '—'), h('div', { class: 'muted tiny' }, eventAtLabel()))
+        : h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'Rimanente'), h('div', { class: 'mono huge', 'data-clock': 'remaining' }, '—')),
       h('div', { class: 'control-actions' }, controlButtons()),
       phaseSteps()),
 
@@ -711,7 +726,7 @@ function demoPanel() {
     h('div', { class: 'panel-head' }, h('h2', null, R.ms.game.isDemo ? 'Partita di prova' : 'Tempo di gioco'), h('span', { class: 'chip chip-brass' }, 'solo test')),
     h('p', { class: 'muted tiny' }, active
       ? "Fai passare il tempo di gioco per vedere subito tregua → caccia, tradimenti, doni, ultima mezz'ora e fine. Le coppie ricevono tutto come in una partita vera."
-      : "I pulsanti si attivano dopo il VIA (non in pausa). Per entrare come coppia usa \"Apri app\" nella scheda Iscrizioni e coppie, oppure il codice d'accesso da un altro telefono o da una finestra in incognito."),
+      : "I pulsanti si attivano dopo il VIA (non in pausa). Per entrare come coppia usa \"Apri app\" nella scheda Squadre Legati, oppure il codice d'accesso da un altro telefono o da una finestra in incognito."),
     h('div', { class: 'row-actions' }, adv(-60), adv(-30), adv(-15), adv(-5), adv(-1), h('span', { class: 'demo-sep', 'aria-hidden': 'true' }, '·'), adv(1), adv(5), adv(15), adv(30), adv(60)),
     active ? h('p', { class: 'tiny muted' }, 'Tornando indietro ciò che è già successo (tradimenti, armamenti aperti, scontri) resta com\'è; la fase torna a quella del momento.') : null);
 }
@@ -1027,6 +1042,25 @@ async function resetPassword(p) {
 }
 const resetBtn = (p) => ((R.ms.players.find((x) => x.id === p.id) || p).accountId ? h('button', { class: 'btn btn-sm btn-ghost', title: "Reimposta la password dell'account", onclick: () => resetPassword(p) }, 'Password') : null);
 
+// Squadre Legati, in cima: iscrizioni aperte/chiuse con il pulsante e quanti Settori restano da assegnare (in grande).
+function registrationHero(ms, st, regUrl) {
+  const open = ms.game.registrationOpen;
+  const capacity = ms.spots?.capacity ?? ms.sectors.filter((x) => !x.archived).length;
+  const formed = ms.teams.filter((t) => t.status !== 'withdrawn').length;
+  const left = Math.max(0, capacity - formed);
+  return h('div', { class: `panel reg-hero ${open ? 'open' : 'closed'}` },
+    h('div', { class: 'reg-state' },
+      h('div', { class: 'eyebrow' }, 'Iscrizioni'),
+      h('strong', { class: 'reg-state-t' }, open ? 'Aperte' : 'Chiuse'),
+      h('button', { class: `btn ${open ? '' : 'btn-primary'}`, disabled: st !== 'draft', title: st !== 'draft' ? 'Si aprono e chiudono con la partita in preparazione' : '', onclick: () => call('PATCH', `/api/m/games/${R.gameId}`, { registrationOpen: !open }) }, open ? 'Chiudi le iscrizioni' : 'Apri le iscrizioni'),
+      open ? h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(regUrl)}`, alt: 'QR iscrizione', width: 80, height: 80 }), h('div', { class: 'mono tiny' }, regUrl)) : null),
+    h('div', { class: 'reg-big' },
+      h('div', { class: 'reg-num mono' }, String(left)),
+      h('div', null, h('strong', null, left === 1 ? 'coppia ancora da assegnare' : 'coppie ancora da assegnare'),
+        h('div', { class: 'tiny muted' }, `${formed} formate su ${capacity} Settori aperti${ms.spots ? ` · liberi per le iscrizioni: ${ms.spots.couples} Settori, ${ms.spots.singles} posti temerari` : ''}`),
+        h('a', { class: 'btn btn-sm btn-ghost', href: '#impostazioni/coppie' }, 'Numero di coppie e temerari →'))));
+}
+
 function viewTeams() {
   const ms = R.ms;
   const st = ms.clock.status;
@@ -1045,57 +1079,14 @@ function viewTeams() {
     return out;
   };
   const freeGroups = groupsOf(free);
-  const pendingGroups = Object.values(groupsOf(pending));
-
-  const name = h('input', { class: 'input', 'data-keep': 'pl-name', placeholder: 'Nome e cognome' });
-  const nick = h('input', { class: 'input', 'data-keep': 'pl-nick', placeholder: 'Nome di battaglia' });
-  const phone = h('input', { class: 'input', 'data-keep': 'pl-phone', placeholder: 'Telefono (facoltativo)' });
-  const sTeam = h('input', { class: 'input', 'data-keep': 'pl-team', placeholder: 'Team di softair' });
   const sectorSel = h('select', { class: 'input', 'data-keep': 'pair-sector' }, freeSectors.map((s) => h('option', { value: s.id }, `${s.roman} · ${s.name}`)));
   const teamName = h('input', { class: 'input', 'data-keep': 'pair-name', placeholder: 'Nome della coppia (facoltativo)' });
 
   return h('div', { class: 'stack' },
-    pendingGroups.length ? h('div', { class: 'panel pending-panel' },
-      h('div', { class: 'panel-head' }, h('h2', null, `Iscrizioni da approvare (${pending.length})`)),
-      h('p', { class: 'muted tiny' }, 'Arrivate dal modulo online. Accetta chi vuoi far giocare: solo dopo potrai accoppiarli. Le candidature agli Eletti si gestiscono in Squadre Eletti. Rifiutando, l\'iscrizione viene cancellata.'),
-      h('div', { class: 'players' }, pendingGroups.map((grp) => h('div', { class: `player ${grp.length === 2 ? 'grouped' : ''}` },
-        h('div', { class: 'player-main' },
-          grp.map((p) => h('div', null, personLine(p), p.softairTeam ? h('span', { class: 'tiny brass' }, ` · ${p.softairTeam}`) : null, p.phone ? [' · ', phoneLinks(p.phone)] : null)),
-          h('div', null, h('span', { class: `chip ${grp[0].requestedRole === 'elect' ? 'chip-blood' : grp[0].requestedRole === 'single' ? 'chip-brass' : 'chip-ok'}` }, ROLE_LABELS[grp[0].requestedRole] || (grp.length === 2 ? 'Coppia' : 'Singolo'))),
-          grp[0].note ? h('div', { class: 'tiny' }, `«${grp[0].note}»`) : null,
-          grp[0].requestedRole === 'pair' && grp.length < 2 ? h('div', { class: 'tiny bad' }, `In attesa del compagno (codice coppia ${grp[0].regGroup})`) : null,
-          h('div', { class: 'tiny muted' }, [grp[0].requestedTeamName ? `coppia «${grp[0].requestedTeamName}»` : null, fmtTime(grp[0].createdAt)].filter(Boolean).join(' · '))),
-        h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', `/api/m/players/${grp[0].id}/review`, { decision: 'accept' }, grp[0].requestedRole === 'elect' ? `${grp[0].name} è tra gli Eletti` : 'Iscrizione accettata') },
-            grp.length === 2 ? 'Accetta entrambi' : grp[0].requestedRole === 'elect' ? 'Accetta tra gli Eletti' : 'Accetta'),
-          h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${grp.map((p) => p.name).join(' e ')}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${grp[0].id}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')))))) : null,
-
-    h('div', { class: 'cols-2' },
-      section('Iscrizioni',
-        h('div', { class: 'toggle-row' },
-          h('div', null, h('strong', null, ms.game.registrationOpen ? 'Iscrizioni aperte' : 'Iscrizioni chiuse'), h('div', { class: 'tiny muted' }, 'I giocatori creano il loro account (username e password) e si candidano online; tu li approvi e assegni il Settore. Chi ha dimenticato la password: pulsante "Password" accanto al nome.')),
-          h('button', { class: `btn btn-sm ${ms.game.registrationOpen ? '' : 'btn-primary'}`, disabled: st !== 'draft', onclick: () => call('PATCH', `/api/m/games/${R.gameId}`, { registrationOpen: !ms.game.registrationOpen }) }, ms.game.registrationOpen ? 'Chiudi' : 'Apri')),
-        ms.spots ? h('div', { class: 'tiny' }, h('strong', null, 'Posti liberi: '),
-          `${ms.spots.couples} ${ms.spots.couples === 1 ? 'Settore' : 'Settori'} per le coppie · ${ms.spots.singles} ${ms.spots.singles === 1 ? 'posto' : 'posti'} per i temerari`,
-          h('span', { class: 'muted' }, ` · ${ms.spots.capacity} Settori aperti = ${ms.spots.places} posti; iscritti ${ms.spots.taken.pairs} ${ms.spots.taken.pairs === 1 ? 'coppia' : 'coppie'} e ${ms.spots.taken.singles} ${ms.spots.taken.singles === 1 ? 'temerario' : 'temerari'}${ms.spots.taken.others ? ` (+${ms.spots.taken.others} aggiunti a mano)` : ''}`),
-          ms.spots.maxSingles != null ? ` · temerari al massimo ${ms.spots.maxSingles}` : '') : null,
-        // Quante coppie (e quanti temerari) accettare: vuoto = una coppia per Settore, temerari senza tetto a parte.
-        ms.spots ? h('form', { class: 'form-grid seats-form', onsubmit: (e) => {
-          e.preventDefault();
-          const fd = Object.fromEntries(new FormData(e.target).entries());
-          call('PATCH', `/api/m/games/${R.gameId}`, { maxCouples: fd.maxCouples, maxSingles: fd.maxSingles }, 'Posti aggiornati');
-        } },
-          h('label', { class: 'field' }, h('span', null, 'Settori da aprire'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxCouples', 'data-keep': 'seat-c', value: ms.game.maxCouples ?? '', placeholder: `${(R.ms.sectors || []).filter((x) => !x.archived).length} (tutti i Settori)` })),
-          h('label', { class: 'field' }, h('span', null, 'Temerari solitari al massimo (persone)'), h('input', { class: 'input', type: 'number', min: 0, name: 'maxSingles', 'data-keep': 'seat-s', value: ms.game.maxSingles ?? '', placeholder: 'senza limite a parte' })),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva posti')) : null,
-        ms.game.registrationOpen ? h('div', { class: 'reg-link' }, h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(regUrl)}`, alt: 'QR iscrizione', width: 96, height: 96 }), h('div', null, h('div', { class: 'mono' }, regUrl), h('a', { href: regUrl, target: '_blank', class: 'tiny' }, 'Apri il modulo'))) : null,
-        h('h3', { class: 'sub' }, 'Aggiungi giocatore a mano (già accettato)'),
-        h('form', { class: 'form-grid', onsubmit: async (e) => {
-          e.preventDefault();
-          if (!name.value.trim()) return;
-          if (await call('POST', G('/players'), { name: name.value, nickname: nick.value, phone: phone.value, softairTeam: sTeam.value }, 'Giocatore aggiunto')) { [name, nick, phone, sTeam].forEach((x) => { x.value = ''; }); }
-        } }, name, nick, sTeam, phone, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
-
+    // In cima lo stato delle iscrizioni e, in grande, quanti Settori restano da assegnare.
+    registrationHero(ms, st, regUrl),
+    pending.length ? h('a', { class: 'people-info people-link', href: '#persone' }, `${pending.length} ${pending.length === 1 ? 'iscrizione' : 'iscrizioni'} in attesa: si accettano nella pagina Persone →`) : null,
+    h('div', null,
       section('Accoppiamento',
         editable ? [
           h('p', { class: 'muted tiny' }, 'Seleziona due giocatori accettati, scegli il Settore (il suo Altare) e forma la coppia.'),
@@ -1108,7 +1099,7 @@ function viewTeams() {
             h('button', { class: 'btn btn-primary', disabled: pairSel.size !== 2 || !freeSectors.length, onclick: async () => {
               if (await call('POST', G('/teams'), { playerIds: [...pairSel], sectorId: Number(sectorSel.value), displayName: teamName.value }, 'Coppia formata')) { pairSel.clear(); teamName.value = ''; render(); }
             } }, 'Forma la coppia')),
-          freeSectors.length ? null : h('p', { class: 'tiny bad' }, 'Nessun Settore libero: aggiungine uno in "Settori e Altari".'),
+          freeSectors.length ? null : h('p', { class: 'tiny bad' }, 'Nessun Settore libero: aggiungine uno in Impostazioni → Settori e Altari.'),
           h('div', { class: 'row-actions' },
             h('button', { class: 'btn btn-sm', disabled: free.length < 2, onclick: () => confirmCall('Accoppiare automaticamente?', 'Solo i giocatori accettati: prima chi si è iscritto insieme, poi gli altri a caso. I Settori si assegnano in ordine.', 'POST', G('/auto-pair'), {}, 'Accoppiamento completato') }, 'Accoppia automaticamente'),
             pairSel.size ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { pairSel.clear(); render(); } }, 'Annulla selezione') : null),
@@ -1182,7 +1173,7 @@ let sectorsList = null;
 
 async function loadSectors() {
   try { sectorsList = await api('GET', '/api/m/sectors'); } catch (e) { toast(e.message, 'error'); sectorsList = []; }
-  if (tab() === 'settori') render();
+  if (tab() === 'settori' || settingsPage() === 'settori') render();
 }
 
 async function sectorCall(method, url, body, okMsg) {
@@ -1209,13 +1200,32 @@ function sectorFields(s, prefix) {
 }
 const fieldValues = (f) => Object.fromEntries(Object.entries(f).map(([key, el]) => [key, el.value]));
 
+// Nuovo Settore: in una finestra (dal pulsante in alto, accanto al titolo).
+async function addSectorDialog() {
+  const add = sectorFields(null, 'new');
+  await modal({
+    title: 'Aggiungi Settore', okLabel: 'Aggiungi',
+    body: h('div', { class: 'form-grid' },
+      h('label', { class: 'field' }, h('span', null, 'Nome'), add.name),
+      h('label', { class: 'field' }, h('span', null, 'Articolo'), add.article),
+      h('label', { class: 'field' }, h('span', null, 'Elemento'), add.element),
+      h('label', { class: 'field' }, h('span', null, 'Motto'), add.motto),
+      h('label', { class: 'field' }, h('span', null, 'Nome dell\'Altare'), add.altarLabel),
+      h('label', { class: 'field' }, h('span', null, 'Ordine'), add.ord),
+      h('label', { class: 'field' }, h('span', null, 'Colore'), add.color)),
+    onOk: async () => {
+      if (!add.name.value.trim()) throw new Error('Dai un nome al Settore');
+      return !!(await sectorCall('POST', '/api/m/sectors', fieldValues(add), `Settore ${add.name.value} creato`));
+    },
+  });
+}
+
 function viewSectors() {
   if (!sectorsList) { loadSectors(); return h('p', { class: 'empty' }, 'Caricamento…'); }
   const active = sectorsList.filter((s) => !s.archived);
   const archived = sectorsList.filter((s) => s.archived);
-  const add = sectorFields(null, 'new');
   return h('div', { class: 'stack' },
-    section('Settori e Altari',
+    sectionActions('Settori e Altari', [h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: addSectorDialog }, '＋ Aggiungi Settore')],
       h('p', { class: 'muted tiny' }, 'Ogni coppia rappresenta un Settore e il suo Altare nel bosco. L\'elenco vale per tutte le partite: le coppie lo vedono all\'iscrizione per scegliere il proprio Altare, la regia lo usa per formare le coppie. Il nome dell\'Altare è automatico ("Altare del Fuoco"), ma puoi sceglierne uno diverso.'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'sectors-table' },
         h('thead', null, h('tr', null, ['#', 'Colore', 'Settore', 'Articolo', 'Elemento', 'Motto', 'Nome dell\'Altare', 'Uso', ''].map((x) => h('th', null, x)))),
@@ -1233,20 +1243,7 @@ function viewSectors() {
                 if (!(await dialog({ title: `Eliminare il Settore ${s.name}?`, text: u.teams ? 'È stato usato in partite passate: verrà archiviato (sparisce dalle scelte, resta nello storico).' : 'Verrà eliminato definitivamente.' + (u.requests ? ' Le richieste di iscrizione per questo Altare verranno annullate.' : ''), okLabel: u.teams ? 'Archivia' : 'Elimina', danger: true }))) return;
                 sectorCall('DELETE', `/api/m/sectors/${s.id}`, undefined, (r) => (r.archived ? `${s.name} archiviato` : `${s.name} eliminato`));
               } }, 'Elimina')));
-        })))),
-      h('h3', { class: 'sub' }, 'Nuovo Settore'),
-      h('form', { class: 'sector-add', onsubmit: async (e) => {
-        e.preventDefault();
-        if (await sectorCall('POST', '/api/m/sectors', fieldValues(add), `Settore ${add.name.value} creato`)) Object.values(add).forEach((el) => { el.value = ''; });
-      } },
-      h('label', { class: 'field' }, h('span', null, 'Nome'), add.name),
-      h('label', { class: 'field' }, h('span', null, 'Articolo'), add.article),
-      h('label', { class: 'field' }, h('span', null, 'Elemento'), add.element),
-      h('label', { class: 'field' }, h('span', null, 'Motto'), add.motto),
-      h('label', { class: 'field' }, h('span', null, 'Nome dell\'Altare'), add.altarLabel),
-      h('label', { class: 'field' }, h('span', null, 'Ordine'), add.ord),
-      h('label', { class: 'field' }, h('span', null, 'Colore'), add.color),
-      h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi'))),
+        }))))),
     archived.length ? section('Archiviati',
       h('p', { class: 'muted tiny' }, 'Settori usati in partite passate e poi eliminati: non compaiono nelle scelte.'),
       h('ul', { class: 'users' }, archived.map((s) => h('li', null, h('span', { class: 'mono' }, s.roman), h('strong', null, s.name), h('span', { class: 'tiny muted' }, s.altar),
@@ -1321,7 +1318,8 @@ function viewPeople() {
       h('p', { class: 'people-info' }, PEOPLE_INFO[peopleTab], ' ', h('span', { class: 'tiny muted' }, 'Puoi anche trascinare una persona su una scheda qui sopra.')),
       h('div', { class: 'row-actions' },
         h('input', { class: 'input input-sm grow', type: 'search', placeholder: 'Cerca per nome, soprannome, username, team, telefono…', value: peopleQ, 'data-keep': 'people-q', oninput: (e) => { peopleQ = e.target.value; render(); } }),
-        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'))),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'),
+        h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: addPlayerDialog }, '＋ Aggiungi giocatore a mano'))),
     peopleTab === 'senza' && shown.length ? h('div', { class: 'people-bulk' },
       h('span', { class: 'small' }, `${shown.length === 1 ? '1 persona' : `${shown.length} persone`} accettate senza coppia.`),
       h('button', { class: 'btn btn-sm btn-primary', disabled: shown.length < 2, onclick: () => confirmCall('Accoppiare a caso?', 'Prima chi si è iscritto insieme, poi gli altri a caso. Ogni coppia riceve un Settore libero.', 'POST', `/api/m/games/${R.gameId}/auto-pair`, {}, 'Coppie formate') }, 'Accoppia tutti a caso')) : null,
@@ -1346,6 +1344,31 @@ function viewPeople() {
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
+}
+
+// Giocatore senza account, aggiunto dalla regia (già accettato) con il suo ruolo.
+async function addPlayerDialog() {
+  const name = h('input', { class: 'input', placeholder: 'Nome e cognome', maxlength: 80, required: true });
+  const nick = h('input', { class: 'input', placeholder: 'Nome di battaglia', maxlength: 40 });
+  const team = h('input', { class: 'input', placeholder: 'Team di softair', maxlength: 60 });
+  const phone = h('input', { class: 'input', placeholder: 'Telefono (facoltativo)', inputmode: 'tel', maxlength: 30 });
+  const role = h('select', { class: 'input' },
+    h('option', { value: 'pair' }, 'Legato (da mettere in coppia)'), h('option', { value: 'single' }, 'Temerario solitario'), h('option', { value: 'elect' }, 'Eletto del Consiglio'));
+  await modal({
+    title: 'Aggiungi giocatore a mano', okLabel: 'Aggiungi',
+    body: h('div', { class: 'form-grid' },
+      h('label', { class: 'field' }, h('span', null, 'Nome'), name), h('label', { class: 'field' }, h('span', null, 'Nome di battaglia'), nick),
+      h('label', { class: 'field' }, h('span', null, 'Team di softair'), team), h('label', { class: 'field' }, h('span', null, 'Telefono'), phone),
+      h('label', { class: 'field' }, h('span', null, 'Ruolo'), role),
+      h('p', { class: 'tiny muted' }, 'Entra già accettato. Legati e temerari compaiono in «Senza coppia», gli Eletti tra gli Eletti senza squadra.')),
+    onOk: async () => {
+      if (!name.value.trim()) throw new Error('Scrivi il nome');
+      await api('POST', `/api/m/games/${R.gameId}/players`, { name: name.value, nickname: nick.value, softairTeam: team.value, phone: phone.value, role: role.value });
+      toast(`${name.value.trim()} aggiunto`, 'ok');
+      await load();
+      return true;
+    },
+  });
 }
 
 // Legati in coppia: le coppie già formate, una scheda per Settore con i due Legati.
@@ -1834,7 +1857,18 @@ fieldMap.onMarkerTap((key) => {
   placePicked({ lat: x.lat, lng: x.lng }, x.label);
   return true;
 });
-fieldMap.onTap((ll) => placePicked(ll));
+fieldMap.onTap((ll) => {
+  // I segnaposto non prendono il clic mentre si piazza: un clic a pochi pixel da un punto di interesse lo usa come posto.
+  const pick = R.mapPick;
+  const map = fieldMap.map;
+  if (pick && map && !['poi', 'guide', 'guide-new'].includes(pick.kind)) {
+    const at = map.latLngToContainerPoint(ll);
+    const near = (fieldData?.pois || []).filter((x) => !x.occupied && x.lat != null)
+      .map((x) => ({ x, d: at.distanceTo(map.latLngToContainerPoint([x.lat, x.lng])) })).sort((a, b) => a.d - b.d)[0];
+    if (near && near.d < 14) return placePicked({ lat: near.x.lat, lng: near.x.lng }, near.x.label);
+  }
+  placePicked(ll);
+});
 async function placePicked(ll, poiLabel = null) {
   const pick = R.mapPick;
   if (!pick) return;
@@ -1883,6 +1917,8 @@ function viewFieldMap() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento del campo…'); }
   startPositions();
+  // Mentre si piazza o si sposta un punto, gli altri segnaposto sono solo sfondo: il clic arriva sempre alla mappa.
+  fieldMap.el.classList.toggle('picking', !!R.mapPick);
   fieldMap.setItems(fieldMapItems(d));
   queueMicrotask(() => fieldMap.setLines(allianceLines()));
   fieldMap.refresh();
@@ -3208,7 +3244,8 @@ function viewLog() {
 
 // ---------------------------------------------------------------- IMPOSTAZIONI
 
-function gameForm(g, isNew) {
+// Parametri della partita; con only (elenco di campi) solo quelli di una pagina delle Impostazioni.
+function gameForm(g, isNew, only = null) {
   const locked = !isNew && !PRE.includes(g.status);
   const f = (key, label, type = 'text', extra = {}) => h('label', { class: 'field' }, h('span', null, label),
     h('input', { class: 'input', name: key, type, value: g?.[key] ?? extra.def ?? '', disabled: locked && extra.lock, 'data-keep': `gf-${key}`, ...extra.attrs }));
@@ -3223,30 +3260,35 @@ function gameForm(g, isNew) {
       loadGames();
     }
   } },
-  f('name', 'Nome della partita', 'text', { attrs: { required: true, placeholder: 'Zero Dark Games – ottobre 2026' } }),
-  f('scheduledStart', 'Data e ora previste', 'datetime-local'),
-  f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } }),
-  f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
-  f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
-  f('truceMin', 'Tregua iniziale (min)', 'number', { def: 5, lock: true }),
-  f('firstRevelationDelayMin', 'Prima rivelazione dopo la caccia (min)', 'number', { def: 30, lock: true }),
-  f('lastRevelationBeforeEndMin', 'Nessuna rivelazione negli ultimi (min)', 'number', { def: 30, lock: true }),
-  f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
-  f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
-  f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
-  // Anti «furbetto del QR»: raggio entro cui vale la lettura di un Altare piazzato (il controllo si accende in Regia).
-  h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari (controllo da accendere in Regia)'),
-    h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
-      (() => { const cur = Number(g?.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30; const o = [15, 25, 30, 50, 75, 100, 150, 200, 300]; return (o.includes(cur) ? o : [...o, cur].sort((a, b) => a - b))
-        .map((v) => h('option', { value: v, selected: v === cur }, `${v} m${v === 30 ? ' (consigliato)' : ''}`)); })()),
-    h('span', { class: 'tiny muted' }, 'La lettura vale quando il cerchio dell\'Altare (questo raggio) e il cerchio di incertezza del GPS del telefono (al massimo 50 m) si toccano; altrimenti viene rifiutata con la distanza. Gli Altari senza coordinate non si controllano.')),
-  f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
-  f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
-  f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),
-  f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
-  f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
-  f('maxActiveSkills', 'Skill attive o Ultimate per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
-  f('maxPassiveSkills', 'Skill passive per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+  ...(() => {
+    const all = {
+      name: () => f('name', 'Nome della partita', 'text', { attrs: { required: true, placeholder: 'Zero Dark Games – ottobre 2026' } }),
+      scheduledStart: () => f('scheduledStart', 'Data e ora previste', 'datetime-local'),
+      emergencyRadioChannel: () => f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } }),
+      bookUrl: () => f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
+      durationMin: () => f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
+      truceMin: () => f('truceMin', 'Tregua iniziale (min)', 'number', { def: 5, lock: true }),
+      firstRevelationDelayMin: () => f('firstRevelationDelayMin', 'Prima rivelazione dopo la caccia (min)', 'number', { def: 30, lock: true }),
+      lastRevelationBeforeEndMin: () => f('lastRevelationBeforeEndMin', 'Nessuna rivelazione negli ultimi (min)', 'number', { def: 30, lock: true }),
+      neverRevealedCount: () => f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
+      codeLength: () => f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
+      altarScanMin: () => f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
+      // Anti «furbetto del QR»: raggio entro cui vale la lettura di un Altare piazzato (il controllo si accende in Regia).
+      altarRadiusM: () => h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari (controllo da accendere in Regia)'),
+        h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
+          (() => { const cur = Number(g?.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30; const o = [15, 25, 30, 50, 75, 100, 150, 200, 300]; return (o.includes(cur) ? o : [...o, cur].sort((a, b) => a - b))
+            .map((v) => h('option', { value: v, selected: v === cur }, `${v} m${v === 30 ? ' (consigliato)' : ''}`)); })()),
+        h('span', { class: 'tiny muted' }, 'La lettura vale quando il cerchio dell\'Altare (questo raggio) e il cerchio di incertezza del GPS del telefono (al massimo 50 m) si toccano; altrimenti viene rifiutata con la distanza. Gli Altari senza coordinate non si controllano.')),
+      nodeScanMin: () => f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
+      eyeMin: () => f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
+      eyeRadiusM: () => f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),
+      maxCouples: () => f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
+      maxSingles: () => f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
+      maxActiveSkills: () => f('maxActiveSkills', 'Skill attive o Ultimate per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+      maxPassiveSkills: () => f('maxPassiveSkills', 'Skill passive per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+    };
+    return (only || Object.keys(all)).map((k) => all[k]());
+  })(),
   h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, isNew ? 'Crea partita' : 'Salva parametri'),
     locked ? h('span', { class: 'tiny muted' }, 'Tempi e Sigilli non sono più modificabili dopo il via.') : null));
 }
@@ -3546,36 +3588,58 @@ function prepSection(g) {
     section('Anteprima nell\'app', h('div', { class: 'eyebrow' }, 'Prima della gara · cosa fare'), preview));
 }
 
+// Impostazioni divise per tema: #impostazioni/<pagina>.
+const SETTINGS_PAGES = [
+  ['partita', 'Partita', 'Nome, data e ora, radio d\'emergenza, regolamento e il testo «prima della gara».'],
+  ['tempi', 'Tempi e Sigilli', 'Durata, tregua, tradimenti, Sigilli e i timer delle coppie.'],
+  ['coppie', 'Settaggio coppie', 'Quanti Settori aprire, posti per i temerari e quante Skill per coppia.'],
+  ['settori', 'Settori e Altari', 'I Settori e i loro Altari, validi per tutte le partite.'],
+  ['altari', 'Altari e Skill', 'Lettura dei QR degli Altari (validità, raggio) e i parametri delle Skill.'],
+  ['testi', 'Testi degli annunci', 'I testi che il Consiglio manda in automatico alle coppie.'],
+  ['accessi', 'Accessi e notifiche', 'Indirizzo per link e QR, gestionali, organizzazione, notifiche alla regia e account dei giocatori.'],
+  ['strumenti', 'Strumenti', 'Partita di prova ed eliminazione della partita.'],
+];
+// Schede delle pagine delle Impostazioni e la riga che spiega quella aperta.
+const settingsHead = (page) => [
+  h('nav', { class: 'settings-nav', 'aria-label': 'Impostazioni' }, SETTINGS_PAGES.map(([k, label]) => h('a', { href: `#impostazioni/${k}`, class: k === page ? 'on' : '' }, label))),
+  h('p', { class: 'people-info' }, SETTINGS_PAGES.find(([k]) => k === page)[2])];
+const settingsPage = () => { const k = location.hash.slice(1).split('/')[1]; return SETTINGS_PAGES.some(([x]) => x === k) ? k : 'partita'; };
+
 function viewSettings() {
   const ms = R.ms;
   const g = ms.game;
-  const tpl = Object.keys(ms.templateLabels).map((k) => h('label', { class: 'field' }, h('span', null, ms.templateLabels[k]),
+  const page = settingsPage();
+  const tpl = () => Object.keys(ms.templateLabels).map((k) => h('label', { class: 'field' }, h('span', null, ms.templateLabels[k]),
     h('textarea', { class: 'input', rows: 2, name: k, 'data-keep': `tpl-${k}`, value: g.templates[k] })));
-  const timers = g.timers.map((t) => h('label', { class: 'field' }, h('span', null, `${t.label} (min)`), h('input', { class: 'input', type: 'number', step: '0.5', min: 0.5, name: t.id, value: t.minutes, 'data-keep': `tm-${t.id}` })));
-  return h('div', { class: 'stack' },
-    publicUrlSection(),
-    opsSection(),
-    section('Parametri della partita', gameForm(g, false)),
-    prepSection(g),
-    accountsSection(),
-    h('div', { class: 'cols-2' },
-      section('Testi degli annunci',
-        h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
-        h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { templates: Object.fromEntries(new FormData(e.target).entries()) }, 'Testi salvati'); } },
-          tpl, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva testi'))),
-      h('div', { class: 'stack' },
-        section('Timer delle coppie',
-          h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },
-            timers, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer'))),
-        orgSection(),
-        section('Notifiche alla regia',
-          h('p', { class: 'muted tiny' }, 'Un avviso a ogni nuova iscrizione (coppie, temerari, candidature agli Eletti), ai messaggi delle coppie, agli scontri contestati e ai doni presi. Si attiva su ogni dispositivo (telefono, computer) dove vuoi riceverle.'),
-          pushButton('btn')),
-        section('Partita di prova',
-          h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),
-          h('button', { class: 'btn', onclick: createDemo }, 'Crea partita di prova')),
-        section('Zona pericolosa',
-          h('button', { class: 'btn btn-danger', disabled: ACTIVE.includes(g.status) || g.status === 'paused', onclick: async () => {
-            if (await confirmCall('Eliminare la partita?', `«${g.name}» e tutti i suoi dati (coppie, Sigilli, iscrizioni, registro) verranno cancellati definitivamente. Gli account dei giocatori restano: puoi eliminarli in "Account dei giocatori".`, 'DELETE', `/api/m/games/${g.id}`, undefined, 'Partita eliminata', true)) { accountsCache = null; await loadGames(); load(); }
-          } }, 'Elimina partita')))));
+  const timers = () => g.timers.map((t) => h('label', { class: 'field' }, h('span', null, `${t.label} (min)`), h('input', { class: 'input', type: 'number', step: '0.5', min: 0.5, name: t.id, value: t.minutes, 'data-keep': `tm-${t.id}` })));
+  const body = {
+    partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'emergencyRadioChannel', 'bookUrl'])), prepSection(g)],
+    tempi: () => [section('Tempi e Sigilli', gameForm(g, false, ['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength'])),
+      section('Timer delle coppie',
+        h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },
+          timers(), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer')))],
+    coppie: () => [section('Settaggio coppie',
+      h('p', { class: 'muted tiny' }, 'Quante coppie possono iscriversi (un Settore per coppia) e quanti temerari solitari, che il Consiglio accoppia poi tra loro. Le Skill per coppia si scelgono prima del via.'),
+      gameForm(g, false, ['maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']))],
+    settori: () => [viewSectors()],
+    altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
+    testi: () => [section('Testi degli annunci',
+      h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
+      h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { templates: Object.fromEntries(new FormData(e.target).entries()) }, 'Testi salvati'); } },
+        tpl(), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva testi')))],
+    accessi: () => [publicUrlSection(), opsSection(), orgSection(),
+      section('Notifiche alla regia',
+        h('p', { class: 'muted tiny' }, 'Un avviso a ogni nuova iscrizione (coppie, temerari, candidature agli Eletti), ai messaggi delle coppie, agli scontri contestati e ai doni presi. Si attiva su ogni dispositivo (telefono, tablet, computer) da cui segui la regia.'),
+        pushButton('btn')),
+      accountsSection()],
+    strumenti: () => [
+      section('Partita di prova',
+        h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),
+        h('button', { class: 'btn', onclick: createDemo }, 'Crea partita di prova')),
+      section('Zona pericolosa',
+        h('button', { class: 'btn btn-danger', disabled: ACTIVE.includes(g.status) || g.status === 'paused', onclick: async () => {
+          if (await confirmCall('Eliminare la partita?', `«${g.name}» e tutti i suoi dati (coppie, Sigilli, iscrizioni, registro) verranno cancellati definitivamente. Gli account dei giocatori restano: puoi eliminarli in «Accessi e notifiche» → «Account dei giocatori».`, 'DELETE', `/api/m/games/${g.id}`, undefined, 'Partita eliminata', true)) { accountsCache = null; await loadGames(); load(); }
+        } }, 'Elimina partita'))],
+  }[page]();
+  return h('div', { class: 'stack' }, ...settingsHead(page), ...body);
 }
