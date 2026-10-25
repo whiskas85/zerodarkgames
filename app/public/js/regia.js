@@ -1498,6 +1498,7 @@ function placementChips(x, placed) {
     placed ? h('span', { class: 'chip chip-ok' }, `Piazzato ${fmtTime(x.placedAt)}${by ? ` · squadra ${by.name}` : x.placedBy ? ` · ${String(x.placedBy).replace('eletti:', '')}` : ''}`)
       : h('span', { class: 'chip chip-warn' }, 'Da piazzare'),
     x.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
+    x.disabledUntil > Date.now() ? h('span', { class: 'chip chip-blood', title: `Beacon di ${x.disabledBy || 'Eletti'}` }, `📡 Disattivato fino alle ${fmtTime(x.disabledUntil)}`) : null,
     sq ? h('span', { class: 'chip squad-chip', style: { '--c': sq.color } }, `Incarico: ${sq.name}${x.targetLat != null ? ' · ⌖ punto indicato' : ' · punto libero'}`)
       : !placed ? h('span', { class: 'chip' }, 'Nessuna squadra incaricata') : null);
 }
@@ -1763,8 +1764,8 @@ function fieldMapItems(d) {
     ...(d.guide || []).map((x) => ({ key: `gd${x.id}`, kind: 'guide', icon: x.icon, lat: x.lat, lng: x.lng, title: x.label,
       popup: `<strong>${escHtml(x.label)}</strong>${x.description ? `<br>${escHtml(x.description)}` : ''}<br><small>Indicazione campo: la vedono le coppie fino al Cerchio</small>
         <div class="popup-actions">${actBtn('pick', 'guide', x.id, 'Sposta: clicca sulla mappa')}${actBtn('edit', 'guide', x.id, 'Modifica')}${actBtn('del', 'guide', x.id, 'Elimina')}</div>` })),
-    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional,
-      popup: `<strong>${p.label}</strong><br>${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
+    ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional, off: p.disabledUntil > Date.now(),
+      popup: `<strong>${p.label}</strong><br>${p.disabledUntil > Date.now() ? `📡 Disattivato da un Beacon fino alle ${fmtTime(p.disabledUntil)}<br>` : ''}${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
@@ -3847,6 +3848,7 @@ function gameForm(g, isNew, only = null) {
       neverRevealedCount: () => f('neverRevealedCount', 'Sigilli mai rivelati', 'number', { def: 2, lock: true }),
       codeLength: () => f('codeLength', 'Lunghezza Sigillo', 'number', { def: 6, lock: true }),
       altarScanMin: () => f('altarScanMin', 'Validità scansione Altare (min, 0 = sempre)', 'number', { def: 15 }),
+      altarBeaconMin: () => f('altarBeaconMin', 'Altare disattivato da un Beacon degli Eletti (min)', 'number', { def: 15 }),
       // Anti «furbetto del QR»: raggio entro cui vale la lettura di un Altare piazzato (il controllo si accende in Regia).
       altarRadiusM: () => h('label', { class: 'field' }, h('span', null, 'Raggio di lettura degli Altari (controllo da accendere in Regia)'),
         h('select', { class: 'input', name: 'altarRadiusM', 'data-keep': 'gf-altarRadiusM' },
@@ -4196,7 +4198,7 @@ function viewSettings() {
       h('p', { class: 'muted tiny' }, 'Quante coppie possono iscriversi (un Settore per coppia) e quanti temerari solitari, che il Consiglio accoppia poi tra loro. Le Skill per coppia si scelgono prima del via.'),
       gameForm(g, false, ['maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']))],
     settori: () => [viewSectors()],
-    altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
+    altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
     testi: () => [section('Testi degli annunci',
       h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
       h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { templates: Object.fromEntries(new FormData(e.target).entries()) }, 'Testi salvati'); } },

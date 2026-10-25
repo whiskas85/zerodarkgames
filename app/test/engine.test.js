@@ -2264,3 +2264,31 @@ test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area pe
   assert.equal(q.get('SELECT active FROM map_zones WHERE id = ?', z.id).active, 1);
   assert.equal(Z.electBeacon(elect, pl).off.length, 0);
 });
+
+test('Beacon vicino a un Altare: l\'Altare si disattiva per i minuti scelti (default 15), niente scansioni né sblocchi', () => {
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const elect = G.ensureElect(g.id);
+  const pid = Number(q.run("INSERT INTO players (gameId, teamId, name, status, createdAt) VALUES (?, ?, 'Eletto Due', 'accepted', ?)", g.id, elect.id, Date.now()).lastInsertRowid);
+  const pl = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const p = pointOf(g.id, B.sectorId);
+  q.run('UPDATE points SET lat = 45, lng = 9 WHERE id = ?', p.id);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  assert.throws(() => Z.launchBeacon(elect, pl, { lat: 45.01, lng: 9 }), /all'interno/);
+  const r = Z.launchBeacon(elect, pl, { lat: 45.0001, lng: 9 });
+  assert.equal(r.kind, 'altar');
+  assert.equal(r.minutes, 15);
+  assert.ok(r.until - Date.now() > 14 * 60000);
+  assert.throws(() => G.visitPoint(A, p.qrToken, Date.now()), /disattivato/);
+  assert.throws(() => G.unlock(A, p.qrToken, codeOf(g.id, B.sectorId)), /disattivato/);
+  // Scaduto il tempo, l'Altare torna normale.
+  q.run('UPDATE points SET disabledUntil = ? WHERE id = ?', Date.now() - 1000, p.id);
+  assert.equal(scanUnlock(A, p.qrToken, codeOf(g.id, B.sectorId)).ok, true);
+  // Durata configurabile.
+  G.updateGame(g.id, { altarBeaconMin: 5 }, 'test');
+  assert.equal(Z.launchBeacon(elect, pl, { lat: 45, lng: 9 }).minutes, 5);
+});

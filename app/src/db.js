@@ -651,4 +651,9 @@ addColumn('game_events', 'startAt', 'INTEGER');
 addColumn('game_events', 'durationMin', 'INTEGER');
 addColumn('game_events', 'endNotifiedAt', 'INTEGER');
 
+// Beacon degli Eletti vicino a un Altare: l'Altare resta disattivato per altarBeaconMin minuti (default 15).
+addColumn('games', 'altarBeaconMin', 'INTEGER NOT NULL DEFAULT 15');
+addColumn('points', 'disabledUntil', 'INTEGER');
+addColumn('points', 'disabledBy', 'TEXT');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

@@ -199,8 +199,11 @@ function requireElect(team, player) {
 function launchBeacon(team, player, body) {
   requireElect(team, player);
   const pos = readPos(body);
+  // Vicino a un Altare (entro il suo raggio di lettura): l'Altare si disattiva subito per altarBeaconMin minuti.
+  const altar = altarAt(team.gameId, pos);
+  if (altar) return disableAltar(team, player, altar, pos);
   const z = offZonesAt(team.gameId, pos)[0];
-  if (!z) throw err(409, 'Non siete all\'interno di un\'area da attivare');
+  if (!z) throw err(409, 'Non siete all\'interno di un\'area da attivare né vicino a un Altare');
   const now = Date.now();
   if (!(z.beaconEndsAt && z.beaconEndsAt > now - 60000)) {
     q.run('UPDATE map_zones SET beaconStartedAt = ?, beaconEndsAt = ?, beaconBy = ?, beaconPlayerId = ? WHERE id = ?', now, now + z.beaconMin * 60000, electName(player), player.id, z.id);
@@ -208,6 +211,24 @@ function launchBeacon(team, player, body) {
     rt.toStaff(z.gameId, 'zones');
   }
   return beaconOut(getZone(z.id));
+}
+
+function altarAt(gameId, pos) {
+  const g = G.getGame(gameId);
+  const radius = Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30;
+  return q.all('SELECT * FROM points WHERE gameId = ? AND lat IS NOT NULL', gameId)
+    .map((p) => ({ p, d: SK().distM(pos, p) })).filter((x) => x.d <= radius).sort((a, b) => a.d - b.d)[0]?.p || null;
+}
+function disableAltar(team, player, p, pos) {
+  const g = G.getGame(team.gameId);
+  const min = Number(g.altarBeaconMin) > 0 ? Number(g.altarBeaconMin) : 15;
+  const now = Date.now();
+  const until = Math.max(p.disabledUntil || 0, now + min * 60000);
+  q.run('UPDATE points SET disabledUntil = ?, disabledBy = ? WHERE id = ?', until, electName(player), p.id);
+  G.log(g.id, `giocatore:${player.id}`, 'altar_beacon', { point: p.label, minutes: min, lat: pos.lat, lng: pos.lng });
+  rt.toStaff(g.id, 'points');
+  rt.toTeams(g.id, 'state', {});
+  return { kind: 'altar', id: p.id, name: p.label, until, minutes: min };
 }
 
 // Fine della sequenza: se si è ancora dentro l'area la zona si accende, altrimenti il Beacon si interrompe.

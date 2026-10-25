@@ -1452,7 +1452,7 @@ function viewBeacon() {
   if (!b) return h('p', { class: 'empty' }, 'Il Beacon lo lanciano gli Eletti.');
   return h('div', { class: 'stack' },
     h('h2', null, 'Beacon'),
-    h('p', { class: 'muted small' }, 'Entrate in una zona spenta e lanciate il Beacon: il telefono legge le coordinate e, se siete dentro l\'area, parte la sequenza. Restate dentro fino alla fine: la zona si accende per tutte le coppie.'),
+    h('p', { class: 'muted small' }, 'Vicino a un Altare il Beacon lo disattiva subito (le coppie non possono né inquadrarlo né sbloccarlo per alcuni minuti). Dentro una zona spenta parte la sequenza: restate dentro fino alla fine e la zona si accende per tutte le coppie.'),
     b.running ? h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => beaconSequence(b.running) }, '📡 Riprendi la sequenza in corso') : null,
     h('button', { class: 'btn btn-primary btn-xl btn-block btn-beacon', type: 'button', onclick: launchBeacon }, mdi('satelliteUplink', 26), ' Lancia il Beacon'),
     h('section', { class: 'card stack-sm' },
@@ -1493,9 +1493,25 @@ async function launchBeacon() {
   T.line('> zone --match polygon');
   await sleep(500);
   let z;
-  try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, true); }
+  try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, /all'interno/.test(e.message || '')); }
+  if (z.kind === 'altar') return beaconAltar(z, T);
   T.line(`  MATCH: ${z.name.toUpperCase()} [${z.label}]`, 'bt-good');
   beaconSequence(z, T);
+}
+
+// Vicino a un Altare: il Beacon lo disattiva subito per i minuti scelti dalla regia.
+async function beaconAltar(z, T) {
+  T.line(`  MATCH: ${z.name.toUpperCase()} [Altare]`, 'bt-good');
+  T.line(`> altar --jam --duration ${z.minutes}m`);
+  for (let i = 0; i < 10; i++) {
+    T.bar.firstChild.style.width = `${(i + 1) * 10}%`;
+    T.line(`  [${hex(4)}] ${['jam carrier', 'override seal', 'flood qr-channel', 'mute relay', 'lock altar.node'][i % 5]} ${'.'.repeat(1 + (i % 3))} ok`);
+    await sleep(450);
+  }
+  vibrate([120, 60, 120, 60, 400]);
+  T.line(`>> ALTARE DISATTIVATO FINO ALLE ${fmtTime(z.until)}`, 'bt-good');
+  T.status.textContent = `${z.name} è disattivato per ${z.minutes} minuti.`;
+  T.done(true);
 }
 
 function beaconFail(T, msg, outside = false) {
@@ -1503,7 +1519,7 @@ function beaconFail(T, msg, outside = false) {
   T.el.classList.add('bt-glitch');
   T.line('!! ERRORE', 'bt-bad');
   T.line(outside ? '!! AREA NON RILEVATA' : `!! ${msg.toUpperCase()}`, 'bt-bad');
-  T.status.textContent = outside ? 'Non siete all\'interno di un\'area da attivare.' : msg;
+  T.status.textContent = outside ? 'Non siete all\'interno di un\'area da attivare né vicino a un Altare.' : msg;
   T.done(false);
 }
 
@@ -2071,7 +2087,8 @@ function viewMap(focus = null) {
   teamMapView.setItems([
     ...(m.landmarks || []).map((l) => landmarkItem(l)),
     ...(m.guide || []).map(guideItem),
-    ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, title: p.label, popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}` })),
+    ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, off: !!p.disabledUntil, title: p.label,
+      popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}${p.disabledUntil ? `<br>📡 Disattivato da un Beacon degli Eletti fino alle ${fmtTime(p.disabledUntil)}` : ''}` })),
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? null : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
     // Luoghi degli eventi aperti, o in corso per chi partecipa.
     ...(S.state?.events || []).filter((e) => e.location && ['open', 'running', 'closing'].includes(e.status) && (e.status === 'open' || e.mine))

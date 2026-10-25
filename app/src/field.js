@@ -956,9 +956,9 @@ function teamMap(team) {
   const { status } = G.getGame(team.gameId);
   const started = team.kind === 'elect' || !C.PRE_START.includes(status);
   return {
-    points: !started ? [] : q.all(`SELECT p.id, p.label, p.lat, p.lng, p.sectorId, s.name AS sectorName, s.roman FROM points p JOIN sectors s ON s.id = p.sectorId
+    points: !started ? [] : q.all(`SELECT p.id, p.label, p.lat, p.lng, p.sectorId, p.disabledUntil, s.name AS sectorName, s.roman FROM points p JOIN sectors s ON s.id = p.sectorId
                    WHERE p.gameId = ? AND p.lat IS NOT NULL ORDER BY s.ord`, team.gameId)
-      .map((p) => ({ ...p, mine: p.sectorId === team.sectorId })),
+      .map((p) => ({ ...p, mine: p.sectorId === team.sectorId, disabledUntil: p.disabledUntil > Date.now() ? p.disabledUntil : null })),
     // Nessun punto del gioco prima del tempo: il Cerchio compare dal Cerchio, la Soglia dal via (gli Eletti li vedono sempre).
     landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId)
       .filter((l) => team.kind === 'elect' || started || (l.kind === 'cerchio' && status === 'circle')),

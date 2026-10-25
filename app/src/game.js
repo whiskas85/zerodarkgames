@@ -118,8 +118,8 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarRadiusM', 'altarCheckOn', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
@@ -1167,6 +1167,7 @@ function wipePlay(g) {
     // Doni: tornano piazzati (non ancora comparsi) o da piazzare.
     q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
            claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
+    q.run('UPDATE points SET disabledUntil = NULL, disabledBy = NULL WHERE gameId = ?', g.id);
     // Zone: restano disegnate, senza presenze e con la Conquista di nuovo in palio.
     q.run('DELETE FROM zone_presence WHERE zoneId IN (SELECT id FROM map_zones WHERE gameId = ?)', g.id);
     q.run('UPDATE map_zones SET winnerTeamId = NULL, wonAt = NULL, reward = NULL WHERE gameId = ?', g.id);
@@ -1574,10 +1575,18 @@ function checkAltarDistance(g, team, p, pos) {
   return true;
 }
 
+// Altare disattivato da un Beacon degli Eletti: niente scansione né sblocco fino alla scadenza.
+function requireAltarOn(p) {
+  if (p.disabledUntil && p.disabledUntil > Date.now()) {
+    throw err(409, `L'${p.label} è disattivato da un Beacon degli Eletti: torna attivo tra ${Math.ceil((p.disabledUntil - Date.now()) / 60000)} minuti`);
+  }
+}
+
 function visitPoint(team, qrToken, at, pos = null) {
   requireCouple(team);
   const g = gameForTeam(team);
   const p = pointByToken(g, qrToken);
+  requireAltarOn(p);
   const geoOk = checkAltarDistance(g, team, p, pos);
   const visitedAt = recordScan(team, p, at, geoOk);
   // Nel registro (per il Rewind) anche la lettura, con la posizione del telefono se è arrivata.
@@ -1597,6 +1606,7 @@ function unlock(team, qrToken, code) {
   const g = gameForTeam(team);
   const p = pointByToken(g, qrToken);
   requireActive(g);
+  requireAltarOn(p);
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
   if (!f) throw err(409, 'Questo Altare non custodisce frammenti');
   const owned = q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);

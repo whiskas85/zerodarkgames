@@ -41,7 +41,7 @@ function isLight(hex) {
 export function pinHtml(item) {
   // Piazzato provvisorio (senza cartello né foto): stesso segnaposto con il triangolo di attenzione «!».
   if (item.provisional) return `<span class="pin-prov-wrap">${pinHtml({ ...item, provisional: false })}<span class="pin-prov" title="Provvisorio">!</span></span>`;
-  if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
+  if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''} ${item.off ? 'pin-off' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
   if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
   // Emergenza reale: segnaposto rosso che pulsa (grigio se chiusa).
