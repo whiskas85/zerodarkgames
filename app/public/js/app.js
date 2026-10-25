@@ -1485,12 +1485,13 @@ function eventCard(e) {
   let body = null;
   if (elect) {
     body = [h('ul', { class: 'ev-teams' }, e.entries.length ? e.entries.map((x) => h('li', null, h('strong', null, `${x.roman} ${x.sectorName}`), x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'deve confermare') : null,
-      x.confirmedAt ? h('span', { class: 'chip chip-ok' }, 'chiusura confermata') : null)) : h('li', { class: 'muted' }, 'Nessuna coppia ancora')),
+      x.outcome ? h('span', { class: `chip ${x.outcome === 'lost' ? 'chip-blood' : 'chip-ok'}` }, x.outcome === 'lost' ? 'persa' : 'vinta') : null,
+      x.confirmedAt ? h('span', { class: 'chip' }, 'confermata') : null)) : h('li', { class: 'muted' }, 'Nessuna coppia ancora')),
     e.status === 'closing' ? h('p', { class: 'small' }, 'Conferme entro ', h('span', { class: 'mono', 'data-abs': e.closeDeadline }, '—')) : null,
     e.status === 'truce' ? h('p', { class: 'small' }, '🛡 Tregua tra i partecipanti · ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null,
     h('div', { class: 'row' },
       e.status === 'open' ? h('button', { class: 'btn', disabled: !e.joined, onclick: async () => { if (await dialog({ title: 'Avviare l\'evento?', text: 'Le coppie iscritte ricevono l\'avviso della tregua finale.', okLabel: 'Avvia' })) eventCall(e, 'start', {}, 'Evento avviato'); } }, 'Avvia') : null,
-      ['open', 'running'].includes(e.status) && e.joined ? h('button', { class: 'btn btn-primary', onclick: async () => { if (await dialog({ title: 'Chiudere l\'evento?', text: `Le coppie confermano la chiusura dal telefono e prendono il premio; dopo ${e.confirmMin} minuti vale per tutte e parte la tregua.`, okLabel: 'Chiudi l\'evento' })) eventCall(e, 'close', {}, 'Evento chiuso'); } }, 'Chiudi l\'evento') : null)];
+      ['open', 'running'].includes(e.status) && e.joined ? h('button', { class: 'btn btn-primary', onclick: async () => { const o = await eventOutcomes(e); if (o) eventCall(e, 'close', { outcomes: o }, 'Evento chiuso'); } }, 'Chiudi l\'evento') : null)];
   } else if (e.status === 'open') {
     if (mine?.status === 'pending') {
       body = [h('p', { class: 'small' }, 'La vostra alleanza ha candidato tutte le coppie: entrate solo se accettano tutte.'),
@@ -1511,10 +1512,27 @@ function eventCard(e) {
   } else if (mine?.status === 'accepted') {
     body = [e.participants ? h('ul', { class: 'ev-teams' }, e.participants.map((x) => h('li', null, `${x.roman} ${x.sectorName}`, x.teamId === st.team.id ? h('span', { class: 'chip chip-brass' }, 'voi') : null))) : null,
       e.status === 'closing' && !mine.confirmedAt ? h('button', { class: 'btn btn-primary btn-block', onclick: () => confirmEventClose(e) }, 'Conferma chiusura evento') : null,
-      mine.reward ? h('p', { class: 'ev-reward' }, 'Premio ricevuto · ', rewardLine(mine.reward)) : null,
+      mine.reward ? h('p', { class: 'ev-reward' }, 'Sfida vinta · premio ricevuto · ', rewardLine(mine.reward)) : null,
+      mine.outcome === 'lost' && mine.confirmedAt ? h('p', { class: 'ev-lost' }, 'Sfida persa: niente premio.') : null,
       e.status === 'truce' ? h('p', { class: 'ev-truce' }, '🛡 Tregua in corso: nessun ingaggio tra i partecipanti. Tempo residuo: ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null];
   }
   return h('section', { class: `card stack-sm event-card ev-${e.status}`, id: `eventi-${e.id}` }, ...head, body);
+}
+
+// Eletti custodi: com'è andata per ogni coppia (vinta = premio, persa = niente).
+async function eventOutcomes(e) {
+  const list = e.entries.filter((x) => x.status === 'accepted');
+  const out = Object.fromEntries(list.map((x) => [x.teamId, 'won']));
+  const rows = h('div', { class: 'stack-sm' });
+  const draw = () => rows.replaceChildren(...list.map((x) => h('div', { class: 'ev-outcome' },
+    h('strong', null, `${x.roman} ${x.sectorName}`),
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: `btn btn-sm ${out[x.teamId] === 'won' ? 'btn-primary' : ''}`, onclick: () => { out[x.teamId] = 'won'; draw(); } }, 'Vinta'),
+      h('button', { type: 'button', class: `btn btn-sm ${out[x.teamId] === 'lost' ? 'btn-danger' : ''}`, onclick: () => { out[x.teamId] = 'lost'; draw(); } }, 'Persa')))));
+  draw();
+  const ok = await modal({ title: `Chiudi «${e.name}»`, okLabel: 'Chiudi l\'evento',
+    body: h('div', { class: 'stack-sm' }, h('p', { class: 'small muted' }, `Chi vince prende il premio, chi perde no. Dopo ${e.confirmMin} minuti la chiusura vale per tutte e parte la tregua.`), rows) });
+  return ok ? out : null;
 }
 
 function viewEvents() {
@@ -1531,6 +1549,7 @@ const seenEventRewards = new Set(store.get('zdg_seen_ev_rewards', []));
 async function confirmEventClose(e) {
   const r = await eventCall(e, 'confirm', {});
   if (r?.reward) showEventReward(e, r.reward);
+  else if (r) { seenEventRewards.add(e.id); store.set('zdg_seen_ev_rewards', [...seenEventRewards].slice(-50)); }
 }
 function eventOverlays(st) {
   if (isElect()) return;
@@ -1540,12 +1559,13 @@ function eventOverlays(st) {
     if (open?.dataset.id === String(pend.id)) return;
     vibrate([200, 100, 200, 100, 500]);
     beep();
-    const el = battleOverlay('victory event-close',
-      h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
-      h('div', { class: 'eyebrow' }, 'Evento concluso'),
-      h('h2', { class: 'battle-title' }, pend.name),
-      h('p', null, 'Il Consiglio ha chiuso l\'evento. Confermate la chiusura per ricevere il premio.'),
-      h('p', { class: 'small muted' }, `Premio: ${pend.rewardLabel}. Quando avranno confermato tutti partirà la tregua di ${pend.truceMin} minuti.`),
+    const lost = pend.mine.outcome === 'lost';
+    const el = battleOverlay(`${lost ? 'defeat' : 'victory'} event-close`,
+      lost ? null : h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+      h('div', { class: 'eyebrow' }, `Evento concluso · ${pend.name}`),
+      h('h2', { class: 'battle-title' }, lost ? 'Sfida persa' : 'Sfida vinta'),
+      h('p', null, lost ? 'Questa volta il premio non è vostro. Confermate la chiusura dell\'evento.' : 'Confermate la chiusura per ricevere il premio.'),
+      h('p', { class: 'small muted' }, `${lost ? '' : `Premio: ${pend.rewardLabel}. `}Quando avranno confermato tutti partirà la tregua di ${pend.truceMin} minuti.`),
       h('p', { class: 'small' }, 'Tempo per confermare: ', h('span', { class: 'mono', 'data-abs': pend.closeDeadline }, '—')),
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: (ev) => { const b = ev.currentTarget; b.disabled = true; confirmEventClose(pend).finally(() => { b.disabled = false; }); } }, 'Conferma chiusura evento'));
     el.dataset.id = pend.id;
@@ -1553,8 +1573,22 @@ function eventOverlays(st) {
   }
   if (open) open.remove();
   // Premio dato d'ufficio (tempo scaduto) o ricevuto da un altro telefono della coppia: lo si mostra una volta.
-  const got = (st.events || []).find((e) => e.mine?.reward && !seenEventRewards.has(e.id));
-  if (got && !document.querySelector('.battle-overlay')) showEventReward(got, got.mine.reward);
+  const got = (st.events || []).find((e) => e.mine?.confirmedAt && (e.mine.reward || e.mine.outcome === 'lost') && !seenEventRewards.has(e.id));
+  if (got && !document.querySelector('.battle-overlay')) {
+    if (got.mine.reward) showEventReward(got, got.mine.reward);
+    else showEventLoss(got);
+  }
+}
+function showEventLoss(e) {
+  seenEventRewards.add(e.id);
+  store.set('zdg_seen_ev_rewards', [...seenEventRewards].slice(-50));
+  vibrate([400, 120, 400]);
+  const el = battleOverlay('defeat',
+    h('div', { class: 'eyebrow' }, `Evento · ${e.name}`),
+    h('h2', { class: 'battle-title' }, 'Sfida persa'),
+    h('p', null, 'Il tempo per confermare è scaduto: l\'evento è chiuso e il premio non è vostro.'),
+    h('p', { class: 'small muted' }, `Tregua di ${e.truceMin} minuti tra i partecipanti: nessun ingaggio fino alla fine.`),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Continua'));
 }
 function showEventReward(e, reward) {
   seenEventRewards.add(e.id);

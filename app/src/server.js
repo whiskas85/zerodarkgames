@@ -452,7 +452,7 @@ const electWho = (req) => {
   return { player: pl, actor: pl ? `eletto:${pl.name}` : 'eletti' };
 };
 app.post('/api/team/events/:id/start', needTeam, wrap((req) => EV.startEvent(req.params.id, electWho(req))));
-app.post('/api/team/events/:id/close', needTeam, wrap((req) => EV.closeEvent(req.params.id, electWho(req))));
+app.post('/api/team/events/:id/close', needTeam, wrap((req) => EV.closeEvent(req.params.id, electWho(req), req.body?.outcomes || {})));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});
@@ -657,7 +657,7 @@ m.patch('/events/:eid/location', wrap((req) => EV.setLocation(Number(req.params.
 m.post('/events/:eid/launch', wrap((req) => EV.launchEvent(Number(req.params.eid), actor(req))));
 m.delete('/events/:eid', wrap((req) => { EV.deleteEvent(Number(req.params.eid), actor(req)); return { ok: true }; }));
 m.post('/events/:eid/start', wrap((req) => EV.startEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
-m.post('/events/:eid/close', wrap((req) => EV.closeEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
+m.post('/events/:eid/close', wrap((req) => EV.closeEvent(Number(req.params.eid), { master: true, actor: actor(req) }, req.body?.outcomes || {})));
 m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body || {}, actor(req))));
 m.delete('/notices/:nid', wrap((req) => { G.deleteNotice(Number(req.params.nid), actor(req)); return { ok: true }; }));
 m.patch('/players/:pid', wrap((req) => { G.updatePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));

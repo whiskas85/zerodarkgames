@@ -636,4 +636,7 @@ addColumn('game_events', 'locLabel', 'TEXT');
 addColumn('game_events', 'locLat', 'REAL');
 addColumn('game_events', 'locLng', 'REAL');
 
+// Esito dell'evento per ogni coppia: 'won' (prende il premio) o 'lost' (niente premio).
+addColumn('event_entries', 'outcome', 'TEXT');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

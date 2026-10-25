@@ -1019,3 +1019,5 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .zones-legend li.here { background: color-mix(in srgb, var(--c) 18%, transparent); }
 .zl-ico { font-size: 22px; line-height: 1.2; }
 .ev-place { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ev-lost { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--blood-soft); color: var(--blood); font-weight: 700; }
+.ev-outcome { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }

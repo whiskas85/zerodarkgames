@@ -2078,15 +2078,21 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   // Gli Eletti di un'altra squadra (o senza squadra) non chiudono; la regia sì.
   assert.throws(() => EV.closeEvent(ev.id, { player: { squadId: 999, gameId: g.id } }), /regia o la squadra/);
   EV.startEvent(ev.id, { master: true, actor: 'test' });
-  EV.closeEvent(ev.id, { master: true, actor: 'test' });
+  // Esito: B ha perso (niente premio), gli altri hanno vinto.
+  EV.closeEvent(ev.id, { master: true, actor: 'test' }, { [B.id]: 'lost' });
   const r = EV.confirmClose(A, ev.id);
+  assert.equal(r.outcome, 'won');
   assert.equal(r.reward.kind, 'code');
+  const rb = EV.confirmClose(B, ev.id);
+  assert.equal(rb.outcome, 'lost');
+  assert.equal(rb.reward, null);
   assert.ok(G.teamState(A).notebook.some((n) => n.source === 'event'));
   // Allo scadere del tempo confermano d'ufficio gli altri (premio compreso) e parte la tregua.
   EV.tickAll(Date.now() + 3 * 60000);
-  const after = EV.teamEvents(B).find((x) => x.id === ev.id);
+  const after = EV.teamEvents(Cc).find((x) => x.id === ev.id);
   assert.equal(after.status, 'truce');
   assert.ok(after.mine.reward);
+  assert.equal(EV.teamEvents(B).find((x) => x.id === ev.id).mine.outcome, 'lost');
   assert.throws(() => K.reportEngagement(A, B.id, 'won'), /Tregua dopo l'evento/);
   K.reportEngagement(A, D.id, 'draw');
   EV.tickAll(Date.now() + 9 * 60000);

@@ -1076,3 +1076,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .event-item .notice-head { flex-wrap: wrap; }
 .event-item > .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--line); }
 .event-item .ev-loc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+.ev-outcomes { display: grid; gap: 8px; }
+.ev-outcome { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }
+.ev-outcome .seg-choice { display: flex; gap: 6px; }
+.ev-outcomes { display: grid; gap: 8px; }
+.ev-outcome { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }
+.ev-outcome .seg-choice { display: flex; gap: 6px; }
+.ev-outcome .btn-danger.on { background: var(--danger); color: #fff; }

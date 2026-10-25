@@ -3506,6 +3506,24 @@ async function eventLocationDialog(current = null) {
   return ok ? result : undefined;
 }
 
+// Chiusura: l'esito di ogni coppia (vinta = prende il premio, persa = lo perde).
+async function eventOutcomeDialog(ev) {
+  const list = ev.entries.filter((x) => x.status === 'accepted');
+  const out = Object.fromEntries(list.map((x) => [x.teamId, 'won']));
+  const rows = h('div', { class: 'ev-outcomes' });
+  const draw = () => rows.replaceChildren(...list.map((x) => h('div', { class: 'ev-outcome' },
+    h('strong', { class: 'grow' }, `${x.roman || ''} ${x.sectorName || ''}`),
+    h('div', { class: 'seg-choice' },
+      h('button', { type: 'button', class: `btn btn-sm ${out[x.teamId] === 'won' ? 'btn-primary' : ''}`, onclick: () => { out[x.teamId] = 'won'; draw(); } }, 'Vinta'),
+      h('button', { type: 'button', class: `btn btn-sm ${out[x.teamId] === 'lost' ? 'btn-danger on' : ''}`, onclick: () => { out[x.teamId] = 'lost'; draw(); } }, 'Persa')))));
+  draw();
+  const ok = await modal({ title: `Chiudi «${ev.name}»`, okLabel: 'Chiudi l\'evento',
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'tiny muted' }, `Com'è andata per ogni coppia? Chi vince prende il premio (${ev.rewardLabel}), chi perde no. A tutte compare la schermata di chiusura da confermare; dopo ${ev.confirmMin} minuti vale per tutte e parte la tregua.`),
+      rows) });
+  return ok ? out : null;
+}
+
 let evLocation = null;
 function viewEvents() {
   const ms = R.ms;
@@ -3545,7 +3563,7 @@ function viewEvents() {
     h('div', { class: 'field' }, h('span', null, 'Luogo'),
       h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(evLocation); if (r !== undefined) { evLocation = r; render(); } } },
         evLocation ? `📍 ${evLocation.label}` : '📍 Scegli il luogo…'))),
-  h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento: a ogni coppia compare una schermata che blocca l\'app finché non conferma; chi conferma prende subito il premio. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
+  h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento indicando per ogni coppia se ha vinto o perso: a ogni coppia compare una schermata (vittoria o sconfitta) che blocca l\'app finché non conferma; chi ha vinto prende subito il premio, chi ha perso no. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
   h('div', { class: 'row-actions' },
     h('button', { class: 'btn', type: 'submit' }, 'Salva, lo lancio dopo'),
     h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save(true) }, 'Lancia subito')));
@@ -3568,11 +3586,12 @@ function viewEvents() {
           h('strong', null, `${x.roman || ''} ${x.sectorName || ''}`),
           x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'alleanza: deve confermare') : x.groupId ? h('span', { class: 'chip' }, 'in alleanza') : null,
           x.joinedBy ? h('span', { class: 'tiny muted' }, ` · ${x.joinedBy}`) : null,
-          x.confirmedAt ? h('span', { class: 'chip chip-ok' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : ''}`) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
+          x.outcome ? h('span', { class: `chip ${x.outcome === 'lost' ? 'chip-blood' : 'chip-ok'}` }, x.outcome === 'lost' ? 'persa' : 'vinta') : null,
+          x.confirmedAt ? h('span', { class: 'chip' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : x.outcome === 'lost' ? ' · niente premio' : ''}`) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
       h('div', { class: 'row-actions' },
         ev.status === 'draft' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Lanciare l\'evento?', `«${ev.name}» arriva adesso a tutte le coppie con una notifica${ev.windowMin ? `; candidature aperte per ${ev.windowMin} minuti` : ''}.`, 'POST', `/api/m/events/${ev.id}/launch`, {}, 'Evento lanciato alle coppie') }, 'Lancia') : null,
         ev.status === 'open' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !ev.joined, onclick: () => confirmCall('Avviare l\'evento?', `Le coppie iscritte (${ev.joined}) ricevono l'avviso della tregua finale; le alleanze non confermate da tutti decadono.`, 'POST', `/api/m/events/${ev.id}/start`, {}, 'Evento avviato') }, 'Avvia') : null,
-        ['open', 'running'].includes(ev.status) && ev.joined ? h('button', { class: 'btn btn-sm', onclick: () => confirmCall('Chiudere l\'evento?', `Alle coppie compare la conferma di chiusura: chi conferma prende il premio; dopo ${ev.confirmMin} minuti la chiusura vale per tutti e parte la tregua.`, 'POST', `/api/m/events/${ev.id}/close`, {}, 'Evento chiuso: in attesa delle conferme') }, 'Chiudi l\'evento') : null,
+        ['open', 'running'].includes(ev.status) && ev.joined ? h('button', { class: 'btn btn-sm', onclick: async () => { const o = await eventOutcomeDialog(ev); if (o) call('POST', `/api/m/events/${ev.id}/close`, { outcomes: o }, 'Evento chiuso: in attesa delle conferme'); } }, 'Chiudi l\'evento') : null,
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'evento?', 'Sparisce dai telefoni. I premi già dati restano.', 'DELETE', `/api/m/events/${ev.id}`, undefined, 'Evento eliminato', true) }, 'Elimina')));
   };
   return h('div', { class: 'stack' },

@@ -133,7 +133,8 @@ function startEvent(id, who) {
   });
 }
 
-function closeEvent(id, who) {
+// outcomes: { teamId: 'won' | 'lost' } deciso da chi chiude; chi non è indicato ha vinto.
+function closeEvent(id, who, outcomes = {}) {
   return tx(() => {
     const ev = getEvent(id);
     if (!ev) throw err(404, 'Evento non trovato');
@@ -142,8 +143,12 @@ function closeEvent(id, who) {
     else if (ev.status !== 'running') throw err(409, 'Evento già chiuso');
     const now = Date.now();
     q.run("UPDATE game_events SET status = 'closing', closingAt = ?, closeDeadline = ?, closedBy = ? WHERE id = ?", now, now + ev.confirmMin * 60000, who.actor || null, ev.id);
-    G.log(ev.gameId, who.actor, 'event_closing', { name: ev.name });
-    pushTeamsOf(ev, accepted(ev.id).map((e) => e.teamId), { title: `Evento concluso · ${ev.name}`, body: `Confermate la chiusura nell'app entro ${ev.confirmMin} minuti per ricevere il premio.` });
+    const list = accepted(ev.id);
+    for (const e of list) q.run('UPDATE event_entries SET outcome = ? WHERE eventId = ? AND teamId = ?', outcomes?.[e.teamId] === 'lost' ? 'lost' : 'won', ev.id, e.teamId);
+    const lost = list.filter((e) => outcomes?.[e.teamId] === 'lost').map((e) => e.teamId);
+    G.log(ev.gameId, who.actor, 'event_closing', { name: ev.name, won: list.length - lost.length, lost: lost.length });
+    pushTeamsOf(ev, list.map((e) => e.teamId).filter((t) => !lost.includes(t)), { title: `Sfida vinta · ${ev.name}`, body: `Confermate la chiusura nell'app entro ${ev.confirmMin} minuti per ricevere il premio.` });
+    pushTeamsOf(ev, lost, { title: `Sfida persa · ${ev.name}`, body: 'Niente premio questa volta. Confermate la chiusura nell\'app.' });
     changed(ev);
     return { ok: true };
   });
@@ -246,11 +251,13 @@ function giveReward(ev, t) {
   return { kind: 'gift', name: g.name, icon: g.icon, color: g.color, description: g.description };
 }
 
+// Chi ha vinto prende il premio; chi ha perso lo perde.
 function confirmEntry(ev, entry, auto = false) {
   const t = team(entry.teamId);
-  const reward = t && t.status !== 'withdrawn' ? giveReward(ev, t) : null;
+  const won = entry.outcome !== 'lost';
+  const reward = won && t && t.status !== 'withdrawn' ? giveReward(ev, t) : null;
   q.run('UPDATE event_entries SET confirmedAt = ?, reward = ? WHERE eventId = ? AND teamId = ?', Date.now(), reward ? JSON.stringify({ ...reward, auto }) : null, ev.id, entry.teamId);
-  G.log(ev.gameId, auto ? 'evento' : `coppia:${entry.teamId}`, 'event_confirmed', { name: ev.name, team: t?.sectorName, reward: reward?.kind, auto });
+  G.log(ev.gameId, auto ? 'evento' : `coppia:${entry.teamId}`, 'event_confirmed', { teamId: entry.teamId, name: ev.name, team: t?.sectorName, outcome: won ? 'won' : 'lost', reward: reward?.kind, auto });
   rt.toTeams(ev.gameId, 'state', {}, entry.teamId);
 }
 
@@ -265,7 +272,8 @@ function confirmClose(me, id) {
     if (!mine.confirmedAt) confirmEntry(ev, mine);
     if (!q.get("SELECT 1 FROM event_entries WHERE eventId = ? AND status = 'accepted' AND confirmedAt IS NULL", ev.id)) startTruce(ev);
     changed(ev);
-    return { ok: true, reward: JSON.parse(q.get('SELECT reward FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, me.id).reward || 'null') };
+    const row = q.get('SELECT reward, outcome FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, me.id);
+    return { ok: true, outcome: row.outcome || 'won', reward: JSON.parse(row.reward || 'null') };
   });
 }
 
@@ -325,7 +333,7 @@ function baseOut(ev) {
   };
 }
 
-const entryOut = (e) => ({ ...teamLite(team(e.teamId)), status: e.status, groupId: e.groupId, joinedBy: e.joinedBy, joinedAt: e.joinedAt, confirmedAt: e.confirmedAt, reward: e.reward ? JSON.parse(e.reward) : null });
+const entryOut = (e) => ({ ...teamLite(team(e.teamId)), status: e.status, groupId: e.groupId, joinedBy: e.joinedBy, joinedAt: e.joinedAt, confirmedAt: e.confirmedAt, outcome: e.outcome, reward: e.reward ? JSON.parse(e.reward) : null });
 
 function masterEvent(ev) {
   return { ...baseOut(ev), author: ev.author, closedBy: ev.closedBy, entries: entriesOf(ev.id).map(entryOut) };
@@ -357,7 +365,7 @@ function teamEvents(t, player = null) {
     const group = mine?.groupId ? q.all('SELECT * FROM event_entries WHERE eventId = ? AND groupId = ?', ev.id, mine.groupId) : [];
     return {
       ...out,
-      mine: mine ? { status: mine.status, joinedBy: mine.joinedBy, confirmedAt: mine.confirmedAt, reward: mine.reward ? JSON.parse(mine.reward) : null,
+      mine: mine ? { status: mine.status, joinedBy: mine.joinedBy, confirmedAt: mine.confirmedAt, outcome: mine.outcome, reward: mine.reward ? JSON.parse(mine.reward) : null,
         group: group.length ? group.map((e) => ({ ...teamLite(team(e.teamId)), status: e.status })) : null } : null,
       allianceSize: ally?.members.length || 1,
       // Dentro l'evento le coppie compaiono una per una, senza alleanze.
