@@ -54,16 +54,29 @@ function createEvent(gameId, data, actor) {
   const windowMin = Number(data.windowMin) || 0;
   const num = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : def; };
   const now = Date.now();
-  const id = Number(q.run(`INSERT INTO game_events (gameId, name, description, squadId, slots, rewardKind, rewardGiftType, openUntil, confirmMin, truceMin, createdAt, author)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  // launch: proposto subito alle coppie; altrimenti resta «da lanciare», visibile solo in regia.
+  const id = Number(q.run(`INSERT INTO game_events (gameId, name, description, squadId, slots, rewardKind, rewardGiftType, windowMin, confirmMin, truceMin, status, createdAt, author)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
   g.id, name, String(data.description || '').trim().slice(0, 2000) || null, squadId, slots, rewardKind, rewardGiftType,
-  windowMin > 0 ? now + windowMin * 60000 : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), now, actor || null).lastInsertRowid);
+  windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), now, actor || null).lastInsertRowid);
+  G.log(g.id, actor, 'event_created', { name, slots, launch: !!data.launch });
+  if (data.launch) return launchEvent(id, actor);
+  changed(getEvent(id));
+  return masterEvent(getEvent(id));
+}
+
+// Lancio: l'evento arriva a tutte le coppie (notifica) e alla squadra custode; da qui corre la finestra di candidatura.
+function launchEvent(id, actor) {
   const ev = getEvent(id);
-  G.log(g.id, actor, 'event_created', { name, slots });
-  rt.pushTeams(g.id, { title: `Evento · ${name}`, body: `Sfida per ${slots} ${slots === 1 ? 'coppia' : 'coppie'}: toccate per accettarla.`, tag: `evento-${id}`, url: `/#/eventi/${id}` });
-  pushSquad(ev, { title: `Evento affidato alla vostra squadra · ${name}`, body: 'Lo seguite voi sul campo e lo chiudete a fine prove.' });
+  if (!ev) throw err(404, 'Evento non trovato');
+  if (ev.status !== 'draft') throw err(409, 'Evento già lanciato');
+  const now = Date.now();
+  q.run("UPDATE game_events SET status = 'open', launchedAt = ?, openUntil = ? WHERE id = ?", now, ev.windowMin ? now + ev.windowMin * 60000 : null, ev.id);
+  G.log(ev.gameId, actor, 'event_launched', { name: ev.name });
+  rt.pushTeams(ev.gameId, { title: `Evento · ${ev.name}`, body: `Sfida per ${ev.slots} ${ev.slots === 1 ? 'coppia' : 'coppie'}: toccate per accettarla.`, tag: `evento-${ev.id}`, url: `/#/eventi/${ev.id}` });
+  pushSquad(ev, { title: `Evento affidato alla vostra squadra · ${ev.name}`, body: 'Lo seguite voi sul campo e lo chiudete a fine prove.' });
   changed(ev);
-  return masterEvent(ev);
+  return masterEvent(getEvent(ev.id));
 }
 
 function deleteEvent(id, actor) {
@@ -85,6 +98,7 @@ function startEvent(id, who) {
     const ev = getEvent(id);
     if (!ev) throw err(404, 'Evento non trovato');
     if (!canManage(ev, who)) throw err(403, 'L\'evento lo avvia la regia o la squadra di Eletti che lo custodisce');
+    if (ev.status === 'draft') throw err(409, 'Prima lancia l\'evento alle coppie');
     if (ev.status !== 'open') throw err(409, 'Evento già avviato');
     // Le candidature di alleanza non confermate da tutti decadono.
     dropPendingGroups(ev);
@@ -283,7 +297,7 @@ function baseOut(ev) {
     id: ev.id, name: ev.name, description: ev.description, status: ev.status, slots: ev.slots,
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
     rewardKind: ev.rewardKind, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
-    openUntil: ev.openUntil, open: candidaturesOpen(ev), confirmMin: ev.confirmMin, truceMin: ev.truceMin,
+    openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
     startedAt: ev.startedAt, closingAt: ev.closingAt, closeDeadline: ev.closeDeadline, truceUntil: ev.truceUntil, doneAt: ev.doneAt,
     squadId: ev.squadId, squadName: squadName(ev.squadId), createdAt: ev.createdAt,
   };
@@ -330,4 +344,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { REWARDS, createEvent, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { REWARDS, createEvent, launchEvent, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

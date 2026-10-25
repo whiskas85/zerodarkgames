@@ -653,6 +653,7 @@ m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(
 m.delete('/print-logo', wrap(() => { print.resetLogo(); return { ok: true }; }));
 m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));
 m.post('/games/:id/events', wrap((req) => EV.createEvent(gameId(req), req.body || {}, actor(req))));
+m.post('/events/:eid/launch', wrap((req) => EV.launchEvent(Number(req.params.eid), actor(req))));
 m.delete('/events/:eid', wrap((req) => { EV.deleteEvent(Number(req.params.eid), actor(req)); return { ok: true }; }));
 m.post('/events/:eid/start', wrap((req) => EV.startEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
 m.post('/events/:eid/close', wrap((req) => EV.closeEvent(Number(req.params.eid), { master: true, actor: actor(req) })));

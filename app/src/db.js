@@ -627,4 +627,8 @@ CREATE TABLE IF NOT EXISTS event_entries (
 );
 `);
 
+// Eventi preparati e lanciati dopo: la finestra di candidatura parte al lancio.
+addColumn('game_events', 'windowMin', 'INTEGER');
+addColumn('game_events', 'launchedAt', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

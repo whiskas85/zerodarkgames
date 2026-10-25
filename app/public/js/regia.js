@@ -890,7 +890,7 @@ const EVENT_LABELS = {
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
   alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
-  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', event_created: 'Evento proposto', event_deleted: 'Evento eliminato', event_started: 'Evento avviato', event_closing: 'Evento chiuso', event_joined: 'Sfida accettata', event_confirmed: 'Chiusura evento confermata', event_truce: 'Tregua dopo l\'evento', engagement_confirmed: 'Scontro registrato',
+  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', event_created: 'Evento creato', event_launched: 'Evento lanciato', event_deleted: 'Evento eliminato', event_started: 'Evento avviato', event_closing: 'Evento chiuso', event_joined: 'Sfida accettata', event_confirmed: 'Chiusura evento confermata', event_truce: 'Tregua dopo l\'evento', engagement_confirmed: 'Scontro registrato',
   engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
   point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
@@ -3444,7 +3444,7 @@ function viewPrints() {
 
 // ---------------------------------------------------------------- EVENTI
 
-const EVENT_STATUS = { open: ['Candidature', 'chip-brass'], running: ['In corso', 'chip-blood'], closing: ['Chiusura: conferme', 'chip-warn'], truce: ['Tregua', 'chip-ok'], done: ['Concluso', ''] };
+const EVENT_STATUS = { draft: ['Da lanciare', ''], open: ['Candidature', 'chip-brass'], running: ['In corso', 'chip-blood'], closing: ['Chiusura: conferme', 'chip-warn'], truce: ['Tregua', 'chip-ok'], done: ['Concluso', ''] };
 const rewardText = (r) => (!r ? '' : r.kind === 'gift' ? `${r.icon || ''} ${r.name}` : r.kind === 'fragment' ? `frammento «${r.text}»` : `Sigillo ${r.roman} ${r.sectorName}`);
 
 function viewEvents() {
@@ -3462,15 +3462,16 @@ function viewEvents() {
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', 'data-keep': 'ev-window' });
   const confirmMin = num('ev-confirm', 3, 1, 60);
   const truceMin = num('ev-truce', 5, 0, 60);
-  const form = h('form', { class: 'stack-sm', onsubmit: async (e) => {
-    e.preventDefault();
+  // Due strade: salvarlo e lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
+  const save = async (launch) => {
     if (!name.value.trim()) return toast('Dai un nome all\'evento', 'error');
-    if (!(await dialog({ title: 'Proporre l\'evento?', text: `«${name.value}» arriva a tutte le coppie con una notifica.`, okLabel: 'Proponi' }))) return;
+    if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) return;
     const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
-      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value }, 'Evento proposto alle coppie');
+      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, launch }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
     // La pagina si è già ridisegnata: si svuotano i campi nuovi.
     if (r) for (const k of ['ev-name', 'ev-desc']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; }
-  } },
+  };
+  const form = h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); save(false); } },
   h('label', { class: 'field' }, h('span', null, 'Nome'), name),
   h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
   h('div', { class: 'form-grid' },
@@ -3482,7 +3483,9 @@ function viewEvents() {
     h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
     h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin)),
   h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento: a ogni coppia compare una schermata che blocca l\'app finché non conferma; chi conferma prende subito il premio. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
-  h('button', { class: 'btn btn-primary', type: 'submit' }, 'Proponi l\'evento'));
+  h('div', { class: 'row-actions' },
+    h('button', { class: 'btn', type: 'submit' }, 'Salva, lo lancio dopo'),
+    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save(true) }, 'Lancia subito')));
 
   const card = (ev) => {
     const [label, cls] = EVENT_STATUS[ev.status] || [ev.status, ''];
@@ -3492,6 +3495,7 @@ function viewEvents() {
           ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
         ev.description ? h('p', { class: 'small' }, ev.description) : null,
         h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
+          ev.status === 'draft' ? ` · candidature ${ev.windowMin ? `per ${ev.windowMin}′ dal lancio` : 'fino all\'avvio'} · le coppie non lo vedono ancora` : null,
           ev.status === 'open' && ev.openUntil ? [' · candidature ', ev.open ? ['chiudono tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.openUntil}` }, '—')] : 'chiuse'] : null,
           ev.status === 'closing' ? [' · conferme entro ', h('span', { class: 'mono', 'data-clock': `abs:${ev.closeDeadline}` }, '—')] : null,
           ev.status === 'truce' ? [' · tregua ancora ', h('span', { class: 'mono', 'data-clock': `abs:${ev.truceUntil}` }, '—')] : null),
@@ -3501,6 +3505,7 @@ function viewEvents() {
           x.joinedBy ? h('span', { class: 'tiny muted' }, ` · ${x.joinedBy}`) : null,
           x.confirmedAt ? h('span', { class: 'chip chip-ok' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : ''}`) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
       h('div', { class: 'row-actions' },
+        ev.status === 'draft' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Lanciare l\'evento?', `«${ev.name}» arriva adesso a tutte le coppie con una notifica${ev.windowMin ? `; candidature aperte per ${ev.windowMin} minuti` : ''}.`, 'POST', `/api/m/events/${ev.id}/launch`, {}, 'Evento lanciato alle coppie') }, 'Lancia') : null,
         ev.status === 'open' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !ev.joined, onclick: () => confirmCall('Avviare l\'evento?', `Le coppie iscritte (${ev.joined}) ricevono l'avviso della tregua finale; le alleanze non confermate da tutti decadono.`, 'POST', `/api/m/events/${ev.id}/start`, {}, 'Evento avviato') }, 'Avvia') : null,
         ['open', 'running'].includes(ev.status) && ev.joined ? h('button', { class: 'btn btn-sm', onclick: () => confirmCall('Chiudere l\'evento?', `Alle coppie compare la conferma di chiusura: chi conferma prende il premio; dopo ${ev.confirmMin} minuti la chiusura vale per tutti e parte la tregua.`, 'POST', `/api/m/events/${ev.id}/close`, {}, 'Evento chiuso: in attesa delle conferme') }, 'Chiudi l\'evento') : null,
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'evento?', 'Sparisce dai telefoni. I premi già dati restano.', 'DELETE', `/api/m/events/${ev.id}`, undefined, 'Evento eliminato', true) }, 'Elimina')));

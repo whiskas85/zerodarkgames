@@ -1053,3 +1053,20 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .zone-kind { display: grid; gap: 4px; text-align: left; padding: 10px; border: 2px solid var(--line); border-top: 5px solid var(--c); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
 .zone-kind.on { border-color: var(--c); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 40%, transparent); }
 .zk-ico { font-size: 26px; }
+
+/* Telefono: sulla Mappa pulsanti e pannelli (Zone, Alleanze, Legenda, disegno) stanno sopra e sotto la mappa, non sopra di lei. */
+@media (max-width: 860px) {
+  .map-full { display: flex; flex-direction: column; gap: 8px; }
+  .map-full > .map-tools { position: static; order: -2; max-width: none; flex-wrap: wrap; overflow: visible; justify-content: flex-start; padding: 0; }
+  .map-full > .map-pick { position: sticky; top: 0; order: -1; left: auto; flex-wrap: wrap; }
+  .map-full > .map-zones-box, .map-full > .map-allies-box, .map-full > .map-legend-box { position: static; width: auto; max-width: none; max-height: none; box-shadow: none; background: var(--paper); }
+  .zone-list .row-actions { flex-wrap: wrap; }
+  /* Stampe: due QR per riga */
+  .pr-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .pr-qr { width: 92px; height: 92px; }
+  .pr-logo .row-actions { width: 100%; }
+  /* Rewind: barra comandi compatta, mappa un po' più bassa */
+  .rw-slider { min-width: 100%; order: 5; }
+  .rw-cols { max-height: none; }
+  .rw-col { max-height: 40vh; }
+}

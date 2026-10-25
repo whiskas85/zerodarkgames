@@ -2045,7 +2045,16 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   advanceTo(g.id, 6);
   // B e C alleati.
   K.respondRequest(Cc, K.requestAlliance(B, Cc.id).id, true);
-  const ev = EV.createEvent(g.id, { name: 'Assalto alla Cassa', slots: 3, rewardKind: 'code', confirmMin: 2, truceMin: 5 }, 'test');
+  // Salvato per dopo: le coppie non lo vedono e non si candidano finché la regia non lo lancia.
+  const ev = EV.createEvent(g.id, { name: 'Assalto alla Cassa', slots: 3, rewardKind: 'code', confirmMin: 2, truceMin: 5, windowMin: 10 }, 'test');
+  assert.equal(ev.status, 'draft');
+  assert.ok(!EV.teamEvents(A).some((x) => x.id === ev.id));
+  assert.throws(() => EV.joinEvent(A, null, ev.id), /chiuse/);
+  assert.throws(() => EV.startEvent(ev.id, { master: true }), /lancia/);
+  const launched = EV.launchEvent(ev.id, 'test');
+  assert.equal(launched.status, 'open');
+  assert.ok(launched.openUntil > Date.now() + 9 * 60000);
+  assert.throws(() => EV.launchEvent(ev.id, 'test'), /già lanciato/);
   EV.joinEvent(A, null, ev.id);
   EV.joinEvent(A, null, ev.id); // ripetuto: nessun effetto
   // L'alleanza B+C prende 2 posti: C deve confermare.
@@ -2080,7 +2089,8 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   EV.tickAll(Date.now() + 9 * 60000);
   assert.equal(EV.teamEvents(B).find((x) => x.id === ev.id).status, 'done');
   // Premio Dono: finisce tra i doni della coppia.
-  const ev2 = EV.createEvent(g.id, { name: 'Corsa', slots: 1, rewardKind: 'gift', rewardGiftType: 'archivio', truceMin: 0 }, 'test');
+  const ev2 = EV.createEvent(g.id, { name: 'Corsa', slots: 1, rewardKind: 'gift', rewardGiftType: 'archivio', truceMin: 0, launch: true }, 'test');
+  assert.equal(ev2.status, 'open');
   EV.joinEvent(D, null, ev2.id);
   EV.closeEvent(ev2.id, { master: true, actor: 'test' });
   assert.equal(EV.confirmClose(D, ev2.id).reward.name, 'Archivio Proibito');
