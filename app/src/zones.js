@@ -189,6 +189,8 @@ function masterZones(gameId) {
 // Per la coppia: tutte le zone attive (con l'effetto), quelle in cui è adesso e l'avanzamento della Conquista.
 function teamZones(t) {
   if (!t || t.kind !== 'couple') return null;
+  // Prima del Cerchio le coppie non vedono le zone (come gli altri luoghi del gioco).
+  if (['created', 'draft', 'ready'].includes(G.getGame(t.gameId).status)) return null;
   const now = Date.now();
   const mine = appliedZones(t.id);
   return {

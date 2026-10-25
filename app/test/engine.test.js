@@ -2151,8 +2151,12 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   const g = setupGame(3);
   const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
   S.chooseSkill(A, 'tracker', true);
+  // Prima del Cerchio le coppie non vedono le zone.
+  Z.createZone(g.id, { kind: 'santuario', points: [[1, 1], [1, 2], [2, 2]], active: false }, 'test');
   G.control(g.id, 'ready', 'test');
+  assert.equal(Z.teamZones(A), null);
   G.control(g.id, 'circle', 'test');
+  assert.ok(Z.teamZones(A));
   G.control(g.id, 'start', 'test');
   advanceTo(g.id, 6);
   const pl = (t) => q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', t.id);
@@ -2200,5 +2204,5 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, Cc.id);
   assert.equal(Z.teamZones(Cc).won.length, 1);
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
-  assert.equal(Z.masterZones(g.id).list.length, 5);
+  assert.equal(Z.masterZones(g.id).list.length, 6);
 });
