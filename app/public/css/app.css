@@ -1021,3 +1021,26 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .ev-place { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ev-lost { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--blood-soft); color: var(--blood); font-weight: 700; }
 .ev-outcome { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }
+
+/* Beacon degli Eletti: terminale stile codice */
+.btn-beacon { display: inline-flex; gap: 10px; align-items: center; justify-content: center; }
+.beacon-zones { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.beacon-zones li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 8px; border-left: 4px solid var(--c); }
+.beacon-term { position: fixed; inset: 0; z-index: 2100; display: grid; grid-template-rows: auto 1fr auto auto auto; gap: 10px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  background: #020803; color: #3dff7a; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; text-shadow: 0 0 6px rgba(61, 255, 122, .6); }
+.beacon-term::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .25) 0 2px, transparent 2px 4px); }
+.bt-head { font-weight: 700; letter-spacing: .12em; }
+.bt-log { overflow-y: auto; display: grid; align-content: end; gap: 2px; }
+.bt-line { white-space: pre-wrap; word-break: break-all; animation: bt-in .25s steps(6) both; }
+.bt-good { color: #b7ffcf; font-weight: 700; }
+.bt-bad { color: #ff4d4d; font-weight: 700; text-shadow: 0 0 8px rgba(255, 60, 60, .8); }
+.bt-bar { height: 10px; border: 1px solid #3dff7a; } .bt-bar i { display: block; height: 100%; width: 0; background: #3dff7a; box-shadow: 0 0 12px #3dff7a; transition: width .6s linear; }
+.bt-status { font-size: 15px; font-weight: 700; }
+.beacon-term .btn { position: relative; z-index: 1; color: #3dff7a; border-color: #3dff7a; background: transparent; }
+.beacon-term.bt-glitch { color: #ff4d4d; animation: bt-glitch .18s steps(2) 8; }
+.beacon-term.bt-glitch .bt-bar { border-color: #ff4d4d; }
+.beacon-term.bt-ok { animation: bt-flash .8s ease 2; }
+@keyframes bt-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes bt-glitch { 0% { transform: translate(-3px, 1px); filter: hue-rotate(0); } 100% { transform: translate(3px, -1px); filter: hue-rotate(40deg); } }
+@keyframes bt-flash { 0%, 100% { background: #020803; } 50% { background: #0c3a18; } }
+.beacon-term [hidden] { display: none !important; }

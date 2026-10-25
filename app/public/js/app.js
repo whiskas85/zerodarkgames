@@ -476,7 +476,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg),
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -546,7 +546,7 @@ function perksModal(fx) {
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
 // Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
-const UP = { eventi: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
+const UP = { eventi: '#/home', beacon: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
 // Pagine che stanno sotto un'altra anche senza argomento.
 const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
@@ -1306,6 +1306,7 @@ function viewElectHome(st) {
       ['Gioco', 'g-game', [
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
+        tile('#/beacon', 'Beacon', mdi('satelliteUplink', 28), st.beacon?.running ? '●' : null, !!st.beacon?.running),
         // Punto di interesse: si segna dove si è (GPS) o toccando la mappa; lo vedono regia ed Eletti.
         h('button', { class: 'tile', type: 'button', onclick: () => field.openPoi() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('mapMarker', 28)), h('span', null, 'Punto di interesse'), h('span', { class: 'tiny muted' }, 'piazzalo qui')),
         (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
@@ -1441,6 +1442,95 @@ const teamName = (t) => `${t.roman} ${t.sectorName}`;
 // Alleanze e scontri sono due pagine. Le alleanze degli altri sono segrete: negli scontri si vede solo la coppia.
 const alliancePending = (st) => (st?.combat ? st.combat.incoming.length : 0);
 const fightPending = (st) => (st?.combat ? st.combat.toConfirm.length + (st.combat.steals || []).length : 0);
+
+// ---------------------------------------------------------------- Beacon (Eletti)
+
+// Una zona spenta si accende lanciando un Beacon dentro l'area: il telefono manda le coordinate, il server
+// controlla; la sequenza (stile codice) dura i minuti scelti dalla regia, poi si ricontrolla di essere ancora dentro.
+function viewBeacon() {
+  const b = S.state?.beacon;
+  if (!b) return h('p', { class: 'empty' }, 'Il Beacon lo lanciano gli Eletti.');
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Beacon'),
+    h('p', { class: 'muted small' }, 'Entrate in una zona spenta e lanciate il Beacon: il telefono legge le coordinate e, se siete dentro l\'area, parte la sequenza. Restate dentro fino alla fine: la zona si accende per tutte le coppie.'),
+    b.running ? h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => beaconSequence(b.running) }, '📡 Riprendi la sequenza in corso') : null,
+    h('button', { class: 'btn btn-primary btn-xl btn-block btn-beacon', type: 'button', onclick: launchBeacon }, mdi('satelliteUplink', 26), ' Lancia il Beacon'),
+    h('section', { class: 'card stack-sm' },
+      h('div', { class: 'eyebrow' }, `Zone spente (${b.off.length})`),
+      b.off.length ? h('ul', { class: 'beacon-zones' }, b.off.map((z) => h('li', { style: { '--c': z.color } }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name), h('span', { class: 'tiny muted' }, `${z.label} · Beacon ${z.beaconMin}′`)))) : h('p', { class: 'small muted' }, 'Nessuna zona da accendere, per ora.')));
+}
+
+const hex = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('').toUpperCase();
+const BEACON_LINES = ['handshake SAT-0 … ok', 'sync clock ±0.002s', 'load grid.polygon', 'inject carrier 446.0937', 'auth CONSIGLIO::ZERO', 'scan mesh nodes', 'spoof ttl 64', 'checksum', 'boot relay', 'lock frequency', 'uplink packet', 'encrypt aes-256'];
+function beaconTerminal() {
+  document.querySelector('.beacon-term')?.remove();
+  const log = h('div', { class: 'bt-log' });
+  const bar = h('div', { class: 'bt-bar' }, h('i'));
+  const status = h('div', { class: 'bt-status' }, '');
+  const close = h('button', { class: 'btn btn-block', type: 'button', hidden: true, onclick: () => { el.remove(); refresh(); } }, 'Chiudi');
+  const el = h('div', { class: 'beacon-term', role: 'dialog', 'aria-modal': 'true' }, h('div', { class: 'bt-head' }, '▌BEACON // CONSIGLIO ZERO'), log, bar, status, close);
+  document.body.append(el);
+  const line = (t, cls = '') => { log.append(h('div', { class: `bt-line ${cls}` }, t)); while (log.children.length > 40) log.firstChild.remove(); log.scrollTop = log.scrollHeight; };
+  return { el, line, bar, status, close, done: (ok) => { el.classList.add(ok ? 'bt-ok' : 'bt-fail'); close.hidden = false; } };
+}
+const getGps = () => new Promise((resolve, reject) => {
+  if (!navigator.geolocation) return reject(new Error('GPS non disponibile su questo telefono'));
+  navigator.geolocation.getCurrentPosition((p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
+    (e) => reject(new Error(e.code === 1 ? 'Permesso di posizione negato' : 'Posizione GPS non disponibile')), { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+});
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function launchBeacon() {
+  const T = beaconTerminal();
+  vibrate([40, 40, 40]);
+  T.line('> beacon --init');
+  T.line(`  0x${hex(8)} memoria ok`);
+  T.line('> gps --fix --high-accuracy');
+  let pos;
+  try { pos = await getGps(); } catch (e) { return beaconFail(T, e.message); }
+  T.line(`  LAT ${pos.lat.toFixed(6)}  LNG ${pos.lng.toFixed(6)}  ±${pos.acc}m`);
+  await sleep(500);
+  T.line('> zone --match polygon');
+  await sleep(500);
+  let z;
+  try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, true); }
+  T.line(`  MATCH: ${z.name.toUpperCase()} [${z.label}]`, 'bt-good');
+  beaconSequence(z, T);
+}
+
+function beaconFail(T, msg, outside = false) {
+  vibrate([300, 80, 300]);
+  T.el.classList.add('bt-glitch');
+  T.line('!! ERRORE', 'bt-bad');
+  T.line(outside ? '!! AREA NON RILEVATA' : `!! ${msg.toUpperCase()}`, 'bt-bad');
+  T.status.textContent = outside ? 'Non siete all\'interno di un\'area da attivare.' : msg;
+  T.done(false);
+}
+
+async function beaconSequence(z, T = beaconTerminal()) {
+  T.line(`> beacon --zone ${z.id} --duration ${z.beaconMin}m`);
+  const start = z.startedAt || Date.now();
+  const end = z.endsAt;
+  while (Date.now() < end) {
+    if (!document.body.contains(T.el)) return;
+    const f = Math.min(1, (Date.now() - start) / (end - start));
+    T.bar.firstChild.style.width = `${Math.round(f * 100)}%`;
+    T.status.textContent = `Restate dentro l'area · ${fmtDuration(Math.max(0, end - Date.now()), false)} · ${Math.round(f * 100)}%`;
+    T.line(`  [${hex(4)}] ${BEACON_LINES[Math.floor(Math.random() * BEACON_LINES.length)]} ${'.'.repeat(1 + Math.floor(Math.random() * 3))} ${Math.random() < 0.8 ? 'ok' : hex(6)}`);
+    await sleep(650);
+  }
+  T.bar.firstChild.style.width = '100%';
+  T.line('> gps --verify inside');
+  let pos;
+  try { pos = await getGps(); } catch (e) { return beaconFail(T, e.message); }
+  try {
+    await api('POST', `/api/team/beacon/${z.id}/complete`, pos);
+  } catch (e) { return beaconFail(T, e.message, false); }
+  vibrate([120, 60, 120, 60, 400]);
+  T.line(`>> ZONA ATTIVA: ${z.name.toUpperCase()}`, 'bt-good');
+  T.status.textContent = `${z.icon || ''} ${z.name} è accesa.`;
+  T.done(true);
+}
 
 // ---------------------------------------------------------------- Eventi
 

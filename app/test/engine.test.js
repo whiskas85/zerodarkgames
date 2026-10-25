@@ -2225,3 +2225,31 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
   assert.equal(Z.masterZones(g.id).list.length, 6);
 });
+
+test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const elect = G.ensureElect(g.id);
+  const pid = Number(q.run("INSERT INTO players (gameId, teamId, name, status, createdAt) VALUES (?, ?, 'Eletto Uno', 'accepted', ?)", g.id, elect.id, Date.now()).lastInsertRowid);
+  const pl = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const sq = [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]];
+  const z = Z.createZone(g.id, { kind: 'ombra', points: sq, active: false, beaconMin: 2 }, 'test');
+  assert.equal(z.beaconMin, 2);
+  assert.throws(() => Z.launchBeacon(A, null, { lat: 45, lng: 9 }), /Eletti/);
+  assert.throws(() => Z.launchBeacon(elect, pl, { lat: 46, lng: 9 }), /all'interno/);
+  const b = Z.launchBeacon(elect, pl, { lat: 45, lng: 9 });
+  assert.ok(b.endsAt - b.startedAt === 2 * 60000);
+  assert.equal(Z.electBeacon(elect, pl).running.id, z.id);
+  assert.throws(() => Z.completeBeacon(elect, pl, z.id, { lat: 45, lng: 9 }), /non ha ancora finito/);
+  // Fine della sequenza fuori dall'area: interrotto.
+  q.run('UPDATE map_zones SET beaconEndsAt = ? WHERE id = ?', Date.now() - 1000, z.id);
+  assert.throws(() => Z.completeBeacon(elect, pl, z.id, { lat: 46, lng: 9 }), /usciti/);
+  assert.equal(Z.electBeacon(elect, pl).running, null);
+  // Di nuovo, restando dentro: la zona si accende.
+  Z.launchBeacon(elect, pl, { lat: 45, lng: 9 });
+  q.run('UPDATE map_zones SET beaconEndsAt = ? WHERE id = ?', Date.now() - 1000, z.id);
+  assert.equal(Z.completeBeacon(elect, pl, z.id, { lat: 45, lng: 9 }).active, true);
+  assert.equal(q.get('SELECT active FROM map_zones WHERE id = ?', z.id).active, 1);
+  assert.equal(Z.electBeacon(elect, pl).off.length, 0);
+});

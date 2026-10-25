@@ -639,4 +639,11 @@ addColumn('game_events', 'locLng', 'REAL');
 // Esito dell'evento per ogni coppia: 'won' (prende il premio) o 'lost' (niente premio).
 addColumn('event_entries', 'outcome', 'TEXT');
 
+// Beacon degli Eletti: una zona spenta si accende lanciando un Beacon dentro l'area (durata della sequenza in minuti).
+addColumn('map_zones', 'beaconMin', 'INTEGER NOT NULL DEFAULT 1');
+addColumn('map_zones', 'beaconStartedAt', 'INTEGER');
+addColumn('map_zones', 'beaconEndsAt', 'INTEGER');
+addColumn('map_zones', 'beaconBy', 'TEXT');
+addColumn('map_zones', 'beaconPlayerId', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

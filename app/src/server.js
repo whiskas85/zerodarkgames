@@ -379,6 +379,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   st.events = EV.teamEvents(req.team, req.player);
   st.zones = Z.teamZones(req.team);
+  st.beacon = Z.electBeacon(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
@@ -453,6 +454,9 @@ const electWho = (req) => {
 };
 app.post('/api/team/events/:id/start', needTeam, wrap((req) => EV.startEvent(req.params.id, electWho(req))));
 app.post('/api/team/events/:id/close', needTeam, wrap((req) => EV.closeEvent(req.params.id, electWho(req), req.body?.outcomes || {})));
+// Beacon degli Eletti: accende una zona spenta stando dentro l'area.
+app.post('/api/team/beacon', needTeam, wrap((req) => Z.launchBeacon(req.team, req.player, req.body || {})));
+app.post('/api/team/beacon/:zid/complete', needTeam, wrap((req) => Z.completeBeacon(req.team, req.player, Number(req.params.zid), req.body || {})));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});
