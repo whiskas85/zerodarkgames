@@ -641,6 +641,9 @@ m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.pl
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
 m.post('/players/:pid/move', wrap((req) => { G.movePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.get('/games/:id/prints', wrap((req) => print.catalog(G.getGame(gameId(req)), baseUrl(req))));
+m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(req.headers['content-type'] || '').split(';')[0]); return { ok: true }; }));
+m.delete('/print-logo', wrap(() => { print.resetLogo(); return { ok: true }; }));
 m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));
 m.post('/games/:id/events', wrap((req) => EV.createEvent(gameId(req), req.body || {}, actor(req))));
 m.delete('/events/:eid', wrap((req) => { EV.deleteEvent(Number(req.params.eid), actor(req)); return { ok: true }; }));
@@ -874,18 +877,14 @@ v.post('/games/:id/announce', needPerm('comunicazioni'), wrap((req) => G.freeAnn
 app.use('/api/v', v);
 
 // ---- pagine stampabili
-app.get('/regia/stampa/altari/:id', needMaster, wrap(async (req, res) => {
-  res.type('html').send(await print.altarsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
+// Un gruppo (altari, doni, uscita, credenziali) o «tutto»; ?sel=a1,g4 stampa solo quegli elementi.
+app.get('/regia/stampa/:kind/:id', needMaster, wrap(async (req, res) => {
+  const html = await print.page(req.params.kind, G.getGame(Number(req.params.id)), baseUrl(req), req.query.sel || '');
+  if (!html) throw new HttpError(404, 'Stampa non trovata');
+  res.type('html').send(html);
 }));
-app.get('/regia/stampa/doni/:id', needMaster, wrap(async (req, res) => {
-  res.type('html').send(await print.giftsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
-}));
-app.get('/regia/stampa/uscita/:id', needMaster, wrap(async (req, res) => {
-  res.type('html').send(await print.exitPage(G.getGame(Number(req.params.id)), baseUrl(req)));
-}));
-app.get('/regia/stampa/credenziali/:id', needMaster, wrap(async (req, res) => {
-  res.type('html').send(await print.credentialsPage(G.getGame(Number(req.params.id)), baseUrl(req)));
-}));
+// Logo delle stampe: quello caricato in regia o quello dello Zero Dark Team.
+app.get('/regia/stampa-logo', needMaster, (_req, res) => { const l = print.logo(); res.sendFile(l.file, { headers: { 'Content-Type': l.mime, 'Cache-Control': 'no-cache' } }); });
 
 // ---- file statici e pagine
 const sendPage = (file) => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file), { headers: { 'Cache-Control': 'no-cache' } });

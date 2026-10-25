@@ -31,6 +31,7 @@ const TABS = [
   ['sigilli', 'Sigilli e tradimenti'],
   ['mappa', 'Mappa e campo'],
   ['doniqr', 'Doni QR'],
+  ['stampe', 'Stampe'],
   ['catalogo', 'Skill e Doni'],
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
@@ -250,7 +251,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
@@ -3302,6 +3303,62 @@ function viewNotices() {
           n.results ? pollResultsView(n.results) : null,
           noticeReadsView(n.reads && { ...n.reads, id: n.id })),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato.')));
+}
+
+// ---------------------------------------------------------------- STAMPE
+
+// Tutti i QR da stampare, per gruppo: un elemento, i selezionati, un gruppo intero o tutto insieme.
+let printsData = null;
+const printSel = new Set();
+let logoStamp = Date.now();
+const loadPrints = () => api('GET', G('/prints')).then((d) => { printsData = { ...d, gameId: R.gameId }; render(); }).catch((e) => toast(e.message, 'error'));
+const openPrint = (kind, keys = null) => window.open(`/regia/stampa/${kind}/${R.gameId}${keys?.length ? `?sel=${keys.join(',')}` : ''}`, '_blank');
+
+async function uploadLogo(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) return toast('Immagine troppo grande (massimo 10 MB)', 'error');
+  try {
+    const r = await fetch('/api/m/print-logo', { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file, credentials: 'same-origin' });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Caricamento non riuscito');
+    toast('Logo delle stampe aggiornato', 'ok');
+    logoStamp = Date.now();
+    loadPrints();
+  } catch (e) { toast(e.message, 'error', 6000); }
+}
+
+function viewPrints() {
+  if (!printsData || printsData.gameId !== R.gameId) { if (!loadPrints.busy) { loadPrints.busy = true; loadPrints().finally(() => { loadPrints.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const d = printsData;
+  const allKeys = d.groups.flatMap((g) => g.items.map((i) => i.key));
+  for (const k of [...printSel]) if (!allKeys.includes(k)) printSel.delete(k);
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif', hidden: true, onchange: (e) => uploadLogo(e.target.files[0]) });
+  const qrBox = (svg) => { const el = h('div', { class: 'pr-qr', 'aria-hidden': 'true' }); el.innerHTML = svg; return el; };
+  const card = (it) => h('label', { class: `pr-card ${printSel.has(it.key) ? 'on' : ''}` },
+    h('input', { type: 'checkbox', checked: printSel.has(it.key), onchange: (e) => { if (e.target.checked) printSel.add(it.key); else printSel.delete(it.key); render(); } }),
+    qrBox(it.svg),
+    h('div', { class: 'pr-text' }, h('strong', null, it.title), h('span', { class: 'tiny muted' }, it.sub)),
+    h('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => { e.preventDefault(); openPrint(d.groups.find((g) => g.items.includes(it)).kind, [it.key]); } }, 'Stampa'));
+  return h('div', { class: 'stack' },
+    sectionActions('Stampe', [
+      printSel.size ? h('button', { class: 'btn btn-sm', onclick: () => { printSel.clear(); render(); } }, 'Deseleziona') : null,
+      h('button', { class: 'btn btn-sm', disabled: !printSel.size, onclick: () => openPrint('tutto', [...printSel]) }, `Stampa selezionati (${printSel.size})`),
+      h('button', { class: 'btn btn-sm btn-primary', disabled: !allKeys.length, onclick: () => openPrint('tutto') }, `Stampa tutto (${allKeys.length})`)],
+    h('p', { class: 'muted tiny' }, 'Ogni stampa si apre in una nuova scheda: «Stampa / Salva PDF». Spunta gli elementi per stamparli insieme anche da gruppi diversi.'),
+    h('div', { class: 'pr-logo' },
+      h('img', { src: `/regia/stampa-logo?v=${logoStamp}`, alt: 'Logo delle stampe' }),
+      h('div', { class: 'grow' }, h('strong', null, 'Logo delle stampe'), h('p', { class: 'tiny muted' }, d.logo.custom ? 'Logo caricato: compare su tutti i cartelli e le tessere.' : 'Logo dello Zero Dark Team (predefinito): compare su tutti i cartelli e le tessere.')),
+      h('div', { class: 'row-actions' }, file,
+        h('button', { class: 'btn btn-sm', onclick: () => file.click() }, 'Carica logo…'),
+        d.logo.custom ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await call('DELETE', '/api/m/print-logo', undefined, 'Torna il logo dello Zero Dark Team')) { logoStamp = Date.now(); loadPrints(); } } }, 'Ripristina') : null))),
+    ...d.groups.map((g) => {
+      const sel = g.items.filter((i) => printSel.has(i.key)).map((i) => i.key);
+      return sectionActions(`${g.title} (${g.items.length})`, [
+        h('button', { class: 'btn btn-sm btn-ghost', disabled: !g.items.length, onclick: () => { const all = g.items.every((i) => printSel.has(i.key)); for (const i of g.items) { if (all) printSel.delete(i.key); else printSel.add(i.key); } render(); } }, g.items.length && g.items.every((i) => printSel.has(i.key)) ? 'Deseleziona il gruppo' : 'Seleziona il gruppo'),
+        sel.length ? h('button', { class: 'btn btn-sm', onclick: () => openPrint(g.kind, sel) }, `Stampa selezionati (${sel.length})`) : null,
+        h('button', { class: 'btn btn-sm btn-primary', disabled: !g.items.length, onclick: () => openPrint(g.kind) }, 'Stampa il gruppo')],
+      h('p', { class: 'tiny muted' }, g.hint),
+      g.items.length ? h('div', { class: 'pr-grid' }, g.items.map(card)) : h('p', { class: 'empty' }, 'Niente da stampare in questo gruppo.'));
+    }));
 }
 
 // ---------------------------------------------------------------- EVENTI

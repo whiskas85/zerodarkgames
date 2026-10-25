@@ -2086,3 +2086,31 @@ test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con 
   assert.equal(EV.confirmClose(D, ev2.id).reward.name, 'Archivio Proibito');
   assert.equal(EV.teamEvents(D).find((x) => x.id === ev2.id).status, 'done');
 });
+
+test('stampe: gruppi con logo, «Non rimuovere» sugli Altari, selezione di elementi e tutto insieme', async () => {
+  const P = require('../src/print');
+  const g = setupGame(3);
+  const base = 'https://giochi.test';
+  const cat = await P.catalog(g, base);
+  const altari = cat.groups.find((x) => x.kind === 'altari');
+  assert.equal(altari.items.length, 3);
+  assert.ok(altari.items[0].svg.startsWith('<svg'));
+  const all = await P.page('altari', g, base);
+  assert.equal((all.match(/class="sheet altar"/g) || []).length, 3);
+  assert.ok(all.includes('Non rimuovere'));
+  assert.ok(all.includes('class="plogo"'));
+  const one = await P.page('altari', g, base, altari.items[1].key);
+  assert.equal((one.match(/class="sheet altar"/g) || []).length, 1);
+  const cred = cat.groups.find((x) => x.kind === 'credenziali');
+  const mixed = await P.page('tutto', g, base, [altari.items[0].key, cred.items[0].key].join(','));
+  assert.equal((mixed.match(/class="sheet altar"/g) || []).length, 1);
+  assert.equal((mixed.match(/class="sheet creds"/g) || []).length, 1);
+  assert.equal(await P.page('boh', g, base), null);
+  // Logo caricato e ripristino del predefinito.
+  P.saveLogo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), 'image/svg+xml');
+  assert.equal(P.logo().custom, true);
+  assert.ok((await P.page('uscita', g, base)).includes('data:image/svg+xml;base64,'));
+  assert.throws(() => P.saveLogo(Buffer.from('x'), 'text/plain'), /Formato/);
+  P.resetLogo();
+  assert.equal(P.logo().custom, false);
+});
