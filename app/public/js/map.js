@@ -66,6 +66,7 @@ export function createMapView({ className = '' } = {}) {
   const markers = new Map();
   const lines = new Map();
   const circles = new Map();
+  const polys = new Map();
   let map = null;
   let L = null;
   let fitted = false;
@@ -163,6 +164,19 @@ export function createMapView({ className = '' } = {}) {
         else { pl.setLatLngs(l.points); pl.setStyle({ color: l.color || '#d1ad62' }); }
       }
       for (const [k, pl] of lines) if (!keep.has(k)) { pl.remove(); lines.delete(k); }
+    },
+    // Zone (poligoni chiusi): [{ key, points: [[lat, lng], …], color, title, dash, fill }]
+    setPolygons(list) {
+      if (!map) return;
+      const keep = new Set();
+      for (const z of list) {
+        keep.add(z.key);
+        let pg = polys.get(z.key);
+        const style = { color: z.color || '#d1ad62', weight: z.weight ?? 2, fillOpacity: z.fill ?? 0.18, dashArray: z.dash || null, interactive: !!z.title };
+        if (!pg) { pg = L.polygon(z.points, style).addTo(map); if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
+        else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.title) pg.setTooltipContent(z.title); }
+      }
+      for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
     },
     // Centra su tutti i segnaposto (e sulla mia posizione).
     fit() {

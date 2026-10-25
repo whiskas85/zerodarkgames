@@ -872,6 +872,7 @@ function recordPosition(team, player, body) {
          lat = excluded.lat, lng = excluded.lng, acc = excluded.acc, at = excluded.at`,
     deviceId, game.id, team.id, player?.id ?? null, lat, lng, acc, Date.now());
   trackPoint(game.id, team.id, player?.id ?? null, deviceId, lat, lng, acc);
+  require('./zones').onPosition(team, { lat, lng });
   return { ok: true, tracking: true };
 }
 

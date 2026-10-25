@@ -977,3 +977,44 @@ html.sos-open, html.sos-open body { overflow: hidden; overscroll-behavior: none;
 .ev-reward { margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(209, 173, 98, .14); }
 .ev-truce { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--ok-soft); }
 .ev-prize { margin: 12px 0; padding: 14px; border: 2px solid var(--brass); border-radius: 8px; display: grid; gap: 4px; font-size: 18px; }
+
+/* Zone della mappa: effetto a schermo finché si è dentro */
+html[data-zones] body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+html[data-zones~="ombra"] body::after { box-shadow: inset 0 0 140px 60px rgba(12, 6, 28, .88); background: radial-gradient(ellipse at center, transparent 55%, rgba(20, 10, 40, .35) 100%); }
+html[data-zones~="luce"] body::after { animation: zone-luce 1.6s ease-in-out infinite; }
+html[data-zones~="santuario"] body::after { box-shadow: inset 0 0 90px 22px rgba(209, 173, 98, .45); }
+html[data-zones~="emp"] body::after { animation: zone-emp .35s steps(2) infinite; border: 3px solid rgba(34, 195, 230, .7); }
+html[data-zones~="conquista"] body::after { box-shadow: inset 0 0 70px 16px rgba(229, 72, 77, .35); }
+@keyframes zone-luce { 0%, 100% { box-shadow: inset 0 0 60px 10px rgba(240, 160, 32, .35); } 50% { box-shadow: inset 0 0 130px 40px rgba(255, 90, 40, .6); } }
+@keyframes zone-emp { 0% { box-shadow: inset 0 0 0 3px rgba(34, 195, 230, .8), inset 6px 0 0 rgba(255, 0, 80, .4); clip-path: inset(0 0 0 0); } 100% { box-shadow: inset 0 0 0 3px rgba(255, 0, 80, .6), inset -6px 0 0 rgba(34, 195, 230, .5); clip-path: inset(2px 0 0 1px); } }
+/* Alone sul puntatore «voi» della mappa */
+html[data-zones~="ombra"] .pin-me { box-shadow: 0 0 0 12px rgba(40, 20, 70, .55), 0 0 34px 18px rgba(10, 5, 20, .7); }
+html[data-zones~="luce"] .pin-me { animation: pin-luce 1.2s ease-in-out infinite; }
+html[data-zones~="santuario"] .pin-me { box-shadow: 0 0 0 8px rgba(209, 173, 98, .45), 0 0 26px 10px rgba(209, 173, 98, .55); }
+html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
+@keyframes pin-luce { 0%, 100% { box-shadow: 0 0 0 6px rgba(240, 160, 32, .5); } 50% { box-shadow: 0 0 0 16px rgba(255, 70, 40, .35), 0 0 30px 12px rgba(255, 140, 40, .6); } }
+@keyframes pin-emp { 0% { transform: translate(-2px, 1px); filter: hue-rotate(0); } 100% { transform: translate(2px, -1px); filter: hue-rotate(90deg); } }
+/* Ingresso in una zona */
+.zone-enter { position: fixed; inset: 0; z-index: 2000; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; padding: 24px;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--c) 45%, transparent) 0%, rgba(8, 10, 9, .92) 70%); color: #fff; animation: zone-in 4.2s ease both; }
+.zone-enter h2 { margin: 0; font-size: 34px; text-transform: uppercase; }
+.zone-enter p { max-width: 320px; margin: 0; }
+.ze-ico { font-size: 72px; line-height: 1; animation: ze-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; filter: drop-shadow(0 0 24px var(--c)); }
+.zone-enter.zk-emp { animation: zone-in 4.2s ease both, zone-glitch .2s steps(2) 6; }
+@keyframes zone-in { 0% { opacity: 0; } 10% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ze-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes zone-glitch { 0% { transform: translateX(-4px); } 100% { transform: translateX(4px); } }
+/* Conquista: anello di avanzamento */
+.zone-ring { position: fixed; right: 14px; bottom: 64px; z-index: 70; width: 74px; height: 74px; border-radius: 50%; display: grid; place-content: center; justify-items: center; text-decoration: none; color: #fff;
+  background: radial-gradient(circle, rgba(15, 18, 16, .95) 58%, transparent 60%), conic-gradient(#e5484d var(--p, 0%), rgba(255, 255, 255, .15) 0); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+.zr-ico { font-size: 22px; line-height: 1; }
+.zr-time { font-size: 11px; }
+/* Zona di Disturbo: mappa oscurata */
+.map-emp { position: absolute; inset: 0; z-index: 900; display: grid; place-content: center; gap: 4px; text-align: center; padding: 20px; color: #bff3ff;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .92) 0 3px, rgba(20, 40, 50, .92) 3px 5px); animation: zone-glitch .3s steps(2) infinite; }
+.map-emp strong { font-size: 20px; }
+/* Legenda delle zone */
+.zones-legend ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.zones-legend li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-left: 4px solid var(--c); border-radius: 4px; }
+.zones-legend li.here { background: color-mix(in srgb, var(--c) 18%, transparent); }
+.zl-ico { font-size: 22px; line-height: 1.2; }

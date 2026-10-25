@@ -16,6 +16,7 @@ const K = require('./combat');
 const S = require('./skills');
 const EV = require('./events');
 const RP = require('./replay');
+const Z = require('./zones');
 const CK = require('./checkin');
 const EM = require('./emergency');
 const O = require('./ops');
@@ -377,6 +378,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.skills = S.skillsState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   st.events = EV.teamEvents(req.team, req.player);
+  st.zones = Z.teamZones(req.team);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
@@ -616,7 +618,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), councilPending: St.pendingCount() })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), councilPending: St.pendingCount() })));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
@@ -642,6 +644,9 @@ m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.pl
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
 m.post('/players/:pid/move', wrap((req) => { G.movePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.post('/games/:id/zones', wrap((req) => Z.createZone(gameId(req), req.body || {}, actor(req))));
+m.patch('/zones/:zid', wrap((req) => Z.updateZone(Number(req.params.zid), req.body || {}, actor(req))));
+m.delete('/zones/:zid', wrap((req) => { Z.deleteZone(Number(req.params.zid), actor(req)); return { ok: true }; }));
 m.get('/games/:id/replay', wrap((req) => RP.replayData(gameId(req), { since: Number(req.query.since) || 0 })));
 m.get('/games/:id/prints', wrap((req) => print.catalog(G.getGame(gameId(req)), baseUrl(req))));
 m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(req.headers['content-type'] || '').split(';')[0]); return { ok: true }; }));
@@ -930,6 +935,7 @@ setInterval(F.tickAll, 2000).unref();
 setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }, 20000).unref();
 setInterval(() => { try { S.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 setInterval(() => { try { EV.tickAll(); } catch (e) { console.error(e); } }, 3000).unref();
+setInterval(() => { try { Z.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

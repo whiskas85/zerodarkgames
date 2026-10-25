@@ -896,7 +896,7 @@ const EVENT_LABELS = {
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
   squad_task_assigned: 'Incarico assegnato', squad_task_cancelled: 'Incarico annullato', dirty_alliance: 'Alleanza sporca', alliance_poisoned: 'Velenoso',
   skill_chosen: 'Skill scelta', skill_removed: 'Skill tolta', skill_used: 'Skill usata', skill_auto: 'Skill automatica',
-  altar_scanned: 'Altare inquadrato', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
+  altar_scanned: 'Altare inquadrato', zone_created: 'Zona creata', zone_updated: 'Zona modificata', zone_deleted: 'Zona eliminata', zone_enter: 'Entrata in zona', zone_exit: 'Uscita dalla zona', zone_conquered: 'Zona conquistata', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
 };
 
@@ -907,6 +907,9 @@ function eventText(e) {
   switch (e.type) {
     case 'unlock': return `${who} ha sbloccato ${d.point}`;
     case 'altar_scanned': return `${who} ha inquadrato ${d.point}`;
+    case 'zone_enter': case 'zone_exit': return `${who} · ${d.zone}`;
+    case 'zone_conquered': return `${who} ha conquistato ${d.zone} (${d.gift})`;
+    case 'zone_created': case 'zone_updated': case 'zone_deleted': return d.name || '';
     case 'unlock_failed': return `${who} ha sbagliato Sigillo a ${d.point} («${d.attempt}»)`;
     case 'manual_fragment': return `${who} ha aggiunto il frammento di ${d.point}`;
     case 'code_note_ok': case 'code_note_wrong': return `${who} → Sigillo ${d.sector}`;
@@ -1864,6 +1867,8 @@ fieldMap.onMarkerTap((key) => {
   return true;
 });
 fieldMap.onTap((ll) => {
+  // Disegno di una zona: ogni clic aggiunge un vertice.
+  if (R.zoneDraw) { R.zoneDraw.pts.push([ll.lat, ll.lng]); render(); return; }
   // I segnaposto non prendono il clic mentre si piazza: un clic a pochi pixel da un punto di interesse lo usa come posto.
   const pick = R.mapPick;
   const map = fieldMap.map;
@@ -1924,9 +1929,18 @@ function viewFieldMap() {
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento del campo…'); }
   startPositions();
   // Mentre si piazza o si sposta un punto, gli altri segnaposto sono solo sfondo: il clic arriva sempre alla mappa.
-  fieldMap.el.classList.toggle('picking', !!R.mapPick);
+  fieldMap.el.classList.toggle('picking', !!R.mapPick || !!R.zoneDraw);
   fieldMap.setItems(fieldMapItems(d));
-  queueMicrotask(() => fieldMap.setLines(allianceLines()));
+  const zd = R.zoneDraw;
+  const zk = R.ms.mapZones?.kinds || {};
+  queueMicrotask(() => {
+    fieldMap.setLines([...allianceLines(), ...(zd && zd.pts.length > 1 ? [{ key: 'zone-draw', points: zd.pts, color: zk[zd.kind]?.color }] : [])]);
+    fieldMap.setPolygons([
+      ...(R.ms.mapZones?.list || []).filter((z) => !zd || z.id !== zd.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: z.active ? 0.18 : 0.04, dash: z.active ? null : '6 6',
+        title: `${z.icon} ${z.name} · strato ${z.layer}${z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
+      ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
+    ]);
+  });
   fieldMap.refresh();
   const sqName = (id) => squadById(id)?.name;
   const toPlace = [
@@ -1957,6 +1971,7 @@ function viewFieldMap() {
       toPlace.length ? h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`) : null,
       h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
       h('button', { class: 'btn btn-sm btn-blue', title: 'Parcheggio, accettazione…: le coppie li vedono fino al Cerchio, con il pulsante Naviga', onclick: () => guideDialog() }, mdi('signDirection', 16), ` Indicazione campo${d.guide?.length ? ` (${d.guide.length})` : ''}`),
+      h('button', { class: `btn btn-sm ${R.mapZones ? 'on' : ''}`, onclick: () => { R.mapZones = !R.mapZones; render(); } }, `Zone (${R.ms.mapZones?.list.length || 0})`),
       h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
       h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
       h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
@@ -1975,7 +1990,71 @@ function viewFieldMap() {
     R.mapLegend ? h('div', { class: 'map-legend-box' }, legend,
       h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
       h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per foto e dettagli e per spostarlo. Coppie in mappa dal VIA, Eletti da partita pronta.')) : null,
-    R.mapAllies ? h('div', { class: 'map-allies-box' }, alliancesList(true)) : null);
+    R.mapAllies ? h('div', { class: 'map-allies-box' }, alliancesList(true)) : null,
+    zd ? h('div', { class: 'map-pick zone-draw-bar' },
+      h('strong', null, `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
+      h('button', { class: 'btn btn-sm', disabled: !zd.pts.length, onclick: () => { zd.pts.pop(); render(); } }, 'Annulla ultimo'),
+      h('button', { class: 'btn btn-sm btn-primary', disabled: zd.pts.length < 3, onclick: saveZoneDraw }, 'Chiudi la zona'),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneDraw = null; render(); } }, 'Annulla')) : null,
+    R.mapZones && !zd ? h('div', { class: 'map-zones-box' }, zonesPanel()) : null);
+}
+
+// ---------------------------------------------------------------- ZONE DELLA MAPPA
+
+// Nuova zona: tipo, nome, strato (priorità quando si sovrappongono) e, per la Conquista, i minuti da tenere.
+async function zoneDialog() {
+  const K = R.ms.mapZones?.kinds || {};
+  let kind = 'ombra';
+  const name = h('input', { class: 'input', maxlength: 60, placeholder: 'Nome (facoltativo)' });
+  const layer = h('input', { class: 'input', type: 'number', min: 1, max: 99, value: 1 });
+  const hold = h('input', { class: 'input', type: 'number', min: 1, max: 60, value: 3 });
+  const holdWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Minuti da restare dentro di fila'), hold);
+  const cards = h('div', { class: 'zone-kinds' }, Object.entries(K).map(([k, z]) => h('button', { type: 'button', class: `zone-kind ${k === kind ? 'on' : ''}`, style: { '--c': z.color },
+    onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; } },
+  h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X')))));
+  const r = await modal({ title: 'Nuova zona', wide: true, okLabel: 'Disegna sulla mappa',
+    body: h('div', { class: 'stack-sm' }, cards,
+      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), h('label', { class: 'field' }, h('span', null, 'Strato (vince il più alto)'), layer), holdWrap),
+      h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce non la subisce finché non esce e rientra.')),
+    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, layer: Number(layer.value) || 1, holdMin: Number(hold.value) || 3 }) });
+  if (!r || typeof r !== 'object') return;
+  R.zoneDraw = { ...r, pts: [] };
+  R.mapZones = false;
+  render();
+}
+
+async function saveZoneDraw() {
+  const zd = R.zoneDraw;
+  if (!zd || zd.pts.length < 3) return;
+  try {
+    if (zd.id) await api('PATCH', `/api/m/zones/${zd.id}`, { points: zd.pts });
+    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, layer: zd.layer, holdMin: zd.holdMin, points: zd.pts });
+    toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
+    R.zoneDraw = null;
+    R.mapZones = true;
+    await load();
+  } catch (e) { toast(e.message, 'error', 6000); }
+}
+
+function zonesPanel() {
+  const Z = R.ms.mapZones || { list: [] };
+  const teamName = (id) => { const t = R.ms.teams.find((x) => x.id === id); return t ? `${t.roman} ${t.sectorName}` : '?'; };
+  const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
+    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => b.layer - a.layer).map((z) => h('li', { style: { '--c': z.color }, class: z.active ? '' : 'off' },
+      h('div', { class: 'zl-head' }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', { class: 'grow' }, z.name), h('span', { class: 'chip' }, `strato ${z.layer}`)),
+      h('div', { class: 'tiny muted' }, z.effect),
+      z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
+      z.kind === 'conquista' ? h('div', { class: 'tiny' }, z.winnerTeamId ? `👑 Conquistata da ${teamName(z.winnerTeamId)} alle ${fmtTime(z.wonAt)}${z.reward ? ` · ${z.reward.icon} ${z.reward.name}` : ''}` : `In palio: resistere ${z.holdMin} minuti di fila`) : null,
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-sm', onclick: () => patch(z, { active: !z.active }, z.active ? 'Zona spenta' : 'Zona accesa') }, z.active ? 'Spegni' : 'Accendi'),
+        h('button', { class: 'btn btn-sm', title: 'Priorità più alta: vince sulle altre zone sovrapposte', onclick: () => patch(z, { layer: z.layer + 1 }) }, 'Strato ↑'),
+        h('button', { class: 'btn btn-sm', disabled: z.layer <= 1, onclick: () => patch(z, { layer: z.layer - 1 }) }, 'Strato ↓'),
+        z.kind === 'conquista' && z.winnerTeamId ? h('button', { class: 'btn btn-sm', onclick: () => patch(z, { reset: true }, 'Zona di nuovo in palio') }, 'Rimetti in palio') : null,
+        h('button', { class: 'btn btn-sm', onclick: () => { R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; R.mapZones = false; render(); } }, 'Ridisegna'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
+    h('p', { class: 'tiny muted' }, 'Quando le zone si sovrappongono vince lo strato più alto (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta).'));
 }
 
 // Elenco delle alleanze in corso, con i colori dei Settori (mappa e pagina Regia).

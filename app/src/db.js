@@ -592,6 +592,22 @@ addColumn('event_log', 'teamId', 'INTEGER');
 addColumn('event_log', 'lat', 'REAL');
 addColumn('event_log', 'lng', 'REAL');
 
+// Zone della mappa disegnate dalla regia (poligoni): Cono d'Ombra, Campo di Luce, Disturbo, Santuario, Conquista.
+// layer: priorità quando si sovrappongono (vince il più alto). Presenza delle coppie: l'effetto vale solo entrando
+// (immune: era già dentro quando la zona è nata o è stata accesa, finché non esce).
+db.exec(`
+CREATE TABLE IF NOT EXISTS map_zones (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, name TEXT, points TEXT NOT NULL, layer INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1,
+  holdMin INTEGER, winnerTeamId INTEGER, wonAt INTEGER, reward TEXT, createdAt INTEGER NOT NULL, author TEXT
+);
+CREATE TABLE IF NOT EXISTS zone_presence (
+  zoneId INTEGER NOT NULL REFERENCES map_zones(id) ON DELETE CASCADE, teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  inside INTEGER NOT NULL DEFAULT 0, immune INTEGER NOT NULL DEFAULT 0, enteredAt INTEGER, leftAt INTEGER,
+  PRIMARY KEY (zoneId, teamId)
+);
+`);
+
 // Eventi: sfide proposte dalla regia (capienza in coppie, premio, squadra di Eletti custode),
 // candidature delle coppie (anche di un'alleanza intera), chiusura confermata da ciascuna coppia e tregua finale.
 db.exec(`

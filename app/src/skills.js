@@ -189,6 +189,7 @@ function useSkill(me, skillId, params = {}) {
   if (!available(s)) throw err(409, `${s.name} non è ancora disponibile`);
   if (isPassive(s) || s.auto) throw err(409, `${s.name} si attiva da sola`);
   if (s.where) throw err(409, `${s.name} si usa dalla pagina ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`);
+  if (require('./zones').inEmp(me.id)) throw err(409, 'Zona di Disturbo: qui le Skill attive non funzionano. Uscite dalla zona.');
   const now = Date.now();
   if (own.readyAt && own.readyAt > now) throw err(409, `${s.name} è in ricarica: pronta tra ${Math.ceil((own.readyAt - now) / MIN)} minuti`);
   const result = applySkill(g, me, s, params);
@@ -485,9 +486,14 @@ function sightingsFor(me, now = Date.now()) {
   const effects = activeEffects(g.id, now);
   const couples = q.all("SELECT t.id FROM teams t WHERE t.gameId = ? AND t.kind = 'couple' AND t.status = 'active' AND t.id <> ?", g.id, me.id).map((r) => team(r.id));
   const out = new Map();
+  // Zone: il Cono d'Ombra nasconde sempre, il Campo di Luce mostra a tutti (vince lo strato più alto).
+  const Z = require('./zones');
+  if (Z.inEmp(me.id)) return [];
   const add = (t, source, until, scan) => {
-    if (hidden(t, now)) return;
-    if (scan && immune(t, now)) return;
+    const vis = Z.visibilityOf(t.id);
+    if (vis === 'hidden') return;
+    if (vis !== 'shown' && hidden(t, now)) return;
+    if (scan && vis !== 'shown' && immune(t, now)) return;
     const pos = latestPos(t.id, now, SIGHT_FRESH_MS);
     if (!pos) return;
     const prev = out.get(t.id);
@@ -504,6 +510,7 @@ function sightingsFor(me, now = Date.now()) {
     }
     if (['tracker', 'tracciamento'].includes(e.code)) { const t = couples.find((x) => x.id === e.targetTeamId); if (t) add(t, e.code === 'tracker' ? 'Tracker' : 'Tracciamento', e.endsAt, false); }
   }
+  for (const t of couples) if (Z.visibilityOf(t.id) === 'shown') add(t, 'Campo di Luce', null, false);
   for (const e of effects.filter((x) => x.code === 'taglia')) {
     const t = couples.find((x) => x.id === e.targetTeamId);
     if (t) add(t, 'Taglia', e.endsAt, false);

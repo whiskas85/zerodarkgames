@@ -2143,3 +2143,62 @@ test('rewind: traccia delle posizioni, registro con coppia e posizione, dati per
   assert.equal(Object.keys(later.tracks).length, 0);
   assert.equal(later.events.length, 0);
 });
+
+test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per strato, Disturbo, Santuario e Conquista', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const Z = require('../src/zones');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.chooseSkill(A, 'tracker', true);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const pl = (t) => q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', t.id);
+  const go = (t, lat, lng) => F.recordPosition(t, pl(t), { deviceId: `dev-zone-${t.id}`, lat, lng, acc: 5 });
+  const sq = (lat, lng, d = 0.001) => [[lat - d, lng - d], [lat - d, lng + d], [lat + d, lng + d], [lat + d, lng - d]];
+  go(A, 45, 9); go(B, 45, 9.01); go(Cc, 45, 9.02);
+  // B è già dentro quando nasce il Campo di Luce: non lo subisce finché non esce e rientra.
+  const luce = Z.createZone(g.id, { kind: 'luce', points: sq(45, 9.01), layer: 1 }, 'test');
+  assert.equal(Z.visibilityOf(B.id), null);
+  assert.ok(!S.sightingsFor(A).some((x) => x.teamId === B.id));
+  go(B, 45.01, 9.01); go(B, 45, 9.01);
+  assert.equal(Z.visibilityOf(B.id), 'shown');
+  assert.ok(S.sightingsFor(A).some((x) => x.teamId === B.id && x.source === 'Campo di Luce'));
+  assert.equal(Z.teamZones(B).here[0].kind, 'luce');
+  // Cono d'Ombra sopra (strato più alto): vince l'Ombra.
+  const ombra = Z.createZone(g.id, { kind: 'ombra', points: sq(45, 9.01, 0.0005), layer: 2, active: false }, 'test');
+  Z.updateZone(ombra.id, { active: true }, 'test'); // B già dentro: immune
+  assert.equal(Z.visibilityOf(B.id), 'shown');
+  go(B, 45.01, 9.01); go(B, 45, 9.01);
+  assert.equal(Z.visibilityOf(B.id), 'hidden');
+  assert.ok(!S.sightingsFor(A).some((x) => x.teamId === B.id));
+  Z.updateZone(ombra.id, { layer: 0 }, 'test'); // strato minimo 1, uguale: vince l'ultima creata
+  Z.updateZone(luce.id, { layer: 5 }, 'test');
+  assert.equal(Z.visibilityOf(B.id), 'shown');
+  // Disturbo: niente Skill attive e mappa vuota.
+  Z.createZone(g.id, { kind: 'emp', points: sq(45, 9.03) }, 'test');
+  go(A, 45, 9.03);
+  assert.throws(() => S.useSkill(A, 'tracker', { teamId: Cc.id }), /Disturbo/);
+  assert.deepEqual(S.sightingsFor(A), []);
+  // Santuario: la ricarica corre al doppio.
+  go(A, 45, 9);
+  S.useSkill(A, 'tracker', { teamId: Cc.id });
+  const ready = q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt;
+  Z.createZone(g.id, { kind: 'santuario', points: sq(45, 9.04) }, 'test');
+  go(A, 45, 9.04);
+  const t0 = Date.now();
+  Z.tickAll(t0); Z.tickAll(t0 + 60000);
+  assert.ok(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt <= ready - 59000);
+  // Conquista: chi resta dentro X minuti vince un Dono a caso.
+  const cq = Z.createZone(g.id, { kind: 'conquista', points: sq(45, 9.05), holdMin: 2 }, 'test');
+  go(Cc, 45, 9.05);
+  Z.tickAll(Date.now() + 60000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null);
+  Z.tickAll(Date.now() + 121000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, Cc.id);
+  assert.equal(Z.teamZones(Cc).won.length, 1);
+  assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
+  assert.equal(Z.masterZones(g.id).list.length, 5);
+});

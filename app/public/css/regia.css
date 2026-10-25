@@ -1041,3 +1041,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .rw-evs li.fresh { background: rgba(209, 173, 98, .16); }
 @media (max-width: 1000px) { .rw-main { grid-template-columns: 1fr; } .rw-map { height: 55vh; } }
 .rw-controls select.input { width: auto; flex: none; }
+
+/* Zone della mappa */
+.map-zones-box { position: absolute; right: 10px; top: 124px; z-index: 1000; width: min(380px, 46%); max-height: calc(100% - 140px); overflow-y: auto; padding: 10px 12px; background: color-mix(in srgb, var(--paper) 96%, transparent); border: 2px solid var(--line); box-shadow: 0 4px 16px rgba(0, 0, 0, .5); }
+.zone-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.zone-list li { display: grid; gap: 4px; padding: 8px; border: 1.5px solid var(--line); border-left: 5px solid var(--c); border-radius: 6px; }
+.zone-list li.off { opacity: .6; }
+.zl-head { display: flex; gap: 8px; align-items: center; }
+.zone-draw-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.zone-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.zone-kind { display: grid; gap: 4px; text-align: left; padding: 10px; border: 2px solid var(--line); border-top: 5px solid var(--c); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
+.zone-kind.on { border-color: var(--c); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 40%, transparent); }
+.zk-ico { font-size: 26px; }

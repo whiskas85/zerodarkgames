@@ -179,6 +179,7 @@ function setState(st, offset) {
     const later = () => (document.querySelector('.battle-overlay:not(.hound)') ? setTimeout(later, 1500) : showAlliance(news));
     setTimeout(later, victories.length ? 1500 : 300);
   }
+  zoneEvents(prev, st);
   // Eventi: conferma di chiusura (bloccante) e premio.
   setTimeout(() => eventOverlays(st), victories.length ? 1500 : 200);
   store.set('zdg_state', { state: st, offset: clock.offset });
@@ -480,7 +481,7 @@ function render() {
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
-    mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), radioBar());
+    mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), zoneHud(), radioBar());
     document.body.dataset.view = view;
     if (view === 'mappa' && !isElect()) requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', view === 'messaggi');
@@ -915,6 +916,11 @@ function updateClocks() {
     let f = to > from ? (clock.serverNow() - from) / (to - from) : 1;
     f = Math.min(1, Math.max(0, f));
     el.firstChild.style.width = `${(el.dataset.drain ? 1 - f : f) * 100}%`;
+  }
+  for (const el of document.querySelectorAll('.zone-ring[data-to]')) {
+    const from = Number(el.dataset.from); const to = Number(el.dataset.to);
+    const f = Math.min(1, Math.max(0, to > from ? (clock.serverNow() - from) / (to - from) : 1));
+    el.style.setProperty('--p', `${Math.round(f * 100)}%`);
   }
   for (const el of document.querySelectorAll('[data-timer]')) {
     const t = S.timers.find((x) => x.uid === el.dataset.timer);
@@ -1917,6 +1923,8 @@ function viewMap(focus = null) {
     ...(S.state?.skills?.sightings || []).filter((x) => x.radius != null).map((x) => ({ key: `s${x.key}`, lat: x.lat, lng: x.lng, radius: x.radius, color: x.color || '#ff4fa3', title: `${x.roman} ${x.sectorName} · ${x.source} (area di 100 m)` })),
     ...(S.state?.skills?.giftHints || []).map((x) => ({ key: `h${x.id}`, lat: x.lat, lng: x.lng, radius: x.radius, color: '#d1ad62', title: 'Presagio del Dono: il dono è qui dentro' })),
   ]);
+  const zones = S.state?.zones;
+  teamMapView.setPolygons((zones?.list || []).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` })));
   if (myPos) teamMapView.setMe(myPos);
   teamMapView.refresh();
   // Dalla Parola intera: la mappa si apre sulla Soglia (e su di voi, se il GPS c'è).
@@ -1935,11 +1943,74 @@ function viewMap(focus = null) {
     h('p', { class: 'mono small bad-text', id: 'map-gps', hidden: !!myPos || !gpsMsg }, myPos ? '' : gpsMsg || ''),
     h('div', { class: 'map-wrap' },
       teamMapView.el,
+      zones?.emp ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.')) : null,
       h('div', { class: 'map-tools' },
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
         h('button', { class: 'btn btn-sm', title: 'Dove siamo', 'aria-label': 'Dove siamo', onclick: () => teamMapView.centerMe() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '◎'), h('span', { class: 'mt-label' }, 'Dove siamo')),
         h('button', { class: 'btn btn-sm', title: 'Tutto il campo', 'aria-label': 'Tutto il campo', onclick: () => teamMapView.autoCenter() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⛶'), h('span', { class: 'mt-label' }, 'Tutto il campo')),
-        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))));
+        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))),
+    zonesLegend(zones));
+}
+
+// ---------------------------------------------------------------- Zone della mappa
+
+// Le zone con il loro effetto (le coppie sanno sempre cosa succede entrando).
+function zonesLegend(zones) {
+  if (!zones?.list.length) return null;
+  const here = new Set(zones.here.map((z) => z.id));
+  return h('details', { class: 'card zones-legend', open: true },
+    h('summary', null, `Zone del campo (${zones.list.length})`),
+    h('ul', null, zones.list.map((z) => h('li', { class: here.has(z.id) ? 'here' : '', style: { '--c': z.color } },
+      h('span', { class: 'zl-ico', 'aria-hidden': 'true' }, z.icon),
+      h('div', null, h('strong', null, z.name), here.has(z.id) ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null, h('div', { class: 'small muted' }, z.effect))))));
+}
+
+// Effetto a schermo finché si è dentro, e anello della Conquista.
+const ZONE_VIBE = { ombra: [80], luce: [700], emp: [40, 40, 40, 40, 40, 40, 40, 40, 40], santuario: [120, 80, 120, 80, 240], conquista: [300, 100, 300] };
+function zoneHud() {
+  const zs = S.state?.zones;
+  document.documentElement.dataset.zones = (zs?.here || []).map((z) => z.kind).join(' ');
+  const cq = (zs?.here || []).find((z) => z.kind === 'conquista' && z.holdUntil);
+  if (!cq) return null;
+  return h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
+    h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, '👑'),
+    h('span', { class: 'mono zr-time', 'data-abs': cq.holdUntil }, '—'));
+}
+
+// Ingresso in una zona: animazione con il suo effetto e la sua vibrazione; Conquista vinta: schermata di vittoria.
+const seenZoneWins = new Set(store.get('zdg_seen_zone_wins', []));
+function zoneEvents(prev, st) {
+  const zs = st.zones;
+  if (!zs) return;
+  const before = new Set((prev?.zones?.here || []).map((z) => z.id));
+  const entered = prev ? zs.here.filter((z) => !before.has(z.id)) : [];
+  for (const z of entered.slice(-1)) {
+    const info = zs.list.find((x) => x.id === z.id);
+    if (!info) continue;
+    vibrate(ZONE_VIBE[z.kind] || [200]);
+    document.querySelector('.zone-enter')?.remove();
+    const el = h('div', { class: `zone-enter zk-${z.kind}`, role: 'status', style: { '--c': info.color }, onclick: () => el.remove() },
+      h('div', { class: 'ze-ico', 'aria-hidden': 'true' }, info.icon),
+      h('div', { class: 'eyebrow' }, 'Entrate in'),
+      h('h2', null, info.name),
+      h('p', null, info.effect));
+    document.body.append(el);
+    setTimeout(() => el.remove(), 4200);
+  }
+  for (const w of zs.won || []) {
+    if (seenZoneWins.has(w.id)) continue;
+    seenZoneWins.add(w.id);
+    store.set('zdg_seen_zone_wins', [...seenZoneWins].slice(-50));
+    if (!prev) continue;
+    vibrate([120, 60, 120, 60, 400]);
+    const el = battleOverlay('victory',
+      h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+      h('div', { class: 'eyebrow' }, '👑 Zona di Conquista'),
+      h('h2', { class: 'battle-title' }, 'Conquistata'),
+      h('p', null, `«${w.name}» è vostra.`),
+      w.reward ? h('div', { class: 'ev-prize' }, h('div', { class: 'eyebrow' }, 'Il vostro premio'), h('strong', null, `${w.reward.icon} Dono: ${w.reward.name}`)) : null,
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Continua'));
+  }
 }
 
 // ---------------------------------------------------------------- Campo degli Eletti

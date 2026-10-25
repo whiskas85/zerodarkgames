@@ -1167,6 +1167,9 @@ function wipePlay(g) {
     // Doni: tornano piazzati (non ancora comparsi) o da piazzare.
     q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
            claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
+    // Zone: restano disegnate, senza presenze e con la Conquista di nuovo in palio.
+    q.run('DELETE FROM zone_presence WHERE zoneId IN (SELECT id FROM map_zones WHERE gameId = ?)', g.id);
+    q.run('UPDATE map_zones SET winnerTeamId = NULL, wonAt = NULL, reward = NULL WHERE gameId = ?', g.id);
     // Eventi: restano quelli creati dalla regia, senza candidature e di nuovo aperti.
     q.run('DELETE FROM event_entries WHERE eventId IN (SELECT id FROM game_events WHERE gameId = ?)', g.id);
     q.run("UPDATE game_events SET status = 'open', openUntil = NULL, startedAt = NULL, closingAt = NULL, closeDeadline = NULL, closedBy = NULL, truceUntil = NULL, doneAt = NULL WHERE gameId = ?", g.id);
