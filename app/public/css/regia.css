@@ -960,3 +960,23 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .settings-nav { display: flex; flex-wrap: wrap; gap: 6px; }
 .settings-nav a { padding: 8px 12px; border: 2px solid var(--line); border-radius: 6px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14px; background: var(--paper); }
 .settings-nav a.on { border-color: var(--brass); background: rgba(209, 173, 98, .16); }
+/* Accettazione in tabella: una riga per Settore con i due Legati */
+.ck-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
+.ck-table th { text-align: left; font: 600 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 8px; }
+.ck-table td { vertical-align: middle; padding: 6px 8px; background: var(--paper); border-top: 2px solid var(--line); border-bottom: 2px solid var(--line); }
+.ck-table td:first-child { border-left: 6px solid var(--c, var(--line)); border-radius: 6px 0 0 6px; width: 180px; }
+.ck-table td:last-child { border-right: 2px solid var(--line); border-radius: 0 6px 6px 0; }
+.ck-table .ck-confirm { width: 180px; }
+.ck-tr.ck-done td { border-color: #46c46a; }
+.ck-tr.ck-done td:first-child { border-left-color: #46c46a; }
+.ck-tr.ck-over td { background: rgba(209, 173, 98, .16); }
+.ck-slot { padding: 10px; border: 2px dashed var(--line); border-radius: 6px; text-align: center; }
+.ck-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
+@media (max-width: 760px) {
+  .ck-table, .ck-table tbody, .ck-table tr, .ck-table td { display: block; width: auto !important; }
+  .ck-table thead { display: none; }
+  .ck-table tr { margin-bottom: 10px; }
+  .ck-table td { border: 0; border-left: 6px solid var(--c, var(--line)); border-radius: 0; }
+  .ck-table td:first-child { border-radius: 6px 6px 0 0; } .ck-table td:last-child { border-right: 0; border-radius: 0 0 6px 6px; }
+}
+.ck-tables { display: grid; gap: 12px; }

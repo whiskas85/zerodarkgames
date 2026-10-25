@@ -42,18 +42,37 @@ export function viewCheckin(ctx) {
       pending ? h('p', { class: 'small warn-text' }, `${pending} iscrizioni ancora da approvare: le trovi nella pagina Persone.`) : null,
       ckSearch(ctx)),
     h('p', { class: 'tiny muted' }, 'Manca qualcuno? Trascina le persone con la maniglia ⠿ da una coppia all\'altra (se ha un posto libero), tra le squadre degli Eletti o su «Nuova squadra di Eletti». La coppia toccata torna da confermare.'),
-    h('div', { class: 'ck-grid' }, peopleGroups(ctx, () => true, true).map((g) => {
-      const allIn = g.all.length > 0 && g.all.every((p) => p.checkinAt);
-      return h('div', { class: `panel ck-group ${g.team?.checkinAt ? 'ck-done' : ''}`, 'data-drop': JSON.stringify(g.dest), style: { '--c': g.team?.color || g.color || 'var(--line)' } },
-        h('div', { class: 'ck-head' }, h('strong', null, g.title), g.sub ? h('span', { class: 'tiny muted' }, g.sub) : null),
-        g.people.length ? null : h('p', { class: 'ck-empty tiny muted' }, 'Vuota: trascina qui qualcuno'),
-        g.people.map((p) => h('div', { class: 'ck-row' }, h('span', { class: 'ck-grip', title: 'Trascina per spostare', 'aria-label': `Sposta ${p.name}`, onpointerdown: (e) => ckDrag(ctx, e, p) }, '⠿'), h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
-          h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p.checkinAt ? '✓' : ''),
-          h('span', { class: 'grow' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · '))),
-          h('span', { class: 'ck-side tiny' }, p.checkinAt ? `accettato ${fmtTime(p.checkinAt)}` : 'da accettare', checkSummary(p))))),
-        g.team ? h('button', { class: `btn btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: !g.team.checkinAt && !allIn, onclick: () => teamToggle(g.team) },
-          g.team.checkinAt ? `✓ Coppia confermata · ${fmtTime(g.team.checkinAt)}` : allIn ? 'Conferma la coppia' : 'Conferma la coppia (manca qualcuno)') : null);
-    }),
+    // In tabella: una riga per Settore con i due Legati affiancati; poi Eletti (per squadra) e chi è senza coppia.
+    // Ogni riga è un punto di rilascio: anche un Settore rimasto vuoto resta, per trascinarci dentro qualcuno.
+    h('div', { class: 'ck-tables' }, (() => {
+      const groups = peopleGroups(ctx, () => true, true);
+      const row = (p) => h('div', { class: 'ck-row' }, h('span', { class: 'ck-grip', title: 'Trascina per spostare', 'aria-label': `Sposta ${p.name}`, onpointerdown: (e) => ckDrag(ctx, e, p) }, '⠿'), h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
+        h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p.checkinAt ? '✓' : ''),
+        h('span', { class: 'grow' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · '))),
+        h('span', { class: 'ck-side tiny' }, p.checkinAt ? `accettato ${fmtTime(p.checkinAt)}` : 'da accettare', checkSummary(p))));
+      const slot = () => h('div', { class: 'ck-slot tiny muted' }, 'posto libero: trascina qui qualcuno');
+      const couples = groups.filter((g) => g.team);
+      const others = groups.filter((g) => !g.team);
+      return [
+        couples.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'ck-table' },
+          h('thead', null, h('tr', null, ['Settore', 'Legato', 'Legato', 'Coppia'].map((x) => h('th', null, x)))),
+          h('tbody', null, couples.map((g) => {
+            const allIn = g.all.length > 0 && g.all.every((p) => p.checkinAt);
+            const [p1, p2] = g.people;
+            return h('tr', { class: `ck-tr ${g.team.checkinAt ? 'ck-done' : ''}`, 'data-drop': JSON.stringify(g.dest), style: { '--c': g.team.color || 'var(--line)' } },
+              h('td', { class: 'ck-sector' }, h('strong', null, g.title), g.sub ? h('div', { class: 'tiny muted' }, g.sub) : null),
+              h('td', null, p1 ? row(p1) : slot()),
+              h('td', null, p2 ? row(p2) : g.all.length < 2 ? slot() : null),
+              h('td', { class: 'ck-confirm' }, h('button', { class: `btn btn-sm btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: !g.team.checkinAt && !allIn, onclick: () => teamToggle(g.team) },
+                g.team.checkinAt ? `✓ Confermata · ${fmtTime(g.team.checkinAt)}` : allIn ? 'Conferma la coppia' : 'Manca qualcuno')));
+          })))) : null,
+        h('div', { class: 'table-wrap' }, h('table', { class: 'ck-table ck-table-others' },
+          h('thead', null, h('tr', null, ['Gruppo', 'Persone'].map((x) => h('th', null, x)))),
+          h('tbody', null, others.map((g) => h('tr', { class: 'ck-tr', 'data-drop': JSON.stringify(g.dest), style: { '--c': g.color || 'var(--line)' } },
+            h('td', { class: 'ck-sector' }, h('strong', null, g.title), h('div', { class: 'tiny muted' }, g.all.length === 1 ? '1 persona' : `${g.all.length} persone`)),
+            h('td', null, g.people.length ? h('div', { class: 'ck-people' }, g.people.map(row)) : h('div', { class: 'ck-slot tiny muted' }, 'Vuota: trascina qui qualcuno'))))))),
+      ];
+    })(),
     // Nuova squadra di Eletti: si crea toccando, oppure trascinandoci sopra qualcuno.
     h('button', { class: 'panel ck-group ck-new', type: 'button', 'data-drop': JSON.stringify({ newSquad: true }), onclick: async () => {
       const name = await dialog({ title: 'Nuova squadra di Eletti', input: { placeholder: 'Nome della squadra' }, okLabel: 'Crea' });
@@ -98,7 +117,8 @@ function ckDrag(ctx, e, p) {
   const ghost = h('div', { class: 'ck-ghost' }, `⠿ ${personLabel(p)}`);
   document.body.append(ghost);
   let over = null;
-  const at = (x, y) => document.elementsFromPoint(x, y).find((el) => el.dataset?.drop);
+  // Si risale dall'elemento sotto il dito al gruppo (nella tabella la riga non è restituita, la cella sì).
+  const at = (x, y) => document.elementsFromPoint(x, y).map((el) => el.closest?.('[data-drop]')).find(Boolean);
   const move = (ev) => {
     ghost.style.transform = `translate(${ev.clientX + 12}px, ${ev.clientY + 12}px)`;
     const z = at(ev.clientX, ev.clientY);
