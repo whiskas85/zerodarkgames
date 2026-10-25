@@ -2033,3 +2033,56 @@ test('pagina Persone: da iscrivere e in attesa vanno subito al loro posto (coppi
   assert.throws(() => G.assignPerson(g.id, { accountId: acc(3).id, mode: 'pair', teamId: t2 }, 'test'), /completa/);
   assert.equal(q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g.id).n, before);
 });
+
+test('eventi: «Accetto la sfida», alleanza da confermare, posti, chiusura con premio e tregua tra i partecipanti', () => {
+  const K = require('../src/combat');
+  const EV = require('../src/events');
+  const g = setupGame(5);
+  const [A, B, Cc, D, E] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  // B e C alleati.
+  K.respondRequest(Cc, K.requestAlliance(B, Cc.id).id, true);
+  const ev = EV.createEvent(g.id, { name: 'Assalto alla Cassa', slots: 3, rewardKind: 'code', confirmMin: 2, truceMin: 5 }, 'test');
+  EV.joinEvent(A, null, ev.id);
+  EV.joinEvent(A, null, ev.id); // ripetuto: nessun effetto
+  // L'alleanza B+C prende 2 posti: C deve confermare.
+  EV.joinEvent(B, null, ev.id, { alliance: true });
+  let seen = EV.teamEvents(Cc).find((x) => x.id === ev.id);
+  assert.equal(seen.mine.status, 'pending');
+  assert.equal(seen.taken, 3);
+  assert.throws(() => EV.joinEvent(D, null, ev.id), /completo/);
+  EV.joinEvent(Cc, null, ev.id);
+  assert.equal(EV.teamEvents(A).find((x) => x.id === ev.id).joined, 3);
+  // Ritiro di C: decade tutta l'alleanza, poi si ricandida.
+  EV.leaveEvent(Cc, ev.id);
+  assert.equal(EV.teamEvents(A).find((x) => x.id === ev.id).taken, 1);
+  EV.joinEvent(B, null, ev.id, { alliance: true });
+  EV.joinEvent(Cc, null, ev.id);
+  // Un'alleanza che supera i posti rimasti non entra (qui l'evento è pieno).
+  assert.throws(() => EV.joinEvent(E, null, ev.id), /completo/);
+  // Gli Eletti di un'altra squadra (o senza squadra) non chiudono; la regia sì.
+  assert.throws(() => EV.closeEvent(ev.id, { player: { squadId: 999, gameId: g.id } }), /regia o la squadra/);
+  EV.startEvent(ev.id, { master: true, actor: 'test' });
+  EV.closeEvent(ev.id, { master: true, actor: 'test' });
+  const r = EV.confirmClose(A, ev.id);
+  assert.equal(r.reward.kind, 'code');
+  assert.ok(G.teamState(A).notebook.some((n) => n.source === 'event'));
+  // Allo scadere del tempo confermano d'ufficio gli altri (premio compreso) e parte la tregua.
+  EV.tickAll(Date.now() + 3 * 60000);
+  const after = EV.teamEvents(B).find((x) => x.id === ev.id);
+  assert.equal(after.status, 'truce');
+  assert.ok(after.mine.reward);
+  assert.throws(() => K.reportEngagement(A, B.id, 'won'), /Tregua dopo l'evento/);
+  K.reportEngagement(A, D.id, 'draw');
+  EV.tickAll(Date.now() + 9 * 60000);
+  assert.equal(EV.teamEvents(B).find((x) => x.id === ev.id).status, 'done');
+  // Premio Dono: finisce tra i doni della coppia.
+  const ev2 = EV.createEvent(g.id, { name: 'Corsa', slots: 1, rewardKind: 'gift', rewardGiftType: 'archivio', truceMin: 0 }, 'test');
+  EV.joinEvent(D, null, ev2.id);
+  EV.closeEvent(ev2.id, { master: true, actor: 'test' });
+  assert.equal(EV.confirmClose(D, ev2.id).reward.name, 'Archivio Proibito');
+  assert.equal(EV.teamEvents(D).find((x) => x.id === ev2.id).status, 'done');
+});

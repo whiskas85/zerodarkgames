@@ -579,4 +579,23 @@ addColumn('players', 'appSeenAt', 'INTEGER');
 // Sistema del telefono (ios, android, desktop) letto dal browser all'apertura dell'app.
 addColumn('players', 'appOs', 'TEXT');
 
+// Eventi: sfide proposte dalla regia (capienza in coppie, premio, squadra di Eletti custode),
+// candidature delle coppie (anche di un'alleanza intera), chiusura confermata da ciascuna coppia e tregua finale.
+db.exec(`
+CREATE TABLE IF NOT EXISTS game_events (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, description TEXT, squadId INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL,
+  slots INTEGER NOT NULL DEFAULT 3, rewardKind TEXT NOT NULL DEFAULT 'gift', rewardGiftType TEXT,
+  openUntil INTEGER, confirmMin INTEGER NOT NULL DEFAULT 3, truceMin INTEGER NOT NULL DEFAULT 5,
+  status TEXT NOT NULL DEFAULT 'open', createdAt INTEGER NOT NULL, author TEXT,
+  startedAt INTEGER, closingAt INTEGER, closeDeadline INTEGER, closedBy TEXT, truceUntil INTEGER, doneAt INTEGER
+);
+CREATE TABLE IF NOT EXISTS event_entries (
+  eventId INTEGER NOT NULL REFERENCES game_events(id) ON DELETE CASCADE, teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  groupId INTEGER, status TEXT NOT NULL DEFAULT 'accepted', joinedAt INTEGER NOT NULL, joinedBy TEXT,
+  confirmedAt INTEGER, reward TEXT,
+  PRIMARY KEY (eventId, teamId)
+);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

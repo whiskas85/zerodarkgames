@@ -959,3 +959,21 @@ button.banner-safety strong { letter-spacing: .08em; }
 }
 html.sos-open, html.sos-open body { overflow: hidden; overscroll-behavior: none; }
 .sos-update[hidden] { display: none; }
+
+/* Eventi */
+.event-strip { display: grid; gap: 2px; padding: 10px 14px; border: 2px solid var(--brass); border-left-width: 6px; background: var(--paper); color: inherit; text-decoration: none; }
+.event-strip.ev-running, .event-strip.ev-closing { border-color: var(--blood); }
+.event-strip.ev-truce { border-color: var(--ok); }
+.event-card { border-left: 6px solid var(--brass); }
+.event-card.ev-running, .event-card.ev-closing { border-left-color: var(--blood); }
+.event-card.ev-truce { border-left-color: var(--ok); }
+.event-card.ev-done { opacity: .75; }
+.ev-title { margin: 0; }
+.ev-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-warn { margin: 0; padding: 8px 10px; border: 1px dashed var(--warn, #e0b04f); border-radius: 6px; color: var(--warn, #e0b04f); }
+.ev-teams { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ev-teams li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ev-done { margin: 0; color: var(--ok); font-weight: 700; }
+.ev-reward { margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(209, 173, 98, .14); }
+.ev-truce { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--ok-soft); }
+.ev-prize { margin: 12px 0; padding: 14px; border: 2px solid var(--brass); border-radius: 8px; display: grid; gap: 4px; font-size: 18px; }

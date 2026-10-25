@@ -334,9 +334,11 @@ function endNow(gameId, teamId, code) {
   q.run('UPDATE skill_effects SET endedAt = ? WHERE id = (SELECT MAX(id) FROM skill_effects WHERE gameId = ? AND teamId = ? AND code = ?)', Date.now(), gameId, teamId, code);
 }
 
-// Un Dono senza QR (Autorità): finisce subito tra i doni della coppia.
-function grantVirtualGift(me, label) {
-  const type = giftForGame(shuffle(GIFTS.filter(available))[0], G.getGame(me.gameId));
+// Un Dono senza QR (Autorità, premio di un evento): finisce subito tra i doni della coppia.
+// typeId: un tipo preciso (se disponibile), altrimenti a caso.
+function grantVirtualGift(me, label, typeId = null) {
+  const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : shuffle(GIFTS.filter(available))[0];
+  const type = giftForGame(pick, G.getGame(me.gameId));
   const now = Date.now();
   const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 'manual', ?, ?, ?)`,
@@ -980,5 +982,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
-  editableCatalog, editCatalog, giftForGame, distM,
+  editableCatalog, editCatalog, giftForGame, distM, grantVirtualGift, availableGift: available,
 };

@@ -1148,6 +1148,9 @@ function wipePlay(g) {
     // Doni: tornano piazzati (non ancora comparsi) o da piazzare.
     q.run(`UPDATE gifts SET status = CASE WHEN lat IS NULL THEN 'draft' ELSE 'placed' END, revealedAt = NULL, revealElapsedMs = NULL,
            claimedByTeamId = NULL, claimedAt = NULL, usedAt = NULL, expiredAt = NULL WHERE gameId = ?`, g.id);
+    // Eventi: restano quelli creati dalla regia, senza candidature e di nuovo aperti.
+    q.run('DELETE FROM event_entries WHERE eventId IN (SELECT id FROM game_events WHERE gameId = ?)', g.id);
+    q.run("UPDATE game_events SET status = 'open', openUntil = NULL, startedAt = NULL, closingAt = NULL, closeDeadline = NULL, closedBy = NULL, truceUntil = NULL, doneAt = NULL WHERE gameId = ?", g.id);
     require('./skills').resetGame(g.id);
   });
 }
@@ -2068,7 +2071,7 @@ function teamStateCore(team, player = null) {
     let entry = { sectorId: sec.id, sectorName: sec.name, roman: sec.roman, code: null, source: null };
     if (t.sectorId === team.sectorId && own) entry = { ...entry, code: own.code, source: 'own' };
     else if (revealed[t.sectorId]) entry = { ...entry, code: revealed[t.sectorId].code, source: 'revealed', at: revealed[t.sectorId].firedAt };
-    else if (lastNote[t.sectorId]?.correct) entry = { ...entry, code: lastNote[t.sectorId].code, source: ['won', 'alliance', 'stolen', 'archive'].includes(lastNote[t.sectorId].source) ? lastNote[t.sectorId].source : 'note', at: lastNote[t.sectorId].addedAt };
+    else if (lastNote[t.sectorId]?.correct) entry = { ...entry, code: lastNote[t.sectorId].code, source: ['won', 'alliance', 'stolen', 'archive', 'event'].includes(lastNote[t.sectorId].source) ? lastNote[t.sectorId].source : 'note', at: lastNote[t.sectorId].addedAt };
     else if (lastNote[t.sectorId]) entry = { ...entry, wrongAttempt: lastNote[t.sectorId].code };
     entry.visitedToken = p && visits.has(p.id) && scanValid(p.id) ? p.qrToken : null;
     entry.unlocked = p ? ownedPoints.has(p.id) : false;

@@ -1005,3 +1005,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .nr-no { color: var(--danger, #f85149); font-weight: 700; }
 .notice-list .nr-list li { border: 0; padding: 0; background: none; display: inline; }
 .content .omnibar { position: sticky; top: 8px; z-index: 5; }
+
+/* Eventi */
+.event-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.event-entries li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 0; padding: 0; background: none; }

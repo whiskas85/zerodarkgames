@@ -14,6 +14,7 @@ const F = require('./field');
 const A = require('./accounts');
 const K = require('./combat');
 const S = require('./skills');
+const EV = require('./events');
 const CK = require('./checkin');
 const EM = require('./emergency');
 const O = require('./ops');
@@ -374,6 +375,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.combat = K.combatState(req.team);
   st.skills = S.skillsState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
+  st.events = EV.teamEvents(req.team, req.player);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
@@ -438,6 +440,16 @@ app.post('/api/team/notices/:id/vote', needMember, wrap((req) => {
 }));
 // Avvisi visti nell'app: per la regia «letto da».
 app.post('/api/team/notices/read', needMember, wrap((req) => G.readNotices(req.team, req.player, req.body?.ids)));
+// Eventi: candidatura (anche dell'alleanza), ritiro, conferma della chiusura; gli Eletti custodi avviano e chiudono.
+app.post('/api/team/events/:id/join', needTeam, wrap((req) => EV.joinEvent(req.team, req.player, req.params.id, { alliance: !!req.body?.alliance })));
+app.post('/api/team/events/:id/leave', needTeam, wrap((req) => EV.leaveEvent(req.team, req.params.id)));
+app.post('/api/team/events/:id/confirm', needTeam, wrap((req) => EV.confirmClose(req.team, req.params.id)));
+const electWho = (req) => {
+  const pl = req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null;
+  return { player: pl, actor: pl ? `eletto:${pl.name}` : 'eletti' };
+};
+app.post('/api/team/events/:id/start', needTeam, wrap((req) => EV.startEvent(req.params.id, electWho(req))));
+app.post('/api/team/events/:id/close', needTeam, wrap((req) => EV.closeEvent(req.params.id, electWho(req))));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});
@@ -603,7 +615,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), councilPending: St.pendingCount() })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), events: EV.masterEvents(gameId(req)), councilPending: St.pendingCount() })));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
@@ -629,6 +641,11 @@ m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.pl
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
 m.post('/players/:pid/move', wrap((req) => { G.movePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));
+m.post('/games/:id/events', wrap((req) => EV.createEvent(gameId(req), req.body || {}, actor(req))));
+m.delete('/events/:eid', wrap((req) => { EV.deleteEvent(Number(req.params.eid), actor(req)); return { ok: true }; }));
+m.post('/events/:eid/start', wrap((req) => EV.startEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
+m.post('/events/:eid/close', wrap((req) => EV.closeEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
 m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body || {}, actor(req))));
 m.delete('/notices/:nid', wrap((req) => { G.deleteNotice(Number(req.params.nid), actor(req)); return { ok: true }; }));
 m.patch('/players/:pid', wrap((req) => { G.updatePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
@@ -911,6 +928,7 @@ setInterval(G.tickAll, 1000).unref();
 setInterval(F.tickAll, 2000).unref();
 setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }, 20000).unref();
 setInterval(() => { try { S.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
+setInterval(() => { try { EV.tickAll(); } catch (e) { console.error(e); } }, 3000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

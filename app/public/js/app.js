@@ -179,6 +179,8 @@ function setState(st, offset) {
     const later = () => (document.querySelector('.battle-overlay:not(.hound)') ? setTimeout(later, 1500) : showAlliance(news));
     setTimeout(later, victories.length ? 1500 : 300);
   }
+  // Eventi: conferma di chiusura (bloccante) e premio.
+  setTimeout(() => eventOverlays(st), victories.length ? 1500 : 200);
   store.set('zdg_state', { state: st, offset: clock.offset });
   // Partita in preparazione (o rifatta ripartire): anche gli Altari visitati salvati sul telefono si azzerano.
   if (Object.keys(S.visits).length && (st.clock.status === 'draft' || (prev?.clock.status === 'ended' && st.clock.status !== 'ended'))) {
@@ -473,7 +475,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg),
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -543,7 +545,7 @@ function perksModal(fx) {
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
 // Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
-const UP = { skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
+const UP = { eventi: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
 // Pagine che stanno sotto un'altra anche senza argomento.
 const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
@@ -557,7 +559,7 @@ function upStep(view) {
 }
 
 // Dal tocco su un annuncio, un avviso o un messaggio: la sua pagina scorre fino a lui e lo fa brillare un momento.
-const FOCUS_VIEWS = ['annunci', 'avvisi', 'messaggi'];
+const FOCUS_VIEWS = ['annunci', 'avvisi', 'messaggi', 'eventi'];
 function applyFocus(view, arg) {
   if (!FOCUS_VIEWS.includes(view) || !arg) return;
   const el = document.getElementById(`${view}-${arg}`);
@@ -1298,6 +1300,7 @@ function viewElectHome(st) {
       ['Gioco', 'g-game', [
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
+        (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
         tile('#/mappa', 'Mappa del campo', mdi('map', 28)),
         tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
@@ -1337,6 +1340,7 @@ function viewHome() {
     locationInvite(st),
     traccarOffCard(st),
     trackingNote(st),
+    eventHomeCards(st),
     st.combat?.alliance ? h('a', { class: 'ally-strip', href: '#/alleanze' }, h('span', { class: 'eyebrow' }, 'Alleati'), h('strong', null, st.combat.alliance.members.filter((m) => m.teamId !== st.team.id).map((m) => `${m.roman} ${m.sectorName}`).join(' · '))) : null,
     pushInvite(),
     latestNotice(st),
@@ -1369,6 +1373,7 @@ function viewHome() {
       tile('#/doni', 'I vostri doni', '✦', (st.gifts || []).filter((g) => !g.usedAt).length || null),
       tile('#/alleanze', 'Alleanze', '⚑', alliancePending(st) || null, alliancePending(st)),
       tile('#/scontri', 'Scontri', '⚔', fightPending(st) || null, fightPending(st)),
+      (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), eventsBadge(st) || null, eventsBadge(st)) : null,
       // Sigilli conosciuti (il proprio, i rivelati, quelli conquistati) sul totale dei Settori in gioco: apre il taccuino.
       tile('#/codici', 'Codici', '✱', st.notebook?.length ? `${st.notebook.filter((n) => n.code).length}/${st.notebook.length}` : null),
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
@@ -1428,6 +1433,131 @@ const teamName = (t) => `${t.roman} ${t.sectorName}`;
 // Alleanze e scontri sono due pagine. Le alleanze degli altri sono segrete: negli scontri si vede solo la coppia.
 const alliancePending = (st) => (st?.combat ? st.combat.incoming.length : 0);
 const fightPending = (st) => (st?.combat ? st.combat.toConfirm.length + (st.combat.steals || []).length : 0);
+
+// ---------------------------------------------------------------- Eventi
+
+// Badge: eventi aperti a cui non avete risposto, inviti dell'alleanza da confermare, chiusure da confermare.
+const eventsBadge = (st) => (st.events || []).filter((e) => (e.status === 'open' && e.open && (!e.mine || e.mine.status === 'pending')) || (e.status === 'closing' && e.mine?.status === 'accepted' && !e.mine.confirmedAt)).length;
+const rewardLine = (r) => (!r ? null : r.kind === 'gift' ? `${r.icon || '✦'} Dono: ${r.name}` : r.kind === 'fragment' ? `❖ Frammento: «${r.text}»` : `✱ Sigillo del Settore ${r.roman} ${r.sectorName}: ${r.code}`);
+const EV_STATUS = { open: 'Candidature aperte', running: 'In corso', closing: 'Concluso: confermate', truce: 'Tregua', done: 'Concluso' };
+
+function eventHomeCards(st) {
+  return (st.events || []).filter((e) => e.status !== 'done' && (e.mine || (e.status === 'open' && e.open))).map((e) => h('a', { class: `event-strip ev-${e.status}`, href: `#/eventi/${e.id}` },
+    h('span', { class: 'eyebrow' }, `Evento · ${EV_STATUS[e.status]}`),
+    h('strong', null, e.name),
+    e.status === 'truce' && e.mine ? h('span', { class: 'small' }, '🛡 Tregua: nessun ingaggio tra i partecipanti · ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—'))
+      : h('span', { class: 'small muted' }, e.mine ? (e.mine.status === 'pending' ? 'La vostra alleanza vi ha candidati: confermate' : 'Avete accettato la sfida') : `${e.joined}/${e.slots} coppie hanno accettato`)));
+}
+
+async function eventCall(e, path, body, okMsg) {
+  try {
+    const r = await api('POST', `/api/team/events/${e.id}/${path}`, body || {});
+    if (okMsg) toast(okMsg, 'ok', 6000);
+    vibrate(60);
+    await refresh();
+    return r;
+  } catch (err) { toast(err.offline ? 'Serve la rete: riprovate appena c\'è segnale' : err.message, 'error', 7000); return null; }
+}
+
+function eventCard(e) {
+  const st = S.state;
+  const elect = isElect();
+  const mine = e.mine;
+  const free = e.slots - e.taken;
+  const others = e.allianceSize - 1;
+  const head = [h('div', { class: 'eyebrow' }, `${EV_STATUS[e.status]}${e.squadName ? ` · custodi: squadra ${e.squadName}` : ''}`),
+    h('h3', { class: 'ev-title' }, e.name),
+    e.description ? h('div', { class: 'md' }, md(e.description)) : null,
+    h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
+    e.status === 'open' && e.openUntil ? h('p', { class: 'small muted' }, e.open ? ['Candidature aperte ancora ', h('span', { class: 'mono', 'data-abs': e.openUntil }, '—')] : 'Candidature chiuse') : null,
+    e.status !== 'done' ? h('p', { class: 'ev-warn small' }, `⚠ Al termine dell'evento scatterà una tregua obbligatoria di ${e.truceMin} minuti prima di potersi ingaggiare.`) : null];
+  let body = null;
+  if (elect) {
+    body = [h('ul', { class: 'ev-teams' }, e.entries.length ? e.entries.map((x) => h('li', null, h('strong', null, `${x.roman} ${x.sectorName}`), x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'deve confermare') : null,
+      x.confirmedAt ? h('span', { class: 'chip chip-ok' }, 'chiusura confermata') : null)) : h('li', { class: 'muted' }, 'Nessuna coppia ancora')),
+    e.status === 'closing' ? h('p', { class: 'small' }, 'Conferme entro ', h('span', { class: 'mono', 'data-abs': e.closeDeadline }, '—')) : null,
+    e.status === 'truce' ? h('p', { class: 'small' }, '🛡 Tregua tra i partecipanti · ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null,
+    h('div', { class: 'row' },
+      e.status === 'open' ? h('button', { class: 'btn', disabled: !e.joined, onclick: async () => { if (await dialog({ title: 'Avviare l\'evento?', text: 'Le coppie iscritte ricevono l\'avviso della tregua finale.', okLabel: 'Avvia' })) eventCall(e, 'start', {}, 'Evento avviato'); } }, 'Avvia') : null,
+      ['open', 'running'].includes(e.status) && e.joined ? h('button', { class: 'btn btn-primary', onclick: async () => { if (await dialog({ title: 'Chiudere l\'evento?', text: `Le coppie confermano la chiusura dal telefono e prendono il premio; dopo ${e.confirmMin} minuti vale per tutte e parte la tregua.`, okLabel: 'Chiudi l\'evento' })) eventCall(e, 'close', {}, 'Evento chiuso'); } }, 'Chiudi l\'evento') : null)];
+  } else if (e.status === 'open') {
+    if (mine?.status === 'pending') {
+      body = [h('p', { class: 'small' }, 'La vostra alleanza ha candidato tutte le coppie: entrate solo se accettano tutte.'),
+        mine.group ? h('ul', { class: 'ev-teams' }, mine.group.map((x) => h('li', null, `${x.roman} ${x.sectorName}`, h('span', { class: `chip ${x.status === 'accepted' ? 'chip-ok' : 'chip-warn'}` }, x.status === 'accepted' ? 'ha accettato' : 'in attesa')))) : null,
+        h('div', { class: 'row' }, h('button', { class: 'btn btn-primary', disabled: !e.open, onclick: () => eventCall(e, 'join', {}, 'Avete accettato la sfida') }, 'Accetto la sfida'),
+          h('button', { class: 'btn btn-danger', onclick: () => eventCall(e, 'leave', {}, 'Rifiutata: la candidatura dell\'alleanza è decaduta') }, 'Rifiuto'))];
+    } else if (mine) {
+      body = [h('p', { class: 'ev-done' }, '✓ Avete accettato la sfida', mine.joinedBy ? h('span', { class: 'small muted' }, ` · ${mine.joinedBy}`) : null),
+        mine.group ? h('ul', { class: 'ev-teams' }, mine.group.map((x) => h('li', null, `${x.roman} ${x.sectorName}`, h('span', { class: `chip ${x.status === 'accepted' ? 'chip-ok' : 'chip-warn'}` }, x.status === 'accepted' ? 'ha accettato' : 'in attesa')))) : null,
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await dialog({ title: 'Ritirare la candidatura?', text: mine.group ? 'Decade per tutta l\'alleanza.' : 'Il posto torna libero.', okLabel: 'Ritira' })) eventCall(e, 'leave', {}, 'Candidatura ritirata'); } }, 'Ritira la candidatura')];
+    } else {
+      body = [h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', disabled: !e.open || free < 1, onclick: () => eventCall(e, 'join', {}, 'Avete accettato la sfida') }, 'Accetto la sfida'),
+        others > 0 ? h('button', { class: 'btn', disabled: !e.open || free < others + 1, onclick: () => eventCall(e, 'join', { alliance: true }, 'Alleanza candidata: le altre coppie devono confermare') }, `Candida l'alleanza (${others + 1} coppie)`) : null),
+      others > 0 && free < others + 1 && free > 0 ? h('p', { class: 'small muted' }, `Restano ${free} ${free === 1 ? 'posto' : 'posti'}: l'alleanza non ci sta, può entrare solo la vostra coppia.`) : null,
+      free < 1 ? h('p', { class: 'small muted' }, 'Evento al completo.') : null];
+    }
+  } else if (mine?.status === 'accepted') {
+    body = [e.participants ? h('ul', { class: 'ev-teams' }, e.participants.map((x) => h('li', null, `${x.roman} ${x.sectorName}`, x.teamId === st.team.id ? h('span', { class: 'chip chip-brass' }, 'voi') : null))) : null,
+      e.status === 'closing' && !mine.confirmedAt ? h('button', { class: 'btn btn-primary btn-block', onclick: () => confirmEventClose(e) }, 'Conferma chiusura evento') : null,
+      mine.reward ? h('p', { class: 'ev-reward' }, 'Premio ricevuto · ', rewardLine(mine.reward)) : null,
+      e.status === 'truce' ? h('p', { class: 'ev-truce' }, '🛡 Tregua in corso: nessun ingaggio tra i partecipanti. Tempo residuo: ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null];
+  }
+  return h('section', { class: `card stack-sm event-card ev-${e.status}`, id: `eventi-${e.id}` }, ...head, body);
+}
+
+function viewEvents() {
+  const st = S.state;
+  const list = st?.events || [];
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Eventi'),
+    h('p', { class: 'muted small' }, isElect() ? 'Gli eventi affidati alla vostra squadra: li seguite sul campo, li avviate e li chiudete a fine prove.' : 'Le sfide del Consiglio. Una coppia accetta per tutte e due: il compagno vede già la risposta e può ritirarla.'),
+    list.length ? list.map(eventCard) : h('p', { class: 'empty' }, 'Nessun evento, per ora.'));
+}
+
+// Fine evento: schermata che blocca l'app finché la coppia non conferma la chiusura; poi il premio, stile vittoria.
+const seenEventRewards = new Set(store.get('zdg_seen_ev_rewards', []));
+async function confirmEventClose(e) {
+  const r = await eventCall(e, 'confirm', {});
+  if (r?.reward) showEventReward(e, r.reward);
+}
+function eventOverlays(st) {
+  if (isElect()) return;
+  const open = document.querySelector('.battle-overlay.event-close');
+  const pend = (st.events || []).find((e) => e.status === 'closing' && e.mine?.status === 'accepted' && !e.mine.confirmedAt);
+  if (pend) {
+    if (open?.dataset.id === String(pend.id)) return;
+    vibrate([200, 100, 200, 100, 500]);
+    beep();
+    const el = battleOverlay('victory event-close',
+      h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+      h('div', { class: 'eyebrow' }, 'Evento concluso'),
+      h('h2', { class: 'battle-title' }, pend.name),
+      h('p', null, 'Il Consiglio ha chiuso l\'evento. Confermate la chiusura per ricevere il premio.'),
+      h('p', { class: 'small muted' }, `Premio: ${pend.rewardLabel}. Quando avranno confermato tutti partirà la tregua di ${pend.truceMin} minuti.`),
+      h('p', { class: 'small' }, 'Tempo per confermare: ', h('span', { class: 'mono', 'data-abs': pend.closeDeadline }, '—')),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: (ev) => { const b = ev.currentTarget; b.disabled = true; confirmEventClose(pend).finally(() => { b.disabled = false; }); } }, 'Conferma chiusura evento'));
+    el.dataset.id = pend.id;
+    return;
+  }
+  if (open) open.remove();
+  // Premio dato d'ufficio (tempo scaduto) o ricevuto da un altro telefono della coppia: lo si mostra una volta.
+  const got = (st.events || []).find((e) => e.mine?.reward && !seenEventRewards.has(e.id));
+  if (got && !document.querySelector('.battle-overlay')) showEventReward(got, got.mine.reward);
+}
+function showEventReward(e, reward) {
+  seenEventRewards.add(e.id);
+  store.set('zdg_seen_ev_rewards', [...seenEventRewards].slice(-50));
+  vibrate([120, 60, 120, 60, 400]);
+  const el = battleOverlay('victory',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'eyebrow' }, `Evento · ${e.name}`),
+    h('h2', { class: 'battle-title' }, 'Sfida compiuta'),
+    h('p', null, reward.auto ? 'Il tempo per confermare è scaduto: la chiusura vale anche per voi.' : 'Chiusura confermata.'),
+    h('div', { class: 'ev-prize' }, h('div', { class: 'eyebrow' }, 'Il vostro premio'), h('strong', null, rewardLine(reward))),
+    h('p', { class: 'small muted' }, `Tregua di ${e.truceMin} minuti tra i partecipanti: nessun ingaggio fino alla fine.`),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Continua'));
+}
 
 function viewAlliances() {
   const st = S.state;
@@ -2591,7 +2721,7 @@ function viewNotebook() {
     const res = await act('note', { sectorId: Number(sel.value), code: input.value.trim().toUpperCase() }, `Sigillo ${name}`);
     if (res) input.value = '';
   };
-  const srcLabel = { own: 'vostro', revealed: 'rivelato', note: 'annotato ✓', won: 'vinto', alliance: 'alleato', stolen: 'rubato', archive: 'archivio' };
+  const srcLabel = { own: 'vostro', revealed: 'rivelato', note: 'annotato ✓', won: 'vinto', alliance: 'alleato', stolen: 'rubato', archive: 'archivio', event: 'evento' };
   return h('div', { class: 'stack' },
     h('h2', null, 'Taccuino dei Sigilli'),
     h('p', { class: 'muted' }, 'Il vostro, quelli traditi dal Consiglio e quelli che vi hanno mostrato. Toccate un Sigillo per aprire il suo Altare.'),

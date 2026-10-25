@@ -386,6 +386,8 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   if (opp.gameId !== me.gameId || opp.id === me.id) throw err(400, 'Avversario non valido');
   const mine = sideOf(me.id);
   if (mine.includes(opp.id)) throw err(409, 'Non si combatte contro un alleato');
+  const truce = require('./events').truceBetween(me.id, opp.id);
+  if (truce) throw err(409, `Tregua dopo l'evento «${truce.name}»: nessun ingaggio con il Settore ${opp.sectorName} per altri ${Math.ceil((truce.truceUntil - Date.now()) / 60000)} minuti`);
   const theirs = sideOf(opp.id);
   const winners = result === 'lost' ? theirs : mine;
   const losers = result === 'lost' ? mine : theirs;

@@ -35,6 +35,7 @@ const TABS = [
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
+  ['eventi', 'Eventi'],
   ['notifiche', 'Notifiche, Traccar e ICE'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
@@ -249,7 +250,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
@@ -887,7 +888,7 @@ const EVENT_LABELS = {
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
   alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
-  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', engagement_confirmed: 'Scontro registrato',
+  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', event_created: 'Evento proposto', event_deleted: 'Evento eliminato', event_started: 'Evento avviato', event_closing: 'Evento chiuso', event_joined: 'Sfida accettata', event_confirmed: 'Chiusura evento confermata', event_truce: 'Tregua dopo l\'evento', engagement_confirmed: 'Scontro registrato',
   engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
   point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
@@ -3301,6 +3302,74 @@ function viewNotices() {
           n.results ? pollResultsView(n.results) : null,
           noticeReadsView(n.reads && { ...n.reads, id: n.id })),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato.')));
+}
+
+// ---------------------------------------------------------------- EVENTI
+
+const EVENT_STATUS = { open: ['Candidature', 'chip-brass'], running: ['In corso', 'chip-blood'], closing: ['Chiusura: conferme', 'chip-warn'], truce: ['Tregua', 'chip-ok'], done: ['Concluso', ''] };
+const rewardText = (r) => (!r ? '' : r.kind === 'gift' ? `${r.icon || ''} ${r.name}` : r.kind === 'fragment' ? `frammento «${r.text}»` : `Sigillo ${r.roman} ${r.sectorName}`);
+
+function viewEvents() {
+  const ms = R.ms;
+  const E = ms.events || { list: [], rewards: {}, giftTypes: [] };
+  const num = (keep, value, min, max) => h('input', { class: 'input', type: 'number', min, max, step: 1, value, 'data-keep': keep });
+  const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore', 'data-keep': 'ev-name' });
+  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie', 'data-keep': 'ev-desc' });
+  const slots = num('ev-slots', 3, 1, 20);
+  const squad = h('select', { class: 'input', 'data-keep': 'ev-squad' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id }, `Squadra ${q.name}`)));
+  const giftSel = h('select', { class: 'input', 'data-keep': 'ev-gift' }, h('option', { value: '' }, 'A caso (uno per coppia)'), E.giftTypes.map((x) => h('option', { value: x.id }, `${x.icon} ${x.name}`)));
+  const giftWrap = h('label', { class: 'field' }, h('span', null, 'Quale Dono'), giftSel);
+  const reward = h('select', { class: 'input', 'data-keep': 'ev-reward', onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k }, l)));
+  queueMicrotask(() => { giftWrap.hidden = reward.value !== 'gift'; });
+  const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', 'data-keep': 'ev-window' });
+  const confirmMin = num('ev-confirm', 3, 1, 60);
+  const truceMin = num('ev-truce', 5, 0, 60);
+  const form = h('form', { class: 'stack-sm', onsubmit: async (e) => {
+    e.preventDefault();
+    if (!name.value.trim()) return toast('Dai un nome all\'evento', 'error');
+    if (!(await dialog({ title: 'Proporre l\'evento?', text: `«${name.value}» arriva a tutte le coppie con una notifica.`, okLabel: 'Proponi' }))) return;
+    const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
+      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value }, 'Evento proposto alle coppie');
+    // La pagina si è già ridisegnata: si svuotano i campi nuovi.
+    if (r) for (const k of ['ev-name', 'ev-desc']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; }
+  } },
+  h('label', { class: 'field' }, h('span', null, 'Nome'), name),
+  h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
+  h('div', { class: 'form-grid' },
+    h('label', { class: 'field' }, h('span', null, 'Coppie al massimo'), slots),
+    h('label', { class: 'field' }, h('span', null, 'Squadra di Eletti custode'), squad),
+    h('label', { class: 'field' }, h('span', null, 'Premio per ogni coppia'), reward),
+    giftWrap,
+    h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
+    h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
+    h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin)),
+  h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento: a ogni coppia compare una schermata che blocca l\'app finché non conferma; chi conferma prende subito il premio. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
+  h('button', { class: 'btn btn-primary', type: 'submit' }, 'Proponi l\'evento'));
+
+  const card = (ev) => {
+    const [label, cls] = EVENT_STATUS[ev.status] || [ev.status, ''];
+    return h('li', { class: 'event-item' },
+      h('div', { class: 'grow' },
+        h('div', { class: 'notice-head' }, h('strong', null, ev.name), h('span', { class: `chip ${cls}` }, label), h('span', { class: 'chip' }, `${ev.joined}/${ev.slots} coppie`),
+          ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
+        ev.description ? h('p', { class: 'small' }, ev.description) : null,
+        h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
+          ev.status === 'open' && ev.openUntil ? [' · candidature ', ev.open ? ['chiudono tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.openUntil}` }, '—')] : 'chiuse'] : null,
+          ev.status === 'closing' ? [' · conferme entro ', h('span', { class: 'mono', 'data-clock': `abs:${ev.closeDeadline}` }, '—')] : null,
+          ev.status === 'truce' ? [' · tregua ancora ', h('span', { class: 'mono', 'data-clock': `abs:${ev.truceUntil}` }, '—')] : null),
+        ev.entries.length ? h('ul', { class: 'event-entries' }, ev.entries.map((x) => h('li', null,
+          h('strong', null, `${x.roman || ''} ${x.sectorName || ''}`),
+          x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'alleanza: deve confermare') : x.groupId ? h('span', { class: 'chip' }, 'in alleanza') : null,
+          x.joinedBy ? h('span', { class: 'tiny muted' }, ` · ${x.joinedBy}`) : null,
+          x.confirmedAt ? h('span', { class: 'chip chip-ok' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : ''}`) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
+      h('div', { class: 'row-actions' },
+        ev.status === 'open' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !ev.joined, onclick: () => confirmCall('Avviare l\'evento?', `Le coppie iscritte (${ev.joined}) ricevono l'avviso della tregua finale; le alleanze non confermate da tutti decadono.`, 'POST', `/api/m/events/${ev.id}/start`, {}, 'Evento avviato') }, 'Avvia') : null,
+        ['open', 'running'].includes(ev.status) && ev.joined ? h('button', { class: 'btn btn-sm', onclick: () => confirmCall('Chiudere l\'evento?', `Alle coppie compare la conferma di chiusura: chi conferma prende il premio; dopo ${ev.confirmMin} minuti la chiusura vale per tutti e parte la tregua.`, 'POST', `/api/m/events/${ev.id}/close`, {}, 'Evento chiuso: in attesa delle conferme') }, 'Chiudi l\'evento') : null,
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'evento?', 'Sparisce dai telefoni. I premi già dati restano.', 'DELETE', `/api/m/events/${ev.id}`, undefined, 'Evento eliminato', true) }, 'Elimina')));
+  };
+  return h('div', { class: 'stack' },
+    section('Nuovo evento', form),
+    section(`Eventi (${E.list.length})`, E.list.length ? h('ul', { class: 'notice-list' }, E.list.map(card)) : h('p', { class: 'empty' }, 'Nessun evento.')));
 }
 
 // ---------------------------------------------------------------- CLASSIFICA
