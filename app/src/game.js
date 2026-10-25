@@ -544,7 +544,40 @@ const voterKey = (team, player) => (player ? `p${player.id}` : team?.id ? `t${te
 function noticesFor(team, player = null) {
   const key = voterKey(team, player);
   return q.all('SELECT id, title, body, target, teamId, createdAt, poll FROM notices WHERE gameId = ? ORDER BY id DESC', team.gameId).filter((n) => noticeVisible(n, team))
-    .map((n) => ({ ...n, poll: !!n.poll, myVote: n.poll && key ? q.get('SELECT choice FROM notice_votes WHERE noticeId = ? AND voterKey = ?', n.id, key)?.choice || null : null }));
+    .map((n) => ({ ...n, poll: !!n.poll, myVote: n.poll && key ? q.get('SELECT choice FROM notice_votes WHERE noticeId = ? AND voterKey = ?', n.id, key)?.choice || null : null,
+      read: !!key && !!q.get('SELECT 1 FROM notice_reads WHERE noticeId = ? AND voterKey = ?', n.id, key) }));
+}
+
+// Avvisi aperti nell'app: si segna la prima lettura (persona o accesso di coppia).
+function readNotices(team, player, ids) {
+  const key = voterKey(team, player);
+  if (!key) return { ok: true, n: 0 };
+  const gameId = team?.gameId ?? player?.gameId;
+  const viewer = team || { gameId, kind: 'lobby', id: null };
+  let n = 0;
+  for (const id of (Array.isArray(ids) ? ids : []).slice(0, 200).map(Number)) {
+    const nt = q.get('SELECT * FROM notices WHERE id = ? AND gameId = ?', id, gameId);
+    if (!nt || !noticeVisible(nt, viewer)) continue;
+    n += Number(q.run('INSERT OR IGNORE INTO notice_reads (noticeId, voterKey, playerId, teamId, at) VALUES (?, ?, ?, ?, ?)', id, key, player?.id ?? null, team?.id ?? null, Date.now()).changes);
+  }
+  if (n) rt.toStaff(gameId, 'notices');
+  return { ok: true, n };
+}
+
+// Per la regia: chi doveva riceverlo e chi l'ha letto, persona per persona e coppia per coppia
+// (la coppia l'ha letto se almeno uno dei due, o l'accesso di coppia, l'ha aperto).
+function noticeReads(n, teams, people) {
+  const reads = q.all('SELECT voterKey, playerId, teamId, at FROM notice_reads WHERE noticeId = ?', n.id);
+  const byKey = new Map(reads.map((r) => [r.voterKey, r]));
+  const teamOf = new Map(teams.map((t) => [t.id, t]));
+  const okTeam = (t) => t && noticeVisible(n, t);
+  const persons = people.filter((p) => (p.teamId ? okTeam(teamOf.get(p.teamId)) : n.target === 'all'))
+    .map((p) => ({ id: p.id, name: p.nickname ? `${p.name} «${p.nickname}»` : p.name, teamId: p.teamId, at: byKey.get(`p${p.id}`)?.at || null }));
+  const couples = teams.filter((t) => t.kind === 'couple' && okTeam(t)).map((t) => {
+    const ats = [byKey.get(`t${t.id}`)?.at, ...persons.filter((p) => p.teamId === t.id).map((p) => p.at)].filter(Boolean);
+    return { id: t.id, sectorId: t.sectorId, at: ats.length ? Math.min(...ats) : null };
+  });
+  return { persons, couples };
 }
 
 // Risposta a un sondaggio (Sì / No / Forse): si può cambiare finché l'avviso c'è.
@@ -2206,7 +2239,11 @@ function masterState(gameId) {
     squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id).map((x) => ({
       ...x, members: q.all('SELECT id, name, nickname FROM players WHERE squadId = ?', x.id), unread: unreadSquad[x.id] || 0,
     })),
-    notices: q.all('SELECT * FROM notices WHERE gameId = ? ORDER BY id DESC', g.id).map((n) => ({ ...n, poll: !!n.poll, results: n.poll ? pollResults(n.id) : null })),
+    notices: (() => {
+      const nTeams = q.all('SELECT id, kind, sectorId, gameId FROM teams WHERE gameId = ?', g.id);
+      const nPeople = q.all('SELECT id, name, nickname, teamId FROM players WHERE gameId = ? ORDER BY name', g.id);
+      return q.all('SELECT * FROM notices WHERE gameId = ? ORDER BY id DESC', g.id).map((n) => ({ ...n, poll: !!n.poll, results: n.poll ? pollResults(n.id) : null, reads: noticeReads(n, nTeams, nPeople) }));
+    })(),
     noticeTargets: NOTICE_TARGETS,
     codes,
     revelations: revs.map((r) => ({ ...r, sectorName: sectorById(r.sectorId).name, roman: sectorById(r.sectorId).roman })),
@@ -2252,7 +2289,7 @@ function boardState(gameId) {
 module.exports = {
   notAccepted, acceptanceUsed, landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
-  messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, membersOf, createGame, updateGame, deleteGame,
+  messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, readNotices, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
   assignPerson, setPending, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,

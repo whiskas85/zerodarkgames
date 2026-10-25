@@ -436,6 +436,8 @@ app.post('/api/team/notices/:id/vote', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Iscriviti a una partita per rispondere');
   return G.voteNotice(req.team, req.player, req.params.id, String(req.body?.choice || ''));
 }));
+// Avvisi visti nell'app: per la regia «letto da».
+app.post('/api/team/notices/read', needMember, wrap((req) => G.readNotices(req.team, req.player, req.body?.ids)));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});

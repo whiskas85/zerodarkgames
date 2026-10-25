@@ -1828,6 +1828,26 @@ test('avvisi: visti anche da chi si iscrive dopo; sondaggi Sì / No / Forse con 
   assert.throws(() => G.voteNotice(T, null, plain.id, 'si'), /non è un sondaggio/);
 });
 
+test('avvisi: chi l\'ha letto, persona per persona e coppia (basta uno dei due)', () => {
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [a1] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const n = G.createNotice(g.id, { title: 'Ritrovo anticipato', target: 'couples' }, 'test');
+  const reads = () => G.masterState(g.id).notices.find((x) => x.id === n.id).reads;
+  assert.ok(reads().persons.length >= 4 && reads().persons.every((p) => !p.at));
+  assert.equal(G.readNotices(A, a1, [n.id]).n, 1);
+  assert.equal(G.readNotices(A, a1, [n.id]).n, 0);
+  const r = reads();
+  assert.equal(r.persons.filter((p) => p.at).length, 1);
+  assert.ok(r.couples.find((c) => c.id === A.id).at);
+  assert.ok(!r.couples.find((c) => c.id === B.id).at);
+  assert.ok(G.teamState(A, a1).notices.find((x) => x.id === n.id).read);
+  // Avviso solo per gli Eletti: la coppia non può segnarlo.
+  const e = G.createNotice(g.id, { title: 'Solo Eletti', target: 'elect' }, 'test');
+  assert.equal(G.readNotices(A, a1, [e.id]).n, 0);
+  assert.equal(G.masterState(g.id).notices.find((x) => x.id === e.id).reads.couples.length, 0);
+});
+
 test('accettazione e test armi: presenza, conferma coppia, armi sotto 1 joule solo per chi è presente', () => {
   const CK = require('../src/checkin');
   const g = setupGame(2);

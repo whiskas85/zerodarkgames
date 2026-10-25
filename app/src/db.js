@@ -560,6 +560,15 @@ CREATE TABLE IF NOT EXISTS notice_votes (
 );
 `);
 
+// Chi ha letto l'avviso: una riga per persona (o per accesso di coppia), alla prima apertura della pagina Avvisi.
+db.exec(`
+CREATE TABLE IF NOT EXISTS notice_reads (
+  noticeId INTEGER NOT NULL REFERENCES notices(id) ON DELETE CASCADE, voterKey TEXT NOT NULL,
+  playerId INTEGER, teamId INTEGER, at INTEGER NOT NULL,
+  PRIMARY KEY (noticeId, voterKey)
+);
+`);
+
 // Avviso di sicurezza pre-gara (EMERGENZA e ICE): quando la persona ha confermato «Ho letto e ho compreso».
 addColumn('players', 'safetyAckAt', 'INTEGER');
 

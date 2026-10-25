@@ -995,3 +995,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .task-actions select { max-width: 120px; } .task-card .btn-sm, .task-card .input-sm { padding-top: 4px; padding-bottom: 4px; }
 .task-empty { text-align: center; padding: 14px; border: 2px dashed var(--line); border-radius: 6px; margin: 0; }
 @media (max-width: 900px) { .task-board { grid-template-columns: 1fr; } .task-zone.free { position: static; } }
+
+/* Avvisi: chi l'ha letto */
+.notice-reads { margin-top: 6px; }
+.notice-reads summary { cursor: pointer; }
+.nr-list { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.nr-ok { color: var(--ok, #3fb950); font-weight: 700; }
+.nr-no { color: var(--danger, #f85149); font-weight: 700; }
+.notice-list .nr-list li { border: 0; padding: 0; background: none; display: inline; }

@@ -216,7 +216,7 @@ async function confirmCall(title, text, method, url, body, okMsg, danger = false
 
 function preserve(fn) {
   const keep = {};
-  for (const el of $root.querySelectorAll('[data-keep]')) keep[el.dataset.keep] = el.type === 'checkbox' ? el.checked : el.value;
+  for (const el of $root.querySelectorAll('[data-keep]')) keep[el.dataset.keep] = el.type === 'checkbox' ? el.checked : el.tagName === 'DETAILS' ? el.open : el.value;
   const a = document.activeElement;
   const focus = a?.dataset?.keep;
   let sel = null;
@@ -226,7 +226,7 @@ function preserve(fn) {
   for (const el of $root.querySelectorAll('[data-keep]')) {
     const v = keep[el.dataset.keep];
     if (v === undefined || el.dataset.fresh) continue;
-    if (el.type === 'checkbox') el.checked = v; else el.value = v;
+    if (el.type === 'checkbox') el.checked = v; else if (el.tagName === 'DETAILS') el.open = v; else el.value = v;
   }
   if (focus) {
     const el = $root.querySelector(`[data-keep="${CSS.escape(focus)}"]`);
@@ -3214,6 +3214,22 @@ function pollResultsView(res) {
       }))) : null);
 }
 
+// Chi ha letto l'avviso: conteggi per persone e coppie, aprendo il dettaglio ✓ / ✗.
+function noticeReadsView(rd) {
+  if (!rd) return null;
+  const ms = R.ms;
+  const teamOf = (id) => ms.teams.find((t) => t.id === id);
+  const read = (l) => l.filter((x) => x.at).length;
+  const mark = (x) => h('span', { class: x.at ? 'nr-ok' : 'nr-no', title: x.at ? `Letto alle ${fmtTime(x.at)}` : 'Non ancora letto' }, x.at ? '✓' : '✗');
+  const where = (p) => { const t = teamOf(p.teamId); return t ? `${t.roman} ${t.sectorName}` : p.teamId === ms.elect?.id ? 'Eletti' : 'senza coppia'; };
+  return h('details', { class: 'notice-reads', 'data-keep': `nr-${rd.id}` },
+    h('summary', { class: 'tiny' }, `Letto da ${read(rd.persons)}/${rd.persons.length} persone`, rd.couples.length ? ` · ${read(rd.couples)}/${rd.couples.length} coppie` : ''),
+    rd.couples.length ? h('div', null, h('div', { class: 'tiny muted' }, 'Coppie (letto se almeno uno dei due l\'ha aperto)'),
+      h('ul', { class: 'nr-list' }, rd.couples.map((c) => { const t = teamOf(c.id); return h('li', null, mark(c), ' ', t ? `${t.roman} ${t.sectorName}` : `Coppia ${c.id}`); }))) : null,
+    rd.persons.length ? h('div', null, h('div', { class: 'tiny muted' }, 'Persone'),
+      h('ul', { class: 'nr-list' }, [...rd.persons].sort((a, b) => !!b.at - !!a.at).map((p) => h('li', null, mark(p), ' ', p.name, h('span', { class: 'tiny muted' }, ` · ${where(p)}`))))) : null);
+}
+
 function viewNotices() {
   const ms = R.ms;
   const title = h('input', { class: 'input', 'data-keep': 'nt-title', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
@@ -3270,7 +3286,8 @@ function viewNotices() {
         h('div', { class: 'grow' },
           h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
           n.body ? h('p', null, n.body) : null,
-          n.results ? pollResultsView(n.results) : null),
+          n.results ? pollResultsView(n.results) : null,
+          noticeReadsView(n.reads && { ...n.reads, id: n.id })),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato.')));
 }
 

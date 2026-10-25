@@ -942,6 +942,11 @@ function markSeen(kind) {
   if (kind === 'ann') { const id = st.announcements[0]?.id || 0; if (id > S.seenAnn) { S.seenAnn = id; store.set('zdg_seen_ann', id); } }
   if (kind === 'msg') { const id = st.messages.at(-1)?.id || 0; if (id > S.seenMsg) { S.seenMsg = id; store.set('zdg_seen_msg', id); } }
   if (kind === 'notice') { const id = st.notices?.[0]?.id || 0; if (id > S.seenNotice) { S.seenNotice = id; store.set('zdg_seen_notice', id); } }
+  if (kind === 'notice') {
+    // Per la regia: chi ha letto l'avviso (una volta sola per avviso).
+    const ids = (st.notices || []).filter((n) => !n.read).map((n) => n.id);
+    if (ids.length) { for (const n of st.notices) n.read = true; api('POST', '/api/team/notices/read', { ids }).catch(() => {}); }
+  }
 }
 
 // Animazione di svelamento una sola volta per segreto.
