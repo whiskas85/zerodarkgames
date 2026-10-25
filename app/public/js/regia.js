@@ -24,6 +24,7 @@ const TABS = [
   ['persone', 'Persone'],
   ['coppie', 'Squadre Legati'],
   ['squadre', 'Squadre Eletti'],
+  ['consiglio', 'Consiglio Zero'],
   ['accettazione', 'Accettazione'],
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
@@ -45,6 +46,7 @@ const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const PRE = ['created', 'draft', 'ready', 'circle'];
 
 // #pagina oppure #pagina/… (es. #comunicazioni/team/4/123 apre una conversazione su un messaggio).
+if (location.hash === '#squadre/consiglio') history.replaceState(null, '', '#consiglio');
 const tab = () => (location.hash.slice(1).split('/')[0] || 'live');
 
 // ---------------------------------------------------------------- avvio
@@ -57,7 +59,7 @@ window.addEventListener('appinstalled', () => { R.install = null; toast('Regia i
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   // Tocco su una notifica con la regia già aperta: si va alla pagina (e al messaggio) indicati.
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'navigate' && e.data.hash) location.hash = e.data.hash; });
-  window.addEventListener('hashchange', () => { render(); if (FIELD_TABS.includes(tab())) loadField(); });
+  window.addEventListener('hashchange', () => { if (location.hash === '#squadre/consiglio') history.replaceState(null, '', '#consiglio'); render(); if (FIELD_TABS.includes(tab())) loadField(); });
   setInterval(tick, 1000);
   try {
     const me = await api('GET', '/api/auth/me');
@@ -1339,7 +1341,7 @@ function viewPeople() {
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accetta…'),
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
-        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre/consiglio' }, 'Consiglio →') : null,
+        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
@@ -2048,14 +2050,13 @@ async function newElectDialog() {
     } });
 }
 
-// Squadre Eletti: tre schede (#squadre, #squadre/incarichi, #squadre/consiglio).
-const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi'], ['consiglio', 'Consiglio Zero']];
+// Squadre Eletti: due schede (#squadre, #squadre/incarichi); il Consiglio Zero ha la sua voce di menu.
+const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi']];
 const squadPage = () => { const k = location.hash.slice(1).split('/')[1]; return SQUAD_PAGES.some(([x]) => x === k) ? k : 'squadre'; };
 const squadNav = (page) => h('nav', { class: 'settings-nav', 'aria-label': 'Squadre Eletti' }, SQUAD_PAGES.map(([k, label]) => h('a', { href: k === 'squadre' ? '#squadre' : `#squadre/${k}`, class: k === page ? 'on' : '' }, label)));
 
 function viewSquads() {
   const page = squadPage();
-  if (page === 'consiglio') return h('div', { class: 'stack' }, squadNav(page), viewCouncil());
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento delle squadre…'); }
   if (page === 'incarichi') return h('div', { class: 'stack' }, squadNav(page), viewTaskBoard(d));
@@ -3559,7 +3560,7 @@ function accountsSection() {
 // ---------------------------------------------------------------- CONSIGLIO ZERO
 // Chi entra con Zero Dark Ops chiede l'accesso; qui il master lo accetta e sceglie le azioni che può fare.
 let council = null;
-const loadCouncil = () => api('GET', '/api/m/council').then((c) => { council = c; if (tab() === 'consiglio' || (tab() === 'squadre' && squadPage() === 'consiglio')) render(); }).catch((e) => toast(e.message, 'error'));
+const loadCouncil = () => api('GET', '/api/m/council').then((c) => { council = c; if (tab() === 'consiglio') render(); }).catch((e) => toast(e.message, 'error'));
 const opsLine = (ops) => (ops || []).map((o) => [o.providerName, o.opsName, o.squadra].filter(Boolean).join(' · ')).join(' — ');
 async function councilCall(method, url, body, okMsg) {
   try { await api(method, url, body); if (okMsg) toast(okMsg, 'ok'); } catch (e) { toast(e.message, 'error', 7000); }

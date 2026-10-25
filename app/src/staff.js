@@ -97,7 +97,7 @@ function requestCouncil(account) {
   if (r.changes) {
     G.log(null, `account:${account.username}`, 'council_requested');
     const o = opsOf(account.id)[0];
-    rt.pushMasters({ title: 'Consiglio Zero: richiesta d\'accesso', body: `${account.name}${o?.squadra ? ` · ${o.squadra}` : ''}`, url: '/regia#squadre/consiglio', tag: `consiglio-${account.id}` });
+    rt.pushMasters({ title: 'Consiglio Zero: richiesta d\'accesso', body: `${account.name}${o?.squadra ? ` · ${o.squadra}` : ''}`, url: '/regia#consiglio', tag: `consiglio-${account.id}` });
     rt.toStaff(null, 'council');
   }
   return councilStatus(account);
