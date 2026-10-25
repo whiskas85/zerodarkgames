@@ -378,6 +378,58 @@ function autoPair(gameId, actor) {
   return { created: created.length, leftover: rest.length };
 }
 
+// Pagina Persone della regia: chi è da iscrivere (account senza iscrizione) o in attesa va subito al suo posto.
+// mode 'pair': con il compagno d'iscrizione, in una coppia incompleta (teamId), in una coppia nuova con chi è
+// senza coppia (partnerId) o per ora senza coppia. mode 'elect': tra gli Eletti, in una squadra (squadId o newSquad) o senza.
+function assignPerson(gameId, { accountId, playerId, mode, teamId, partnerId, withGroup, squadId, newSquad } = {}, actor) {
+  const g = getGame(gameId);
+  if (g.status === 'ended') throw err(409, 'Partita finita');
+  if (!['pair', 'elect'].includes(mode)) throw err(400, 'Scegli coppia o Eletti');
+  const p = tx(() => {
+    let p;
+    if (accountId) {
+      const a = q.get('SELECT * FROM accounts WHERE id = ?', Number(accountId));
+      if (!a) throw err(404, 'Account non trovato');
+      if (q.get('SELECT 1 FROM players WHERE gameId = ? AND accountId = ?', g.id, a.id)) throw err(409, `${a.name} è già iscritto a questa partita`);
+      const id = addPlayer(g.id, { name: a.name, nickname: a.nickname || '', softairTeam: a.softairTeam, phone: a.phone || '' }, { actor, requestedRole: mode });
+      q.run('UPDATE players SET accountId = ? WHERE id = ?', a.id, id);
+      p = q.get('SELECT * FROM players WHERE id = ?', id);
+    } else {
+      p = q.get('SELECT * FROM players WHERE id = ? AND gameId = ?', Number(playerId), g.id);
+      if (!p) throw err(404, 'Persona non trovata');
+      if (p.teamId) throw err(409, `${p.name} è già in una coppia o tra gli Eletti`);
+      // Cambio di ruolo (coppia ↔ Eletti): chi lascia la coppia d'iscrizione non trascina il compagno.
+      const keepGroup = mode === 'pair' && p.requestedRole === 'pair';
+      q.run("UPDATE players SET status = 'accepted', requestedRole = ?, regGroup = ? WHERE id = ?", mode === 'pair' && p.requestedRole === 'single' ? 'single' : mode, keepGroup ? p.regGroup : null, p.id);
+      p = q.get('SELECT * FROM players WHERE id = ?', p.id);
+    }
+    if (mode === 'elect') {
+      addToElect(g.id, [p.id], actor);
+      let sq = squadId ? q.get('SELECT id FROM elect_squads WHERE id = ? AND gameId = ?', Number(squadId), g.id) : null;
+      if (!sq && String(newSquad || '').trim()) sq = require('./field').createSquad(g.id, { name: newSquad }, actor);
+      if (sq) q.run('UPDATE players SET squadId = ? WHERE id = ?', sq.id, p.id);
+    } else if (withGroup && p.regGroup) {
+      // Con il compagno con cui si è iscritto: anche lui accettato, e la coppia si forma.
+      const mate = q.get('SELECT * FROM players WHERE gameId = ? AND regGroup = ? AND id != ? AND teamId IS NULL', g.id, p.regGroup, p.id);
+      if (!mate) throw err(409, 'Il compagno d\'iscrizione non c\'è più o è già in una coppia');
+      q.run("UPDATE players SET status = 'accepted' WHERE id = ?", mate.id);
+      createTeam(g.id, { playerIds: [p.id, mate.id] }, actor);
+    } else if (teamId) {
+      const t = q.get("SELECT * FROM teams WHERE id = ? AND gameId = ? AND kind = 'couple'", Number(teamId), g.id);
+      if (!t) throw err(404, 'Coppia non trovata');
+      if (q.get('SELECT COUNT(*) AS n FROM players WHERE teamId = ?', t.id).n >= 2) throw err(409, 'La coppia è già completa');
+      q.run('UPDATE players SET teamId = ? WHERE id = ?', t.id, p.id);
+    } else if (partnerId) {
+      createTeam(g.id, { playerIds: [p.id, Number(partnerId)] }, actor);
+    }
+    return p;
+  });
+  log(g.id, actor, 'person_assigned', { name: p.name, mode });
+  notifyState(g.id);
+  rt.toStaff(g.id, 'registration');
+  return { playerId: p.id };
+}
+
 // ---------------------------------------------------------------- Eletti del Consiglio
 
 // Un gruppo per partita, con un numero qualsiasi di persone e un proprio accesso all'app.
@@ -2191,7 +2243,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  assignPerson, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

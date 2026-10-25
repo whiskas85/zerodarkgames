@@ -927,3 +927,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .chip.sev-seria { background: rgba(249, 115, 22, .3); border-color: #f97316; }
 .chip.sev-grave { background: #d0021b; border-color: #ff3b2f; color: #fff; font-weight: 800; }
 .sos-comment-r { padding: 6px 10px; border-left: 4px solid #d0021b; background: rgba(208, 2, 27, .1); }
+/* Persone: coppie ed Eletti a schede, scelta del ruolo, accoppiamento in blocco */
+.pair-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.pair-card { display: grid; gap: 8px; padding: 10px 12px; border: 2px solid var(--line); border-left: 6px solid var(--c, var(--brass)); background: var(--paper); border-radius: 6px; }
+.pair-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.pair-head .roman { color: var(--c, var(--brass)); font-weight: 700; }
+.pair-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pair-members li { display: block; }
+.seg-choice { display: flex; gap: 6px; flex-wrap: wrap; }
+.people-bulk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 2px dashed var(--brass); background: var(--paper); }
+.dlg .field[hidden], .dlg .input[hidden] { display: none; }

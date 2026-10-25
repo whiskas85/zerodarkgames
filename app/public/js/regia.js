@@ -1272,7 +1272,8 @@ function peopleRows() {
     const cat = p.status === 'pending' ? 'attesa' : elect ? 'eletti' : team ? 'coppie' : 'senza';
     const where = cat === 'eletti' ? (squads[p.squadId] ? `Eletti · Squadra ${squads[p.squadId].name}` : 'Eletti') : team ? `${team.roman || ''} Settore ${team.sectorName || '?'}` : null;
     return { key: `p${p.id}`, cat, pid: p.id, accountId: p.accountId, name: p.name, nickname: p.nickname, username: p.username || acc?.username, softairTeam: p.softairTeam,
-      phone: p.phone || acc?.phone, role: ROLE_LABELS[p.requestedRole] || null, where, checkinAt: p.checkinAt, ops: acc?.ops, createdAt: p.createdAt };
+      phone: p.phone || acc?.phone, role: ROLE_LABELS[p.requestedRole] || null, roleKey: p.requestedRole, regGroup: p.regGroup, teamId: p.teamId, squadId: p.squadId,
+      where, checkinAt: p.checkinAt, ops: acc?.ops, createdAt: p.createdAt };
   });
   const enrolled = new Set(ms.players.map((p) => p.accountId).filter(Boolean));
   for (const a of accountsCache || []) {
@@ -1306,6 +1307,10 @@ function viewPeople() {
       h('div', { class: 'row-actions' },
         h('input', { class: 'input input-sm grow', type: 'search', placeholder: 'Cerca per nome, soprannome, username, team, telefono…', value: peopleQ, 'data-keep': 'people-q', oninput: (e) => { peopleQ = e.target.value; render(); } }),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'))),
+    peopleTab === 'senza' && shown.length ? h('div', { class: 'people-bulk' },
+      h('span', { class: 'small' }, `${shown.length === 1 ? '1 persona' : `${shown.length} persone`} accettate senza coppia.`),
+      h('button', { class: 'btn btn-sm btn-primary', disabled: shown.length < 2, onclick: () => confirmCall('Accoppiare a caso?', 'Prima chi si è iscritto insieme, poi gli altri a caso. Ogni coppia riceve un Settore libero.', 'POST', `/api/m/games/${R.gameId}/auto-pair`, {}, 'Coppie formate') }, 'Accoppia tutti a caso')) : null,
+    accountsCache && !q && peopleTab === 'coppie' ? couplesBoard() : accountsCache && !q && peopleTab === 'eletti' ? electBoard() :
     !accountsCache ? h('p', { class: 'empty' }, 'Caricamento…') : shown.length ? h('div', { class: 'people-list' }, shown.map((r) => h('div', { class: `person-row cat-${r.cat}` },
       h('div', { class: 'person-main' },
         h('div', null, h('strong', null, r.name), r.nickname ? h('span', { class: 'muted' }, ` «${r.nickname}»`) : null, ' ', h('span', { class: `chip ${CAT[r.cat][1]}` }, CAT[r.cat][0]),
@@ -1314,14 +1319,101 @@ function viewPeople() {
         r.cat === 'daiscrivere' ? h('div', { class: 'tiny muted' }, `Registrato il ${new Date(r.createdAt).toLocaleDateString('it-IT')}${r.other ? ` · altre partite: ${r.other}` : ' · mai iscritto'}`) : null,
         r.phone ? phoneLinks(r.phone) : h('span', { class: 'tiny warn-text' }, 'nessun telefono')),
       h('div', { class: 'row-actions' },
+        r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Iscrivi…') : null,
+        r.cat === 'senza' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accoppia…') : null,
         r.cat === 'attesa' ? [
-          h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', `/api/m/players/${r.pid}/review`, { decision: 'accept' }, 'Iscrizione accettata') }, 'Accetta'),
+          h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accetta…'),
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
-        r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm btn-primary', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
-        r.cat === 'coppie' || r.cat === 'senza' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : null,
+        r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
+        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : null,
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
+}
+
+// Legati in coppia: le coppie già formate, una scheda per Settore con i due Legati.
+function couplesBoard() {
+  const teams = R.ms.teams.filter((t) => t.status !== 'withdrawn');
+  if (!teams.length) return h('p', { class: 'empty' }, 'Nessuna coppia formata.');
+  return h('div', { class: 'pair-board' }, teams.map((t) => h('div', { class: 'pair-card', style: t.color ? { '--c': t.color } : null },
+    h('div', { class: 'pair-head' }, h('span', { class: 'mono roman' }, t.roman || '?'), h('strong', null, `Settore ${t.sectorName || '?'}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
+      t.members.length < 2 ? h('span', { class: 'chip chip-warn' }, 'incompleta') : null),
+    h('ul', { class: 'pair-members' }, t.members.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null))))));
+}
+
+// Eletti: raggruppati per squadra (e chi non ne ha ancora una).
+function electBoard() {
+  const ms = R.ms;
+  const members = ms.players.filter((p) => p.teamId === ms.elect?.id);
+  const groups = [...(ms.squads || []).map((sq) => ({ sq, list: members.filter((p) => p.squadId === sq.id) })), { sq: null, list: members.filter((p) => !p.squadId) }].filter((g) => g.sq || g.list.length);
+  if (!members.length && !(ms.squads || []).length) return h('p', { class: 'empty' }, 'Nessun Eletto.');
+  return h('div', { class: 'pair-board' }, groups.map(({ sq, list }) => h('div', { class: 'pair-card', style: sq?.color ? { '--c': sq.color } : null },
+    h('div', { class: 'pair-head' }, h('strong', null, sq ? `Squadra ${sq.name}` : 'Senza squadra'), h('span', { class: 'tiny muted' }, `${list.length} Eletti`)),
+    list.length ? h('ul', { class: 'pair-members' }, list.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null)))
+      : h('p', { class: 'tiny muted' }, 'Nessuno ancora.'))));
+}
+
+// Iscrivi (da iscrivere), Accetta (in attesa) o Accoppia (senza coppia): in una finestra, in poche scelte.
+async function personDialog(r) {
+  const ms = R.ms;
+  const canCouncil = r.cat === 'daiscrivere';
+  if (canCouncil && !council) await loadCouncil();
+  let mode = r.cat === 'senza' ? 'pair' : r.roleKey === 'elect' ? 'elect' : 'pair';
+  const name = r.nickname ? `${r.name} «${r.nickname}»` : r.name;
+  const mate = r.regGroup ? ms.players.find((p) => p.regGroup === r.regGroup && p.id !== r.pid && !p.teamId) : null;
+  const incomplete = ms.teams.filter((t) => t.status !== 'withdrawn' && t.members.length === 1);
+  const free = ms.players.filter((p) => p.status === 'accepted' && !p.teamId && p.id !== r.pid && p.requestedRole !== 'elect');
+  const pairOpts = [
+    mate ? ['group', `Con chi si è iscritto insieme: ${mate.name}${mate.status === 'pending' ? ' (accettato anche lui)' : ''}`] : null,
+    ...incomplete.map((t) => [`team:${t.id}`, `Nella coppia ${t.roman} Settore ${t.sectorName}, con ${t.members[0].name}`]),
+    ...free.map((p) => [`partner:${p.id}`, `Nuova coppia con ${p.name}${p.nickname ? ` «${p.nickname}»` : ''}`]),
+    r.cat === 'senza' ? null : ['none', 'Per ora senza coppia (la formo dopo)'],
+  ].filter(Boolean);
+  const pairSel = h('select', { class: 'input' }, pairOpts.map(([v, l]) => h('option', { value: v }, l)));
+  const squadSel = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna squadra (per ora)'), (ms.squads || []).map((sq) => h('option', { value: sq.id }, `Squadra ${sq.name}`)), h('option', { value: 'new' }, '＋ Nuova squadra…'));
+  const newSquad = h('input', { class: 'input', placeholder: 'Nome della nuova squadra', maxlength: 40, hidden: true });
+  squadSel.addEventListener('change', () => { newSquad.hidden = squadSel.value !== 'new'; });
+  const permBox = canCouncil ? h('div', { class: 'council-perms' }, council.perms.map((p) => h('label', { class: 'council-perm', title: p.hint },
+    h('input', { type: 'checkbox', value: p.key, checked: ['accettazione', 'armi'].includes(p.key) }), h('span', null, p.label)))) : null;
+  const panes = {
+    pair: h('label', { class: 'field' }, h('span', null, 'Con chi'), pairOpts.length ? pairSel : h('p', { class: 'tiny muted' }, 'Nessuno con cui accoppiarlo adesso.')),
+    elect: h('div', { class: 'field' }, h('span', null, 'Squadra degli Eletti'), squadSel, newSquad),
+    council: canCouncil ? h('div', { class: 'field' }, h('span', null, 'Cosa può fare nel Consiglio'), permBox) : null,
+  };
+  const seg = h('div', { class: 'seg-choice' });
+  const paint = () => {
+    seg.replaceChildren(...[['pair', 'Coppia'], ['elect', 'Eletti'], canCouncil ? ['council', 'Consiglio'] : null].filter(Boolean).map(([k, l]) => h('button', { type: 'button', class: `btn btn-sm ${mode === k ? 'btn-primary' : ''}`, onclick: () => { mode = k; paint(); } }, l)));
+    Object.entries(panes).forEach(([k, el]) => { if (el) el.hidden = k !== mode; });
+  };
+  paint();
+  await modal({
+    title: r.cat === 'daiscrivere' ? `Iscrivi ${name}` : r.cat === 'attesa' ? `Accetta ${name}` : `Accoppia ${name}`,
+    okLabel: r.cat === 'daiscrivere' ? 'Iscrivi' : r.cat === 'attesa' ? 'Accetta' : 'Accoppia',
+    body: h('div', { class: 'stack-sm' }, r.cat === 'senza' ? null : seg, panes.pair, panes.elect, panes.council,
+      r.role && r.cat === 'attesa' ? h('p', { class: 'tiny muted' }, `Si era iscritto come: ${r.role}. Puoi cambiarlo qui.`) : null),
+    onOk: async () => {
+      if (mode === 'council') {
+        await api('POST', `/api/m/council/requests/${r.accountId}/accept`, { perms: [...permBox.querySelectorAll('input:checked')].map((i) => i.value) });
+        toast(`${r.name} ora è nel Consiglio Zero`, 'ok');
+      } else {
+        const body = { mode, ...(r.accountId && r.cat === 'daiscrivere' ? { accountId: r.accountId } : { playerId: r.pid }) };
+        if (mode === 'pair') {
+          const v = pairSel.value || 'none';
+          if (v === 'group') body.withGroup = true;
+          else if (v.startsWith('team:')) body.teamId = Number(v.slice(5));
+          else if (v.startsWith('partner:')) body.partnerId = Number(v.slice(8));
+          else if (r.cat === 'senza') throw new Error('Scegli con chi accoppiarlo');
+        } else if (squadSel.value === 'new') {
+          if (!newSquad.value.trim()) throw new Error('Dai un nome alla nuova squadra');
+          body.newSquad = newSquad.value.trim();
+        } else if (squadSel.value) body.squadId = Number(squadSel.value);
+        await api('POST', `/api/m/games/${R.gameId}/people/assign`, body);
+        toast(r.cat === 'daiscrivere' ? `${r.name} iscritto` : r.cat === 'attesa' ? `${r.name} accettato` : `${r.name} accoppiato`, 'ok');
+      }
+      await Promise.all([load(), loadAccounts()]);
+      return true;
+    },
+  });
 }
 
 // ---------------------------------------------------------------- ALTARI E PAROLA

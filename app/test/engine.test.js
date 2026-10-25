@@ -1972,3 +1972,39 @@ test('test armi: più letture salvano media e massimo; la persona si chiude e si
   CK.setChronoDone(g.id, p.id, false, 'test');
   assert.equal(q.get('SELECT chronoDoneAt FROM players WHERE id = ?', p.id).chronoDoneAt, null);
 });
+
+test('pagina Persone: da iscrivere e in attesa vanno subito al loro posto (coppia, Eletti, squadra)', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Persone' }, 'test');
+  const acc = (n) => A.register({ username: `pers${n}${g.id}`, password: 'password1', name: `Persona ${n}`, softairTeam: 'nessuno' });
+  // Da iscrivere → Eletti, in una squadra nuova.
+  const e = G.assignPerson(g.id, { accountId: acc(1).id, mode: 'elect', newSquad: 'Corvi' }, 'test');
+  const ep = q.get('SELECT * FROM players WHERE id = ?', e.playerId);
+  assert.equal(ep.status, 'accepted');
+  assert.equal(q.get('SELECT kind FROM teams WHERE id = ?', ep.teamId).kind, 'elect');
+  assert.equal(q.get('SELECT name FROM elect_squads WHERE id = ?', ep.squadId).name, 'Corvi');
+  // Da iscrivere → coppia nuova con chi è senza coppia.
+  const free = G.addPlayer(g.id, { name: 'Libero' }, { actor: 'test' });
+  const a2 = acc(2);
+  const c = G.assignPerson(g.id, { accountId: a2.id, mode: 'pair', partnerId: free }, 'test');
+  const tid = q.get('SELECT teamId FROM players WHERE id = ?', c.playerId).teamId;
+  assert.ok(tid);
+  assert.equal(q.get('SELECT teamId FROM players WHERE id = ?', free).teamId, tid);
+  assert.throws(() => G.assignPerson(g.id, { accountId: a2.id, mode: 'pair' }, 'test'), /già iscritto/);
+  // In attesa, iscritti insieme → accettati con il compagno: la coppia si forma.
+  const p1 = G.addPlayer(g.id, { name: 'Uno', softairTeam: 'x' }, { self: true, regGroup: 'GRP1', requestedRole: 'pair' });
+  const p2 = G.addPlayer(g.id, { name: 'Due', softairTeam: 'x' }, { self: true, regGroup: 'GRP1', requestedRole: 'pair' });
+  G.assignPerson(g.id, { playerId: p1, mode: 'pair', withGroup: true }, 'test');
+  const t2 = q.get('SELECT teamId FROM players WHERE id = ?', p1).teamId;
+  assert.ok(t2 && t2 === q.get('SELECT teamId FROM players WHERE id = ?', p2).teamId);
+  // In attesa come Eletto → passa alle coppie, nella coppia rimasta incompleta.
+  q.run('UPDATE players SET teamId = NULL WHERE id = ?', p2);
+  const p3 = G.addPlayer(g.id, { name: 'Tre', softairTeam: 'x' }, { self: true, requestedRole: 'elect' });
+  G.assignPerson(g.id, { playerId: p3, mode: 'pair', teamId: t2 }, 'test');
+  assert.deepEqual(Object.values(q.get('SELECT teamId, requestedRole, status FROM players WHERE id = ?', p3)), [t2, 'pair', 'accepted']);
+  assert.throws(() => G.assignPerson(g.id, { playerId: p2, mode: 'pair', teamId: t2 }, 'test'), /completa/);
+  // Se qualcosa non va, l'iscrizione non resta a metà.
+  const before = q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g.id).n;
+  assert.throws(() => G.assignPerson(g.id, { accountId: acc(3).id, mode: 'pair', teamId: t2 }, 'test'), /completa/);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g.id).n, before);
+});

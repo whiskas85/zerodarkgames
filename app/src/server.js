@@ -628,6 +628,7 @@ m.delete('/players/:pid', wrap((req) => { G.deletePlayer(Number(req.params.pid),
 
 m.post('/games/:id/teams', wrap((req) => ({ id: G.createTeam(gameId(req), req.body || {}, actor(req)) })));
 m.post('/games/:id/auto-pair', wrap((req) => G.autoPair(gameId(req), actor(req))));
+m.post('/games/:id/people/assign', wrap((req) => G.assignPerson(gameId(req), req.body || {}, actor(req))));
 m.patch('/teams/:tid', wrap((req) => { G.updateTeam(Number(req.params.tid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/teams/:tid', wrap((req) => { G.dissolveTeam(Number(req.params.tid), actor(req)); return { ok: true }; }));
 m.post('/teams/:tid/withdraw', wrap((req) => { G.withdrawTeam(Number(req.params.tid), actor(req), !!req.body.restore); return { ok: true }; }));
