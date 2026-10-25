@@ -122,7 +122,8 @@ function councilList() {
   return { perms: PERMS.map(([key, label, hint]) => ({ key, label, hint })), requests, members };
 }
 
-function acceptCouncil(accountId, perms, actor) {
+// playerId: chi era in attesa in una partita entra nel Consiglio e lascia l'iscrizione da giocatore.
+function acceptCouncil(accountId, perms, actor, playerId = null) {
   return tx(() => {
     const a = q.get('SELECT * FROM accounts WHERE id = ?', Number(accountId));
     if (!a) throw err(404, 'Account non trovato');
@@ -132,6 +133,12 @@ function acceptCouncil(accountId, perms, actor) {
     for (let i = 2; q.get('SELECT 1 FROM users WHERE lower(username) = lower(?)', username); i++) username = `${a.username}${i}`;
     q.run("INSERT INTO users (username, passHash, role, displayName, createdAt, accountId, perms) VALUES (?, '', 'validator', ?, ?, ?, ?)",
       username, a.name, Date.now(), a.id, JSON.stringify(cleanPerms(perms)));
+    if (playerId) {
+      const pl = q.get('SELECT * FROM players WHERE id = ? AND accountId = ?', Number(playerId), a.id);
+      if (!pl) throw err(404, 'Iscrizione non trovata');
+      if (pl.status !== 'pending' || pl.teamId) throw err(409, 'Nel Consiglio va solo chi è ancora in attesa');
+      G.deletePlayer(pl.id, actor);
+    }
     G.log(null, actor, 'council_accepted', { account: a.username, perms: cleanPerms(perms) });
     return staffOf(a.id);
   });

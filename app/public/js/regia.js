@@ -1258,7 +1258,7 @@ function viewSectors() {
 const PEOPLE_TABS = [['daiscrivere', 'Da iscrivere'], ['attesa', 'In attesa'], ['senza', 'Senza coppia'], ['coppie', 'Legati in coppia'], ['eletti', 'Eletti'], ['consiglio', 'Consiglio'], ['tutti', 'Tutti']];
 const PEOPLE_INFO = {
   daiscrivere: 'Hanno un account ma non si sono iscritti a questa partita. «Iscrivi…» li mette in una coppia, tra gli Eletti o nel Consiglio; con WhatsApp li inviti a completare da soli.',
-  attesa: 'Si sono iscritti e aspettano la decisione del Consiglio. «Accetta…» conferma il ruolo scelto o lo cambia (coppia ↔ Eletti).',
+  attesa: 'Si sono iscritti e aspettano la decisione del Consiglio. «Accetta…» conferma il ruolo scelto o lo cambia (coppia ↔ Eletti), oppure lo porta nel Consiglio (se ha un account).',
   senza: 'Accettati ma non ancora in una coppia: accoppiali con qualcuno oppure tutti a caso.',
   coppie: 'Le coppie di Legati già formate, una per Settore.',
   eletti: 'Gli Eletti del Consiglio, raggruppati per squadra.',
@@ -1401,7 +1401,7 @@ function dropAllowed(r, k) {
   if (k === r.cat || k === 'tutti') return false;
   if (k === 'attesa') return r.cat === 'senza';
   if (k === 'senza') return r.cat === 'attesa' || r.cat === 'daiscrivere';
-  if (k === 'consiglio') return r.cat === 'daiscrivere';
+  if (k === 'consiglio') return r.cat === 'daiscrivere' || (r.cat === 'attesa' && !!r.accountId);
   return ['coppie', 'eletti'].includes(k) && ['daiscrivere', 'attesa', 'senza'].includes(r.cat) && !(k === 'eletti' && r.cat === 'senza');
 }
 async function dropPerson(r, k) {
@@ -1417,7 +1417,7 @@ async function dropPerson(r, k) {
 
 async function personDialog(r, preset = null) {
   const ms = R.ms;
-  const canCouncil = r.cat === 'daiscrivere';
+  const canCouncil = r.cat === 'daiscrivere' || (r.cat === 'attesa' && !!r.accountId);
   if (canCouncil && !council) await loadCouncil();
   let mode = preset || (r.cat === 'senza' ? 'pair' : r.roleKey === 'elect' ? 'elect' : 'pair');
   const name = r.nickname ? `${r.name} «${r.nickname}»` : r.name;
@@ -1454,7 +1454,7 @@ async function personDialog(r, preset = null) {
       r.role && r.cat === 'attesa' ? h('p', { class: 'tiny muted' }, `Si era iscritto come: ${r.role}. Puoi cambiarlo qui.`) : null),
     onOk: async () => {
       if (mode === 'council') {
-        await api('POST', `/api/m/council/requests/${r.accountId}/accept`, { perms: [...permBox.querySelectorAll('input:checked')].map((i) => i.value) });
+        await api('POST', `/api/m/council/requests/${r.accountId}/accept`, { perms: [...permBox.querySelectorAll('input:checked')].map((i) => i.value), playerId: r.cat === 'attesa' ? r.pid : null });
         toast(`${r.name} ora è nel Consiglio Zero`, 'ok');
       } else {
         const body = { mode, ...(r.accountId && r.cat === 'daiscrivere' ? { accountId: r.accountId } : { playerId: r.pid }) };

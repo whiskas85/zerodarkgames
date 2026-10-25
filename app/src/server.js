@@ -758,7 +758,7 @@ m.get('/users', (_req, res) => res.json(q.all(`SELECT u.id, u.username, u.role, 
 // Inviti del Consiglio: link monouso (24 ore) per diventare master o validatore con il proprio account.
 // Consiglio Zero: richieste d'accesso e azioni di ciascuno.
 m.get('/council', (_req, res) => res.json(St.councilList()));
-m.post('/council/requests/:aid/accept', wrap((req) => St.acceptCouncil(req.params.aid, req.body?.perms, actor(req))));
+m.post('/council/requests/:aid/accept', wrap((req) => St.acceptCouncil(req.params.aid, req.body?.perms, actor(req), req.body?.playerId || null)));
 m.delete('/council/requests/:aid', wrap((req) => { St.rejectCouncil(req.params.aid, actor(req)); return { ok: true }; }));
 m.patch('/council/:uid', wrap((req) => St.setCouncilPerms(req.params.uid, req.body || {}, req.user, actor(req))));
 m.get('/invites', (req, res) => res.json(St.pendingInvites().map((i) => ({ ...i, url: `${baseUrl(req)}/invito/${i.token}` }))));

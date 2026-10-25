@@ -87,3 +87,12 @@ test('i validatori di prima restano con Soglia, Accettazione e Test armi', () =>
   assert.deepEqual(St.permsOf({ role: 'validator', perms: '[]' }), []);
   assert.equal(St.homeOf('validator'), '/consiglio');
 });
+
+test('chi è in attesa in una partita può entrare nel Consiglio: lascia l\'iscrizione da giocatore', () => {
+  const gid = Number(q.run("INSERT INTO games (name, status, createdAt) VALUES ('Attesa', 'draft', ?)", Date.now()).lastInsertRowid);
+  const luca = A.register({ username: 'lucaattesa', password: 'password1', name: 'Luca Neri', softairTeam: 'nessuno' });
+  const pid = Number(q.run("INSERT INTO players (gameId, name, accountId, status, createdAt) VALUES (?, 'Luca Neri', ?, 'pending', ?)", gid, luca.id, Date.now()).lastInsertRowid);
+  const u = St.acceptCouncil(luca.id, ['armi'], 'master', pid);
+  assert.equal(u.role, 'validator');
+  assert.equal(q.get('SELECT 1 FROM players WHERE id = ?', pid), undefined);
+});
