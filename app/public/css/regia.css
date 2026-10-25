@@ -1031,8 +1031,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .rw-time { font-size: 13px; }
 .rw-main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 12px; align-items: start; }
 .rw-map { height: 70vh; min-height: 380px; border-radius: 8px; }
-.rw-cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 8px; overflow-x: auto; max-height: 70vh; }
-.rw-col { border: 1.5px solid var(--line); border-top: 5px solid var(--c); border-radius: 8px; background: var(--paper); padding: 8px; overflow-y: auto; }
+.rw-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; align-content: start; align-items: start; max-height: 70vh; overflow-y: auto; }
+.rw-col { border: 1.5px solid var(--line); border-top: 5px solid var(--c); border-radius: 8px; background: var(--paper); padding: 8px; max-height: 34vh; overflow-y: auto; min-width: 0; }
+.rw-col p { margin: 0; }
 .rw-col-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; margin-bottom: 6px; }
 .rw-evs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .rw-evs li { padding: 4px 6px; border-radius: 4px; cursor: pointer; }
