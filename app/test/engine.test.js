@@ -2003,6 +2003,11 @@ test('pagina Persone: da iscrivere e in attesa vanno subito al loro posto (coppi
   G.assignPerson(g.id, { playerId: p3, mode: 'pair', teamId: t2 }, 'test');
   assert.deepEqual(Object.values(q.get('SELECT teamId, requestedRole, status FROM players WHERE id = ?', p3)), [t2, 'pair', 'accepted']);
   assert.throws(() => G.assignPerson(g.id, { playerId: p2, mode: 'pair', teamId: t2 }, 'test'), /completa/);
+  // Trascinata in «In attesa»: torna in attesa (non se è già in coppia).
+  const fr = G.addPlayer(g.id, { name: 'Libera' }, { actor: 'test' });
+  G.setPending(fr, 'test');
+  assert.equal(q.get('SELECT status FROM players WHERE id = ?', fr).status, 'pending');
+  assert.throws(() => G.setPending(p3, 'test'), /coppia/);
   // Se qualcosa non va, l'iscrizione non resta a metà.
   const before = q.get('SELECT COUNT(*) AS n FROM players WHERE gameId = ?', g.id).n;
   assert.throws(() => G.assignPerson(g.id, { accountId: acc(3).id, mode: 'pair', teamId: t2 }, 'test'), /completa/);

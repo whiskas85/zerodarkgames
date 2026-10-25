@@ -430,6 +430,17 @@ function assignPerson(gameId, { accountId, playerId, mode, teamId, partnerId, wi
   return { playerId: p.id };
 }
 
+// Pagina Persone: un accettato (non ancora in coppia né tra gli Eletti) torna in attesa.
+function setPending(playerId, actor) {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(playerId));
+  if (!p) throw err(404, 'Persona non trovata');
+  if (p.teamId) throw err(409, `${p.name} è in una coppia o tra gli Eletti: toglilo prima da lì`);
+  q.run("UPDATE players SET status = 'pending' WHERE id = ?", p.id);
+  log(p.gameId, actor, 'registration_pending', { name: p.name });
+  rt.toStaff(p.gameId, 'registration');
+  rt.toTeams(p.gameId, 'state', {});
+}
+
 // ---------------------------------------------------------------- Eletti del Consiglio
 
 // Un gruppo per partita, con un numero qualsiasi di persone e un proprio accesso all'app.
@@ -2243,7 +2254,7 @@ module.exports = {
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
-  assignPerson, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
+  assignPerson, setPending, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
   visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,

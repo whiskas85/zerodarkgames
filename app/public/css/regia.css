@@ -937,3 +937,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .seg-choice { display: flex; gap: 6px; flex-wrap: wrap; }
 .people-bulk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 2px dashed var(--brass); background: var(--paper); }
 .dlg .field[hidden], .dlg .input[hidden] { display: none; }
+.people-info { margin: 0; font-size: 14px; padding: 8px 12px; border-left: 4px solid var(--brass); background: rgba(209, 173, 98, .08); }
+.person-row[draggable="true"] { cursor: grab; }
+.person-row.dragging { opacity: .45; }
+.people-tab.drop { outline: 3px dashed var(--brass); outline-offset: 2px; background: rgba(209, 173, 98, .18); }

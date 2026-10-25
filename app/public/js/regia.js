@@ -1256,8 +1256,18 @@ function viewSectors() {
 // ---------------------------------------------------------------- PERSONE
 // Tutti in un posto: chi si è registrato ma non si è ancora iscritto a questa partita, chi aspetta l'approvazione,
 // i Legati in coppia, chi è accettato ma senza coppia, gli Eletti. Con telefono e WhatsApp per contattarli.
-const PEOPLE_TABS = [['tutti', 'Tutti'], ['daiscrivere', 'Da iscrivere'], ['attesa', 'In attesa'], ['coppie', 'Legati in coppia'], ['senza', 'Senza coppia'], ['eletti', 'Eletti']];
-let peopleTab = 'tutti';
+// Nell'ordine del flusso: da iscrivere → in attesa → senza coppia → al loro posto (Legati, Eletti, Consiglio).
+const PEOPLE_TABS = [['daiscrivere', 'Da iscrivere'], ['attesa', 'In attesa'], ['senza', 'Senza coppia'], ['coppie', 'Legati in coppia'], ['eletti', 'Eletti'], ['consiglio', 'Consiglio'], ['tutti', 'Tutti']];
+const PEOPLE_INFO = {
+  daiscrivere: 'Hanno un account ma non si sono iscritti a questa partita. «Iscrivi…» li mette in una coppia, tra gli Eletti o nel Consiglio; con WhatsApp li inviti a completare da soli.',
+  attesa: 'Si sono iscritti e aspettano la decisione del Consiglio. «Accetta…» conferma il ruolo scelto o lo cambia (coppia ↔ Eletti).',
+  senza: 'Accettati ma non ancora in una coppia: accoppiali con qualcuno oppure tutti a caso.',
+  coppie: 'Le coppie di Legati già formate, una per Settore.',
+  eletti: 'Gli Eletti del Consiglio, raggruppati per squadra.',
+  consiglio: 'Chi fa parte del Consiglio Zero (regia e staff): le azioni di ciascuno si scelgono nella pagina Consiglio.',
+  tutti: 'Tutte le persone della partita e chi si è registrato senza iscriversi.',
+};
+let peopleTab = 'daiscrivere';
 let peopleQ = '';
 function peopleRows() {
   const ms = R.ms;
@@ -1277,7 +1287,8 @@ function peopleRows() {
   });
   const enrolled = new Set(ms.players.map((p) => p.accountId).filter(Boolean));
   for (const a of accountsCache || []) {
-    if (enrolled.has(a.id) || a.staff) continue;
+    if (a.staff) { rows.push({ key: `a${a.id}`, cat: 'consiglio', accountId: a.id, name: a.name, nickname: a.nickname, username: a.username, softairTeam: a.softairTeam, phone: a.phone, ops: a.ops, role: a.staff === 'master' ? 'Regia (master)' : 'Consiglio', createdAt: a.createdAt }); continue; }
+    if (enrolled.has(a.id)) continue;
     rows.push({ key: `a${a.id}`, cat: 'daiscrivere', accountId: a.id, name: a.name, nickname: a.nickname, username: a.username, softairTeam: a.softairTeam, phone: a.phone, ops: a.ops, createdAt: a.createdAt, other: a.games });
   }
   return rows;
@@ -1289,7 +1300,7 @@ function viewPeople() {
   const count = (k) => (k === 'tutti' ? rows.length : rows.filter((r) => r.cat === k).length);
   const shown = rows.filter((r) => (peopleTab === 'tutti' || r.cat === peopleTab) && (!q || [r.name, r.nickname, r.username, r.softairTeam, r.phone].some((x) => String(x || '').toLowerCase().includes(q))))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const CAT = { daiscrivere: ['Da iscrivere', 'chip-warn'], attesa: ['In attesa', 'chip-blood'], coppie: ['In coppia', 'chip-ok'], senza: ['Senza coppia', 'chip-brass'], eletti: ['Eletto', 'chip'] };
+  const CAT = { daiscrivere: ['Da iscrivere', 'chip-warn'], attesa: ['In attesa', 'chip-blood'], coppie: ['In coppia', 'chip-ok'], senza: ['Senza coppia', 'chip-brass'], eletti: ['Eletto', 'chip'], consiglio: ['Consiglio', 'chip-ok'] };
   const invite = (r) => `Ciao ${r.nickname || r.name}, ti sei registrato ai Giochi del Buio ma non hai ancora scelto come partecipare (coppia, temerario solitario o Eletti). Completa l'iscrizione qui: ${R.baseUrl}/iscrizione`;
   const pwd = async (r) => {
     const v = await dialog({ title: `Nuova password per @${r.username}`, text: `${r.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
@@ -1301,9 +1312,13 @@ function viewPeople() {
   };
   return h('div', { class: 'stack' },
     section('Persone',
-      h('p', { class: 'muted tiny' }, 'Tutte le persone di questa partita e chi si è registrato senza iscriversi. «Da iscrivere»: hanno l\'account ma non hanno scelto come partecipare: contattali con WhatsApp (messaggio già pronto).'),
-      h('div', { class: 'people-tabs' }, PEOPLE_TABS.map(([k, label]) => h('button', { type: 'button', class: `people-tab ${peopleTab === k ? 'on' : ''} ${k === 'daiscrivere' && count(k) ? 'warn' : ''}`, onclick: () => { peopleTab = k; render(); } },
+      h('div', { class: 'people-tabs' }, PEOPLE_TABS.map(([k, label]) => h('button', { type: 'button', class: `people-tab ${peopleTab === k ? 'on' : ''} ${k === 'daiscrivere' && count(k) ? 'warn' : ''}`, onclick: () => { peopleTab = k; render(); },
+        // Trascina una persona su una scheda per spostarla lì (in attesa, accettata, in coppia, tra gli Eletti, nel Consiglio).
+        ondragover: (e) => { if (dragPerson && dropAllowed(dragPerson, k)) { e.preventDefault(); e.currentTarget.classList.add('drop'); } },
+        ondragleave: (e) => e.currentTarget.classList.remove('drop'),
+        ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('drop'); const r = dragPerson; dragPerson = null; if (r) dropPerson(r, k); } },
         h('span', null, label), h('strong', { class: 'mono' }, String(count(k)))))),
+      h('p', { class: 'people-info' }, PEOPLE_INFO[peopleTab], ' ', h('span', { class: 'tiny muted' }, 'Puoi anche trascinare una persona su una scheda qui sopra.')),
       h('div', { class: 'row-actions' },
         h('input', { class: 'input input-sm grow', type: 'search', placeholder: 'Cerca per nome, soprannome, username, team, telefono…', value: peopleQ, 'data-keep': 'people-q', oninput: (e) => { peopleQ = e.target.value; render(); } }),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'))),
@@ -1311,7 +1326,9 @@ function viewPeople() {
       h('span', { class: 'small' }, `${shown.length === 1 ? '1 persona' : `${shown.length} persone`} accettate senza coppia.`),
       h('button', { class: 'btn btn-sm btn-primary', disabled: shown.length < 2, onclick: () => confirmCall('Accoppiare a caso?', 'Prima chi si è iscritto insieme, poi gli altri a caso. Ogni coppia riceve un Settore libero.', 'POST', `/api/m/games/${R.gameId}/auto-pair`, {}, 'Coppie formate') }, 'Accoppia tutti a caso')) : null,
     accountsCache && !q && peopleTab === 'coppie' ? couplesBoard() : accountsCache && !q && peopleTab === 'eletti' ? electBoard() :
-    !accountsCache ? h('p', { class: 'empty' }, 'Caricamento…') : shown.length ? h('div', { class: 'people-list' }, shown.map((r) => h('div', { class: `person-row cat-${r.cat}` },
+    !accountsCache ? h('p', { class: 'empty' }, 'Caricamento…') : shown.length ? h('div', { class: 'people-list' }, shown.map((r) => h('div', { class: `person-row cat-${r.cat}`, draggable: ['daiscrivere', 'attesa', 'senza'].includes(r.cat) ? 'true' : null,
+      ondragstart: (e) => { dragPerson = r; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', r.key); e.currentTarget.classList.add('dragging'); },
+      ondragend: (e) => { e.currentTarget.classList.remove('dragging'); dragPerson = null; } },
       h('div', { class: 'person-main' },
         h('div', null, h('strong', null, r.name), r.nickname ? h('span', { class: 'muted' }, ` «${r.nickname}»`) : null, ' ', h('span', { class: `chip ${CAT[r.cat][1]}` }, CAT[r.cat][0]),
           r.checkinAt ? h('span', { class: 'chip chip-ok', title: 'Accettato all\'arrivo' }, '✓ arrivato') : null),
@@ -1325,7 +1342,7 @@ function viewPeople() {
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accetta…'),
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
-        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : null,
+        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
@@ -1354,11 +1371,31 @@ function electBoard() {
 }
 
 // Iscrivi (da iscrivere), Accetta (in attesa) o Accoppia (senza coppia): in una finestra, in poche scelte.
-async function personDialog(r) {
+// Drag & drop dalla lista alle schede: in attesa (torna in attesa), senza coppia (accettato), coppia, Eletti, Consiglio.
+let dragPerson = null;
+function dropAllowed(r, k) {
+  if (k === r.cat || k === 'tutti') return false;
+  if (k === 'attesa') return r.cat === 'senza';
+  if (k === 'senza') return r.cat === 'attesa' || r.cat === 'daiscrivere';
+  if (k === 'consiglio') return r.cat === 'daiscrivere';
+  return ['coppie', 'eletti'].includes(k) && ['daiscrivere', 'attesa', 'senza'].includes(r.cat) && !(k === 'eletti' && r.cat === 'senza');
+}
+async function dropPerson(r, k) {
+  if (!dropAllowed(r, k)) return;
+  if (k === 'attesa') return call('POST', `/api/m/players/${r.pid}/pending`, {}, `${r.name} di nuovo in attesa`);
+  if (k === 'senza') {
+    const body = { mode: 'pair', ...(r.cat === 'daiscrivere' ? { accountId: r.accountId } : { playerId: r.pid }) };
+    try { await api('POST', `/api/m/games/${R.gameId}/people/assign`, body); toast(`${r.name} accettato, senza coppia per ora`, 'ok'); await Promise.all([load(), loadAccounts()]); } catch (e) { toast(e.message, 'error', 7000); }
+    return;
+  }
+  return personDialog(r, { coppie: 'pair', eletti: 'elect', consiglio: 'council' }[k]);
+}
+
+async function personDialog(r, preset = null) {
   const ms = R.ms;
   const canCouncil = r.cat === 'daiscrivere';
   if (canCouncil && !council) await loadCouncil();
-  let mode = r.cat === 'senza' ? 'pair' : r.roleKey === 'elect' ? 'elect' : 'pair';
+  let mode = preset || (r.cat === 'senza' ? 'pair' : r.roleKey === 'elect' ? 'elect' : 'pair');
   const name = r.nickname ? `${r.name} «${r.nickname}»` : r.name;
   const mate = r.regGroup ? ms.players.find((p) => p.regGroup === r.regGroup && p.id !== r.pid && !p.teamId) : null;
   const incomplete = ms.teams.filter((t) => t.status !== 'withdrawn' && t.members.length === 1);
