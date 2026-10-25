@@ -3557,7 +3557,7 @@ function viewEvents() {
         h('div', { class: 'notice-head' }, h('strong', null, ev.name), h('span', { class: `chip ${cls}` }, label), h('span', { class: 'chip' }, `${ev.joined}/${ev.slots} coppie`),
           ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
         ev.description ? h('p', { class: 'small' }, ev.description) : null,
-        h('div', { class: 'small' }, ev.location ? `📍 ${ev.location.label}` : h('span', { class: 'muted' }, 'Nessun luogo indicato'), ' ',
+        h('div', { class: 'small ev-loc' }, ev.location ? `📍 ${ev.location.label}` : h('span', { class: 'muted' }, 'Nessun luogo indicato'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const r = await eventLocationDialog(ev.location); if (r !== undefined) call('PATCH', `/api/m/events/${ev.id}/location`, { location: r }, r ? 'Luogo aggiornato' : 'Luogo tolto'); } }, ev.location ? 'Cambia luogo' : 'Indica il luogo')),
         h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
           ev.status === 'draft' ? ` · candidature ${ev.windowMin ? `per ${ev.windowMin}′ dal lancio` : 'fino all\'avvio'} · le coppie non lo vedono ancora` : null,

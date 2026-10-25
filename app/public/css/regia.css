@@ -1070,3 +1070,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .rw-cols { max-height: none; }
   .rw-col { max-height: 40vh; }
 }
+
+/* Eventi: contenuto a tutta larghezza, pulsanti sotto (su telefono il testo non si schiaccia più) */
+.notice-list li.event-item { flex-direction: column; align-items: stretch; gap: 10px; }
+.event-item .notice-head { flex-wrap: wrap; }
+.event-item > .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--line); }
+.event-item .ev-loc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
