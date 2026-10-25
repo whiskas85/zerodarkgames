@@ -3368,7 +3368,7 @@ const rewardText = (r) => (!r ? '' : r.kind === 'gift' ? `${r.icon || ''} ${r.na
 
 function viewEvents() {
   const ms = R.ms;
-  const E = ms.events || { list: [], rewards: {}, giftTypes: [] };
+  const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
   const num = (keep, value, min, max) => h('input', { class: 'input', type: 'number', min, max, step: 1, value, 'data-keep': keep });
   const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore', 'data-keep': 'ev-name' });
   const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie', 'data-keep': 'ev-desc' });
