@@ -40,6 +40,7 @@ const TABS = [
   ['notifiche', 'Notifiche, Traccar e ICE'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
+  ['rewind', 'Rewind'],
   ['regolamento', 'Regolamento'],
   ['impostazioni', 'Impostazioni'],
 ];
@@ -251,7 +252,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
@@ -895,7 +896,7 @@ const EVENT_LABELS = {
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
   squad_task_assigned: 'Incarico assegnato', squad_task_cancelled: 'Incarico annullato', dirty_alliance: 'Alleanza sporca', alliance_poisoned: 'Velenoso',
   skill_chosen: 'Skill scelta', skill_removed: 'Skill tolta', skill_used: 'Skill usata', skill_auto: 'Skill automatica',
-  exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
+  altar_scanned: 'Altare inquadrato', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
 };
 
@@ -905,6 +906,7 @@ function eventText(e) {
   const who = t ? `${t.sectorName}` : '';
   switch (e.type) {
     case 'unlock': return `${who} ha sbloccato ${d.point}`;
+    case 'altar_scanned': return `${who} ha inquadrato ${d.point}`;
     case 'unlock_failed': return `${who} ha sbagliato Sigillo a ${d.point} («${d.attempt}»)`;
     case 'manual_fragment': return `${who} ha aggiunto il frammento di ${d.point}`;
     case 'code_note_ok': case 'code_note_wrong': return `${who} → Sigillo ${d.sector}`;
@@ -3461,6 +3463,140 @@ function viewStandings() {
 
 function viewLog() {
   return section('Registro eventi', h('p', { class: 'muted tiny' }, 'Ultimi 150 eventi della partita con ora del server: sblocchi, tentativi, annunci, validazioni e azioni di regia.'), eventFeed(150));
+}
+
+// ---------------------------------------------------------------- REWIND
+
+// La partita rivista sulla mappa: posizioni (con la scia degli ultimi minuti) e azioni di ogni coppia nel tempo.
+// Si scelgono una o più coppie da confrontare; a partita in corso si segue il presente («Dal vivo»).
+const rwMap = createMapView({ className: 'regia-map rw-map' });
+const RW = { data: null, gameId: null, t: 0, playing: false, speed: 30, sel: new Set(), follow: true, timer: null, poll: null, busy: false };
+const TRAIL_MS = 10 * 60000;
+const EV_SHOW_MS = 5 * 60000;
+
+async function loadRewind(incremental = false) {
+  if (RW.busy) return;
+  RW.busy = true;
+  try {
+    const since = incremental && RW.data ? Math.max(RW.data.lastAt || 0, 0) : 0;
+    const d = await api('GET', G(`/replay${since ? `?since=${since}` : ''}`));
+    if (!incremental || !RW.data || RW.gameId !== R.gameId) {
+      RW.data = d;
+      RW.gameId = R.gameId;
+      if (!RW.sel.size || ![...RW.sel].every((k) => k === 'g' || d.units.some((u) => String(u.teamId) === k))) RW.sel = new Set(d.units.filter((u) => u.kind === 'couple').map((u) => String(u.teamId)));
+      RW.t = d.live ? d.end : d.start;
+      RW.follow = d.live;
+    } else {
+      const D = RW.data;
+      for (const [tid, devs] of Object.entries(d.tracks)) for (const [dev, pts] of Object.entries(devs)) ((D.tracks[tid] ||= {})[dev] ||= []).push(...pts);
+      const seen = new Set(D.events.map((e) => e.id));
+      D.events.push(...d.events.filter((e) => !seen.has(e.id)));
+      Object.assign(D, { end: d.end, now: d.now, live: d.live, status: d.status, units: d.units, places: d.places });
+      if (RW.follow) RW.t = D.end;
+    }
+    const D = RW.data;
+    D.lastAt = Math.max(0, ...D.events.map((e) => e.at), ...Object.values(D.tracks).flatMap((devs) => Object.values(devs).map((p) => p.at(-1)?.[0] || 0)));
+    if (tab() === 'rewind') { if (incremental) rwUpdate(); else render(); }
+  } catch (e) { toast(e.message, 'error'); } finally { RW.busy = false; }
+}
+
+// Ultimo punto di una traccia non successivo a t (ricerca binaria).
+function rwAt(pts, t) {
+  let lo = 0; let hi = pts.length - 1; let k = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (pts[m][0] <= t) { k = m; lo = m + 1; } else hi = m - 1; }
+  return k;
+}
+const rwUnit = (teamId) => RW.data?.units.find((u) => u.teamId === teamId);
+const rwFmt = (t) => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const rwEvText = (e) => `${EVENT_LABELS[e.type] || e.type.replace(/_/g, ' ')}${eventText(e) ? ` · ${eventText(e)}` : ''}`;
+
+function rwDraw() {
+  const D = RW.data;
+  if (!D) return;
+  const t = RW.t;
+  const items = D.places.map((p, i) => ({ key: `rwp-${i}`, kind: p.kind, place: p.place, text: p.text, lat: p.lat, lng: p.lng, title: p.label, popup: `<strong>${p.label}</strong>` }));
+  const lines = [];
+  for (const u of D.units) {
+    if (!RW.sel.has(String(u.teamId))) continue;
+    for (const [dev, pts] of Object.entries(D.tracks[u.teamId] || {})) {
+      const k = rwAt(pts, t);
+      if (k < 0 || t - pts[k][0] > TRAIL_MS) continue;
+      const member = u.members.find((m) => `p${m.id}` === dev);
+      items.push({ key: `rw-${u.teamId}-${dev}`, kind: u.kind === 'elect' ? 'elect' : 'team', text: u.kind === 'elect' ? null : u.roman, color: u.color, lat: pts[k][1], lng: pts[k][2],
+        stale: t - pts[k][0] > 120000, title: u.label, popup: `<strong>${u.label}</strong>${member ? `<br>${member.name}` : ''}<br><small>${rwFmt(pts[k][0])}</small>` });
+      const trail = [];
+      for (let i = k; i >= 0 && t - pts[i][0] <= TRAIL_MS; i--) trail.unshift([pts[i][1], pts[i][2]]);
+      if (trail.length > 1) lines.push({ key: `rwl-${u.teamId}-${dev}`, points: trail, color: u.color });
+    }
+  }
+  rwMap.setItems(items);
+  rwMap.setLines(lines);
+  rwMap.setCircles(D.events.filter((e) => e.lat != null && e.at <= t && t - e.at <= EV_SHOW_MS && RW.sel.has(String(e.teamId)))
+    .map((e) => ({ key: `rwe-${e.id}`, lat: e.lat, lng: e.lng, radius: 9, color: rwUnit(e.teamId)?.color || '#d1ad62', fill: 0.6, weight: 2, dash: null, title: `${rwFmt(e.at)} · ${rwUnit(e.teamId)?.label || ''} · ${rwEvText(e)}` })));
+}
+
+function rwColumns() {
+  const D = RW.data;
+  const t = RW.t;
+  const cols = [...D.units.filter((u) => RW.sel.has(String(u.teamId))), ...(RW.sel.has('g') ? [{ teamId: null, label: 'Partita', color: '#9aa095' }] : [])];
+  return h('div', { class: 'rw-cols' }, cols.map((u) => {
+    const list = D.events.filter((e) => (u.teamId == null ? e.teamId == null : e.teamId === u.teamId) && e.at <= t).slice(-40).reverse();
+    return h('div', { class: 'rw-col', style: { '--c': u.color } },
+      h('div', { class: 'rw-col-head' }, h('strong', null, u.label), h('span', { class: 'tiny muted' }, `${list.length >= 40 ? '40+' : list.length} azioni`)),
+      list.length ? h('ul', { class: 'rw-evs' }, list.map((e) => h('li', { class: t - e.at <= EV_SHOW_MS ? 'fresh' : '', onclick: () => { RW.playing = false; RW.follow = false; RW.t = e.at; rwUpdate(); if (e.lat != null) rwMap.map?.setView([e.lat, e.lng], Math.max(rwMap.map.getZoom(), 17)); } },
+        h('span', { class: 'mono tiny muted' }, rwFmt(e.at)), ' ', rwEvText(e), e.lat != null ? h('span', { class: 'tiny muted' }, ' ⌖') : null))) : h('p', { class: 'tiny muted' }, 'Ancora niente.'));
+  }));
+}
+
+// Aggiornamento leggero (riproduzione): mappa, cursore, orario e colonne, senza ridisegnare la pagina.
+function rwUpdate() {
+  const D = RW.data;
+  if (!D || tab() !== 'rewind') return;
+  rwDraw();
+  const slider = document.querySelector('.rw-slider');
+  if (slider) { slider.max = String(D.end); slider.min = String(D.start); slider.value = String(RW.t); }
+  const lbl = document.querySelector('.rw-time');
+  if (lbl) lbl.textContent = `${rwFmt(RW.t)} · ${fmtDuration(Math.max(0, RW.t - D.start))} dal via${RW.follow && D.live ? ' · dal vivo' : ''}`;
+  document.querySelector('.rw-cols')?.replaceWith(rwColumns());
+  const play = document.querySelector('.rw-play');
+  if (play) play.textContent = RW.playing ? '❚❚ Pausa' : '▶ Play';
+}
+
+function rwTick() {
+  const D = RW.data;
+  if (!D || tab() !== 'rewind') { clearInterval(RW.timer); RW.timer = null; RW.playing = false; return; }
+  if (!RW.playing) return;
+  RW.t = Math.min(D.end, RW.t + 250 * RW.speed);
+  if (RW.t >= D.end) { RW.playing = false; RW.follow = D.live; }
+  rwUpdate();
+}
+
+function viewRewind() {
+  if (!RW.data || RW.gameId !== R.gameId) { loadRewind(); return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const D = RW.data;
+  if (!RW.timer) RW.timer = setInterval(rwTick, 250);
+  clearInterval(RW.poll);
+  RW.poll = D.live ? setInterval(() => { if (tab() === 'rewind') loadRewind(true); else { clearInterval(RW.poll); RW.poll = null; } }, 15000) : null;
+  const toggle = (k) => { if (RW.sel.has(k)) RW.sel.delete(k); else RW.sel.add(k); render(); };
+  const chip = (k, label, color) => h('button', { type: 'button', class: `rw-chip ${RW.sel.has(k) ? 'on' : ''}`, style: { '--c': color }, onclick: () => toggle(k) }, label);
+  queueMicrotask(() => { rwMap.refresh(); rwUpdate(); });
+  const noData = !Object.keys(D.tracks).length && !D.events.some((e) => e.teamId);
+  return h('div', { class: 'stack' },
+    h('div', { class: 'panel rw-bar' },
+      h('div', { class: 'rw-chips' },
+        D.units.map((u) => chip(String(u.teamId), u.label, u.color)),
+        chip('g', 'Partita', '#9aa095'),
+        h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { RW.sel = new Set(D.units.filter((u) => u.kind === 'couple').map((u) => String(u.teamId))); render(); } }, 'Tutte le coppie'),
+        h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { RW.sel.clear(); render(); } }, 'Nessuna')),
+      h('div', { class: 'rw-controls' },
+        h('button', { type: 'button', class: 'btn btn-sm rw-play', onclick: () => { if (!RW.playing && RW.t >= D.end) RW.t = D.start; RW.playing = !RW.playing; RW.follow = false; rwUpdate(); } }, RW.playing ? '❚❚ Pausa' : '▶ Play'),
+        h('input', { class: 'rw-slider', type: 'range', min: D.start, max: D.end, step: 1000, value: RW.t, oninput: (e) => { RW.t = Number(e.target.value); RW.follow = D.live && RW.t >= D.end - 2000; rwUpdate(); } }),
+        h('select', { class: 'input input-sm', 'aria-label': 'Velocità', onchange: (e) => { RW.speed = Number(e.target.value); } },
+          [[1, '1×'], [10, '10×'], [30, '30×'], [60, '60×'], [180, '180×']].map(([v, l]) => h('option', { value: v, selected: RW.speed === v }, l))),
+        D.live ? h('button', { type: 'button', class: `btn btn-sm ${RW.follow ? 'btn-primary' : ''}`, onclick: () => { RW.follow = true; RW.playing = false; loadRewind(true); RW.t = D.end; rwUpdate(); } }, '● Dal vivo') : null,
+        h('span', { class: 'mono rw-time' }, ''))),
+    noData ? h('p', { class: 'people-info' }, 'Ancora nessuna traccia: le posizioni e le azioni delle coppie si registrano da quando parte la partita (con Traccar Client o l\'app aperta).') : null,
+    h('div', { class: 'rw-main' }, rwMap.el, rwColumns()));
 }
 
 // ---------------------------------------------------------------- IMPOSTAZIONI

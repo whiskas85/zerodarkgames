@@ -2114,3 +2114,32 @@ test('stampe: gruppi con logo, «Non rimuovere» sugli Altari, selezione di elem
   P.resetLogo();
   assert.equal(P.logo().custom, false);
 });
+
+test('rewind: traccia delle posizioni, registro con coppia e posizione, dati per coppia e aggiornamento incrementale', () => {
+  const F = require('../src/field');
+  const RP = require('../src/replay');
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const [a1] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  F.recordPosition(A, a1, { deviceId: 'dev-aaaa-1111', lat: 45.1, lng: 9.1, acc: 5 });
+  F.recordPosition(A, a1, { deviceId: 'dev-aaaa-1111', lat: 45.1, lng: 9.1, acc: 5 }); // stesso punto, subito: non si ripete
+  F.recordPosition(A, a1, { deviceId: 'dev-aaaa-1111', lat: 45.101, lng: 9.1, acc: 5 }); // oltre 15 m: si registra
+  // Un'azione della coppia porta la sua ultima posizione.
+  K.reportEngagement(A, B.id, 'draw');
+  const rp = RP.replayData(g.id);
+  assert.equal(rp.tracks[A.id][`p${a1.id}`].length, 2);
+  const ev = rp.events.find((e) => e.type === 'engagement_reported');
+  assert.equal(ev.teamId, A.id);
+  assert.equal(ev.lat, 45.101);
+  assert.ok(rp.units.some((u) => u.teamId === A.id && u.kind === 'couple'));
+  assert.equal(rp.live, true);
+  // Solo le novità.
+  const later = RP.replayData(g.id, { since: Date.now() + 1000 });
+  assert.equal(Object.keys(later.tracks).length, 0);
+  assert.equal(later.events.length, 0);
+});

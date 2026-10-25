@@ -70,9 +70,28 @@ function clockOf(g, now = Date.now()) {
 
 // ---------------------------------------------------------------- log e annunci
 
+// Ogni voce porta, quando c'è, la coppia (o gli Eletti) che l'ha fatta e dove si trovava: serve al Rewind.
+function logWho(actor, data) {
+  const m = /^(coppia|giocatore):(\d+)$/.exec(actor || '');
+  if (m?.[1] === 'coppia') return { teamId: Number(m[2]), playerId: null };
+  if (m?.[1] === 'giocatore') return { teamId: q.get('SELECT teamId FROM players WHERE id = ?', Number(m[2]))?.teamId ?? null, playerId: Number(m[2]) };
+  return { teamId: Number(data?.teamId) || null, playerId: null };
+}
+function logGeo(teamId, playerId, data, now) {
+  if (Number.isFinite(data?.lat) && Number.isFinite(data?.lng)) return { lat: data.lat, lng: data.lng };
+  if (!teamId) return { lat: null, lng: null };
+  // L'ultima posizione nota (al massimo di 10 minuti prima): della persona, se c'è, altrimenti della coppia.
+  const p = (playerId && q.get('SELECT lat, lng FROM positions WHERE playerId = ? AND at > ? ORDER BY at DESC LIMIT 1', playerId, now - 600000))
+    || q.get('SELECT lat, lng FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, now - 600000);
+  return p || { lat: null, lng: null };
+}
 function log(gameId, actor, type, data = null) {
-  q.run('INSERT INTO event_log (gameId, at, actor, type, data) VALUES (?, ?, ?, ?, ?)',
-    gameId, Date.now(), actor || 'sistema', type, data ? JSON.stringify(data) : null);
+  const now = Date.now();
+  let who = { teamId: null, playerId: null };
+  let geo = { lat: null, lng: null };
+  try { who = logWho(actor, data); geo = logGeo(who.teamId, who.playerId, data, now); } catch { /* il registro non deve mai fallire */ }
+  q.run('INSERT INTO event_log (gameId, at, actor, type, data, teamId, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    gameId, now, actor || 'sistema', type, data ? JSON.stringify(data) : null, who.teamId, geo.lat, geo.lng);
   rt.toStaff(gameId, type);
 }
 
@@ -1139,7 +1158,7 @@ function wipePlay(g) {
     for (const t of ['team_fragments', 'team_code_notes', 'team_visits', 'team_timers']) q.run(`DELETE FROM ${t} WHERE teamId IN ${inTeams}`, ...teamIds);
     q.run("UPDATE teams SET status = 'active', finishPosition = NULL, wonAt = NULL WHERE gameId = ?", g.id);
     q.run('DELETE FROM engagement_steals WHERE engagementId IN (SELECT id FROM engagements WHERE gameId = ?)', g.id);
-    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions', 'altar_rejections', 'emergencies']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
+    for (const t of ['engagements', 'alliances', 'alliance_requests', 'announcements', 'messages', 'validations', 'positions', 'position_track', 'altar_rejections', 'emergencies']) q.run(`DELETE FROM ${t} WHERE gameId = ?`, g.id);
     q.run("DELETE FROM squad_tasks WHERE gameId = ? AND source <> 'regia'", g.id);
     // Tradimenti: quelli aggiunti a mano spariscono, gli altri tornano in calendario.
     q.run('DELETE FROM revelations WHERE gameId = ? AND scheduledMin IS NULL', g.id);
@@ -1558,6 +1577,9 @@ function visitPoint(team, qrToken, at, pos = null) {
   const p = pointByToken(g, qrToken);
   const geoOk = checkAltarDistance(g, team, p, pos);
   const visitedAt = recordScan(team, p, at, geoOk);
+  // Nel registro (per il Rewind) anche la lettura, con la posizione del telefono se è arrivata.
+  const lat = Number(pos?.lat); const lng = Number(pos?.lng);
+  if (!C.PRE_START.includes(g.status)) log(g.id, `coppia:${team.id}`, 'altar_scanned', { teamId: team.id, point: p.label, ...(Number.isFinite(lat) && Number.isFinite(lng) && pos.lat != null ? { lat, lng } : {}) });
   const s = sectorById(p.sectorId);
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
   const owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);

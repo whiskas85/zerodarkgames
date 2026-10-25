@@ -579,6 +579,19 @@ addColumn('players', 'appSeenAt', 'INTEGER');
 // Sistema del telefono (ios, android, desktop) letto dal browser all'apertura dell'app.
 addColumn('players', 'appOs', 'TEXT');
 
+// Rewind della partita: storico delle posizioni (non solo l'ultima) e, su ogni voce del registro,
+// la coppia coinvolta e dove si trovava in quel momento.
+db.exec(`
+CREATE TABLE IF NOT EXISTS position_track (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL, playerId INTEGER, deviceId TEXT, lat REAL NOT NULL, lng REAL NOT NULL, acc REAL, at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_track_game ON position_track(gameId, at);
+`);
+addColumn('event_log', 'teamId', 'INTEGER');
+addColumn('event_log', 'lat', 'REAL');
+addColumn('event_log', 'lng', 'REAL');
+
 // Eventi: sfide proposte dalla regia (capienza in coppie, premio, squadra di Eletti custode),
 // candidature delle coppie (anche di un'alleanza intera), chiusura confermata da ciascuna coppia e tregua finale.
 db.exec(`

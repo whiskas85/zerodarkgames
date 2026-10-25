@@ -871,7 +871,17 @@ function recordPosition(team, player, body) {
          ON CONFLICT(deviceId) DO UPDATE SET gameId = excluded.gameId, teamId = excluded.teamId, playerId = excluded.playerId,
          lat = excluded.lat, lng = excluded.lng, acc = excluded.acc, at = excluded.at`,
     deviceId, game.id, team.id, player?.id ?? null, lat, lng, acc, Date.now());
+  trackPoint(game.id, team.id, player?.id ?? null, deviceId, lat, lng, acc);
   return { ok: true, tracking: true };
+}
+
+// Storico per il Rewind: un punto ogni 10 s per dispositivo, o prima se si è spostato di oltre 15 m.
+const lastTrack = new Map();
+function trackPoint(gameId, teamId, playerId, deviceId, lat, lng, acc, now = Date.now()) {
+  const last = lastTrack.get(deviceId);
+  if (last && now - last.at < 10000 && require('./skills').distM(last, { lat, lng }) < 15) return;
+  lastTrack.set(deviceId, { at: now, lat, lng });
+  q.run('INSERT INTO position_track (gameId, teamId, playerId, deviceId, lat, lng, acc, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', gameId, teamId, playerId, deviceId, lat, lng, acc, now);
 }
 
 // viewer: 'master' (tutti) oppure 'elect' (solo gli Eletti).
