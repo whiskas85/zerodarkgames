@@ -3,6 +3,7 @@ import * as CKUI from './checkin-ui.js';
 import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
+import { omnibar, matches } from './omnibar.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -2672,10 +2673,18 @@ async function editCatalogDialog(x) {
   }
 }
 
+// Ricerca nella pagina Skill e Doni: filtra le card su nome, descrizione, tipo e tempi.
+let catalogQ = '';
+const catalogHit = (x, kind) => matches(catalogQ, kind, x.current.name, x.current.description, x.preview, SKILL_TYPE[x.type], x.type,
+  x.current.durationMin ? `durata ${x.current.durationMin}` : '', x.current.cooldownMin ? `ricarica ${x.current.cooldownMin}` : '', x.edited ? 'modificato' : '');
+
 function viewCatalog() {
   // Cambia lo stato della partita (preparazione ↔ pronta): si ricarica per sapere se è ancora modificabile.
   if (!catalogData || catalogData.gameId !== R.gameId || catalogData.status !== R.ms?.clock.status) { if (!loadCatalog.busy) { loadCatalog.busy = true; loadCatalog().finally(() => { loadCatalog.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
   const c = catalogData;
+  const skills = c.skills.filter((x) => catalogHit(x, 'skill'));
+  const gifts = c.gifts.filter((x) => catalogHit(x, 'dono doni'));
+  const hits = skills.length + gifts.length;
   const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
       x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
@@ -2686,11 +2695,13 @@ function viewCatalog() {
     h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
       ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
       : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
+    omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
     ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
-      const list = c.skills.filter((x) => x.type === type);
+      const list = skills.filter((x) => x.type === type);
       return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
     }),
-    section(`Doni (${c.gifts.length})`, h('div', { class: 'cat-grid' }, c.gifts.map(card))));
+    gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
+    hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`));
 }
 
 // ---------------------------------------------------------------- ACCETTAZIONE E TEST REPLICHE (modulo condiviso con lo staff, in Soglia)

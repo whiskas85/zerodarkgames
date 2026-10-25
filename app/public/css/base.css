@@ -270,3 +270,13 @@ body.no-scroll { overflow: hidden; }
   100% { box-shadow: 0 0 0 0 rgba(209, 173, 98, 0); transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .flash-focus { animation: none; outline: 3px solid #d1ad62; outline-offset: 2px; } }
+
+/* Omnibar: ricerca che filtra le card (Skill, Skill e Doni) */
+.omnibar { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--paper, var(--bg)); box-shadow: 0 4px 14px rgba(0, 0, 0, .25); }
+.omnibar:focus-within { border-color: var(--brass, #d1ad62); }
+.omni-ico { display: inline-flex; color: var(--muted, #999); flex: none; }
+.omni-input { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 16px; padding: 12px 0; outline: none; }
+.omni-input::-webkit-search-cancel-button { display: none; }
+.omni-count { flex: none; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(209, 173, 98, .18); color: var(--brass, #d1ad62); font-weight: 700; }
+.omni-clear { flex: none; display: inline-flex; border: 0; background: transparent; color: var(--muted, #999); cursor: pointer; padding: 6px; border-radius: 6px; }
+.omni-clear:hover { color: inherit; background: rgba(255, 255, 255, .06); }

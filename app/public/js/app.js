@@ -3,6 +3,7 @@ import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC 
 import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
+import { omnibar, matches } from './omnibar.js';
 import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
@@ -2168,24 +2169,33 @@ function kindInfo(kind, catalog = []) {
 }
 const KIND_TITLE = { active: 'Skill attive', ultimate: 'Skill Ultimate', passive: 'Skill passive' };
 
+// Ricerca nella pagina Skill: filtra le card su nome, effetto, tipo e tempi.
+const skillHit = (s) => matches(S.skillQ, s.name, s.description, SKILL_KIND[s.kind], skillMeta(s), s.code);
+const skillBar = (n) => omnibar({ keep: 'skill-q', value: S.skillQ || '', placeholder: 'Cerca una Skill: nome, effetto, tipo…', count: n, onInput: (v) => { S.skillQ = v; render(); } });
+const noSkillHit = () => h('p', { class: 'empty' }, `Nessuna Skill per «${S.skillQ}».`);
+
 function viewSkills() {
   const st = S.state;
   const sk = st?.skills;
   if (!sk) return h('p', { class: 'empty' }, 'Caricamento…');
   const mineIds = new Set(sk.mine.map((s) => s.id));
+  const q = !!(S.skillQ || '').trim();
   if (sk.canChoose) {
     const chosen = sk.mine.filter((s) => s.source === 'chosen');
     const nAct = chosen.filter((s) => s.kind !== 'passive').length;
     const nPas = chosen.filter((s) => s.kind === 'passive').length;
     const toggle = chooseSkill;
-    const group = (title, list, full, kind) => [h('h3', { id: `sk-${kind === 'ultimate' ? 'ultimate' : kind}` }, title), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map((s) => skillCard(s,
+    const group = (title, all, full, kind) => { const list = all.filter(skillHit); return q && !list.length ? null : [h('h3', { id: `sk-${kind === 'ultimate' ? 'ultimate' : kind}` }, title), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map((s) => skillCard(s,
       mineIds.has(s.id) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => toggle(s, false) }, '✓ Scelta · togli')
-        : h('button', { class: 'btn btn-sm', disabled: !s.available || full, onclick: () => toggle(s, true) }, 'Scegli')))];
+        : h('button', { class: 'btn btn-sm', disabled: !s.available || full, onclick: () => toggle(s, true) }, 'Scegli')))]; };
+    const nHit = sk.catalog.filter(skillHit).length;
     const many = (n, one, more) => (n === 1 ? one : `${n} ${more}`);
     return h('div', { class: 'stack' },
       h('h2', null, 'Le vostre Skill'),
       h('p', { class: 'muted' }, `Scegliete insieme ${many(sk.limits.active, '1 Skill attiva o Ultimate', 'Skill attive o Ultimate')} e ${many(sk.limits.passive, '1 Skill passiva', 'Skill passive')}. I telefoni della coppia vedono e cambiano la stessa scelta, fino al via. Altre Skill si vincono con i Doni.`),
       skillSlots(sk),
+      skillBar(nHit),
+      q && !nHit ? noSkillHit() : null,
       group('Skill attive', sk.catalog.filter((s) => s.kind === 'active'), nAct >= sk.limits.active, 'active'),
       group('Skill Ultimate', sk.catalog.filter((s) => s.kind === 'ultimate'), nAct >= sk.limits.active, 'ultimate'),
       group('Skill passive · sempre attive', sk.catalog.filter((s) => s.kind === 'passive'), nPas >= sk.limits.passive, 'passive'));
@@ -2206,17 +2216,20 @@ function viewSkills() {
         : h('button', { class: 'btn btn-sm btn-primary', disabled: !playing || s.available === false, onclick: () => useSkillFlow(s) }, `Usa ${s.name}`));
   };
   const timed = sk.effects.filter((e) => e.until);
-  const others = sk.catalog.filter((s) => !mineIds.has(s.id));
+  const others = sk.catalog.filter((s) => !mineIds.has(s.id) && skillHit(s));
+  const mineHit = sk.mine.filter(skillHit);
   return h('div', { class: 'stack' },
     h('h2', null, 'Le vostre Skill'),
     skillSlots(sk),
+    skillBar(mineHit.length + others.length),
+    q && !mineHit.length && !others.length ? noSkillHit() : null,
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
-      const list = sk.mine.filter((s) => s.kind === kind);
+      const list = mineHit.filter((s) => s.kind === kind);
       return list.length ? [h('h3', null, KIND_TITLE[kind]), h('p', { class: 'small muted kind-info' }, kindInfo(kind, sk.catalog)), ...list.map(card)] : null;
     }) : h('p', { class: 'empty' }, 'Nessuna Skill: si scelgono prima del via o si vincono con i Doni.'),
-    sk.results.length ? [h('h3', null, 'Ultimi risultati'), ...sk.results.map(resultCard)] : null,
-    others.length ? h('details', { class: 'card' }, h('summary', null, 'Tutte le altre Skill'), h('div', { class: 'stack-sm' }, others.map((s) => skillCard(s)))) : null);
+    sk.results.length && !q ? [h('h3', null, 'Ultimi risultati'), ...sk.results.map(resultCard)] : null,
+    others.length ? h('details', { class: 'card', open: q || null }, h('summary', null, 'Tutte le altre Skill'), h('div', { class: 'stack-sm' }, others.map((s) => skillCard(s)))) : null);
 }
 
 function resultCard(r) {
