@@ -17,6 +17,7 @@ const S = require('./skills');
 const EV = require('./events');
 const RP = require('./replay');
 const Z = require('./zones');
+const CT = require('./chrono-types');
 const CK = require('./checkin');
 const EM = require('./emergency');
 const O = require('./ops');
@@ -651,6 +652,9 @@ m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.par
 m.post('/games/:id/zones', wrap((req) => Z.createZone(gameId(req), req.body || {}, actor(req))));
 m.patch('/zones/:zid', wrap((req) => Z.updateZone(Number(req.params.zid), req.body || {}, actor(req))));
 m.delete('/zones/:zid', wrap((req) => { Z.deleteZone(Number(req.params.zid), actor(req)); return { ok: true }; }));
+m.post('/chrono-types', wrap((req) => CT.createType(req.body || {}, actor(req))));
+m.patch('/chrono-types/:cid', wrap((req) => CT.updateType(Number(req.params.cid), req.body || {})));
+m.delete('/chrono-types/:cid', wrap((req) => { CT.deleteType(Number(req.params.cid)); return { ok: true }; }));
 m.get('/games/:id/replay', wrap((req) => RP.replayData(gameId(req), { since: Number(req.query.since) || 0 })));
 m.get('/games/:id/prints', wrap((req) => print.catalog(G.getGame(gameId(req)), baseUrl(req))));
 m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(req.headers['content-type'] || '').split(';')[0]); return { ok: true }; }));
@@ -889,6 +893,9 @@ v.get('/games/:id/gifts', needPerm('doni'), wrap((req) => {
 v.post('/gifts/:gid/reveal', needPerm('doni'), wrap((req) => { F.revealGift(req.params.gid, sActor(req)); return { ok: true }; }));
 v.post('/games/:id/announce', needPerm('comunicazioni'), wrap((req) => G.freeAnnouncement(Number(req.params.id), req.body?.text, sActor(req))));
 app.use('/api/v', v);
+
+// Tipi di cronografo: li legge chi fa il Test armi (regia e staff), li crea e modifica la regia.
+app.get('/api/chrono-types', needStaff, (_req, res) => res.json(CT.listTypes()));
 
 // ---- pagine stampabili
 // Un gruppo (altari, doni, uscita, credenziali) o «tutto»; ?sel=a1,g4 stampa solo quegli elementi.

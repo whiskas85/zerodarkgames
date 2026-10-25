@@ -4173,6 +4173,7 @@ const SETTINGS_PAGES = [
   ['altari', 'Altari e Skill', 'Lettura dei QR degli Altari (validità, raggio) e i parametri delle Skill.'],
   ['testi', 'Testi degli annunci', 'I testi che il Consiglio manda in automatico alle coppie.'],
   ['accessi', 'Accessi e notifiche', 'Indirizzo per link e QR, gestionali, organizzazione, notifiche alla regia e account dei giocatori.'],
+  ['cronografi', 'Cronografi', 'I cronografi del Test armi: l\'AC6000 integrato, altri marchi da aggiungere e la diagnostica Bluetooth.'],
   ['strumenti', 'Strumenti', 'Partita di prova ed eliminazione della partita.'],
 ];
 // Schede delle pagine delle Impostazioni e la riga che spiega quella aperta.
@@ -4208,6 +4209,7 @@ function viewSettings() {
         h('p', { class: 'muted tiny' }, 'Un avviso a ogni nuova iscrizione (coppie, temerari, candidature agli Eletti), ai messaggi delle coppie, agli scontri contestati e ai doni presi. Si attiva su ogni dispositivo (telefono, tablet, computer) da cui segui la regia.'),
         pushButton('btn')),
       accountsSection()],
+    cronografi: () => CKUI.chronoSettings({ render, call }),
     strumenti: () => [
       section('Partita di prova',
         h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),

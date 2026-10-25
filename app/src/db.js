@@ -656,4 +656,13 @@ addColumn('games', 'altarBeaconMin', 'INTEGER NOT NULL DEFAULT 15');
 addColumn('points', 'disabledUntil', 'INTEGER');
 addColumn('points', 'disabledBy', 'TEXT');
 
+// Tipi di cronografo oltre all'Acetech AC6000 (integrato): come leggere la velocità dal canale Bluetooth.
+db.exec(`
+CREATE TABLE IF NOT EXISTS chrono_types (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, namePrefix TEXT, serviceUuid TEXT NOT NULL, charUuid TEXT NOT NULL,
+  format TEXT NOT NULL DEFAULT 'ascii', byteOffset INTEGER NOT NULL DEFAULT 0, divisor REAL NOT NULL DEFAULT 1, unit TEXT NOT NULL DEFAULT 'mps',
+  createdAt INTEGER NOT NULL, author TEXT
+);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

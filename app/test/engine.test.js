@@ -2292,3 +2292,18 @@ test('Beacon vicino a un Altare: l\'Altare si disattiva per i minuti scelti (def
   G.updateGame(g.id, { altarBeaconMin: 5 }, 'test');
   assert.equal(Z.launchBeacon(elect, pl, { lat: 45, lng: 9 }).minutes, 5);
 });
+
+test('tipi di cronografo: AC6000 integrato, nuovi tipi con servizio, caratteristica e formato della velocità', () => {
+  const CT = require('../src/chrono-types');
+  const before = CT.listTypes().custom.length;
+  assert.equal(CT.listTypes().builtin[0].id, 'ac6000');
+  const t = CT.createType({ name: 'Xcortech X3500', namePrefix: 'X3500', serviceUuid: '0xFFF0', charUuid: 'fff1', format: 'u16le', byteOffset: 2, divisor: '100', unit: 'mps' }, 'test');
+  assert.equal(t.serviceUuid, 'fff0');
+  assert.equal(t.divisor, 100);
+  assert.throws(() => CT.createType({ name: 'X', serviceUuid: 'zz', charUuid: 'fff1' }), /Servizio/);
+  assert.throws(() => CT.createType({ name: '', serviceUuid: 'fff0', charUuid: 'fff1' }), /nome/);
+  assert.equal(CT.updateType(t.id, { unit: 'fps' }).unit, 'fps');
+  assert.equal(CT.listTypes().custom.length, before + 1);
+  CT.deleteType(t.id);
+  assert.equal(CT.listTypes().custom.length, before);
+});

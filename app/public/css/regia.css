@@ -1085,3 +1085,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ev-outcome .btn-danger.on { background: var(--danger); color: #fff; }
 .loc-preview summary { cursor: pointer; margin: 4px 0; }
 .loc-preview-map { height: 200px; border-radius: 8px; margin-top: 6px; }
+.chrono-types { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.chrono-types li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 6px; }
+.chrono-types li > form { flex-basis: 100%; }
+.chrono-connect { flex-wrap: wrap; }

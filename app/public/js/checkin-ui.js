@@ -154,7 +154,18 @@ const passed = (p, key) => !!weaponsOf(p).find((w) => w.key === key)?.ok;
 // ---------------------------------------------------------------- cronografo Bluetooth: registrazione dei dati grezzi
 // Prima fase: ci si collega al cronografo (Web Bluetooth, Chrome su Android o computer), si ascoltano tutti i canali e si
 // registrano i byte di ogni tiro accanto al valore letto sul display. Dal registro esportato si ricava il formato.
-const BT = { device: null, server: null, log: [], status: 'Non collegato', panel: null, listEl: null, statusEl: null, liveEl: null, shotsEl: null, manual: false, retries: 0, extra: '' };
+const BT = { device: null, server: null, log: [], status: 'Non collegato', panel: null, listEl: null, statusEl: null, liveEl: null, shotsEl: null, manual: false, retries: 0, extra: '', type: null };
+// Tipi di cronografo: l'AC6000 integrato e quelli aggiunti dalla regia (Impostazioni → Cronografi).
+const CT = { data: null, loading: false };
+function loadChronoTypes(force = false) {
+  if ((CT.data && !force) || CT.loading) return;
+  CT.loading = true;
+  api('GET', '/api/chrono-types').then((d) => { CT.data = d; BT.ctx?.render(); }).catch(() => {}).finally(() => { CT.loading = false; });
+}
+const chosenType = () => { try { return localStorage.getItem('zdg_chrono_type') || 'ac6000'; } catch { return 'ac6000'; } };
+const customType = (id) => (CT.data?.custom || []).find((t) => String(t.id) === String(id)) || null;
+// Collega il cronografo scelto: l'AC6000 con il suo protocollo, gli altri con il canale descritto in regia.
+function connectChosen() { const t = customType(chosenType()); return t ? btConnect('', t) : btConnect('', 'ac6000'); }
 // Acetech AC6000-BT: protocollo ricostruito dal progetto open source t1ckrate/ac6000-ble (licenza MIT).
 // Dopo il «saluto» (0x4B) il cronografo manda ogni tiro (0x52) con la velocità in cm/s; i joule li calcoliamo noi.
 const AC = {
@@ -268,6 +279,33 @@ function btShot(mps) {
   if (BT.ctx) BT.ctx.render();
 }
 
+const uuidOf = (u) => (/^[0-9a-f]{4}$/i.test(String(u)) ? parseInt(u, 16) : String(u).toLowerCase());
+// Velocità da un messaggio, secondo il tipo: numero nel testo o intero/decimale a un certo byte, diviso e in m/s o fps.
+function readSpeed(dv, t) {
+  let v = null;
+  try {
+    if (t.format === 'ascii') { const m = ascii(dv).match(/\d+(?:[.,]\d+)?/); v = m ? parseFloat(m[0].replace(',', '.')) : null; }
+    else if (t.format === 'u16le') v = dv.getUint16(t.byteOffset, true);
+    else if (t.format === 'u16be') v = dv.getUint16(t.byteOffset, false);
+    else if (t.format === 'u32le') v = dv.getUint32(t.byteOffset, true);
+    else if (t.format === 'f32le') v = dv.getFloat32(t.byteOffset, true);
+  } catch { return null; }
+  if (v == null || !Number.isFinite(v)) return null;
+  v /= t.divisor || 1;
+  return t.unit === 'fps' ? v * 0.3048 : v;
+}
+async function customStart(server, t) {
+  const ch = await (await server.getPrimaryService(uuidOf(t.serviceUuid))).getCharacteristic(uuidOf(t.charUuid));
+  ch.addEventListener('characteristicvaluechanged', (ev) => {
+    const dv = ev.target.value;
+    const mps = readSpeed(dv, t);
+    btAdd({ kind: 'data', via: t.name, service: shortId(String(t.serviceUuid)), char: shortId(String(t.charUuid)), hex: hex(dv), ascii: ascii(dv), guess: mps ? `→ ${mps.toFixed(2)} m/s` : guesses(dv) });
+    // Solo velocità credibili per una replica (tra 5 e 300 m/s): il resto sono messaggi di servizio.
+    if (mps && mps > 5 && mps < 300) btShot(mps);
+  });
+  await ch.startNotifications();
+}
+
 // AC6000: notifiche, poi il saluto (token ricordato, altrimenti abbinamento con 00 00, fino a 8 tentativi).
 async function acStart(server) {
   const nCh = await (await server.getPrimaryService(AC.svcNotify)).getCharacteristic(AC.chNotify);
@@ -347,9 +385,11 @@ async function btConnect(extraUuid, mode = 'all') {
     if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability().catch(() => true))) { btStatus('Bluetooth spento o non disponibile: attivalo e riprova.'); return; }
     BT.extra = extraUuid;
     const extra = String(extraUuid || '').split(/[\s,]+/).filter(Boolean).map((u) => u.replace(/^0x/i, '')).map((u) => (/^[0-9a-f]{4}$/i.test(u) ? parseInt(u, 16) : u.toLowerCase()));
+    BT.type = typeof mode === 'object' ? mode : null;
     const device = await navigator.bluetooth.requestDevice(mode === 'ac6000'
       ? { filters: [{ namePrefix: 'AC6000' }], optionalServices: [AC.svcNotify, AC.svcWrite, 'generic_access'] }
-      : { acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
+      : BT.type ? { ...(BT.type.namePrefix ? { filters: [{ namePrefix: BT.type.namePrefix }] } : { acceptAllDevices: true }), optionalServices: [uuidOf(BT.type.serviceUuid), 'generic_access'] }
+        : { acceptAllDevices: true, optionalServices: [...KNOWN, ...SHORT, ...extra] });
     if (BT.device !== device) {
       BT.device = device;
       // Se il cronografo chiude la connessione (inattività, segnale), ci si ricollega da soli qualche volta.
@@ -375,6 +415,17 @@ async function btOpen(device) {
   btStatus(`Collegamento a ${device.name || device.id}…`);
   BT.server = await device.gatt.connect();
   btAdd({ kind: 'info', text: `Collegato a «${device.name || '(senza nome)'}» · id ${device.id}` });
+  // Cronografo di un altro marchio: si ascolta il canale indicato e si legge la velocità come descritto in regia.
+  if (BT.type) {
+    try {
+      await customStart(BT.server, BT.type);
+      BT.ready = true;
+      BT.retries = 0;
+      btStatus(`${BT.type.name} pronto: spara, il risultato compare qui sotto (pallino ${bbGrams().toFixed(2)} g)`);
+    } catch (err) { BT.ready = false; btStatus(`${BT.type.name}: canale non trovato (${err.message}). Controlla servizio e caratteristica in Impostazioni → Cronografi.`); }
+    BT.ctx?.render();
+    return;
+  }
   // AC6000: subito il saluto, prima che chiuda la connessione per inattività.
   const isAc = await BT.server.getPrimaryService(AC.svcNotify).then(() => true).catch(() => false);
   if (isAc) {
@@ -416,15 +467,15 @@ function btExport() {
 }
 
 // Diagnostica (dati grezzi): registro di tutto quello che passa, esportabile; per i cronografi non ancora supportati.
-function btDiag() {
-  if (BT.panel) return BT.panel;
+function btDiag(open = false) {
+  if (BT.panel) { BT.panel.open = open || BT.panel.open; return BT.panel; }
   try { BT.log = JSON.parse(localStorage.getItem('zdg_bt_log') || '[]'); } catch { BT.log = []; }
   const uuid = h('input', { class: 'input input-sm', placeholder: 'Servizio extra (facoltativo, es. fff0 o UUID completo)', value: localStorage.getItem('zdg_bt_uuid') || '', oninput: (e) => { try { localStorage.setItem('zdg_bt_uuid', e.target.value); } catch { /* */ } } });
   const shot = h('input', { class: 'input input-sm', placeholder: 'Valore sul display, es. 92,4 m/s · pallino 0,20 g' });
   BT.statusEl = h('p', { class: 'small bt-status' }, BT.status);
   BT.listEl = h('div', { class: 'bt-log' }, [...BT.log].reverse().map(btRow));
   const note = () => { if (!shot.value.trim()) return; btAdd({ kind: 'note', text: shot.value.trim() }); shot.value = ''; shot.focus(); };
-  BT.panel = h('details', { class: 'panel bt-panel' },
+  BT.panel = h('details', { class: 'panel bt-panel', open: open || null },
     h('summary', null, h('strong', null, '🔧 Diagnostica cronografo'), h('span', { class: 'tiny muted' }, ' · dati grezzi, per i modelli non ancora supportati')),
     h('p', { class: 'tiny muted' }, 'Collega, spara, scrivi il valore del display e premi «Segna»; ripeti 5–10 volte a velocità diverse; «Esporta» e manda il file.'),
     h('details', { class: 'tiny muted' }, h('summary', null, 'Se compaiono solo i servizi 0x1800/0x1801: come trovare il codice del canale'),
@@ -480,7 +531,10 @@ function chronoDash(ctx) {
     h('div', { class: 'dash-top' },
       navigator.bluetooth ? (live
         ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { BT.manual = true; try { BT.device?.gatt?.disconnect(); } catch { /* */ } } }, 'Scollega')
-        : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => btConnect('', 'ac6000') }, 'Collega cronografo')) : null,
+        : h('div', { class: 'row-actions chrono-connect' },
+          (CT.data?.custom || []).length ? h('select', { class: 'input input-sm', 'aria-label': 'Cronografo', onchange: (e) => { try { localStorage.setItem('zdg_chrono_type', e.target.value); } catch { /* */ } } },
+            [...CT.data.builtin, ...CT.data.custom].map((t) => h('option', { value: t.id, selected: String(t.id) === chosenType() }, t.name))) : null,
+          h('button', { class: 'btn btn-primary', type: 'button', onclick: connectChosen }, 'Collega cronografo'))) : null,
       h('div', { class: 'dash-state' },
         h('span', { class: `dot ${live ? 'on' : ''}`, 'aria-hidden': 'true' }),
         h('div', null, h('strong', { class: 'small' }, live ? (BT.device?.name || 'Cronografo collegato') : 'Cronografo non collegato'),
@@ -631,8 +685,56 @@ function chronoSession(ctx) {
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: close }, 'Annulla')));
 }
 
+// Impostazioni → Cronografi: i tipi (AC6000 integrato e gli altri marchi), la creazione di un nuovo tipo e la diagnostica.
+// ctx = { render(), call(method, url, body, okMsg) } con url completi (/api/m/…).
+export function chronoSettings(ctx) {
+  BT.ctx = BT.ctx || { render: ctx.render };
+  loadChronoTypes();
+  const d = CT.data;
+  if (!d) return [h('p', { class: 'empty' }, 'Caricamento…')];
+  const save = async (t, body) => {
+    const r = await ctx.call(t ? 'PATCH' : 'POST', t ? `/api/m/chrono-types/${t.id}` : '/api/m/chrono-types', body, t ? 'Cronografo aggiornato' : 'Nuovo cronografo aggiunto');
+    if (r) { if (t) CT.editing = null; loadChronoTypes(true); }
+    return r;
+  };
+  const form = (t = null) => {
+    const f = (name, label, attrs = {}) => h('label', { class: 'field' }, h('span', null, label), h('input', { class: 'input', name, value: t?.[name] ?? attrs.def ?? '', ...attrs }));
+    const sel = (name, label, opts) => h('label', { class: 'field' }, h('span', null, label), h('select', { class: 'input', name }, Object.entries(opts).map(([k, l]) => h('option', { value: k, selected: (t?.[name] || Object.keys(opts)[0]) === k }, l))));
+    return h('form', { class: 'form-grid', onsubmit: async (e) => {
+      e.preventDefault();
+      const r = await save(t, Object.fromEntries(new FormData(e.target).entries()));
+      if (r && !t) e.target.reset();
+    } },
+    f('name', 'Nome (marca e modello)', { placeholder: 'es. Xcortech X3500', required: true }),
+    f('namePrefix', 'Inizio del nome Bluetooth (facoltativo)', { placeholder: 'es. X3500' }),
+    f('serviceUuid', 'Servizio (UUID o codice corto)', { placeholder: 'es. fff0', required: true }),
+    f('charUuid', 'Caratteristica dei tiri', { placeholder: 'es. fff1', required: true }),
+    sel('format', 'Formato della velocità', d.formats),
+    f('byteOffset', 'Posizione (byte)', { type: 'number', min: 0, max: 64, def: 0 }),
+    f('divisor', 'Dividi per', { def: 1, placeholder: 'es. 100 se arriva in cm/s' }),
+    sel('unit', 'Unità', d.units),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t ? 'Salva' : 'Aggiungi cronografo'));
+  };
+  return [
+    section('Cronografi',
+      h('p', { class: 'muted tiny' }, 'Nel Test armi si sceglie il cronografo da collegare. L\'Acetech AC6000 è integrato; per un altro marchio aggiungilo qui sotto: con la Diagnostica trovi servizio, caratteristica e in che punto del messaggio c\'è la velocità.'),
+      h('ul', { class: 'chrono-types' },
+        d.builtin.map((t) => h('li', null, h('strong', null, t.name), h('span', { class: 'chip' }, 'integrato'))),
+        d.custom.map((t) => h('li', { class: CT.editing === t.id ? 'editing' : '' },
+          h('div', { class: 'grow' }, h('strong', null, t.name), h('div', { class: 'tiny muted mono' }, `${t.namePrefix ? `nome «${t.namePrefix}…» · ` : ''}servizio ${t.serviceUuid} · car. ${t.charUuid} · ${t.format}@${t.byteOffset} ÷ ${t.divisor} · ${d.units[t.unit]}`)),
+          h('div', { class: 'row-actions' },
+            navigator.bluetooth ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Collega e guarda le velocità lette nel registro della diagnostica', onclick: () => btConnect('', t) }, 'Prova') : null,
+            h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { CT.editing = CT.editing === t.id ? null : t.id; ctx.render(); } }, CT.editing === t.id ? 'Chiudi' : 'Modifica'),
+            h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: `Eliminare ${t.name}?`, text: 'Non comparirà più nel Test armi.', okLabel: 'Elimina', danger: true })) { await ctx.call('DELETE', `/api/m/chrono-types/${t.id}`, undefined, 'Cronografo eliminato'); loadChronoTypes(true); } } }, 'Elimina')),
+          CT.editing === t.id ? form(t) : null)))),
+    section('Nuovo tipo di cronografo', form()),
+    btDiag(true),
+  ];
+}
+
 export function viewChrono(ctx) {
   BT.ctx = ctx;
+  loadChronoTypes();
   const ms = ctx.data;
   const present = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
   const closed = present.filter((p) => p.chronoDoneAt).length;
@@ -686,6 +788,5 @@ export function viewChrono(ctx) {
         } }, h('span', { class: 'ck-box', 'aria-hidden': 'true' }, '＋'), h('span', null, h('span', { class: 'w-long' }, 'Aggiungi replica'), h('span', { class: 'w-short' }, 'Replica')))),
         h('button', { type: 'button', class: `btn btn-sm ${p.chronoDoneAt ? 'btn-ghost' : ''} chrono-close`, onclick: () => closeP(p) }, p.chronoDoneAt ? 'Riapri' : 'Chiudi ✓'));
     })) : h('p', { class: 'empty' }, ckFilter ? 'Nessuno con questo nome.' : present.length ? 'Tutti chiusi qui. 🎉' : 'Ancora nessuno accettato: prima passa dall\'Accettazione.'),
-    btDiag(),
     BT.session ? h('div', { class: 'chrono-sheet-pad' }) : null);
 }
