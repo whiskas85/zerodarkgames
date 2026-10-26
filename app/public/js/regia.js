@@ -3647,26 +3647,32 @@ const rewardText = (r) => (!r ? '' : r.kind === 'gift' ? `${r.icon || ''} ${r.na
 async function eventLocationDialog(current = null) {
   if (!fieldData) await loadField(false);
   const d = fieldData || {};
-  const opts = [
-    ['Luoghi del gioco', [
-      ...(R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => ({ label: l.kind === 'soglia' ? 'La Soglia' : l.label || 'Cerchio di inizio', lat: l.lat, lng: l.lng })),
-      ...(R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ label: p.label, lat: p.lat, lng: p.lng })),
-      ...(d.guide || []).filter((g) => g.lat != null).map((g) => ({ label: g.label, lat: g.lat, lng: g.lng })),
-    ]],
-    ['Punti di interesse (dal campo)', (d.pois || []).filter((x) => x.lat != null).map((x) => ({ label: x.label, lat: x.lat, lng: x.lng }))],
-  ].filter(([, l]) => l.length);
-  const flat = opts.flatMap(([, l]) => l);
+  // Schede con ricerca: luoghi del gioco, Altari, indicazioni del campo e punti di interesse.
+  const groups = [
+    { key: 'luoghi', title: 'Luoghi', items: (R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => ({ label: l.kind === 'soglia' ? 'La Soglia' : l.label || 'Cerchio di inizio', icon: l.kind === 'soglia' ? '⛩' : '◯', cls: 'landmark', lat: l.lat, lng: l.lng })) },
+    { key: 'altari', title: 'Altari', items: (R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ label: p.label, icon: p.roman, cls: 'point', lat: p.lat, lng: p.lng })) },
+    { key: 'indicazioni', title: 'Indicazioni', items: (d.guide || []).filter((g) => g.lat != null).map((g) => ({ label: g.label, icon: mdi(g.icon || 'mapMarker', 16), cls: 'guide', sub: g.description, lat: g.lat, lng: g.lng })) },
+    { key: 'poi', title: 'Punti di interesse', items: (d.pois || []).filter((x) => x.lat != null).map((x) => ({ label: x.label, icon: '◆', cls: 'poi', sub: x.description, lat: x.lat, lng: x.lng })) },
+  ].filter((g) => g.items.length);
+  const flat = groups.flatMap((g) => g.items);
+  let tabKey = groups[0]?.key || null;
+  let q = '';
   let target = current ? { ...current } : null;
   const label = h('input', { class: 'input', maxlength: 80, placeholder: 'Nome del luogo (es. Radura dei castagni)', value: current?.label || '' });
-  const sel = h('select', { class: 'input', onchange: () => {
-    const x = flat[Number(sel.value)];
-    if (!x) return;
-    target = { ...x };
-    label.value = x.label;
-    draw();
-    pickMap.focus?.(['target']);
-  } }, h('option', { value: '' }, flat.length ? 'Scegli un luogo esistente…' : 'Nessun luogo esistente: tocca la mappa'),
-  opts.map(([g, l]) => h('optgroup', { label: g }, l.map((x) => h('option', { value: flat.indexOf(x) }, x.label)))));
+  const same = (x) => target && Math.abs(x.lat - target.lat) < 1e-7 && Math.abs(x.lng - target.lng) < 1e-7;
+  const tabsEl = h('nav', { class: 'loc-tabs', role: 'tablist' });
+  const listEl = h('ul', { class: 'loc-list' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca un luogo…', oninput: () => { q = search.value.trim().toLowerCase(); drawList(); } });
+  const choose = (x) => { target = { lat: x.lat, lng: x.lng }; label.value = x.label; draw(); drawList(); pickMap.focus?.(['target']); };
+  const drawList = () => {
+    // Con una ricerca si cerca in tutte le schede; senza, solo nella scheda aperta.
+    tabsEl.replaceChildren(...groups.map((g) => h('button', { type: 'button', role: 'tab', class: g.key === tabKey && !q ? 'on' : '', onclick: () => { tabKey = g.key; search.value = ''; q = ''; drawList(); } }, g.title, h('span', { class: 'badge' }, String(g.items.length)))));
+    const shown = q ? groups.flatMap((g) => g.items.filter((x) => `${x.label} ${x.sub || ''}`.toLowerCase().includes(q)).map((x) => ({ ...x, group: g.title }))) : (groups.find((g) => g.key === tabKey)?.items || []);
+    listEl.replaceChildren(...(shown.length ? shown.map((x) => h('li', null, h('button', { type: 'button', class: `loc-item ${same(x) ? 'on' : ''}`, onclick: () => choose(x) },
+      h('span', { class: `side-ico ${x.cls}` }, x.icon),
+      h('span', { class: 'grow' }, h('strong', null, x.label), x.group || x.sub ? h('span', { class: 'tiny muted' }, [x.group, x.sub].filter(Boolean).join(' · ')) : null),
+      same(x) ? h('span', { class: 'chip chip-brass' }, 'scelto') : null))) : [h('li', { class: 'tiny muted loc-empty' }, q ? 'Nessun luogo trovato.' : 'Nessun luogo in questa scheda.')]));
+  };
   const info = h('p', { class: 'tiny muted' });
   const pickMap = createMapView({ className: 'pick-map' });
   const draw = () => {
@@ -3676,20 +3682,22 @@ async function eventLocationDialog(current = null) {
       ...(R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, title: p.label })),
       ...(target ? [{ key: 'target', kind: 'target', lat: target.lat, lng: target.lng, title: label.value || 'Luogo dell\'evento' }] : []),
     ]);
-    info.textContent = target ? `Luogo: ${target.lat.toFixed(5)}, ${target.lng.toFixed(5)} (tocca la mappa per spostarlo)` : 'Scegli un luogo dall\'elenco o tocca la mappa.';
+    info.textContent = target ? `Luogo: ${target.lat.toFixed(5)}, ${target.lng.toFixed(5)} · tocca la mappa per spostarlo` : 'Scegli un luogo dall\'elenco o tocca la mappa.';
   };
   pickMap.ready.then(() => {
-    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; sel.value = ''; if (!label.value.trim() || flat.some((x) => x.label === label.value)) label.value = 'Punto sulla mappa'; draw(); });
+    pickMap.onTap((ll) => { target = { lat: ll.lat, lng: ll.lng }; if (!label.value.trim() || flat.some((x) => x.label === label.value)) label.value = 'Punto sulla mappa'; draw(); drawList(); });
     draw();
     setTimeout(() => { pickMap.refresh(); if (target) pickMap.focus(['target']); else pickMap.fit(); }, 60);
     setTimeout(() => pickMap.refresh(), 400);
   });
+  drawList();
   let result;
   let remove = false;
   const ok = await modal({ title: 'Luogo dell\'evento', wide: true, okLabel: 'Usa questo luogo',
     body: h('div', { class: 'stack-sm' },
-      flat.length ? h('label', { class: 'field' }, h('span', null, 'Tra quelli esistenti'), sel) : null,
-      pickMap.el, info,
+      h('div', { class: 'loc-pick' },
+        flat.length ? h('div', { class: 'loc-side' }, tabsEl, search, listEl) : h('p', { class: 'tiny muted' }, 'Nessun luogo esistente: tocca la mappa.'),
+        h('div', { class: 'loc-map' }, pickMap.el, info)),
       h('label', { class: 'field' }, h('span', null, 'Nome che vedono le coppie'), label),
       current ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => { remove = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, 'Togli il luogo') : null),
     onOk: () => {
@@ -3766,7 +3774,6 @@ function locationPreview(key, loc) {
   return det;
 }
 
-let evLocation = null;
 // Chat dell'evento tra la coppia e gli Eletti custodi: la regia la legge e può intervenire.
 function eventChatBox(ev, x) {
   const msgs = x.chat || [];
@@ -3779,54 +3786,59 @@ function eventChatBox(ev, x) {
       input, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')) : null);
 }
 
+// Nuovo evento in una finestra: salvarlo per lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
+async function newEventDialog() {
+  const ms = R.ms;
+  const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
+  const num = (value, min, max) => h('input', { class: 'input', type: 'number', min, max, step: 1, value });
+  const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore' });
+  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie' });
+  const slots = num(3, 1, 20);
+  const squad = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id }, `Squadra ${q.name}`)));
+  const giftSel = h('select', { class: 'input' }, h('option', { value: '' }, 'A caso (uno per coppia)'), E.giftTypes.map((x) => h('option', { value: x.id }, `${x.icon} ${x.name}`)));
+  const giftWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Quale Dono'), giftSel);
+  const reward = h('select', { class: 'input', onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k }, l)));
+  giftWrap.hidden = reward.value !== 'gift';
+  const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio' });
+  const confirmMin = num(3, 1, 60);
+  const truceMin = num(5, 0, 60);
+  const startAt = dateTimeInputs({});
+  const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata' });
+  let location = null;
+  let launch = false;
+  const locBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(location); if (r !== undefined) { location = r; locBtn.textContent = location ? `📍 ${location.label}` : '📍 Scegli il luogo…'; } } }, '📍 Scegli il luogo…');
+  const ok = await modal({ title: 'Nuovo evento', wide: true, okLabel: 'Salva, lo lancio dopo',
+    body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Nome'), name),
+      h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
+      h('div', { class: 'form-grid' },
+        h('label', { class: 'field' }, h('span', null, 'Coppie al massimo'), slots),
+        h('label', { class: 'field' }, h('span', null, 'Squadra di Eletti custode'), squad),
+        h('label', { class: 'field' }, h('span', null, 'Premio per ogni coppia'), reward),
+        giftWrap,
+        h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
+        h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
+        h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin),
+        h('div', { class: 'field' }, h('span', null, 'Inizio: data e ora (parte da solo; senza ora lo avvii tu)'), startAt.el),
+        h('label', { class: 'field' }, h('span', null, 'Durata (min, facoltativa)'), durationMin),
+        h('div', { class: 'field' }, h('span', null, 'Luogo'), locBtn)),
+      h('details', { class: 'tiny muted' }, h('summary', null, 'Come funziona'),
+        h('p', null, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento indicando per ogni coppia se ha vinto o perso: a ogni coppia compare una schermata (vittoria o sconfitta) che blocca l\'app finché non conferma; chi ha vinto prende subito il premio, chi ha perso no. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.')),
+      h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-danger', onclick: (e) => { launch = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, '⚡ Lancia subito alle coppie'))),
+    onOk: () => {
+      if (!name.value.trim()) { launch = false; toast('Dai un nome all\'evento', 'error'); return false; }
+      return true;
+    } });
+  if (!ok) return;
+  if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) launch = false;
+  await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
+    windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, launch,
+    startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
+}
+
 function viewEvents() {
   const ms = R.ms;
   const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
-  const num = (keep, value, min, max) => h('input', { class: 'input', type: 'number', min, max, step: 1, value, 'data-keep': keep });
-  const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore', 'data-keep': 'ev-name' });
-  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie', 'data-keep': 'ev-desc' });
-  const slots = num('ev-slots', 3, 1, 20);
-  const squad = h('select', { class: 'input', 'data-keep': 'ev-squad' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id }, `Squadra ${q.name}`)));
-  const giftSel = h('select', { class: 'input', 'data-keep': 'ev-gift' }, h('option', { value: '' }, 'A caso (uno per coppia)'), E.giftTypes.map((x) => h('option', { value: x.id }, `${x.icon} ${x.name}`)));
-  const giftWrap = h('label', { class: 'field' }, h('span', null, 'Quale Dono'), giftSel);
-  const reward = h('select', { class: 'input', 'data-keep': 'ev-reward', onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k }, l)));
-  queueMicrotask(() => { giftWrap.hidden = reward.value !== 'gift'; });
-  const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', 'data-keep': 'ev-window' });
-  const confirmMin = num('ev-confirm', 3, 1, 60);
-  const truceMin = num('ev-truce', 5, 0, 60);
-  const startAt = dateTimeInputs({ keep: 'ev-start' });
-  const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata', 'data-keep': 'ev-duration' });
-  // Due strade: salvarlo e lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
-  const save = async (launch) => {
-    if (!name.value.trim()) return toast('Dai un nome all\'evento', 'error');
-    if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) return;
-    const r = await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
-      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location: evLocation, launch,
-      startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
-    // La pagina si è già ridisegnata: si svuotano i campi nuovi.
-    if (r) { for (const k of ['ev-name', 'ev-desc', 'ev-start-t', 'ev-duration']) { const el = document.querySelector(`[data-keep="${k}"]`); if (el) el.value = ''; } evLocation = null; render(); }
-  };
-  const form = h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); save(false); } },
-  h('label', { class: 'field' }, h('span', null, 'Nome'), name),
-  h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
-  h('div', { class: 'form-grid' },
-    h('label', { class: 'field' }, h('span', null, 'Coppie al massimo'), slots),
-    h('label', { class: 'field' }, h('span', null, 'Squadra di Eletti custode'), squad),
-    h('label', { class: 'field' }, h('span', null, 'Premio per ogni coppia'), reward),
-    giftWrap,
-    h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
-    h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
-    h('label', { class: 'field' }, h('span', null, 'Tregua finale (min)'), truceMin),
-    h('div', { class: 'field' }, h('span', null, 'Inizio: data e ora (parte da solo; senza ora lo avvii tu)'), startAt.el),
-    h('label', { class: 'field' }, h('span', null, 'Durata (min, facoltativa)'), durationMin),
-    h('div', { class: 'field' }, h('span', null, 'Luogo'),
-      h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(evLocation); if (r !== undefined) { evLocation = r; render(); } } },
-        evLocation ? `📍 ${evLocation.label}` : '📍 Scegli il luogo…'))),
-  h('p', { class: 'tiny muted' }, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento indicando per ogni coppia se ha vinto o perso: a ogni coppia compare una schermata (vittoria o sconfitta) che blocca l\'app finché non conferma; chi ha vinto prende subito il premio, chi ha perso no. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.'),
-  h('div', { class: 'row-actions' },
-    h('button', { class: 'btn', type: 'submit' }, 'Salva, lo lancio dopo'),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save(true) }, 'Lancia subito')));
-
   const card = (ev) => {
     const [label, cls] = EVENT_STATUS[ev.status] || [ev.status, ''];
     return h('li', { class: 'event-item' },
@@ -3861,8 +3873,8 @@ function viewEvents() {
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'evento?', 'Sparisce dai telefoni. I premi già dati restano.', 'DELETE', `/api/m/events/${ev.id}`, undefined, 'Evento eliminato', true) }, 'Elimina')));
   };
   return h('div', { class: 'stack' },
-    section('Nuovo evento', form),
-    section(`Eventi (${E.list.length})`, E.list.length ? h('ul', { class: 'notice-list' }, E.list.map(card)) : h('p', { class: 'empty' }, 'Nessun evento.')));
+    sectionActions(`Eventi (${E.list.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newEventDialog }, '＋ Aggiungi evento')],
+      E.list.length ? h('ul', { class: 'notice-list' }, E.list.map(card)) : h('p', { class: 'empty' }, 'Nessun evento: aggiungine uno con «Aggiungi evento».')));
 }
 
 // ---------------------------------------------------------------- CLASSIFICA

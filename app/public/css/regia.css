@@ -1147,3 +1147,27 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ev-chat { margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 .ev-chat > summary { cursor: pointer; font-size: 13px; font-weight: 700; }
 .ev-chat-list { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 3px; font-size: 13px; max-height: 220px; overflow-y: auto; }
+
+/* Luogo dell'evento: schede con ricerca a sinistra, mappa a destra (una sotto l'altra sul telefono) */
+.loc-pick { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.loc-side { display: grid; gap: 8px; min-width: 0; }
+.loc-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.loc-tabs button { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: transparent; color: inherit; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+.loc-tabs button.on { border-color: var(--brass); color: var(--brass); font-weight: 700; }
+.loc-tabs .badge { font-size: 11px; }
+.loc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 330px; overflow-y: auto; }
+.loc-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 8px; text-align: left; border: 1.5px solid var(--line); border-radius: 6px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
+.loc-item:hover { border-color: var(--brass); }
+.loc-item.on { border-color: var(--brass); background: rgba(209, 173, 98, .12); }
+.loc-item .grow { display: grid; min-width: 0; }
+.loc-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-empty { padding: 8px; }
+.loc-map { display: grid; gap: 6px; min-width: 0; }
+.loc-map .pick-map { height: 380px; }
+@media (max-width: 760px) {
+  .loc-pick { grid-template-columns: 1fr; }
+  .loc-list { max-height: 220px; }
+  .loc-map .pick-map { height: 260px; }
+}
+.side-ico.poi { border-color: #9b6cf0; color: #b494f5; }
+.side-ico.guide { border-color: #3b82f6; color: #7fb0ff; border-radius: 6px; }
