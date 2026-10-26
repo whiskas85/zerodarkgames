@@ -2203,7 +2203,7 @@ function zoneEvents(prev, st) {
       h('h2', null, info.name),
       h('p', null, info.effect));
     document.body.append(el);
-    setTimeout(() => el.remove(), 4200);
+    setTimeout(() => el.remove(), 3200);
   }
   for (const w of zs.won || []) {
     if (seenZoneWins.has(w.id)) continue;
