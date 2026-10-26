@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec } from './lib.js';
+import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { omnibar, matches } from './omnibar.js';
@@ -4412,6 +4412,7 @@ const SETTINGS_PAGES = [
   ['accessi', 'Accessi e notifiche', 'Indirizzo per link e QR, gestionali, organizzazione, notifiche alla regia e account dei giocatori.'],
   ['cronografi', 'Cronografi', 'I cronografi del Test armi: l\'AC6000 integrato, altri marchi da aggiungere e la diagnostica Bluetooth.'],
   ['strumenti', 'Strumenti', 'Partita di prova ed eliminazione della partita.'],
+  ['dispositivo', 'Questo dispositivo', 'Scelte di questo computer o tablet (schermo sempre acceso, luminosità): valgono qui per regia e campo.'],
 ];
 // Schede delle pagine delle Impostazioni e la riga che spiega quella aperta.
 const settingsHead = (page) => [
@@ -4447,6 +4448,7 @@ function viewSettings() {
         pushButton('btn')),
       accountsSection()],
     cronografi: () => CKUI.chronoSettings({ render, call }),
+    dispositivo: () => [keepAwakeRow(render), dimRow()],
     strumenti: () => [
       section('Partita di prova',
         h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),

@@ -254,6 +254,68 @@ export const store = {
   },
 };
 
+// Schermo sempre acceso (Screen Wake Lock): una scelta di questo dispositivo, vale su tutte le pagine
+// (app di coppie ed Eletti, regia, campo). Il lock cade quando la pagina va in secondo piano: si riprende al ritorno.
+const KEEP_AWAKE = 'zdg_keep_awake';
+let keepLock = null;
+export const keepAwakeSupported = () => typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+export const keepAwakeOn = () => !!store.get(KEEP_AWAKE, false);
+async function keepAwakeAcquire() {
+  if (!keepAwakeOn() || !keepAwakeSupported() || document.hidden || keepLock) return;
+  try {
+    keepLock = await navigator.wakeLock.request('screen');
+    keepLock.addEventListener('release', () => { keepLock = null; });
+  } catch { keepLock = null; }
+}
+export function setKeepAwake(on) {
+  store.set(KEEP_AWAKE, !!on);
+  if (on) keepAwakeAcquire();
+  else { try { keepLock?.release(); } catch { /* già rilasciato */ } keepLock = null; }
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', keepAwakeAcquire);
+  // Alcuni browser lo concedono solo dopo un tocco: si riprova al primo.
+  document.addEventListener('pointerdown', keepAwakeAcquire, { passive: true });
+  keepAwakeAcquire();
+}
+// Luminosità dell'app (scelta del dispositivo): un velo scuro sopra tutta la pagina, che non ferma i tocchi.
+// Il browser non può cambiare la luminosità del telefono: così si scurisce l'app (batteria e meno luce nel bosco).
+const DIM = 'zdg_dim';
+export const dimLevel = () => Math.max(0, Math.min(70, Number(store.get(DIM, 0)) || 0));
+export function applyDim() {
+  if (typeof document === 'undefined' || !document.body) return;
+  let el = document.getElementById('zdg-dim');
+  const v = dimLevel();
+  if (!v) { el?.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'zdg-dim'; el.setAttribute('aria-hidden', 'true'); document.body.append(el); }
+  el.style.cssText = `position:fixed;inset:0;background:#000;opacity:${v / 100};pointer-events:none;z-index:2147483000;`;
+}
+export function setDim(v) { store.set(DIM, Math.max(0, Math.min(70, Math.round(Number(v) || 0)))); applyDim(); }
+if (typeof document !== 'undefined') {
+  if (document.body) applyDim(); else document.addEventListener('DOMContentLoaded', applyDim);
+}
+export function dimRow() {
+  const val = h('strong', { class: 'mono' }, `${100 - dimLevel()}%`);
+  const range = h('input', { type: 'range', min: 30, max: 100, step: 5, value: 100 - dimLevel(), 'aria-label': 'Luminosità dell\'app',
+    oninput: (e) => { setDim(100 - Number(e.target.value)); val.textContent = `${e.target.value}%`; } });
+  return h('div', { class: 'card dim-row' },
+    h('div', { class: 'dim-head' }, h('strong', null, 'Luminosità dell\'app'), val),
+    h('div', { class: 'muted small' }, 'Scurisce tutta l\'app su questo dispositivo: meno luce nel bosco e meno batteria. Al 100% è normale.'),
+    range);
+}
+
+// Riga con l'interruttore, uguale in app e regia.
+export function keepAwakeRow(onChange) {
+  const on = keepAwakeOn();
+  const ok = keepAwakeSupported();
+  return h('div', { class: 'card toggle-row keep-awake' },
+    h('div', null, h('strong', null, 'Schermo sempre acceso'),
+      h('div', { class: 'muted small' }, ok ? (on ? 'Attivo: con l\'app aperta lo schermo non si spegne (consuma più batteria).' : 'Spento: lo schermo si spegne come al solito. Attivalo per non far andare il telefono in standby.')
+        : 'Questo browser non permette di tenere acceso lo schermo.')),
+    h('button', { type: 'button', class: `switch ${on ? 'on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', disabled: !ok, onclick: () => { setKeepAwake(!on); onChange?.(); } },
+      h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), on ? 'ATTIVO' : 'SPENTO'));
+}
+
 export const STATUS_LABELS = {
   created: 'Creata', draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
   last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',

@@ -4,7 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
-import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony } from './lib.js';
+import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -3939,6 +3939,8 @@ function viewSettings() {
       h('button', { class: 'btn btn-primary btn-block', onclick: async () => { try { await enablePush(); toast('Notifiche attive', 'ok'); render(); } catch (e) { toast(e.message, 'error', 7000); } } }, perm === 'granted' ? 'Riattiva notifiche' : 'Attiva notifiche')),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Suono'), h('div', { class: 'muted small' }, 'Spento di default: nel softair il rumore tradisce la posizione.')),
       h('button', { class: `btn ${S.settings.sound ? 'btn-primary' : ''}`, onclick: () => { set('sound', !S.settings.sound); if (S.settings.sound) beep(true); } }, S.settings.sound ? 'Attivo' : 'Spento')),
+    keepAwakeRow(render),
+    dimRow(),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
       h('button', { class: `btn ${S.settings.sun ? 'btn-primary' : ''}`, onclick: () => set('sun', !S.settings.sun) }, S.settings.sun ? 'Attiva' : 'Spenta')),
     st ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? 'Iscrizione' : 'Coppia'), h('p', null, st.team.members.map((m) => (m.name ? m.name + (m.nickname ? ` «${m.nickname}»` : '') : m.nickname ? `«${m.nickname}»` : m.me ? 'Tu' : 'Legato')).join(isElect() ? ', ' : ' e ')), h('p', { class: 'muted small' }, st.game.name)) : null,
