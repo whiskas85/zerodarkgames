@@ -49,6 +49,9 @@ function edgeDepth(pt, poly) {
 const ENTER_M = 3;
 const EXIT_M = 12;
 const EXIT_AFTER_MS = 45000;
+// Conquista: uscire azzera il tempo, quindi il margine è più stretto (6 m o 10 secondi).
+const exitM = (z) => (z.kind === 'conquista' ? 6 : EXIT_M);
+const exitAfter = (z) => (z.kind === 'conquista' ? 10000 : EXIT_AFTER_MS);
 const pointsOf = (z) => JSON.parse(z.points);
 // Abilitata = esiste per le coppie (la vedono, anche spenta, e gli Eletti la possono accendere con un Beacon).
 // Attiva = accesa: il suo effetto vale. Una zona non abilitata è come se non ci fosse.
@@ -173,7 +176,7 @@ function onPosition(team, pos, now = Date.now()) {
       any = true;
     } else if (pr?.inside && depth >= 0) {
       if (pr.outsideSince) q.run('UPDATE zone_presence SET outsideSince = NULL WHERE zoneId = ? AND teamId = ?', z.id, team.id);
-    } else if (pr?.inside && depth > -EXIT_M && !(pr.outsideSince && now - pr.outsideSince >= EXIT_AFTER_MS)) {
+    } else if (pr?.inside && depth > -exitM(z) && !(pr.outsideSince && now - pr.outsideSince >= exitAfter(z))) {
       // Appena fuori dal bordo: per ora resta dentro.
       if (!pr.outsideSince) q.run('UPDATE zone_presence SET outsideSince = ? WHERE zoneId = ? AND teamId = ?', now, z.id, team.id);
     } else if (pr?.inside) {

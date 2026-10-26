@@ -2318,14 +2318,18 @@ function localZoneCheck(p) {
     if (!z.active) { if (LZ.delete(z.id)) changed = true; continue; }
     const d = edgeDepthM(p, z.points);
     const st = LZ.get(z.id);
-    if (!st) { if (d >= 3) { LZ.set(z.id, { outSince: null }); entered.push(z); changed = true; } continue; }
+    if (!st) { if (d >= 3) { LZ.set(z.id, { outSince: null, since: now }); entered.push(z); changed = true; } continue; }
     if (d >= 0) { st.outSince = null; continue; }
     st.outSince ||= now;
-    if (d <= -12 || now - st.outSince >= 45000) { LZ.delete(z.id); changed = true; }
+    // Conquista: uscire azzera il tempo, il margine è più stretto (come sul server).
+    const cq = z.kind === 'conquista';
+    if (d <= (cq ? -6 : -12) || now - st.outSince >= (cq ? 10000 : 45000)) { LZ.delete(z.id); changed = true; }
   }
   if (changed) {
     for (const z of entered) if (!(zs.immune || []).includes(z.id)) showZoneEnter(z);
     applyZoneFx();
+    // L'anello della Conquista compare e sparisce subito.
+    if (zs.list.some((z) => z.kind === 'conquista')) render();
   }
   return changed;
 }
@@ -2365,7 +2369,12 @@ const ZONE_VIBE = { ombra: [80], luce: [700], emp: [40, 40, 40, 40, 40, 40, 40, 
 function zoneHud() {
   const zs = S.state?.zones;
   applyZoneFx();
-  const cq = (zs?.here || []).find((z) => z.kind === 'conquista' && z.holdUntil);
+  // Conquista: dal telefono (sparisce appena si esce); il tempo è quello del server se lui vi sa dentro, se no da quando
+  // il telefono vi ha visti entrare (uscendo si azzera).
+  const cqZone = hereZones().find((z) => z.kind === 'conquista' && !z.winnerTeamId);
+  const srv = cqZone ? (zs?.here || []).find((x) => x.id === cqZone.id && x.holdUntil) : null;
+  const since = srv ? srv.enteredAt : LZ.get(cqZone?.id)?.since;
+  const cq = cqZone && since ? { enteredAt: since, holdUntil: srv ? srv.holdUntil : since + (cqZone.holdMin || 3) * 60000, holdMin: cqZone.holdMin || 3 } : null;
   const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', String(zs.recharge)) : null;
   if (!cq) return boost;
   return [h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
