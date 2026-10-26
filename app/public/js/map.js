@@ -175,9 +175,10 @@ export function createMapView({ className = '' } = {}) {
       for (const z of list) {
         keep.add(z.key);
         let pg = polys.get(z.key);
-        const style = { color: z.color || '#d1ad62', weight: z.weight ?? 2, fillOpacity: z.fill ?? 0.18, dashArray: z.dash || null, interactive: !!z.title };
-        if (!pg) { pg = L.polygon(z.points, style).addTo(map); if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
-        else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.title) pg.setTooltipContent(z.title); }
+        const style = { color: z.color || '#d1ad62', weight: z.weight ?? 2, fillOpacity: z.fill ?? 0.18, dashArray: z.dash || null, interactive: !!(z.title || z.popup) };
+        // Con un popup (tocco sulla zona) niente tooltip: sul telefono si sovrapporrebbero.
+        if (!pg) { pg = L.polygon(z.points, style).addTo(map); if (z.popup) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
+        else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.popup) { if (pg.getPopup()) pg.setPopupContent(z.popup); else pg.bindPopup(z.popup, { maxWidth: 260 }); } else if (z.title) pg.setTooltipContent(z.title); }
       }
       for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
     },

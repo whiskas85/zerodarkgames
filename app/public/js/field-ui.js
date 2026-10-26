@@ -204,7 +204,7 @@ export function createField(F, { rerender }) {
   }
 
   // full: mappa a tutto schermo come quella delle coppie (app degli Eletti), con i pulsanti a icona sopra e la legenda sotto.
-  function viewMap({ full = false, extra = null } = {}) {
+  function viewMap({ full = false, extra = null, bare = false } = {}) {
     const d = F.data;
     if (!d) return h('p', { class: 'empty' }, 'Caricamento…');
     if (!mapOn) { mapOn = true; loadPositions(); }
@@ -220,7 +220,8 @@ export function createField(F, { rerender }) {
             tool('⛶', 'Tutto il campo', () => mapView.autoCenter()),
             tool('＋', 'Punto di interesse', () => openPoi()),
             h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))),
-        h('details', { class: 'card map-legend-card' }, h('summary', null, 'Legenda e GPS'), extra, legend(), missing(d)));
+        // bare: solo la mappa (la legenda è nella pagina «Zone e legenda» dell'app).
+        bare ? null : h('details', { class: 'card map-legend-card' }, h('summary', null, 'Legenda e GPS'), extra, legend(), missing(d)));
     }
     return h('div', { class: 'stack-sm' },
       mapView.el,
@@ -524,5 +525,5 @@ export function createField(F, { rerender }) {
       + sq.tasks.filter((t) => !t.doneAt).length;
   }
 
-  return { load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, viewPois, openPoi, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
+  return { legend, load, startGps, stopGps, gpsText, viewTasks, viewAltars, viewGifts, viewMap, viewPois, openPoi, leaveMap, updateMap, scanSign, openPlacement, todoCount, mapView };
 }

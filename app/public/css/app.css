@@ -200,7 +200,7 @@ a.won span { font-weight: 700; }
 .elect-members { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 
 /* Tour guidato */
-.tour { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: grid; grid-template-rows: auto 1fr auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); overflow: auto; }
+.tour { position: fixed; inset: 0; z-index: 3000; background: var(--bg); display: grid; grid-template-rows: auto 1fr auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); overflow: auto; }
 .tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tour-dots { display: flex; gap: 6px; flex: 1; }
 .tour-dots i { flex: 1; height: 4px; background: var(--line); max-width: 40px; }
@@ -1082,3 +1082,4 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .ev-teams li.ev-team-chat { display: grid; gap: 6px; }
 .ef-row { display: grid; gap: 4px; width: 100%; }
 .ef-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.zones-legend li { cursor: pointer; }

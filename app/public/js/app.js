@@ -490,7 +490,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -1421,6 +1421,7 @@ const comTiles = (unreadNot, unreadAnn, unreadMsg) => [
   tile('#/messaggi', 'Regia', '☏', unreadMsg || null, unreadMsg)];
 const infoTiles = () => [
   tile('#/regolamento', 'Regolamento', mdi('fileDocument', 28)),
+  tile('#/zone', 'Zone e legenda', mdi('map', 28), (S.state?.zones?.list || []).length || null),
   tile('#/impostazioni', 'Impostazioni', '⚙'),
   S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
   iceTile()];
@@ -2261,24 +2262,10 @@ function viewMap(focus = null) {
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
         h('button', { class: 'btn btn-sm', title: 'Dove siamo', 'aria-label': 'Dove siamo', onclick: () => teamMapView.centerMe() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '◎'), h('span', { class: 'mt-label' }, 'Dove siamo')),
         h('button', { class: 'btn btn-sm', title: 'Tutto il campo', 'aria-label': 'Tutto il campo', onclick: () => teamMapView.autoCenter() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⛶'), h('span', { class: 'mt-label' }, 'Tutto il campo')),
-        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))),
-    zonesLegend(zones));
+        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))));
 }
 
 // ---------------------------------------------------------------- Zone della mappa
-
-// Le zone con il loro effetto (le coppie sanno sempre cosa succede entrando).
-function zonesLegend(zones) {
-  if (!zones?.list.length) return null;
-  const here = new Set(zones.here.map((z) => z.id));
-  return h('details', { class: 'card zones-legend', open: true },
-    h('summary', null, `Zone del campo (${zones.list.length})`),
-    h('ul', null, zones.list.map((z) => h('li', { class: `${here.has(z.id) ? 'here' : ''} ${z.active ? '' : 'zone-off'}`, style: { '--c': z.active ? z.color : '#8a8a8a' } },
-      h('span', { class: 'zl-ico', 'aria-hidden': 'true' }, z.icon),
-      h('div', null, h('strong', null, z.name), here.has(z.id) ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null,
-        z.active ? null : h('span', { class: 'chip' }, 'spenta'),
-        h('div', { class: 'small muted' }, z.active ? z.effect : `${z.effect} · Ora è spenta: la possono accendere gli Eletti con un Beacon.`))))));
-}
 
 // Effetto a schermo finché si è dentro, e anello della Conquista.
 const ZONE_VIBE = { ombra: [80], luce: [700], emp: [40, 40, 40, 40, 40, 40, 40, 40, 40], santuario: [120, 80, 120, 80, 240], conquista: [300, 100, 300] };
@@ -2358,15 +2345,63 @@ function viewElectField() {
 
 // Come la mappa delle coppie: tutta la larghezza e l'altezza dello schermo; GPS e legenda sotto, richiudibili.
 // Zone sulla mappa (coppie ed Eletti); quelle spente in grigio: si sa cosa sono e che gli Eletti le possono accendere con un Beacon.
+// Un tocco sulla zona apre un riquadro con il nome e «?» per la descrizione completa.
+const zonePopup = (z) => `<strong>${z.icon} ${escHtml(z.name)}</strong>${[z.label && z.label !== z.name ? z.label : null, z.active ? null : 'spenta'].filter(Boolean).length ? `<br><small>${escHtml([z.label && z.label !== z.name ? z.label : null, z.active ? null : 'spenta'].filter(Boolean).join(' · '))}</small>` : ''}<div class="popup-actions"><button type="button" class="btn btn-sm" data-zone-help="${z.id}">? Cosa fa</button></div>`;
 const zonePolygons = (zones) => (zones?.list || []).map((z) => (z.active
-  ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` }
-  : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', title: `${z.icon} ${z.name} · spenta: ${z.effect}${isElect() ? ' (accendila con il Beacon)' : ''}` }));
+  ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, popup: zonePopup(z) }
+  : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', popup: zonePopup(z) }));
+
+// Descrizione di una zona in un popup (dal «?» sulla mappa o dalla pagina delle zone).
+function showZoneInfo(id) {
+  const zones = S.state?.zones;
+  const z = zones?.list.find((x) => x.id === Number(id));
+  if (!z) return;
+  const here = (zones.here || []).some((x) => x.id === z.id);
+  modal({ title: `${z.icon} ${z.name}`, okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm zone-info', style: { '--c': z.active ? z.color : '#8a8a8a' } },
+      h('div', { class: 'row' }, h('span', { class: 'chip' }, z.label || z.kind), here ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null, z.active ? null : h('span', { class: 'chip' }, 'spenta')),
+      h('p', null, z.effect),
+      z.active ? null : h('p', { class: 'small muted' }, isElect() ? 'Ora è spenta: accendetela lanciando un Beacon dentro l\'area.' : 'Ora è spenta: la possono accendere gli Eletti con un Beacon.'),
+      z.kind === 'conquista' && z.holdMin ? h('p', { class: 'small' }, `Per conquistarla restate dentro ${z.holdMin} minuti di fila.`) : null) });
+}
+// Il «?» nei riquadri della mappa (in cattura: Leaflet ferma i clic nei popup).
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-zone-help]');
+  if (!b) return;
+  e.stopPropagation();
+  showZoneInfo(b.dataset.zoneHelp);
+}, true);
+
+// Pagina «Zone e legenda» (vicino al Regolamento): le zone del campo e cosa vogliono dire i simboli della mappa.
+function viewZonesInfo() {
+  const zones = S.state?.zones;
+  const list = zones?.list || [];
+  const here = new Set((zones?.here || []).map((z) => z.id));
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Zone e legenda'),
+    list.length ? h('section', { class: 'card zones-legend' },
+      h('div', { class: 'eyebrow' }, `Zone del campo (${list.length})`),
+      h('ul', null, list.map((z) => h('li', { class: `${here.has(z.id) ? 'here' : ''} ${z.active ? '' : 'zone-off'}`, style: { '--c': z.active ? z.color : '#8a8a8a' }, onclick: () => showZoneInfo(z.id) },
+        h('span', { class: 'zl-ico', 'aria-hidden': 'true' }, z.icon),
+        h('div', null, h('strong', null, z.name), here.has(z.id) ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null,
+          z.active ? null : h('span', { class: 'chip' }, 'spenta'),
+          h('div', { class: 'small muted' }, z.active ? z.effect : `${z.effect} · Ora è spenta: ${isElect() ? 'accendetela con un Beacon' : 'la possono accendere gli Eletti con un Beacon'}.`)))))) : h('p', { class: 'empty' }, 'Nessuna zona sul campo, per ora.'),
+    h('section', { class: 'card stack-sm' }, h('div', { class: 'eyebrow' }, 'Simboli della mappa'),
+      isElect() ? field.legend() : h('div', { class: 'map-legend' },
+        h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare (il cerchio tratteggiato è dove vale la lettura)'),
+        h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
+        h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
+        h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono del Consiglio'),
+        h('span', null, h('span', { class: 'pin pin-event' }, mdi('flagCheckered', 16)), ' Evento'),
+        h('span', null, h('span', { class: 'pin pin-me' }), ' Voi'))),
+    isElect() ? h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()) : null);
+}
 
 function viewElectMap() {
   queueMicrotask(() => field.mapView.setPolygons(zonePolygons(S.state?.zones)));
   return h('div', { class: 'campo' },
     trackingNote(S.state),
-    field.viewMap({ full: true, extra: h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()) }));
+    field.viewMap({ full: true, bare: true }));
 }
 
 // ---------------------------------------------------------------- Doni del Consiglio (QR)
