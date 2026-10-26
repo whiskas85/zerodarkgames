@@ -649,6 +649,7 @@ m.post('/games/:id/elect', wrap((req) => { G.addToElect(gameId(req), req.body.pl
 m.post('/games/:id/elect/person', wrap((req) => ({ id: G.addElectPerson(gameId(req), req.body || {}, actor(req)) })));
 m.post('/players/:pid/move', wrap((req) => { G.movePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/elect/members/:pid', wrap((req) => { G.removeFromElect(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.post('/games/:id/zones/order', wrap((req) => Z.reorderZones(gameId(req), req.body?.ids, actor(req))));
 m.post('/games/:id/zones', wrap((req) => Z.createZone(gameId(req), req.body || {}, actor(req))));
 m.patch('/zones/:zid', wrap((req) => Z.updateZone(Number(req.params.zid), req.body || {}, actor(req))));
 m.delete('/zones/:zid', wrap((req) => { Z.deleteZone(Number(req.params.zid), actor(req)); return { ok: true }; }));

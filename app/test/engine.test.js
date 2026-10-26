@@ -2235,6 +2235,13 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.equal(Z.teamZones(Cc).won.length, 1);
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
   assert.equal(Z.masterZones(g.id).list.length, 6);
+  // Ordine trascinando: la prima dell'elenco va in cima.
+  const ids = Z.masterZones(g.id).list.map((z) => z.id);
+  Z.reorderZones(g.id, [ombra.id, ...ids.filter((x) => x !== ombra.id)], 'test');
+  const lv = Object.fromEntries(Z.masterZones(g.id).list.map((z) => [z.id, z.layer]));
+  assert.equal(lv[ombra.id], 6);
+  assert.ok(lv[luce.id] < lv[ombra.id]);
+  assert.throws(() => Z.reorderZones(g.id, [999999], 'test'), /non valido/);
 });
 
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {

@@ -1938,10 +1938,11 @@ function viewFieldMap() {
   queueMicrotask(() => {
     fieldMap.setLines([...allianceLines(), ...(zd && zd.pts.length > 1 ? [{ key: 'zone-draw', points: zd.pts, color: zk[zd.kind]?.color }] : [])]);
     fieldMap.setPolygons([
-      ...(R.ms.mapZones?.list || []).filter((z) => !zd || z.id !== zd.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: z.active ? 0.18 : 0.04, dash: z.active ? null : '6 6',
-        title: `${z.icon} ${z.name} · strato ${z.layer}${z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
+      ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: z.active ? 0.18 : 0.04, dash: z.active ? null : '6 6',
+        title: `${z.icon} ${z.name}${z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
       ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
     ]);
+    drawZoneEditor();
   });
   fieldMap.refresh();
   const sqName = (id) => squadById(id)?.name;
@@ -2024,6 +2025,10 @@ function viewFieldMap() {
         h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
       R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) ? `Clicca sulla mappa ${R.mapPick.kind === 'guide-new' ? 'dove si trova' : 'il nuovo posto di'}: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
+      R.zoneEdit ? h('div', { class: 'map-pick zone-draw-bar' },
+        h('strong', null, `${R.zoneEdit.name}: trascina i punti · «＋» a metà lato ne aggiunge uno · doppio clic su un punto lo toglie (${R.zoneEdit.pts.length} punti)`),
+        h('button', { class: 'btn btn-sm btn-primary', onclick: saveZoneEdit }, 'Salva forma'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneEdit = null; render(); } }, 'Annulla')) : null,
       zd ? h('div', { class: 'map-pick zone-draw-bar' },
         h('strong', null, `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
         h('button', { class: 'btn btn-sm', disabled: !zd.pts.length, onclick: () => { zd.pts.pop(); render(); } }, 'Annulla ultimo'),
@@ -2042,7 +2047,6 @@ async function zoneDialog() {
   const K = R.ms.mapZones?.kinds || {};
   let kind = 'ombra';
   const name = h('input', { class: 'input', maxlength: 60, placeholder: 'Nome (facoltativo)' });
-  const layer = h('input', { class: 'input', type: 'number', min: 1, max: 99, value: 1 });
   const hold = h('input', { class: 'input', type: 'number', min: 1, max: 60, value: 3 });
   const beacon = h('input', { class: 'input', type: 'number', min: 1, max: 60, value: 1 });
   const startOff = h('input', { type: 'checkbox' });
@@ -2052,11 +2056,11 @@ async function zoneDialog() {
   h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X')))));
   const r = await modal({ title: 'Nuova zona', wide: true, okLabel: 'Disegna sulla mappa',
     body: h('div', { class: 'stack-sm' }, cards,
-      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), h('label', { class: 'field' }, h('span', null, 'Strato (vince il più alto)'), layer), holdWrap,
+      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap,
         h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon)),
       h('label', { class: 'check' }, startOff, ' Nasce spenta: la accendono gli Eletti lanciando un Beacon dentro l\'area (o la regia)'),
       h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce non la subisce finché non esce e rientra.')),
-    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, layer: Number(layer.value) || 1, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, active: !startOff.checked }) });
+    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, active: !startOff.checked }) });
   if (!r || typeof r !== 'object') return;
   R.zoneDraw = { ...r, pts: [] };
   R.mapZones = false;
@@ -2068,7 +2072,7 @@ async function saveZoneDraw() {
   if (!zd || zd.pts.length < 3) return;
   try {
     if (zd.id) await api('PATCH', `/api/m/zones/${zd.id}`, { points: zd.pts });
-    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, layer: zd.layer, holdMin: zd.holdMin, beaconMin: zd.beaconMin, active: zd.active, points: zd.pts });
+    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, beaconMin: zd.beaconMin, active: zd.active, points: zd.pts });
     toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
     R.zoneDraw = null;
     R.mapTab = 'zone';
@@ -2082,24 +2086,102 @@ function zonesPanel() {
   const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
-    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => b.layer - a.layer).map((z) => h('li', { style: { '--c': z.color }, class: z.active ? '' : 'off' },
-      h('div', { class: 'zl-head' }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', { class: 'grow' }, z.name), h('span', { class: 'chip' }, `strato ${z.layer}`)),
+    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: z.active ? '' : 'off', 'data-id': z.id },
+      h('div', { class: 'zl-head' },
+        h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),
+        h('button', { type: 'button', class: `switch switch-sm ${z.active ? 'on' : ''}`, role: 'switch', 'aria-checked': z.active ? 'true' : 'false', 'aria-label': z.active ? 'Zona accesa: tocca per spegnerla' : 'Zona spenta: tocca per accenderla',
+          onclick: () => patch(z, { active: !z.active }, z.active ? 'Zona spenta' : 'Zona accesa') }, h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), z.active ? 'ACCESA' : 'SPENTA')),
       h('div', { class: 'tiny muted' }, z.effect),
       z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
       h('div', { class: 'tiny' }, z.active ? `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)` : z.beaconEndsAt && z.beaconEndsAt > Date.now() ? `📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende alle ${fmtTime(z.beaconEndsAt)}` : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
       z.kind === 'conquista' ? h('div', { class: 'tiny' }, z.winnerTeamId ? `👑 Conquistata da ${teamName(z.winnerTeamId)} alle ${fmtTime(z.wonAt)}${z.reward ? ` · ${z.reward.icon} ${z.reward.name}` : ''}` : `In palio: resistere ${z.holdMin} minuti di fila`) : null,
       h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-sm', onclick: () => patch(z, { active: !z.active }, z.active ? 'Zona spenta' : 'Zona accesa') }, z.active ? 'Spegni' : 'Accendi'),
-        h('button', { class: 'btn btn-sm', title: 'Priorità più alta: vince sulle altre zone sovrapposte', onclick: () => patch(z, { layer: z.layer + 1 }) }, 'Strato ↑'),
-        h('button', { class: 'btn btn-sm', disabled: z.layer <= 1, onclick: () => patch(z, { layer: z.layer - 1 }) }, 'Strato ↓'),
         z.kind === 'conquista' && z.winnerTeamId ? h('button', { class: 'btn btn-sm', onclick: () => patch(z, { reset: true }, 'Zona di nuovo in palio') }, 'Rimetti in palio') : null,
         h('button', { class: 'btn btn-sm', title: 'Quanto dura la sequenza del Beacon degli Eletti', onclick: async () => {
           const v = await dialog({ title: `Durata del Beacon · ${z.name}`, text: 'Minuti che gli Eletti devono restare dentro l\'area perché la zona si accenda.', input: { type: 'number', value: z.beaconMin, min: 1, max: 60 }, okLabel: 'Salva' });
           if (v != null && v !== false) patch(z, { beaconMin: Number(v) || 1 }, 'Durata del Beacon salvata');
         } }, `Beacon ${z.beaconMin}′`),
-        h('button', { class: 'btn btn-sm', onclick: () => { R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; R.mapZones = false; render(); } }, 'Ridisegna'),
+        h('button', { class: 'btn btn-sm', title: 'Sposta, aggiungi o togli i punti del poligono', onclick: () => { R.zoneDraw = null; R.zoneEdit = { id: z.id, name: z.name, color: z.color, pts: z.points.map((p) => [...p]) }; render(); setTimeout(() => fieldMap.map?.fitBounds(z.points, { padding: [40, 40] }), 80); } }, 'Modifica punti'),
+        h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
-    h('p', { class: 'tiny muted' }, 'Quando le zone si sovrappongono vince lo strato più alto (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta).'));
+    h('p', { class: 'tiny muted' }, 'L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
+}
+
+// Modifica dei punti di una zona: vertici trascinabili, «＋» a metà di ogni lato per aggiungerne uno,
+// doppio clic su un vertice per toglierlo (minimo 3). Disegnato direttamente con Leaflet sulla mappa del campo.
+let zoneEditLayer = null;
+function drawZoneEditor() {
+  const map = fieldMap.map;
+  const L = window.L;
+  if (!map || !L) return;
+  zoneEditLayer?.remove();
+  zoneEditLayer = null;
+  const ze = R.zoneEdit;
+  if (!ze || tab() !== 'mappa') return;
+  zoneEditLayer = L.layerGroup().addTo(map);
+  const poly = L.polygon(ze.pts, { color: ze.color || '#d1ad62', weight: 3, fillOpacity: 0.15, dashArray: '6 4' }).addTo(zoneEditLayer);
+  const vIcon = L.divIcon({ className: 'zv', html: '<span class="zv-dot"></span>', iconSize: [20, 20], iconAnchor: [10, 10] });
+  const mIcon = L.divIcon({ className: 'zv', html: '<span class="zv-mid">+</span>', iconSize: [18, 18], iconAnchor: [9, 9] });
+  const mids = [];
+  const placeMids = () => {
+    ze.pts.forEach((p, i) => { const q2 = ze.pts[(i + 1) % ze.pts.length]; mids[i]?.setLatLng([(p[0] + q2[0]) / 2, (p[1] + q2[1]) / 2]); });
+  };
+  ze.pts.forEach((p, i) => {
+    const m = L.marker(p, { icon: vIcon, draggable: true, zIndexOffset: 3000, title: 'Trascina; doppio clic per togliere' }).addTo(zoneEditLayer);
+    m.on('drag', (e) => { const ll = e.target.getLatLng(); ze.pts[i] = [ll.lat, ll.lng]; poly.setLatLngs(ze.pts); placeMids(); });
+    m.on('dblclick', (e) => {
+      L.DomEvent.stop(e);
+      if (ze.pts.length <= 3) { toast('Una zona ha almeno 3 punti', 'error'); return; }
+      ze.pts.splice(i, 1);
+      render();
+    });
+  });
+  ze.pts.forEach((p, i) => {
+    const q2 = ze.pts[(i + 1) % ze.pts.length];
+    const mm = L.marker([(p[0] + q2[0]) / 2, (p[1] + q2[1]) / 2], { icon: mIcon, zIndexOffset: 2500, title: 'Aggiungi un punto qui' }).addTo(zoneEditLayer);
+    mm.on('click', (e) => { L.DomEvent.stop(e); const ll = e.target.getLatLng(); ze.pts.splice(i + 1, 0, [ll.lat, ll.lng]); render(); });
+    mids.push(mm);
+  });
+  map.doubleClickZoom.disable();
+}
+
+async function saveZoneEdit() {
+  const ze = R.zoneEdit;
+  if (!ze) return;
+  try {
+    await api('PATCH', `/api/m/zones/${ze.id}`, { points: ze.pts });
+    toast('Forma della zona salvata', 'ok');
+    R.zoneEdit = null;
+    fieldMap.map?.doubleClickZoom.enable();
+    await load();
+  } catch (e) { toast(e.message, 'error', 6000); }
+}
+
+// Trascinamento delle zone (mouse e dito): si sposta la riga nell'elenco e al rilascio si salva il nuovo ordine.
+function zoneDrag(e) {
+  const li = e.currentTarget.closest('li');
+  const ul = li?.parentElement;
+  if (!li || !ul) return;
+  e.preventDefault();
+  const before = [...ul.children].map((x) => x.dataset.id).join(',');
+  li.classList.add('dragging');
+  const move = (ev) => {
+    const y = ev.clientY;
+    const others = [...ul.children].filter((x) => x !== li);
+    const next = others.find((x) => { const r = x.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    if (next) { if (li.nextSibling !== next) ul.insertBefore(li, next); } else if (ul.lastChild !== li) ul.append(li);
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    li.classList.remove('dragging');
+    const ids = [...ul.children].map((x) => Number(x.dataset.id));
+    if (ids.join(',') !== before) call('POST', G('/zones/order'), { ids }, 'Ordine delle zone salvato');
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
 }
 
 // Elenco delle alleanze in corso, con i colori dei Settori (mappa e pagina Regia).

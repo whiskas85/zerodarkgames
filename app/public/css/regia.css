@@ -1108,3 +1108,16 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .map-sidebar { overflow: visible; }
   .map-tab-body { overflow: visible; }
 }
+/* Zone: interruttore e trascinamento dal titolo */
+.zl-head { justify-content: space-between; }
+.zl-grip { display: inline-flex; align-items: center; gap: 8px; cursor: grab; touch-action: none; user-select: none; min-width: 0; }
+.zl-grip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-list li.dragging { opacity: .6; outline: 2px dashed var(--brass); cursor: grabbing; }
+.switch-sm { padding: 3px 10px 3px 3px; gap: 6px; font-size: 11px; }
+.switch-sm .switch-knob { width: 34px; height: 20px; }
+.switch-sm .switch-knob::after { width: 14px; height: 14px; }
+.switch-sm.on .switch-knob::after { transform: translateX(14px); }
+/* Modifica dei punti di una zona */
+.zv { background: none; border: 0; }
+.zv-dot { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--brass); box-shadow: 0 1px 4px rgba(0, 0, 0, .6); cursor: grab; }
+.zv-mid { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(209, 173, 98, .85); color: #111; font-weight: 900; font-size: 14px; line-height: 1; cursor: copy; }

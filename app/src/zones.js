@@ -48,7 +48,9 @@ function createZone(gameId, data, actor) {
   const g = G.getGame(gameId);
   if (!KINDS[data.kind]) throw err(400, 'Tipo di zona non valido');
   const pts = cleanPoints(data.points);
-  const layer = Math.max(1, Math.min(99, Math.round(Number(data.layer)) || 1));
+  // Senza strato indicato la zona nuova va in cima (vince sulle altre finché non la si sposta).
+  const top = q.get('SELECT MAX(layer) AS m FROM map_zones WHERE gameId = ?', g.id)?.m || 0;
+  const layer = data.layer != null && data.layer !== '' ? Math.max(1, Math.min(999, Math.round(Number(data.layer)) || 1)) : top + 1;
   const holdMin = data.kind === 'conquista' ? Math.max(1, Math.min(60, Math.round(Number(data.holdMin)) || 3)) : null;
   const name = String(data.name || '').trim().slice(0, 60) || KINDS[data.kind].label;
   const active = data.active === false ? 0 : 1;
@@ -68,7 +70,7 @@ function updateZone(id, data, actor) {
   if (!z) throw err(404, 'Zona non trovata');
   const next = { ...z };
   if (data.name !== undefined) next.name = String(data.name || '').trim().slice(0, 60) || KINDS[z.kind].label;
-  if (data.layer !== undefined) next.layer = Math.max(1, Math.min(99, Math.round(Number(data.layer)) || 1));
+  if (data.layer !== undefined) next.layer = Math.max(1, Math.min(999, Math.round(Number(data.layer)) || 1));
   if (data.holdMin !== undefined && z.kind === 'conquista') next.holdMin = Math.max(1, Math.min(60, Math.round(Number(data.holdMin)) || 3));
   if (data.points !== undefined) next.points = JSON.stringify(cleanPoints(data.points));
   if (data.active !== undefined) next.active = data.active ? 1 : 0;
@@ -85,6 +87,17 @@ function updateZone(id, data, actor) {
   G.log(z.gameId, actor, 'zone_updated', { name: next.name, active: !!next.active, reset: !!reopen });
   changed(z.gameId);
   return zoneOut(getZone(z.id));
+}
+
+// Ordine dalla regia (trascinando): la prima dell'elenco è quella in cima e vince sulle altre quando si sovrappongono.
+function reorderZones(gameId, ids, actor) {
+  const list = (Array.isArray(ids) ? ids : []).map(Number);
+  const mine = new Set(q.all('SELECT id FROM map_zones WHERE gameId = ?', Number(gameId)).map((r) => r.id));
+  if (!list.length || list.some((id) => !mine.has(id))) throw err(400, 'Ordine delle zone non valido');
+  tx(() => list.forEach((id, i) => q.run('UPDATE map_zones SET layer = ? WHERE id = ?', list.length - i, id)));
+  G.log(Number(gameId), actor, 'zone_updated', { name: 'ordine delle zone' });
+  changed(Number(gameId));
+  return { ok: true };
 }
 
 function deleteZone(id, actor) {
@@ -295,4 +308,4 @@ function teamZones(t) {
   };
 }
 
-module.exports = { KINDS, inside, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
+module.exports = { KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
