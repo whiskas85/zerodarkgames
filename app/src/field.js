@@ -902,7 +902,7 @@ function positionsOf(gameId, viewer = 'master') {
     if (!latest.has(k) || latest.get(k).at < r.at) latest.set(k, r);
   }
   return [...latest.values()].filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
-    deviceId: r.deviceId, teamId: r.teamId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
+    deviceId: r.deviceId, playerId: r.playerId ?? null, teamId: r.teamId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
     label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
     who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),
     roman: r.roman, color: r.kind === 'elect' ? (r.squadColor || '#d1ad62') : (r.sectorColor || '#ff4fa3'),
