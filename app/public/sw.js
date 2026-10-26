@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v268';
+const VERSION = 'zdg-v269';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
@@ -31,13 +31,18 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Riquadri OpenTopoMap: cache-first, così la mappa già vista funziona anche senza segnale nel bosco.
-  if (url.hostname.endsWith('tile.opentopomap.org')) {
+  // Riquadri della mappa (OpenTopoMap e, se non risponde, OpenStreetMap): cache-first, così la mappa già vista
+  // funziona anche senza segnale nel bosco. Se il server non risponde entro 6 secondi il riquadro fallisce e la
+  // pagina lo chiede all'altro server.
+  if (url.hostname.endsWith('tile.opentopomap.org') || url.hostname === 'tile.openstreetmap.org') {
     e.respondWith(caches.open('zdg-tiles').then(async (c) => {
       const hit = await c.match(req);
       if (hit) return hit;
       try {
-        const res = await fetch(req);
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000);
+        const res = await fetch(req, { signal: ctl.signal }).finally(() => clearTimeout(timer));
+        if (!res.ok && res.type !== 'opaque') return new Response('', { status: 504 });
         if (res.ok || res.type === 'opaque') {
           c.put(req, res.clone());
           trimTiles(c);

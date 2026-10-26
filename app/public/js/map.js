@@ -21,6 +21,7 @@ export function loadLeaflet() {
 }
 
 const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+const FALLBACK_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = 'Mappa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, SRTM · Stile © <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA)';
 const ITALY = [42.5, 12.5];
 
@@ -99,7 +100,13 @@ export function createMapView({ className = '' } = {}) {
     L = lib;
     map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, 6);
     // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
-    L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', attribution: ATTRIBUTION, crossOrigin: true }).addTo(map);
+    const topo = L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', attribution: ATTRIBUTION, crossOrigin: true }).addTo(map);
+    // OpenTopoMap a volte è lento o non risponde: quel riquadro si prende da OpenStreetMap (una volta sola per riquadro).
+    topo.on('tileerror', (e) => {
+      if (!e.tile || e.tile.dataset.fallback) return;
+      e.tile.dataset.fallback = '1';
+      e.tile.src = FALLBACK_TILES.replace('{z}', e.coords.z).replace('{x}', e.coords.x).replace('{y}', e.coords.y);
+    });
     map.on('click', (e) => onTap?.(e.latlng));
     if (pending) { view.setItems(pending); pending = null; }
     return view;
