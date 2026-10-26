@@ -2125,7 +2125,10 @@ function viewMap(focus = null) {
     ...(S.state?.skills?.giftHints || []).map((x) => ({ key: `h${x.id}`, lat: x.lat, lng: x.lng, radius: x.radius, color: '#d1ad62', title: 'Presagio del Dono: il dono è qui dentro' })),
   ]);
   const zones = S.state?.zones;
-  teamMapView.setPolygons((zones?.list || []).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` })));
+  // Zone spente in grigio: si sa cosa sono e che gli Eletti le possono accendere con un Beacon.
+  teamMapView.setPolygons((zones?.list || []).map((z) => (z.active
+    ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` }
+    : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', title: `${z.icon} ${z.name} · spenta: ${z.effect}` })));
   if (myPos) teamMapView.setMe(myPos);
   teamMapView.refresh();
   // Dalla Parola intera: la mappa si apre sulla Soglia (e su di voi, se il GPS c'è).
@@ -2161,9 +2164,11 @@ function zonesLegend(zones) {
   const here = new Set(zones.here.map((z) => z.id));
   return h('details', { class: 'card zones-legend', open: true },
     h('summary', null, `Zone del campo (${zones.list.length})`),
-    h('ul', null, zones.list.map((z) => h('li', { class: here.has(z.id) ? 'here' : '', style: { '--c': z.color } },
+    h('ul', null, zones.list.map((z) => h('li', { class: `${here.has(z.id) ? 'here' : ''} ${z.active ? '' : 'zone-off'}`, style: { '--c': z.active ? z.color : '#8a8a8a' } },
       h('span', { class: 'zl-ico', 'aria-hidden': 'true' }, z.icon),
-      h('div', null, h('strong', null, z.name), here.has(z.id) ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null, h('div', { class: 'small muted' }, z.effect))))));
+      h('div', null, h('strong', null, z.name), here.has(z.id) ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null,
+        z.active ? null : h('span', { class: 'chip' }, 'spenta'),
+        h('div', { class: 'small muted' }, z.active ? z.effect : `${z.effect} · Ora è spenta: la possono accendere gli Eletti con un Beacon.`))))));
 }
 
 // Effetto a schermo finché si è dentro, e anello della Conquista.

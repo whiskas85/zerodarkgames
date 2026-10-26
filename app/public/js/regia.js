@@ -1953,8 +1953,8 @@ function viewFieldMap() {
   queueMicrotask(() => {
     fieldMap.setLines([...allianceLines(), ...(zd && zd.pts.length > 1 ? [{ key: 'zone-draw', points: zd.pts, color: zk[zd.kind]?.color }] : [])]);
     fieldMap.setPolygons([
-      ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.color, fill: z.active ? 0.18 : 0.04, dash: z.active ? null : '6 6',
-        title: `${z.icon} ${z.name}${z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
+      ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.enabled ? z.color : '#8a8a8a', fill: !z.enabled ? 0.02 : z.active ? 0.18 : 0.04, dash: z.active && z.enabled ? null : z.enabled ? '6 6' : '2 6',
+        title: `${z.icon} ${z.name}${!z.enabled ? ' · non abilitata (le coppie non la vedono)' : z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
       ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
     ]);
     drawZoneEditor();
@@ -2095,6 +2095,7 @@ async function zoneDialog() {
   const hold = h('input', { class: 'input', type: 'number', min: 1, max: 60, value: 3 });
   const beacon = h('input', { class: 'input', type: 'number', min: 1, max: 60, value: 1 });
   const startOff = h('input', { type: 'checkbox' });
+  const hidden = h('input', { type: 'checkbox' });
   const holdWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Minuti da restare dentro di fila'), hold);
   const cards = h('div', { class: 'zone-kinds' }, Object.entries(K).map(([k, z]) => h('button', { type: 'button', class: `zone-kind ${k === kind ? 'on' : ''}`, style: { '--c': z.color },
     onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; } },
@@ -2104,8 +2105,9 @@ async function zoneDialog() {
       h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap,
         h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon)),
       h('label', { class: 'check' }, startOff, ' Nasce spenta: la accendono gli Eletti lanciando un Beacon dentro l\'area (o la regia)'),
+      h('label', { class: 'check' }, hidden, ' Nasce non abilitata: le coppie non la vedono finché non la abiliti'),
       h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce non la subisce finché non esce e rientra.')),
-    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, active: !startOff.checked }) });
+    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, active: !startOff.checked, enabled: !hidden.checked }) });
   if (!r || typeof r !== 'object') return;
   R.zoneDraw = { ...r, pts: [] };
   R.mapZones = false;
@@ -2117,7 +2119,7 @@ async function saveZoneDraw() {
   if (!zd || zd.pts.length < 3) return;
   try {
     if (zd.id) await api('PATCH', `/api/m/zones/${zd.id}`, { points: zd.pts });
-    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, beaconMin: zd.beaconMin, active: zd.active, points: zd.pts });
+    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, beaconMin: zd.beaconMin, active: zd.active, enabled: zd.enabled, points: zd.pts });
     toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
     R.zoneDraw = null;
     R.mapTab = 'zone';
@@ -2131,14 +2133,17 @@ function zonesPanel() {
   const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
-    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.active ? '' : 'off'} locatable`, 'data-id': z.id, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
+    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.enabled && z.active ? '' : 'off'} ${z.enabled ? '' : 'disabled'} locatable`, 'data-id': z.id, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
       h('div', { class: 'zl-head' },
         h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),
-        h('button', { type: 'button', class: `switch switch-sm ${z.active ? 'on' : ''}`, role: 'switch', 'aria-checked': z.active ? 'true' : 'false', 'aria-label': z.active ? 'Zona accesa: tocca per spegnerla' : 'Zona spenta: tocca per accenderla',
-          onclick: () => patch(z, { active: !z.active }, z.active ? 'Zona spenta' : 'Zona accesa') }, h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), z.active ? 'ACCESA' : 'SPENTA')),
+        h('button', { type: 'button', class: `switch switch-sm ${z.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': z.enabled ? 'true' : 'false',
+          'aria-label': z.enabled ? 'Zona abilitata: tocca per nasconderla alle coppie' : 'Zona non abilitata: tocca per mostrarla alle coppie',
+          onclick: () => patch(z, { enabled: !z.enabled }, z.enabled ? 'Zona non abilitata: le coppie non la vedono più' : 'Zona abilitata: le coppie la vedono') }, h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), z.enabled ? 'ABILITATA' : 'NON ABILITATA')),
       h('div', { class: 'tiny muted' }, z.effect),
+      h('label', { class: 'check zl-active' }, h('input', { type: 'checkbox', checked: z.active, onchange: (e) => patch(z, { active: e.target.checked }, e.target.checked ? 'Zona accesa' : 'Zona spenta') }),
+        ' Attiva (accesa)', h('span', { class: 'tiny muted' }, z.enabled ? (z.active ? ' · l\'effetto vale' : ' · le coppie la vedono in grigio') : ' · nascosta finché non è abilitata')),
       z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
-      h('div', { class: 'tiny' }, z.active ? `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)` : z.beaconEndsAt && z.beaconEndsAt > Date.now() ? `📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende alle ${fmtTime(z.beaconEndsAt)}` : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
+      !z.enabled ? h('div', { class: 'tiny' }, 'Non abilitata: le coppie non la vedono e gli Eletti non la possono accendere.') : z.active ? h('div', { class: 'tiny' }, `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)`) : h('div', { class: 'tiny' },  z.beaconEndsAt && z.beaconEndsAt > Date.now() ? `📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende alle ${fmtTime(z.beaconEndsAt)}` : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
       z.kind === 'conquista' ? h('div', { class: 'tiny' }, z.winnerTeamId ? `👑 Conquistata da ${teamName(z.winnerTeamId)} alle ${fmtTime(z.wonAt)}${z.reward ? ` · ${z.reward.icon} ${z.reward.name}` : ''}` : `In palio: resistere ${z.holdMin} minuti di fila`) : null,
       h('div', { class: 'row-actions' },
         z.kind === 'conquista' && z.winnerTeamId ? h('button', { class: 'btn btn-sm', onclick: () => patch(z, { reset: true }, 'Zona di nuovo in palio') }, 'Rimetti in palio') : null,
@@ -2149,7 +2154,7 @@ function zonesPanel() {
         h('button', { class: 'btn btn-sm', title: 'Sposta, aggiungi o togli i punti del poligono', onclick: () => { R.zoneDraw = null; R.zoneEdit = { id: z.id, name: z.name, color: z.color, pts: z.points.map((p) => [...p]) }; render(); setTimeout(() => fieldMap.map?.fitBounds(z.points, { padding: [40, 40] }), 80); } }, 'Modifica punti'),
         h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
-    h('p', { class: 'tiny muted' }, 'L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
+    h('p', { class: 'tiny muted' }, 'Abilitata: la zona esiste per le coppie (spenta la vedono in grigio e gli Eletti la accendono con un Beacon). Non abilitata: è come se non ci fosse. L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
 }
 
 // Modifica dei punti di una zona: vertici trascinabili, «＋» a metà di ogni lato per aggiungerne uno,

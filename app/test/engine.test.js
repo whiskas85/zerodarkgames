@@ -2270,6 +2270,34 @@ test('zone: sul bordo il GPS che balla non fa entrare e uscire (isteresi, due te
   go(0, edge + 5 * m); assert.equal(isIn(), false);
 });
 
+test('zone: abilitata (le coppie la vedono, anche spenta) e attiva (l\'effetto vale)', () => {
+  const F = require('../src/field');
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  const pl = q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const sq = [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]];
+  const off = Z.createZone(g.id, { kind: 'ombra', points: sq, active: false }, 'test');
+  const hidden = Z.createZone(g.id, { kind: 'luce', points: sq, enabled: false }, 'test');
+  const list = () => Z.teamZones(A).list;
+  // Spenta ma abilitata: la si vede (grigia); non abilitata: non c'è.
+  assert.deepEqual(list().map((z) => [z.id, z.active]), [[off.id, false]]);
+  F.recordPosition(A, pl, { deviceId: `dev-en-${A.id}`, lat: 45, lng: 9, acc: 5 });
+  assert.deepEqual(Z.teamZones(A).here, []);
+  // Abilitata e accesa: l'effetto vale per chi entra.
+  Z.updateZone(hidden.id, { enabled: true }, 'test');
+  assert.equal(list().length, 2);
+  F.recordPosition(A, pl, { deviceId: `dev-en-${A.id}`, lat: 45.01, lng: 9, acc: 5 });
+  F.recordPosition(A, pl, { deviceId: `dev-en-${A.id}`, lat: 45, lng: 9, acc: 5 });
+  assert.deepEqual(Z.teamZones(A).here.map((z) => z.kind), ['luce']);
+  // Di nuovo non abilitata: sparisce e l'effetto finisce, anche se resta «attiva».
+  Z.updateZone(hidden.id, { enabled: false }, 'test');
+  assert.deepEqual(Z.teamZones(A).here, []);
+  assert.equal(list().length, 1);
+  assert.equal(Z.masterZones(g.id).list.find((z) => z.id === hidden.id).active, true);
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);
