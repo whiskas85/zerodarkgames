@@ -1779,6 +1779,9 @@ function fieldMapItems(d) {
     ...d.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, color: p.color, title: p.label, provisional: p.provisional, off: p.disabledUntil > Date.now(),
       popup: `<strong>${p.label}</strong><br>${p.disabledUntil > Date.now() ? `📡 Disattivato da un Beacon fino alle ${fmtTime(p.disabledUntil)}<br>` : ''}${placedInfo(p)}${p.hasPhoto ? `<img src="/api/media/point/${p.id}?v=${p.placedAt}" alt="">` : ''}
         <div class="popup-actions">${actBtn('pick', 'point', p.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'point', p.id, p.moveRequestedAt ? 'Cambia spostamento' : 'Fai spostare a una squadra')}</div>` })),
+    // Eventi con una posizione (finché non sono conclusi).
+    ...(R.ms?.gameEvents?.list || []).filter((ev) => ev.location && ev.status !== 'done').map((ev) => ({ key: `ev${ev.id}`, kind: 'event', lat: ev.location.lat, lng: ev.location.lng, title: ev.name,
+      popup: `<strong>🏁 ${escHtml(ev.name)}</strong><br>${EVENT_STATUS[ev.status]?.[0] || ev.status}${ev.location.label ? ` · ${escHtml(ev.location.label)}` : ''}${ev.startAt ? `<br><small>Inizio ${fmtTime(ev.startAt)}${ev.durationMin ? ` · ${ev.durationMin}′` : ''}</small>` : ''}` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
       popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}</div>` : '') })),
@@ -1982,8 +1985,12 @@ function viewFieldMap() {
   const pois = d.pois || [];
   const guide = d.guide || [];
   const allies = R.ms.combat?.alliances.length || 0;
+  const evs = R.ms.gameEvents?.list || [];
   const tabs = [
     ['piazzare', 'Da piazzare', toPlace.length],
+    ['altari', 'Altari e luoghi', d.points.length + (d.landmarks || []).length],
+    ['doni', 'Doni', d.gifts.length],
+    ['eventi', 'Eventi', evs.length],
     ['zone', 'Zone', R.ms.mapZones?.list.length || 0],
     ['punti', 'Punti di interesse', pois.length],
     ['indicazioni', 'Indicazioni', guide.length],
@@ -1991,7 +1998,10 @@ function viewFieldMap() {
     ['legenda', 'Legenda', null],
   ];
   const cur = tabs.some(([k]) => k === R.mapTab) ? R.mapTab : (toPlace.length ? 'piazzare' : 'zone');
-  const centerOn = (key) => { fieldMap.focus([key]); };
+  // Un clic su una voce con una posizione: la mappa la centra e la porta sopra a tutto.
+  const centerOn = (key) => { if (!fieldMap.highlight(key)) toast('Non è ancora sulla mappa', 'warn'); };
+  const locRow = (key, has, ...kids) => h('li', { class: has ? 'locatable' : '', title: has ? 'Mostra sulla mappa' : '', onclick: has ? (e) => { if (!e.target.closest('button, a, input')) centerOn(key); } : null }, ...kids);
+  const now = Date.now();
   const panes = {
     piazzare: () => [
       h('div', { class: 'eyebrow' }, `Altari piazzati ${placedA}/${d.points.length}`),
@@ -2003,10 +2013,33 @@ function viewFieldMap() {
           h('button', { class: 'btn btn-sm btn-primary', title: 'Piazzalo tu con un clic sulla mappa (foto facoltativa)', onclick: () => startPick(x, kind) }, 'Segna'),
           h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : h('p', { class: 'empty' }, 'Tutto piazzato. 🎉'),
       h('p', { class: 'tiny muted' }, 'Tocca un segnaposto sulla mappa per vederne foto e dettagli e per farlo spostare.')],
+    altari: () => [
+      h('p', { class: 'tiny muted' }, 'Tocca una voce per vederla sulla mappa.'),
+      h('ul', { class: 'map-side-list' },
+        ...(d.landmarks || []).map((l) => locRow(`l${l.id}`, l.lat != null,
+          h('span', { class: 'side-ico landmark' }, l.kind === 'soglia' ? '⛩' : '◯'),
+          h('div', { class: 'grow' }, h('strong', null, l.label), h('div', { class: 'tiny muted' }, l.lat != null ? `Piazzato${l.provisional ? ' · provvisorio' : ''}` : 'Da piazzare')),
+          l.lat == null ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => startPick(l, 'landmark') }, 'Segna') : null)),
+        ...d.points.map((p) => locRow(`p${p.id}`, p.lat != null,
+          h('span', { class: 'side-ico point', style: p.color ? { borderColor: p.color } : null }, p.roman),
+          h('div', { class: 'grow' }, h('strong', null, p.label),
+            h('div', { class: 'tiny muted' }, p.lat == null ? 'Da piazzare' : p.disabledUntil > now ? `📡 Disattivato fino alle ${fmtTime(p.disabledUntil)}` : `Piazzato${p.provisional ? ' · provvisorio' : ''}`)),
+          p.lat == null ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => startPick(p, 'point') }, 'Segna') : null)))],
+    doni: () => [
+      d.gifts.length ? h('ul', { class: 'map-side-list' }, d.gifts.map((g) => locRow(`g${g.id}`, g.lat != null,
+        h('span', { class: 'side-ico gift', style: { borderColor: g.color || '#d1ad62' } }, g.icon || '✦'),
+        h('div', { class: 'grow' }, h('strong', null, `${g.label} · ${g.name}`), h('div', { class: 'tiny muted' }, `${GIFT_STATE[g.status] || g.status}${g.claimedBy ? ` da ${g.claimedBy}` : ''}`)),
+        g.status === 'draft' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => startPick(g, 'gift') }, 'Segna') : null))) : h('p', { class: 'empty' }, 'Nessun dono.')],
+    eventi: () => [
+      evs.length ? h('ul', { class: 'map-side-list' }, evs.map((ev) => locRow(`ev${ev.id}`, !!ev.location && ev.status !== 'done',
+        h('span', { class: 'side-ico event' }, '🏁'),
+        h('div', { class: 'grow' }, h('strong', null, ev.name),
+          h('div', { class: 'tiny muted' }, `${EVENT_STATUS[ev.status]?.[0] || ev.status} · ${ev.location ? ev.location.label || 'posizione sulla mappa' : 'senza posizione'}${ev.startAt ? ` · inizio ${fmtTime(ev.startAt)}` : ''}`))))) : h('p', { class: 'empty' }, 'Nessun evento.'),
+      h('p', { class: 'tiny muted' }, 'La posizione si sceglie dalla pagina Eventi.')],
     zone: () => [zonesPanel()],
     punti: () => [
       h('p', { class: 'tiny muted' }, 'Li segnano gli Eletti dal campo («Punto di interesse»): radure, sentieri, ingressi, posti per Altari e doni.'),
-      pois.length ? h('ul', { class: 'map-side-list' }, pois.map((x) => h('li', null,
+      pois.length ? h('ul', { class: 'map-side-list' }, pois.map((x) => locRow(`poi${x.id}`, !x.occupied,
         h('span', { class: 'side-ico poi' }, '◆'),
         h('div', { class: 'grow' }, h('strong', null, x.label), x.description ? h('div', { class: 'tiny' }, x.description) : null,
           h('div', { class: 'tiny muted' }, `${String(x.createdBy || '').replace('eletti:', '')} · ${fmtTime(x.createdAt)}${x.occupied ? ' · occupato' : ''}`)),
@@ -2017,7 +2050,7 @@ function viewFieldMap() {
     indicazioni: () => [
       h('div', { class: 'row' }, h('p', { class: 'tiny muted grow' }, 'Parcheggio, accettazione…: le coppie li vedono fino al Cerchio, con il pulsante Naviga.'),
         h('button', { class: 'btn btn-sm btn-blue', onclick: () => guideDialog() }, mdi('signDirection', 16), ' Nuova')),
-      guide.length ? h('ul', { class: 'map-side-list' }, guide.map((x) => h('li', null,
+      guide.length ? h('ul', { class: 'map-side-list' }, guide.map((x) => locRow(`gd${x.id}`, x.lat != null,
         h('span', { class: 'side-ico guide' }, mdi(x.icon || 'mapMarker', 18)),
         h('div', { class: 'grow' }, h('strong', null, x.label), x.description ? h('div', { class: 'tiny muted' }, x.description) : null),
         h('div', { class: 'row-actions' },
@@ -2098,7 +2131,7 @@ function zonesPanel() {
   const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
-    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: z.active ? '' : 'off', 'data-id': z.id },
+    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.active ? '' : 'off'} locatable`, 'data-id': z.id, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
       h('div', { class: 'zl-head' },
         h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),
         h('button', { type: 'button', class: `switch switch-sm ${z.active ? 'on' : ''}`, role: 'switch', 'aria-checked': z.active ? 'true' : 'false', 'aria-label': z.active ? 'Zona accesa: tocca per spegnerla' : 'Zona spenta: tocca per accenderla',

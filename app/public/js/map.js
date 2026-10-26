@@ -77,6 +77,7 @@ export function createMapView({ className = '' } = {}) {
   let onMarkerTap = null;
   let pending = null;
   let meAcc = null;
+  let hi = null;
   // Centratura automatica: attiva finché chi guarda non sposta o ingrandisce la mappa;
   // si riattiva ogni volta che la mappa torna visibile (si riapre la pagina).
   let auto = true;
@@ -125,6 +126,7 @@ export function createMapView({ className = '' } = {}) {
           m = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }), title: it.title || '', zIndexOffset: zOf(it) }).addTo(map);
           m._zdgHtml = html;
           m._zdgKey = it.key;
+          m._zdgZ = zOf(it);
           // Tocco su un segnaposto: se chi usa la mappa lo gestisce (true), niente popup.
           m.on('click', (e) => { if (onMarkerTap?.(m._zdgKey, m.getLatLng())) { L.DomEvent.stop(e); setTimeout(() => m.closePopup(), 0); } });
           markers.set(it.key, m);
@@ -220,6 +222,32 @@ export function createMapView({ className = '' } = {}) {
       if (me && (meAcc == null || meAcc <= 300)) pts.push(me.getLatLng());
       if (pts.length === 1) map.setView(pts[0], 17);
       else map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 18 });
+      return true;
+    },
+    // Mette in evidenza un segnaposto o una zona (per chiave): centra la mappa, lo porta sopra a tutto e apre il suo popup.
+    highlight(key) {
+      if (!map) return false;
+      const m = markers.get(key);
+      const pg = polys.get(key);
+      if (!m && !pg) return false;
+      auto = false;
+      clearTimeout(fitTimer);
+      if (hi && hi !== m) { hi.setZIndexOffset(hi._zdgZ || 0); hi.getElement()?.classList.remove('zdg-hi'); }
+      hi = null;
+      if (m) {
+        hi = m;
+        m.setZIndexOffset(20000);
+        map.setView(m.getLatLng(), Math.max(map.getZoom(), 17));
+        m.getElement()?.classList.add('zdg-hi');
+        if (m.getPopup()) m.openPopup();
+        return true;
+      }
+      pg.bringToFront();
+      map.fitBounds(pg.getBounds().pad(0.15), { maxZoom: 18 });
+      const w = pg.options.weight;
+      pg.setStyle({ weight: 6 });
+      setTimeout(() => pg.setStyle({ weight: w }), 1600);
+      if (pg.getTooltip()) pg.openTooltip(pg.getCenter());
       return true;
     },
     // Riattiva la centratura automatica (es. dopo "Tutto il campo").
