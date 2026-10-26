@@ -901,7 +901,8 @@ function updateClocks() {
   if (sc && !sc.classList.contains('no-sec') && top.scrollWidth > top.clientWidth + 1) { sc.classList.add('no-sec'); sc.textContent = fmtStart(at - clock.serverNow(), true); }
   let due = false;
   for (const el of document.querySelectorAll('[data-abs]')) {
-    const left = Number(el.dataset.abs) - clock.serverNow();
+    // Nel Santuario la ricarica corre più veloce: il conto alla rovescia si divide per la velocità.
+    const left = (Number(el.dataset.abs) - clock.serverNow()) / (Number(el.dataset.rate) || 1);
     const t = fmtDuration(Math.max(0, left), false);
     if (el.textContent !== t) el.textContent = t;
     // Ogni scadenza fa ricaricare una volta sola (niente richieste a raffica se il conto resta a zero).
@@ -2177,10 +2178,11 @@ function zoneHud() {
   const zs = S.state?.zones;
   document.documentElement.dataset.zones = (zs?.here || []).map((z) => z.kind).join(' ');
   const cq = (zs?.here || []).find((z) => z.kind === 'conquista' && z.holdUntil);
-  if (!cq) return null;
-  return h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
+  const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', String(zs.recharge)) : null;
+  if (!cq) return boost;
+  return [h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
     h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, '👑'),
-    h('span', { class: 'mono zr-time', 'data-abs': cq.holdUntil }, '—'));
+    h('span', { class: 'mono zr-time', 'data-abs': cq.holdUntil }, '—')), boost];
 }
 
 // Ingresso in una zona: animazione con il suo effetto e la sua vibrazione; Conquista vinta: schermata di vittoria.
@@ -2481,13 +2483,20 @@ async function chooseSkill(s, on) {
 const closeDlg = (el) => { const d = el?.closest?.('dialog'); d?.close(); d?.remove(); };
 const skillPlaying = () => ACTIVE.includes(S.state?.clock.status) && S.state?.team.status === 'active';
 
+// Ricarica di una Skill: nel Santuario va più veloce (×2) e lo si dice accanto al tempo.
+const rechargeRate = () => S.state?.zones?.recharge || 1;
+const rechargeLabel = (until) => {
+  const r = rechargeRate();
+  return ['Ricarica ', h('span', { class: 'mono', 'data-abs': until, 'data-rate': r > 1 ? r : null }, '—'), r > 1 ? h('strong', { class: 'boost', title: 'Nel Santuario la ricarica è più veloce' }, ` ×${r}`) : null];
+};
+
 // Stato della Skill posseduta in gioco: pronta, in ricarica, in corso, automatica, da usare in un'altra pagina.
 function skillState(s) {
   const left = (until) => h('span', { class: 'mono', 'data-abs': until }, '—');
   if (S.state?.skills?.canChoose) return null;
   if (s.kind === 'passive') return h('span', { class: 'slot-st ok' }, 'Sempre attiva');
   if (s.active && s.activeUntil) return h('span', { class: 'slot-st fx' }, 'In corso ', left(s.activeUntil));
-  if (s.readyAt) return h('span', { class: 'slot-st cd' }, 'Ricarica ', left(s.readyAt));
+  if (s.readyAt) return h('span', { class: 'slot-st cd' }, ...rechargeLabel(s.readyAt));
   if (s.auto) return h('span', { class: 'slot-st ok' }, 'Automatica');
   return h('span', { class: 'slot-st ok' }, 'Pronta');
 }
@@ -2614,12 +2623,12 @@ function viewSkills() {
   const fxBar = (s) => (s.active && s.activeUntil && s.durationMin ? h('div', { class: 'cd-bar fx', title: 'Effetto in corso', 'data-from': s.activeUntil - s.durationMin * 60000, 'data-to': s.activeUntil, 'data-drain': '1' }, h('i')) : null);
   const card = (s) => {
     if (s.kind === 'passive') return skillCard(s, h('span', { class: 'chip chip-ok' }, 'Sempre attiva'));
-    if (s.auto) return skillCard(s, fxBar(s), cdBar(s), s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
-    if (s.where) return skillCard(s, cdBar(s), s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt)) : h('a', { class: 'btn btn-sm', href: `#/${s.where}` }, `Pronta: si usa da ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`));
+    if (s.auto) return skillCard(s, fxBar(s), cdBar(s), s.active ? h('span', { class: 'chip chip-blood' }, 'Attiva · ', left(s.activeUntil)) : s.readyAt ? h('span', { class: 'chip' }, ...rechargeLabel(s.readyAt)) : h('span', { class: 'chip chip-ok' }, 'Pronta: si attiva da sola'));
+    if (s.where) return skillCard(s, cdBar(s), s.readyAt ? h('span', { class: 'chip' }, ...rechargeLabel(s.readyAt)) : h('a', { class: 'btn btn-sm', href: `#/${s.where}` }, `Pronta: si usa da ${s.where === 'alleanze' ? 'Alleanze' : 'Scontri'}`));
     return skillCard(s, fxBar(s), cdBar(s),
       s.active && s.activeUntil ? h('span', { class: 'chip chip-blood' }, `In corso${s.targetName ? ` su ${s.targetName}` : ''} · `, left(s.activeUntil)) : null,
       s.active && !s.activeUntil && s.targetName ? h('span', { class: 'chip chip-blood' }, `In ascolto su ${s.targetName}`) : null,
-      s.readyAt ? h('span', { class: 'chip' }, 'Ricarica ', left(s.readyAt))
+      s.readyAt ? h('span', { class: 'chip' }, ...rechargeLabel(s.readyAt))
         : h('button', { class: 'btn btn-sm btn-primary', disabled: !playing || s.available === false, onclick: () => useSkillFlow(s) }, `Usa ${s.name}`));
   };
   const timed = sk.effects.filter((e) => e.until);
@@ -2630,6 +2639,7 @@ function viewSkills() {
     skillSlots(sk),
     skillBar(mineHit.length + others.length),
     q && !mineHit.length && !others.length ? noSkillHit() : null,
+    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rechargeRate()} finché restate dentro.`) : null,
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
       const list = mineHit.filter((s) => s.kind === kind);

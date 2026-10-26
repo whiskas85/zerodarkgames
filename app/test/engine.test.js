@@ -2222,6 +2222,8 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   const ready = q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt;
   Z.createZone(g.id, { kind: 'santuario', points: sq(45, 9.04) }, 'test');
   go(A, 45, 9.04);
+  assert.equal(Z.teamZones(A).recharge, 2);
+  assert.equal(Z.teamZones(B).recharge, 1);
   const t0 = Date.now();
   Z.tickAll(t0); Z.tickAll(t0 + 60000);
   assert.ok(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt <= ready - 59000);

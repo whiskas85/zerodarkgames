@@ -1049,3 +1049,10 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .ev-when { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .loc-preview summary { cursor: pointer; font-size: 14px; color: var(--brass); }
 .loc-preview-map { height: 190px; border-radius: 8px; margin-top: 8px; }
+
+/* Santuario: ricarica delle Skill più veloce */
+.zone-boost { position: fixed; left: 14px; bottom: 64px; z-index: 70; padding: 8px 14px; border-radius: 999px; background: rgba(20, 16, 8, .88); border: 2px solid #d1ad62; color: #f3d98b; font-weight: 800; text-decoration: none; box-shadow: 0 0 18px rgba(209, 173, 98, .55); animation: zb-glow 2.4s ease-in-out infinite; }
+@keyframes zb-glow { 50% { box-shadow: 0 0 6px rgba(209, 173, 98, .25); } }
+.boost { color: #d1ad62; }
+.boost-note { border-color: #d1ad62; color: #f3d98b; }
+@media (prefers-reduced-motion: reduce) { .zone-boost { animation: none; } }

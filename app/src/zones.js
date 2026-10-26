@@ -14,7 +14,7 @@ const KINDS = {
   ombra: { label: 'Cono d\'Ombra', icon: '🌑', color: '#5b4b8a', effect: 'Finché restate dentro nessuna coppia vi vede sulla mappa, qualunque Skill o Dono usi (la regia sì).' },
   luce: { label: 'Campo di Luce', icon: '☀️', color: '#f0a020', effect: 'Finché restate dentro tutte le coppie vi vedono sulla mappa.' },
   emp: { label: 'Zona di Disturbo', icon: '⚡', color: '#22c3e6', effect: 'Dentro non funzionano le Skill attive e la mappa è oscurata.' },
-  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano al doppio della velocità.' },
+  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano al doppio della velocità (×2).' },
   conquista: { label: 'Zona di Conquista', icon: '👑', color: '#e5484d', effect: 'La prima coppia che resta dentro {min} minuti di fila vince un Dono a caso.' },
 };
 const effectOf = (z) => KINDS[z.kind].effect.replace('{min}', z.holdMin || 3);
@@ -197,6 +197,8 @@ function visibilityOf(teamId) {
 }
 const inEmp = (teamId) => { const g = q.get('SELECT g.status FROM games g JOIN teams t ON t.gameId = g.id WHERE t.id = ?', teamId); return !!g && C.ACTIVE.includes(g.status) && appliedZones(teamId).some((z) => z.kind === 'emp'); };
 
+// Santuario: quante volte più veloce corre la ricarica delle Skill.
+const SANCTUARY_RATE = 2;
 // Ogni pochi secondi: Santuario (la ricarica corre al doppio) e Conquista (chi resta dentro abbastanza vince).
 let lastTick = Date.now();
 function tickAll(now = Date.now()) {
@@ -207,7 +209,7 @@ function tickAll(now = Date.now()) {
     if (dt) {
       for (const p of q.all(`SELECT DISTINCT p.teamId FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
                              WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0`, gameId)) {
-        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt, p.teamId, now);
+        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (SANCTUARY_RATE - 1), p.teamId, now);
       }
     }
     for (const z of q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND enabled = 1 AND kind = 'conquista' AND winnerTeamId IS NULL", gameId)) {
@@ -340,6 +342,8 @@ function teamZones(t) {
       holdUntil: z.kind === 'conquista' && !z.winnerTeamId ? z.enteredAt + z.holdMin * 60000 : null })),
     visibility: visibilityOf(t.id),
     emp: mine.some((z) => z.kind === 'emp'),
+    // Dentro un Santuario: la ricarica delle Skill corre più veloce (×2).
+    recharge: mine.some((z) => z.kind === 'santuario') ? SANCTUARY_RATE : 1,
     won: q.all('SELECT * FROM map_zones WHERE gameId = ? AND winnerTeamId = ? AND wonAt > ?', t.gameId, t.id, now - 30 * 60000).map((z) => ({ id: z.id, name: z.name, wonAt: z.wonAt, reward: JSON.parse(z.reward || 'null') })),
   };
 }
