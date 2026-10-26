@@ -155,10 +155,11 @@ function setState(st, offset) {
     if (squad) FE.squadId = squad.id;
     if (changed || FIELD_VIEWS.includes(route().view)) field.load();
   }
-  if (prev?.combat && st.combat) {
-    const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`)]);
+  if (prev?.combat && st.combat && !st.combat.elect && !prev.combat.elect) {
+    const seen = new Set([...prev.combat.incoming.map((r) => `r${r.id}`), ...prev.combat.toConfirm.map((e) => `e${e.id}`), ...(prev.combat.electToConfirm || []).map((f) => `f${f.id}`)]);
     const fresh = [...st.combat.incoming.map((r) => [`r${r.id}`, r.kind === 'break' ? `${r.team.sectorName} vuole rompere l'alleanza` : `${r.team.sectorName} vi propone un'alleanza`]),
-      ...st.combat.toConfirm.map((e) => [`e${e.id}`, (e.result === 'lost' ? `${e.reporter.sectorName} dichiara di aver perso contro di voi: confermate?` : `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`)])].filter(([k]) => !seen.has(k));
+      ...st.combat.toConfirm.map((e) => [`e${e.id}`, (e.result === 'lost' ? `${e.reporter.sectorName} dichiara di aver perso contro di voi: confermate?` : `${e.reporter.sectorName} dichiara di avervi sconfitto: confermate?`)]),
+      ...(st.combat.electToConfirm || []).map((f) => [`f${f.id}`, f.winner === 'elect' ? `Gli Eletti (${f.squadName}) dichiarano di avervi sconfitto: confermate?` : `Gli Eletti (${f.squadName}) dichiarano di aver perso contro di voi: confermate?`])].filter(([k]) => !seen.has(k));
     if (fresh.length) { vibrate([200, 100, 200, 100, 400]); beep(); for (const [, t] of fresh) toast(t, 'blood', 9000); }
   }
   // Scontro vinto (anche da un alleato): Vittoria con i Sigilli di tutta la parte sconfitta, una volta per scontro.
@@ -171,6 +172,13 @@ function setState(st, offset) {
     const steal = (st.combat.steals || []).find((x) => victories.some((y) => y.id === x.engagementId));
     if (steal) setTimeout(() => showSteal(steal), 300);
     else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against, v.skill === 'maestria' && v.skillBy?.teamId === st.team.id), 300);
+  }
+  // Vittoria contro gli Eletti: schermata di vittoria, una volta per scontro.
+  for (const f of st.combat?.electWins || []) {
+    if (seenVictories.has(`f${f.id}`)) continue;
+    seenVictories.add(`f${f.id}`);
+    store.set('zdg_seen_victories2', [...seenVictories].slice(-50));
+    if (prev) setTimeout(() => showElectWin(f), 300);
   }
   // Alleanza appena stretta: schermata con i Sigilli ricevuti, una volta (dopo un'eventuale Vittoria).
   const news = st.combat?.allianceNews;
@@ -467,7 +475,7 @@ function render() {
   let { view, arg, query } = route();
   if (isElect() && ['skill', 'uscita', 'sigillo', 'altari', 'altare', 'frammenti', 'codici', 'dono', 'doni'].includes(view)) view = 'home';
   if (isLobby() && ['skill', 'uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
-  if (isElect() && ['scontri', 'alleanze'].includes(view)) view = 'home';
+  if (isElect() && view === 'alleanze') view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
   if ((view === 'mappa' && !isElect()) || view === 'indicazioni') startMapGps(); else stopMapGps();
   if (isElect() && FIELD_VIEWS.includes(view)) { field.startGps(); if (!FE.data) field.load(); } else field.stopGps();
@@ -684,7 +692,7 @@ function banners() {
   if (S.queue.length) out.push(h('div', { class: 'banner banner-queue' }, h('strong', null, `${S.queue.length} in attesa di rete`), h('span', null, S.queue.map((q) => q.label).join(' · '))));
   if (st.openNew) out.push(h('a', { class: 'banner banner-action', href: '/iscrizione#scelta' }, h('strong', null, 'Nuova partita aperta'), h('span', null, 'Iscriviti ai prossimi Giochi del Buio')));
   if (alliancePending(st) && route().view !== 'alleanze') out.push(h('a', { class: 'banner banner-action', href: '#/alleanze' }, h('strong', null, 'Risposta richiesta'), h('span', null, st.combat.incoming.map((r) => r.kind === 'break' ? `${r.team.sectorName}: rottura dell'alleanza` : `${r.team.sectorName} propone un'alleanza`).join(' · '))));
-  if (fightPending(st) && route().view !== 'scontri') out.push(h('a', { class: 'banner banner-action', href: '#/scontri' }, h('strong', null, 'Risposta richiesta'), h('span', null, st.combat.toConfirm.map((e) => `${e.reporter.sectorName}: confermate la sconfitta?`).join(' · '))));
+  if (fightPending(st) && route().view !== 'scontri') out.push(h('a', { class: 'banner banner-action', href: '#/scontri' }, h('strong', null, 'Risposta richiesta'), h('span', null, [...st.combat.toConfirm.map((e) => `${e.reporter.sectorName}: confermate la sconfitta?`), ...(st.combat.electToConfirm || []).map((f) => `Eletti (${f.squadName}): confermate l'esito?`)].join(' · '))));
   return out.length ? h('div', { class: 'banners' }, out) : null;
 }
 
@@ -1310,6 +1318,7 @@ function viewElectHome(st) {
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
         tile('#/beacon', 'Beacon', mdi('satelliteUplink', 28), st.beacon?.running ? '●' : null, !!st.beacon?.running),
+        st.field?.squad ? tile('#/scontri', 'Scontri', mdi('swordCross', 28), (st.combat?.targets || []).length || null) : null,
         // Punto di interesse: si segna dove si è (GPS) o toccando la mappa; lo vedono regia ed Eletti.
         h('button', { class: 'tile', type: 'button', onclick: () => field.openPoi() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('mapMarker', 28)), h('span', null, 'Punto di interesse'), h('span', { class: 'tiny muted' }, 'piazzalo qui')),
         st.field?.squad || (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
@@ -1443,8 +1452,8 @@ async function combatCall(url, body, okMsg) {
 const teamName = (t) => `${t.roman} ${t.sectorName}`;
 
 // Alleanze e scontri sono due pagine. Le alleanze degli altri sono segrete: negli scontri si vede solo la coppia.
-const alliancePending = (st) => (st?.combat ? st.combat.incoming.length : 0);
-const fightPending = (st) => (st?.combat ? st.combat.toConfirm.length + (st.combat.steals || []).length : 0);
+const alliancePending = (st) => (st?.combat && !st.combat.elect ? st.combat.incoming.length : 0);
+const fightPending = (st) => (st?.combat && !st.combat.elect ? st.combat.toConfirm.length + (st.combat.steals || []).length + (st.combat.electToConfirm || []).length : 0);
 
 // ---------------------------------------------------------------- Beacon (Eletti)
 
@@ -1851,10 +1860,53 @@ function viewAlliances() {
         ]));
 }
 
+// Scontri degli Eletti: solo con le coppie che la squadra vede (caccia, incarico, evento, Campo di Luce).
+function viewElectCombat(c) {
+  const st = S.state;
+  const playing = ['hunt', 'last_half_hour'].includes(st.clock.status);
+  const report = async (t, result) => {
+    const ok = await dialog({ title: result === 'won' ? 'Scontro vinto' : 'Scontro perso',
+      text: result === 'won' ? `Dichiarate di aver battuto ${teamName(t)}? La coppia deve confermare: poi per loro parte la Veglia${t.why?.includes('caccia') ? ' e il loro Sigillo va alla coppia che ha lanciato la caccia' : ''}.`
+        : `Dichiarate di aver perso contro ${teamName(t)}? La coppia deve confermare: poi ${t.why?.includes('caccia') ? 'la caccia è fallita' : 'l\'incarico si chiude'} e per loro è Vittoria.`,
+      okLabel: 'Registra', danger: result === 'lost' });
+    if (ok) combatCall('/api/team/elect-fight', { teamId: t.teamId, result }, `In attesa della conferma di ${t.sectorName}`);
+  };
+  const label = (f) => ({ pending: 'da confermare', contested: 'contestato: decide la regia', cancelled: 'annullato', confirmed: f.winner === 'elect' ? 'vinto' : 'perso' }[f.status]);
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Scontri'),
+    h('p', { class: 'muted small' }, 'Potete scontrarvi solo con le coppie che vedete: bersagli di una caccia o di un incarico, iscritte a un evento della vostra squadra, nel Campo di Luce. Dichiarate l\'esito: la coppia conferma, se contesta decide la regia.'),
+    !st.field?.squad ? h('p', { class: 'empty' }, 'Serve una squadra: chiedete alla regia di inserirvi.') : null,
+    c.targets.length ? h('div', { class: 'stack-sm' }, c.targets.map((t) => h('div', { class: 'combat-card' },
+      h('div', { class: 'eyebrow' }, t.why),
+      h('strong', null, teamName(t)),
+      t.pending ? h('p', { class: 'small muted' }, 'Scontro dichiarato: in attesa della conferma della coppia.')
+        : h('div', { class: 'row' },
+          h('button', { class: 'btn btn-primary', disabled: !playing, onclick: () => report(t, 'won') }, 'Abbiamo vinto'),
+          h('button', { class: 'btn btn-danger', disabled: !playing, onclick: () => report(t, 'lost') }, 'Abbiamo perso'))))) : st.field?.squad ? h('p', { class: 'empty' }, 'Nessuna coppia da affrontare in questo momento.') : null,
+    !playing ? h('p', { class: 'small muted' }, 'Gli scontri si registrano durante la caccia.') : null,
+    c.fights.length ? [h('h3', null, 'Scontri della squadra'), h('ul', { class: 'list' }, c.fights.map((f) => h('li', { class: `hist hist-${f.status === 'confirmed' ? (f.winner === 'elect' ? 'won' : 'lost') : 'draw'}` },
+      h('strong', null, `${f.winner === 'elect' ? 'Vinto contro' : 'Perso contro'} ${f.team ? teamName(f.team) : '?'}`),
+      h('span', { class: `chip ${f.status === 'confirmed' ? (f.winner === 'elect' ? 'chip-ok' : 'chip-blood') : f.status === 'contested' ? 'chip-warn' : ''}` }, label(f)),
+      h('span', { class: 'tiny muted' }, ` · ${f.author || ''} · ${fmtTime(f.createdAt)}`))))] : null);
+}
+
+// Vittoria contro una squadra di Eletti.
+function showElectWin(f) {
+  vibrate([120, 60, 120, 60, 400]);
+  beep();
+  const el = battleOverlay('victory',
+    h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
+    h('div', { class: 'eyebrow' }, 'Scontro con gli Eletti'),
+    h('h2', { class: 'battle-title' }, 'Vittoria'),
+    h('p', null, `Avete battuto gli Eletti della squadra ${f.squadName || ''}.${f.hunt ? ' La caccia contro di voi è fallita: perdono le vostre tracce.' : ''}`),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi'));
+}
+
 function viewCombat() {
   const st = S.state;
   const c = st?.combat;
   if (!c) return h('p', { class: 'empty' }, 'Disponibile per le coppie in gioco.');
+  if (c.elect) return viewElectCombat(c);
   const status = st.clock.status;
   const fighting = ['hunt', 'last_half_hour'].includes(status);
   const opponents = c.teams.filter((t) => !t.allied);
@@ -1891,6 +1943,14 @@ function viewCombat() {
 
   return h('div', { class: 'stack' },
     h('h2', null, 'Scontri'),
+
+    (c.electToConfirm || []).map((f) => h('div', { class: 'combat-card ask' },
+      h('div', { class: 'eyebrow' }, f.hunt ? '🎯 Caccia degli Eletti' : 'Scontro con gli Eletti'),
+      h('strong', null, f.winner === 'elect' ? `Gli Eletti (squadra ${f.squadName}) dichiarano di avervi sconfitto` : `Gli Eletti (squadra ${f.squadName}) dichiarano di aver perso contro di voi`),
+      h('p', { class: 'small muted' }, f.winner === 'elect' ? `Confermando parte la Veglia${f.hunt ? ' e il vostro Sigillo va alla coppia che ha lanciato la caccia' : ''}. Se non è vero, contestate: decide la regia.` : 'Confermando la vittoria è vostra. Se non è vero, contestate: decide la regia.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', onclick: () => combatCall(`/api/team/elect-fight/${f.id}/respond`, { confirm: true }, f.winner === 'elect' ? 'Sconfitta confermata: Veglia' : 'Vittoria confermata') }, f.winner === 'elect' ? 'Confermo, abbiamo perso' : 'Confermo, abbiamo vinto'),
+        h('button', { class: 'btn btn-ghost', onclick: () => combatCall(`/api/team/elect-fight/${f.id}/respond`, { confirm: false }, 'Contestato: decide la regia') }, 'Contesto')))),
 
     (c.steals || []).map((x) => h('div', { class: 'combat-card ask' },
       h('div', { class: 'eyebrow' }, 'Sigillo da rubare'),

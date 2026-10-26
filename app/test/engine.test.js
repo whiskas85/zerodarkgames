@@ -2340,6 +2340,49 @@ test('Eletti: eventi della squadra (anche non lanciati), chat con le coppie iscr
   assert.equal(EV.teamEvents(elect, pE).find((x) => x.id === ev.id).entries[0].chat.length, 3);
 });
 
+test('scontri degli Eletti: solo con le coppie visibili; vittoria = Veglia e Sigillo al cacciatore, sconfitta = caccia fallita', () => {
+  const F = require('../src/field');
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Segugio' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  F.setMemberSquad(eid, alfa, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const pE = q.get('SELECT * FROM players WHERE id = ?', eid);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  // Senza incarichi né eventi: nessuna coppia da affrontare.
+  assert.deepEqual(K.combatState(elect, pE).targets, []);
+  assert.throws(() => K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' }), /vedete/);
+  // Caccia lanciata da B contro A, affidata alla squadra Alfa.
+  const task = F.createTask(g.id, { kind: 'hunt', target: `team:${A.id}`, squadId: alfa }, 'test', { source: 'skill', sourceTeamId: B.id });
+  assert.deepEqual(K.combatState(elect, pE).targets.map((t) => t.teamId), [A.id]);
+  const f1 = K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' });
+  assert.throws(() => K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' }), /già uno scontro/);
+  assert.equal(K.combatState(A).electToConfirm.length, 1);
+  assert.throws(() => K.respondElectFight(Cc, f1.id, true), /non trovato/);
+  K.respondElectFight(A, f1.id, true);
+  assert.ok(q.get("SELECT 1 FROM team_timers WHERE teamId = ? AND timerId = 'veglia' AND reason LIKE 'Sconfitta contro gli Eletti%'", A.id));
+  const aSector = q.get('SELECT sectorId FROM teams WHERE id = ?', A.id).sectorId;
+  assert.ok(q.get('SELECT 1 FROM team_code_notes WHERE teamId = ? AND sectorId = ? AND source = ?', B.id, aSector, 'caccia'));
+  assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', task.id ?? task).doneAt);
+  // Nuova caccia contro C: vince la coppia, la caccia si chiude e C vede la vittoria.
+  const t2 = F.createTask(g.id, { kind: 'hunt', target: `team:${Cc.id}`, squadId: alfa }, 'test', { source: 'skill', sourceTeamId: B.id });
+  const f2 = K.reportElectFight(elect, pE, { teamId: Cc.id, result: 'lost' });
+  K.respondElectFight(Cc, f2.id, true);
+  assert.ok(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', t2.id ?? t2).cancelledAt);
+  assert.equal(K.combatState(Cc).electWins.length, 1);
+  // Contestato: decide la regia.
+  const t3 = F.createTask(g.id, { kind: 'goto', target: `team:${Cc.id}`, squadId: alfa }, 'test');
+  const f3 = K.reportElectFight(elect, pE, { teamId: Cc.id, result: 'won' });
+  K.respondElectFight(Cc, f3.id, false);
+  assert.equal(K.masterCombat(g.id).electFights.find((x) => x.id === f3.id).status, 'contested');
+  K.resolveElectFight(f3.id, 'cancel', 'test');
+  assert.equal(K.masterCombat(g.id).electFights.find((x) => x.id === f3.id).status, 'cancelled');
+  assert.ok(t3);
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);

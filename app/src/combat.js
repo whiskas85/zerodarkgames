@@ -492,6 +492,110 @@ function resolveEngagement(engagementId, decision, actor) {
   } else throw err(400, 'Decisione non valida');
 }
 
+// ---------------------------------------------------------------- scontri degli Eletti
+// Una squadra di Eletti contro una coppia che può vedere (caccia, incarico, evento, Campo di Luce).
+// Gli Eletti dichiarano l'esito, la coppia conferma (o contesta: decide la regia).
+// Vincono gli Eletti: Sconfitta e Veglia per la coppia; in una caccia del Maestro della caccia il suo Sigillo va alla
+// coppia che l'ha lanciata. Vince la coppia: Vittoria, e la caccia (o l'incarico) si chiude.
+const F = () => require('./field');
+const squadOf = (id) => (id ? q.get('SELECT id, name FROM elect_squads WHERE id = ?', id) : null);
+
+function reportElectFight(electTeam, player, body) {
+  if (!electTeam || electTeam.kind !== 'elect') throw err(403, 'Solo gli Eletti');
+  if (!player?.squadId) throw err(409, 'Per uno scontro serve una squadra di Eletti');
+  requirePlaying(electTeam.gameId, { engagement: true });
+  const winner = body?.result === 'won' ? 'elect' : body?.result === 'lost' ? 'couple' : null;
+  if (!winner) throw err(400, 'Esito non valido');
+  const target = F().electVisibleTeams(electTeam.gameId, player.squadId).find((x) => x.teamId === Number(body.teamId));
+  if (!target) throw err(403, 'Potete scontrarvi solo con le coppie che vedete (caccia, incarico, evento, Campo di Luce)');
+  if (q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND squadId = ? AND status = 'pending'", target.teamId, player.squadId)) throw err(409, 'C\'è già uno scontro da confermare con questa coppia');
+  const sq = squadOf(player.squadId);
+  const author = player.nickname || player.name;
+  const id = Number(q.run('INSERT INTO elect_fights (gameId, squadId, playerId, author, teamId, taskId, eventId, winner, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    electTeam.gameId, sq.id, player.id, author, target.teamId, target.taskId || null, target.eventId || null, winner, Date.now()).lastInsertRowid);
+  G.log(electTeam.gameId, `eletto:${author}`, 'elect_fight_reported', { squad: sq.name, couple: `${target.roman} ${target.sectorName}`, winner });
+  notify([target.teamId], electTeam.gameId, winner === 'elect'
+    ? { title: 'Confermate la sconfitta', body: `Gli Eletti (squadra ${sq.name}) dichiarano di avervi sconfitto. Confermate o contestate nell'app.`, tag: `ef-${id}` }
+    : { title: 'Confermate la vittoria', body: `Gli Eletti (squadra ${sq.name}) dichiarano di aver perso contro di voi. Confermate o contestate nell'app.`, tag: `ef-${id}` });
+  electRefresh(electTeam.gameId);
+  return { ok: true, id };
+}
+
+function electRefresh(gameId) {
+  const elect = G.electOf(gameId);
+  if (elect) rt.toTeams(gameId, 'state', {}, elect.id);
+  rt.toStaff(gameId, 'combat');
+}
+
+function applyElectFight(f, by) {
+  const sq = squadOf(f.squadId);
+  const t = team(f.teamId);
+  const task = f.taskId ? q.get('SELECT * FROM squad_tasks WHERE id = ?', f.taskId) : null;
+  tx(() => {
+    q.run("UPDATE elect_fights SET status = 'confirmed', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), by, f.id);
+    if (f.winner === 'elect') {
+      startTimer(t.id, 'veglia', `Sconfitta contro gli Eletti (squadra ${sq?.name || '?'})`);
+      if (task && !task.doneAt && !task.cancelledAt) F().setTaskDone(task.id, true, by, f.gameId);
+    }
+  });
+  G.log(f.gameId, by, 'elect_fight_confirmed', { squad: sq?.name, couple: t?.sectorName, winner: f.winner });
+  if (f.winner === 'elect') {
+    // Caccia del Maestro della caccia: il Sigillo della coppia battuta va a chi l'ha lanciata.
+    if (task?.kind === 'hunt' && task.sourceTeamId && giveCode(task.sourceTeamId, t.id, 'caccia')) {
+      notify([task.sourceTeamId], f.gameId, { title: '🎯 Caccia riuscita', body: `Gli Eletti hanno battuto il Settore ${t.sectorName}: il suo Sigillo è nel vostro taccuino.`, tag: `ef-${f.id}`, url: '/#/codici' });
+    }
+    notify([t.id], f.gameId, { title: 'Scontro perso', body: `Gli Eletti vi hanno sconfitto: Veglia di ${presetMin(f.gameId, 'veglia') || 2} minuti, poi tornate in gioco.`, tag: `ef-${f.id}`, url: '/#/timer' });
+  } else {
+    if (task && !task.doneAt && !task.cancelledAt) F().cancelTask(task.id, 'sistema', `Il Settore ${t.sectorName} vi ha battuto: ${task.kind === 'hunt' ? 'la caccia è fallita' : 'l\'incarico si chiude'}.`);
+    notify([t.id], f.gameId, { title: 'Scontro vinto', body: `Avete battuto gli Eletti (squadra ${sq?.name || '?'}).`, tag: `ef-${f.id}` });
+  }
+  electRefresh(f.gameId);
+}
+
+function respondElectFight(me, fightId, confirm) {
+  requireCouple(me);
+  const f = q.get('SELECT * FROM elect_fights WHERE id = ? AND teamId = ?', Number(fightId), me.id);
+  if (!f) throw err(404, 'Scontro non trovato');
+  if (f.status !== 'pending') throw err(409, 'Scontro già registrato');
+  if (confirm) { applyElectFight(f, `coppia:${me.id}`); return { ok: true, status: 'confirmed' }; }
+  q.run("UPDATE elect_fights SET status = 'contested', resolvedAt = ? WHERE id = ?", Date.now(), f.id);
+  G.log(f.gameId, `coppia:${me.id}`, 'elect_fight_contested', { by: me.sectorName });
+  notify([me.id], f.gameId, null);
+  electRefresh(f.gameId);
+  rt.pushMasters({ title: 'Scontro con gli Eletti contestato', body: `Il Settore ${me.sectorName} contesta l'esito: serve la regia.`, url: '/regia#live' });
+  return { ok: true, status: 'contested' };
+}
+
+function resolveElectFight(fightId, decision, actor) {
+  const f = q.get('SELECT * FROM elect_fights WHERE id = ?', Number(fightId));
+  if (!f) throw err(404, 'Scontro non trovato');
+  if (!['pending', 'contested'].includes(f.status)) throw err(409, 'Scontro già chiuso');
+  if (decision === 'confirm') applyElectFight(f, actor);
+  else if (decision === 'cancel') {
+    q.run("UPDATE elect_fights SET status = 'cancelled', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), actor, f.id);
+    G.log(f.gameId, actor, 'elect_fight_cancelled', { id: f.id });
+    notify([f.teamId], f.gameId, null);
+    electRefresh(f.gameId);
+  } else throw err(400, 'Decisione non valida');
+}
+
+function electFightOut(f) {
+  const sq = squadOf(f.squadId);
+  return { id: f.id, winner: f.winner, status: f.status, createdAt: f.createdAt, resolvedAt: f.resolvedAt, author: f.author,
+    squadId: f.squadId, squadName: sq?.name || null, team: teamLite(f.teamId), hunt: !!f.taskId && q.get('SELECT kind FROM squad_tasks WHERE id = ?', f.taskId)?.kind === 'hunt' };
+}
+
+// Pagina Scontri degli Eletti: le coppie che la squadra vede e gli scontri della squadra.
+function electCombatState(electTeam, player) {
+  if (!electTeam || electTeam.kind !== 'elect') return null;
+  const squadId = player?.squadId || null;
+  return {
+    elect: true,
+    targets: squadId ? F().electVisibleTeams(electTeam.gameId, squadId).map((x) => ({ ...teamLite(x.teamId), why: x.why, pending: !!q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND squadId = ? AND status = 'pending'", x.teamId, squadId) })) : [],
+    fights: squadId ? q.all('SELECT * FROM elect_fights WHERE squadId = ? ORDER BY id DESC LIMIT 20', squadId).map(electFightOut) : [],
+  };
+}
+
 // ---------------------------------------------------------------- viste
 
 const teamLite = (id) => { const t = team(id); return t ? { teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor } : null; };
@@ -589,7 +693,8 @@ function allianceNews(me, a, now) {
   };
 }
 
-function combatState(me) {
+function combatState(me, player = null) {
+  if (me.kind === 'elect') return electCombatState(me, player);
   if (me.kind !== 'couple') return null;
   expireOld(me.gameId);
   const a = allianceOf(me.id);
@@ -619,6 +724,9 @@ function combatState(me) {
     victories: recent.filter((e) => e.status === 'confirmed' && e.result !== 'draw' && JSON.parse(e.winners).includes(me.id) && e.resolvedAt > now - VICTORY_SHOW_MS)
       .map((e) => victoryOut(e)),
     history: recent.slice(0, 15).map((e) => engagementOut(e, me.id)),
+    // Scontri con gli Eletti: da confermare e vittorie appena confermate.
+    electToConfirm: q.all("SELECT * FROM elect_fights WHERE teamId = ? AND status = 'pending' ORDER BY id", me.id).map(electFightOut),
+    electWins: q.all("SELECT * FROM elect_fights WHERE teamId = ? AND status = 'confirmed' AND winner = 'couple' AND resolvedAt > ?", me.id, now - VICTORY_SHOW_MS).map(electFightOut),
   };
 }
 
@@ -642,9 +750,10 @@ function masterCombat(gameId) {
       steals: q.all('SELECT s.teamId, s.chosenAt, x.name AS sectorName FROM engagement_steals s LEFT JOIN sectors x ON x.id = s.sectorId WHERE s.engagementId = ?', e.id)
         .map((x) => ({ team: teamLite(x.teamId), sectorName: x.sectorName, chosen: !!x.chosenAt })),
     })),
+    electFights: q.all('SELECT * FROM elect_fights WHERE gameId = ? ORDER BY id DESC LIMIT 60', gameId).map(electFightOut),
     requests: q.all("SELECT * FROM alliance_requests WHERE gameId = ? AND status = 'pending' ORDER BY id", gameId)
       .map((r) => ({ id: r.id, kind: r.kind, from: teamLite(r.fromTeamId), to: teamLite(r.toTeamId), createdAt: r.createdAt })),
   };
 }
 
-module.exports = { poison, knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { reportElectFight, respondElectFight, resolveElectFight, poison, knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };

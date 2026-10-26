@@ -780,7 +780,24 @@ function combatPanel() {
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Confermare l\'esito?', `${outcome(e)}. I vincitori ricevono i Sigilli degli sconfitti, gli sconfitti fanno la Veglia.`, 'POST', `/api/m/engagements/${e.id}/resolve`, { decision: 'confirm' }, 'Esito confermato') }, 'Conferma'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Annullare lo scontro?', 'Nessun Sigillo passa di mano.', 'POST', `/api/m/engagements/${e.id}/resolve`, { decision: 'cancel' }, 'Scontro annullato', true) }, 'Annulla'))))) : h('p', { class: 'empty' }, 'Nessuno scontro da decidere.'),
+      electFightsPanel(c, tn),
       c.recent.length ? [h('h3', { class: 'sub' }, 'Ultimi esiti'), h('ul', { class: 'feed' }, c.recent.map((e) => h('li', { class: 'ev' }, h('span', { class: 'mono tiny muted' }, fmtTime(e.resolvedAt || e.createdAt)), h('span', { class: 'ev-type' }, e.status === 'cancelled' ? 'Annullato' : e.result === 'draw' ? 'Pareggio' : 'Scontro'), h('span', { class: 'ev-text' }, outcome(e)))))] : null));
+}
+
+// Scontri tra squadre di Eletti e coppie: quelli da decidere (contestati o in attesa) e gli ultimi esiti.
+function electFightsPanel(c, tn) {
+  const list = c.electFights || [];
+  if (!list.length) return null;
+  const what = (f) => `${f.winner === 'elect' ? `Eletti (${f.squadName}) vincono su` : `${tn(f.team)} vince sugli Eletti (${f.squadName}) ·`} ${f.winner === 'elect' ? tn(f.team) : ''}${f.hunt ? ' · caccia' : ''}`;
+  const open = list.filter((f) => ['pending', 'contested'].includes(f.status));
+  const done = list.filter((f) => !['pending', 'contested'].includes(f.status)).slice(0, 10);
+  return [h('h3', { class: 'sub' }, 'Scontri con gli Eletti'),
+    open.length ? h('ul', { class: 'field-list' }, open.map((f) => h('li', { class: f.status === 'contested' ? 'contested' : '' },
+      h('div', { class: 'grow' }, h('strong', null, what(f)), h('div', { class: 'tiny muted' }, `${fmtTime(f.createdAt)} · dichiarato da ${f.author || 'Eletti'} · ${f.status === 'contested' ? 'CONTESTATO' : 'in attesa della coppia'}`)),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Confermare l\'esito?', `${what(f)}.`, 'POST', `/api/m/elect-fights/${f.id}/resolve`, { decision: 'confirm' }, 'Esito confermato') }, 'Conferma'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Annullare lo scontro?', 'Nessun effetto per la coppia e per la caccia.', 'POST', `/api/m/elect-fights/${f.id}/resolve`, { decision: 'cancel' }, 'Scontro annullato', true) }, 'Annulla'))))) : null,
+    done.length ? h('ul', { class: 'feed' }, done.map((f) => h('li', { class: 'ev' }, h('span', { class: 'mono tiny muted' }, fmtTime(f.resolvedAt || f.createdAt)), h('span', { class: 'ev-type' }, f.status === 'cancelled' ? 'Annullato' : 'Eletti'), h('span', { class: 'ev-text' }, what(f))))) : null];
 }
 
 function nextCard(title, content) {

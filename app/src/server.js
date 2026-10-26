@@ -375,7 +375,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
   st.council = councilFlag(req);
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
-  st.combat = K.combatState(req.team);
+  st.combat = K.combatState(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   st.skills = S.skillsState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   st.events = EV.teamEvents(req.team, req.player);
@@ -395,6 +395,9 @@ app.post('/api/team/alliance/:id/cancel', needTeam, wrap((req) => K.cancelReques
 app.post('/api/team/engagement', needTeam, teamRateLimit, wrap((req) => K.reportEngagement(req.team, req.body.opponentTeamId, req.body.result, { skill: req.body.skill })));
 app.post('/api/team/engagement/:id/steal', needTeam, teamRateLimit, wrap((req) => K.stealCode(req.team, req.params.id, req.body.sectorId)));
 app.post('/api/team/engagement/:id/poison', needTeam, teamRateLimit, wrap((req) => K.poison(req.team, req.params.id)));
+// Scontri degli Eletti con le coppie: gli Eletti dichiarano, la coppia conferma o contesta.
+app.post('/api/team/elect-fight', needTeam, teamRateLimit, wrap((req) => K.reportElectFight(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null, req.body || {})));
+app.post('/api/team/elect-fight/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondElectFight(req.team, req.params.id, !!req.body.confirm)));
 app.post('/api/team/engagement/:id/respond', needTeam, teamRateLimit, wrap((req) => K.respondEngagement(req.team, req.params.id, !!req.body.confirm, { skill: req.body.skill })));
 // Posizione GPS del telefono (nessun limite di frequenza condiviso con le azioni: arriva ogni ~20 s).
 const lastPos = new Map();
@@ -627,6 +630,7 @@ m.post('/games/:id/advance', wrap((req) => {
   return { ok: true };
 }));
 m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), councilPending: St.pendingCount() })));
+m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
