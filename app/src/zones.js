@@ -30,6 +30,25 @@ function inside(pt, poly) {
   }
   return ok;
 }
+// Distanza dal bordo in metri, con segno: positiva dentro, negativa fuori.
+function edgeDepth(pt, poly) {
+  const M = 111320;
+  const c = Math.cos((pt.lat * Math.PI) / 180);
+  const xy = ([la, ln]) => [(ln - pt.lng) * M * c, (la - pt.lat) * M];
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = xy(poly[j]); const [bx, by] = xy(poly[i]);
+    const dx = bx - ax; const dy = by - ay;
+    const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return inside(pt, poly) ? best : -best;
+}
+// Isteresi sul bordo (il GPS balla di qualche metro e i due telefoni della coppia non coincidono):
+// si entra a ENTER_M dentro il bordo, si esce oltre EXIT_M fuori o dopo EXIT_AFTER_MS passati fuori.
+const ENTER_M = 3;
+const EXIT_M = 12;
+const EXIT_AFTER_MS = 45000;
 const pointsOf = (z) => JSON.parse(z.points);
 const zonesOf = (gameId, activeOnly = true) => q.all(`SELECT * FROM map_zones WHERE gameId = ? ${activeOnly ? 'AND active = 1' : ''} ORDER BY layer, id`, gameId);
 const teamPos = (teamId, now = Date.now()) => q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', teamId, now - 10 * 60000);
@@ -130,16 +149,25 @@ function onPosition(team, pos, now = Date.now()) {
   const g = G.getGame(team.gameId);
   if (!C.ACTIVE.includes(g.status)) return;
   let any = false;
+  // Tutti i telefoni della coppia sentiti negli ultimi 2 minuti (la coppia è dentro se almeno uno lo è).
+  const devs = q.all('SELECT lat, lng FROM positions WHERE teamId = ? AND at > ?', team.id, now - 2 * 60000);
+  if (!devs.length) devs.push(pos);
   for (const z of zonesOf(g.id)) {
-    const isIn = inside(pos, pointsOf(z));
+    const poly = pointsOf(z);
+    const depth = Math.max(...devs.map((d) => edgeDepth(d, poly)));
     const pr = q.get('SELECT * FROM zone_presence WHERE zoneId = ? AND teamId = ?', z.id, team.id);
-    if (isIn && !pr?.inside) {
-      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt) VALUES (?, ?, 1, 0, ?, NULL)
-             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL`, z.id, team.id, now);
+    if (!pr?.inside && depth >= ENTER_M) {
+      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt, outsideSince) VALUES (?, ?, 1, 0, ?, NULL, NULL)
+             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL, outsideSince = NULL`, z.id, team.id, now);
       G.log(g.id, `coppia:${team.id}`, 'zone_enter', { teamId: team.id, zone: z.name, kind: z.kind, lat: pos.lat, lng: pos.lng });
       any = true;
-    } else if (!isIn && pr?.inside) {
-      q.run('UPDATE zone_presence SET inside = 0, immune = 0, leftAt = ? WHERE zoneId = ? AND teamId = ?', now, z.id, team.id);
+    } else if (pr?.inside && depth >= 0) {
+      if (pr.outsideSince) q.run('UPDATE zone_presence SET outsideSince = NULL WHERE zoneId = ? AND teamId = ?', z.id, team.id);
+    } else if (pr?.inside && depth > -EXIT_M && !(pr.outsideSince && now - pr.outsideSince >= EXIT_AFTER_MS)) {
+      // Appena fuori dal bordo: per ora resta dentro.
+      if (!pr.outsideSince) q.run('UPDATE zone_presence SET outsideSince = ? WHERE zoneId = ? AND teamId = ?', now, z.id, team.id);
+    } else if (pr?.inside) {
+      q.run('UPDATE zone_presence SET inside = 0, immune = 0, leftAt = ?, outsideSince = NULL WHERE zoneId = ? AND teamId = ?', now, z.id, team.id);
       if (!pr.immune) G.log(g.id, `coppia:${team.id}`, 'zone_exit', { teamId: team.id, zone: z.name, kind: z.kind, lat: pos.lat, lng: pos.lng });
       any = true;
     }

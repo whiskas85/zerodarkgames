@@ -2244,6 +2244,32 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.throws(() => Z.reorderZones(g.id, [999999], 'test'), /non valido/);
 });
 
+test('zone: sul bordo il GPS che balla non fa entrare e uscire (isteresi, due telefoni)', () => {
+  const F = require('../src/field');
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  const pls = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const m = 1 / 111320;
+  const z = Z.createZone(g.id, { kind: 'ombra', points: [[45 - 0.001, 9 - 0.001], [45 - 0.001, 9 + 0.001], [45 + 0.001, 9 + 0.001], [45 + 0.001, 9 - 0.001]] }, 'test');
+  const go = (i, lat) => F.recordPosition(A, pls[i] || pls[0], { deviceId: `dev-edge-${A.id}-${i}`, lat, lng: 9, acc: 5 });
+  const isIn = () => !!q.get('SELECT inside FROM zone_presence WHERE zoneId = ? AND teamId = ?', z.id, A.id)?.inside;
+  const edge = 45.001;
+  go(0, edge - 1 * m); assert.equal(isIn(), false, 'a 1 m dal bordo non si entra ancora');
+  go(0, edge - 10 * m); assert.equal(isIn(), true);
+  go(0, edge + 5 * m); assert.equal(isIn(), true, 'appena fuori resta dentro');
+  go(0, edge - 2 * m); go(0, edge + 6 * m); assert.equal(isIn(), true);
+  // L'altro telefono della coppia ancora dentro: la coppia resta dentro anche se il primo esce di molto.
+  go(1, edge - 20 * m); go(0, edge + 50 * m); assert.equal(isIn(), true);
+  go(1, edge + 30 * m); assert.equal(isIn(), false, 'tutti e due oltre 12 m fuori: uscita');
+  // Fuori di poco ma per più di 45 secondi: uscita.
+  go(0, edge - 10 * m); go(1, edge - 10 * m); assert.equal(isIn(), true);
+  go(0, edge + 5 * m); go(1, edge + 5 * m);
+  q.run('UPDATE zone_presence SET outsideSince = ? WHERE zoneId = ? AND teamId = ?', Date.now() - 50000, z.id, A.id);
+  go(0, edge + 5 * m); assert.equal(isIn(), false);
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);
