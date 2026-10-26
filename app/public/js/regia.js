@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
-import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet } from './map.js';
+import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { omnibar, matches } from './omnibar.js';
 
@@ -1973,6 +1973,8 @@ function viewFieldMap() {
       ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.enabled ? z.color : '#8a8a8a', fill: !z.enabled ? 0.02 : z.active ? 0.18 : 0.04, dash: z.active && z.enabled ? null : z.enabled ? '6 6' : '2 6',
         title: `${z.icon} ${z.name}${!z.enabled ? ' · non abilitata (le coppie non la vedono)' : z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
       ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
+      // Area della mappa offline (scheda «Mappa offline»): rettangolo tratteggiato.
+      ...(R.mapTab === 'offline' && (R.offDraft || R.offline?.area) ? [(() => { const b = (R.offDraft || R.offline.area).bounds; return { key: 'offline-area', points: [[b.south, b.west], [b.south, b.east], [b.north, b.east], [b.north, b.west]], color: '#3b82f6', fill: 0.05, dash: '8 6' }; })()] : []),
     ]);
     drawZoneEditor();
   });
@@ -2012,6 +2014,7 @@ function viewFieldMap() {
     ['punti', 'Punti di interesse', pois.length],
     ['indicazioni', 'Indicazioni', guide.length],
     ['alleanze', 'Alleanze', allies],
+    ['offline', 'Mappa offline', null],
     ['legenda', 'Legenda', null],
   ];
   const cur = tabs.some(([k]) => k === R.mapTab) ? R.mapTab : (toPlace.length ? 'piazzare' : 'zone');
@@ -2075,6 +2078,7 @@ function viewFieldMap() {
           h('button', { class: 'btn btn-sm', onclick: () => guideDialog(x) }, 'Modifica'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deleteGuideDialog(x) }, 'Elimina'))))) : h('p', { class: 'empty' }, 'Nessuna indicazione.')],
     alleanze: () => [alliancesList(true)],
+    offline: () => [offlinePanel()],
     legenda: () => [legend, h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
       h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per foto e dettagli e per spostarlo. Coppie in mappa dal VIA, Eletti da partita pronta.')],
   };
@@ -2142,6 +2146,47 @@ async function saveZoneDraw() {
     R.mapTab = 'zone';
     await load();
   } catch (e) { toast(e.message, 'error', 6000); }
+}
+
+// Mappa offline: la regia sceglie l'area (quella visibile sulla mappa) e il livello di dettaglio; il server ne
+// scarica i riquadri. Le app poi propongono di scaricarla sul telefono, per usarla senza rete.
+let offPoll = null;
+async function loadOffline() {
+  try { R.offline = await api('GET', G('/offline-map')); } catch { R.offline = null; }
+  clearTimeout(offPoll);
+  if (R.offline?.job?.running && R.mapTab === 'offline' && tab() === 'mappa') offPoll = setTimeout(async () => { await loadOffline(); render(); }, 2000);
+}
+function offlinePanel() {
+  if (R.offline === undefined || R.offlineGame !== R.gameId) { R.offlineGame = R.gameId; R.offline = null; loadOffline().then(render); }
+  const st = R.offline || {};
+  const a = st.area;
+  const job = st.job;
+  const draft = R.offDraft;
+  const minZ = Number(R.offMinZ || 13);
+  const maxZ = Number(R.offMaxZ || 17);
+  const n = draft ? tilesFor(draft.bounds, minZ, maxZ).length : 0;
+  const mb = (k) => `${Math.max(1, Math.round((k * 18) / 1024))} MB`;
+  const zoomSel = (val, onchange, opts) => h('select', { class: 'input input-sm', onchange }, opts.map(([v, l]) => h('option', { value: v, selected: Number(v) === val }, l)));
+  return h('div', { class: 'stack-sm' },
+    h('p', { class: 'tiny muted' }, 'Scegli l\'area del campo: il server ne scarica le mappe e le app delle coppie e degli Eletti propongono di scaricarla sul telefono, così la mappa funziona anche senza rete. Le zone fuori dall\'area si scaricano comunque quando servono (e restano in cache).'),
+    a ? h('div', { class: 'card stack-sm' },
+      h('strong', null, a.readyAt ? '✓ Area pronta sul server' : 'Scaricamento sul server…'),
+      h('div', { class: 'tiny muted' }, `${a.count} riquadri · dettaglio ${a.minZ}–${a.maxZ} · ~${mb(a.count)}${a.failed ? ` · ${a.failed} non scaricati` : ''}`),
+      job?.running ? h('div', { class: 'off-track' }, h('i', { style: { width: `${Math.round(((job.done + job.failed) / job.total) * 100)}%` } })) : null,
+      job?.running ? h('div', { class: 'tiny mono' }, `${job.done + job.failed}/${job.total}${job.failed ? ` · ${job.failed} non riusciti` : ''}`) : null,
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-sm', onclick: () => { const m = fieldMap.map; if (m) m.fitBounds([[a.bounds.south, a.bounds.west], [a.bounds.north, a.bounds.east]]); } }, 'Mostra l\'area'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (!(await dialog({ title: 'Togliere la mappa offline?', text: 'Le app non la proporranno più. I riquadri già scaricati restano al server.', okLabel: 'Togli', danger: true }))) return; await api('DELETE', G('/offline-map')); R.offline = null; await loadOffline(); render(); } }, 'Togli'))) : h('p', { class: 'empty' }, 'Nessuna mappa offline.'),
+    h('div', { class: 'card stack-sm' },
+      h('strong', null, a ? 'Cambia l\'area' : 'Nuova area'),
+      h('button', { class: 'btn btn-sm', onclick: () => { const m = fieldMap.map; if (!m) return; const b = m.getBounds(); R.offDraft = { bounds: { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() } }; render(); } }, draft ? '↻ Usa di nuovo l\'area visibile' : '▭ Usa l\'area visibile sulla mappa'),
+      h('div', { class: 'form-grid' },
+        h('label', { class: 'field' }, h('span', null, 'Dettaglio minimo'), zoomSel(minZ, (e) => { R.offMinZ = e.target.value; render(); }, [[12, '12 · zona ampia'], [13, '13'], [14, '14'], [15, '15']])),
+        h('label', { class: 'field' }, h('span', null, 'Dettaglio massimo'), zoomSel(maxZ, (e) => { R.offMaxZ = e.target.value; render(); }, [[15, '15'], [16, '16'], [17, '17 · sentieri']]))),
+      draft ? h('div', { class: `tiny ${n > 4000 ? 'bad' : 'muted'}` }, `${n} riquadri · ~${mb(n)}${n > 4000 ? ' · troppi (massimo 4000): stringi l\'area o abbassa il dettaglio' : ''}`) : h('div', { class: 'tiny muted' }, 'Inquadra il campo sulla mappa, poi premi il pulsante qui sopra.'),
+      h('button', { class: 'btn btn-primary', disabled: !draft || n > 4000 || job?.running, onclick: async () => {
+        try { R.offline = await api('POST', G('/offline-map'), { bounds: draft.bounds, minZ, maxZ }); R.offDraft = null; toast('Scaricamento della mappa avviato sul server', 'ok'); await loadOffline(); render(); } catch (e) { toast(e.message, 'error', 7000); }
+      } }, 'Scarica sul server')));
 }
 
 function zonesPanel() {

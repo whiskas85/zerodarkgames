@@ -20,7 +20,8 @@ export function loadLeaflet() {
   return leafletLoading;
 }
 
-const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+// Riquadri dal nostro server: li ha su disco (area scaricata dalla regia) o li prende una volta e li tiene.
+const TILES = '/tiles/{z}/{x}/{y}.png';
 const FALLBACK_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = 'Mappa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, SRTM · Stile © <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA)';
 const ITALY = [42.5, 12.5];
@@ -62,6 +63,17 @@ export function pinHtml(item) {
 // Le persone (coppie ed Eletti) stanno sopra a tutti gli altri segnaposto; "io" sta sopra a tutto.
 const zOf = (it) => (it.kind === 'emergency' ? 9000 : it.kind === 'team' || it.kind === 'elect' ? 5000 : it.kind === 'target' ? 200 : 0);
 
+// Riquadri che coprono un'area (come sul server): per scaricare la mappa offline e stimarne la dimensione.
+const lon2x = (lng, z) => Math.floor(((lng + 180) / 360) * 2 ** z);
+const lat2y = (lat, z) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
+export function tilesFor(b, minZ, maxZ) {
+  const out = [];
+  for (let z = minZ; z <= maxZ; z++) {
+    for (let x = lon2x(b.west, z); x <= lon2x(b.east, z); x++) for (let y = lat2y(b.north, z); y <= lat2y(b.south, z); y++) out.push([z, x, y]);
+  }
+  return out;
+}
+
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
@@ -100,8 +112,8 @@ export function createMapView({ className = '' } = {}) {
     L = lib;
     map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, 6);
     // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
-    const topo = L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', attribution: ATTRIBUTION, crossOrigin: true }).addTo(map);
-    // OpenTopoMap a volte è lento o non risponde: quel riquadro si prende da OpenStreetMap (una volta sola per riquadro).
+    const topo = L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, attribution: ATTRIBUTION }).addTo(map);
+    // Se il nostro server non lo dà (né su disco né dai server delle mappe), quel riquadro si prende da OpenStreetMap.
     topo.on('tileerror', (e) => {
       if (!e.tile || e.tile.dataset.fallback) return;
       e.tile.dataset.fallback = '1';

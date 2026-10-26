@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v269';
+const VERSION = 'zdg-v270';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
@@ -22,7 +22,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== 'zdg-fonts' && k !== 'zdg-tiles').map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== 'zdg-fonts' && k !== 'zdg-tiles' && k !== 'zdg-offline').map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -30,6 +30,24 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Riquadri dal nostro server: prima la mappa offline scaricata sul telefono, poi quelli già visti, poi la rete
+  // (salvati per la prossima volta). Lo scaricamento della mappa offline li mette da sé nella sua cache.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/tiles/')) {
+    e.respondWith((async () => {
+      const off = await (await caches.open('zdg-offline')).match(url.pathname);
+      if (off) return off;
+      const c = await caches.open('zdg-tiles');
+      const hit = await c.match(req);
+      if (hit) return hit;
+      try {
+        const res = await fetch(req);
+        if (res.ok && !req.headers.get('X-Zdg-Offline')) { c.put(req, res.clone()); trimTiles(c); }
+        return res;
+      } catch { return new Response('', { status: 504 }); }
+    })());
+    return;
+  }
 
   // Riquadri della mappa (OpenTopoMap e, se non risponde, OpenStreetMap): cache-first, così la mappa già vista
   // funziona anche senza segnale nel bosco. Se il server non risponde entro 6 secondi il riquadro fallisce e la

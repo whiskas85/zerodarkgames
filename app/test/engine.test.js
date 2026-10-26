@@ -2414,6 +2414,19 @@ test('tradimenti: li ricevono le coppie, non gli Eletti', () => {
   assert.ok(!G.teamState(elect).announcements.some((a) => a.type === 'revelation'));
 });
 
+test('mappa offline: riquadri di un\'area e limiti', () => {
+  const TL = require('../src/tiles');
+  const b = { south: 45.0, west: 9.0, north: 45.01, east: 9.01 };
+  const list = TL.tilesFor(b, 15, 17);
+  assert.ok(list.length > 10 && list.length < 200);
+  assert.ok(list.every(([z]) => z >= 15 && z <= 17));
+  assert.deepEqual(TL.readArea({ bounds: b, minZ: 5, maxZ: 30 }), { bounds: b, minZ: 10, maxZ: 17 });
+  assert.throws(() => TL.readArea({ bounds: { south: 2, west: 1, north: 1, east: 2 } }), /non valida/);
+  const g = setupGame(2);
+  assert.throws(() => TL.startDownload(g.id, { bounds: { south: 44, west: 8, north: 46, east: 10 }, minZ: 17, maxZ: 17 }, 'test'), /troppo grande/);
+  assert.equal(TL.teamOffline(g.id), null);
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);

@@ -15,6 +15,7 @@ const A = require('./accounts');
 const K = require('./combat');
 const S = require('./skills');
 const EV = require('./events');
+const TL = require('./tiles');
 const RP = require('./replay');
 const Z = require('./zones');
 const CT = require('./chrono-types');
@@ -195,6 +196,14 @@ app.use(express.json({ limit: '200kb' }));
 app.use(loadAuth);
 
 // Aperto anche da altri indirizzi: la regia lo usa per provare se l'indirizzo dei QR risponde.
+// Riquadri della mappa dal nostro server (su disco, o scaricati una volta e salvati): li usano tutte le mappe.
+app.get('/tiles/:z/:x/:y.png', async (req, res) => {
+  try {
+    const t = await TL.getTile(Number(req.params.z), Number(req.params.x), Number(req.params.y));
+    res.set('Cache-Control', 'public, max-age=2592000');
+    res.sendFile(t.file);
+  } catch (e) { res.status(e.status || 504).end(); }
+});
 app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '*'); res.json({ ok: true, env: process.env.ZDG_ENV || 'production' }); });
 app.get('/api/time', (_req, res) => res.json({ now: Date.now() }));
 
@@ -380,6 +389,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   st.events = EV.teamEvents(req.team, req.player);
   st.zones = Z.teamZones(req.team);
+  st.offlineMap = TL.teamOffline(req.team.gameId);
   st.beacon = Z.electBeacon(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
@@ -667,6 +677,10 @@ m.patch('/chrono-types/:cid', wrap((req) => CT.updateType(Number(req.params.cid)
 m.delete('/chrono-types/:cid', wrap((req) => { CT.deleteType(Number(req.params.cid)); return { ok: true }; }));
 m.get('/games/:id/replay', wrap((req) => RP.replayData(gameId(req), { since: Number(req.query.since) || 0 })));
 m.get('/games/:id/prints', wrap((req) => print.catalog(G.getGame(gameId(req)), baseUrl(req))));
+// Mappa offline: la regia sceglie un'area e il server ne scarica i riquadri.
+m.get('/games/:id/offline-map', wrap((req) => TL.status(gameId(req))));
+m.post('/games/:id/offline-map', wrap((req) => TL.startDownload(gameId(req), req.body || {}, actor(req))));
+m.delete('/games/:id/offline-map', wrap((req) => TL.clearArea(gameId(req))));
 m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(req.headers['content-type'] || '').split(';')[0]); return { ok: true }; }));
 m.delete('/print-logo', wrap(() => { print.resetLogo(); return { ok: true }; }));
 m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));

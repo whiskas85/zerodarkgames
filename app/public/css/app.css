@@ -1086,3 +1086,10 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .ef-row { display: grid; gap: 4px; width: 100%; }
 .ef-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .zones-legend li { cursor: pointer; }
+
+/* Mappa offline: striscia di proposta sopra la mappa */
+.off-prompt { position: absolute; top: 10px; left: 56px; right: 10px; z-index: 600; display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 1.5px solid var(--brass, #d1ad62); box-shadow: 0 2px 10px rgba(0,0,0,.4); font-size: 13px; }
+.off-prompt .row { gap: 6px; }
+.off-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.off-track i { display: block; height: 100%; background: var(--brass, #d1ad62); transition: width .2s; }
+.campo > .off-prompt { position: relative; top: auto; left: auto; right: auto; margin: 6px 10px; }

@@ -1,5 +1,5 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
-import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC } from './map.js';
+import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC, tilesFor } from './map.js';
 import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
@@ -2265,6 +2265,7 @@ function viewMap(focus = null) {
     h('p', { class: 'mono small bad-text', id: 'map-gps', hidden: !!myPos || !gpsMsg }, myPos ? '' : gpsMsg || ''),
     h('div', { class: 'map-wrap' },
       teamMapView.el,
+      offlinePrompt(),
       zones?.emp ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.')) : null,
       h('div', { class: 'map-tools' },
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
@@ -2274,6 +2275,70 @@ function viewMap(focus = null) {
 }
 
 // ---------------------------------------------------------------- Zone della mappa
+
+// ---- Mappa offline sul telefono: l'area preparata dalla regia si scarica una volta e poi funziona senza rete.
+// Ibrido: i riquadri scaricati si usano da qui, gli altri arrivano dal server (e restano in cache).
+const OFF_KEY = 'zdg_offline_map';
+let offDl = null; // { done, total, failed }
+function offlineInfo() {
+  const o = S.state?.offlineMap;
+  if (!o) return null;
+  const have = store.get(OFF_KEY, null);
+  return { o, ready: have?.version === o.version, at: have?.at || null, skipped: store.get('zdg_offline_skip', null) === o.version };
+}
+async function downloadOffline() {
+  const info = offlineInfo();
+  if (!info || offDl || !('caches' in window)) return;
+  const { o } = info;
+  const list = tilesFor(o.bounds, o.minZ, o.maxZ);
+  offDl = { done: 0, total: list.length, failed: 0 };
+  render();
+  // Una versione nuova dell'area sostituisce quella vecchia.
+  if (store.get(OFF_KEY, null)?.version !== o.version) await caches.delete('zdg-offline');
+  const c = await caches.open('zdg-offline');
+  let i = 0;
+  const bar = () => { const el = document.getElementById('off-bar'); if (el) el.style.width = `${Math.round((offDl.done / offDl.total) * 100)}%`; const t = document.getElementById('off-txt'); if (t) t.textContent = `${offDl.done}/${offDl.total}`; };
+  const worker = async () => {
+    while (i < list.length) {
+      const [z, x, y] = list[i++];
+      const url = `/tiles/${z}/${x}/${y}.png`;
+      try {
+        if (!(await c.match(url))) {
+          const r = await fetch(url, { headers: { 'X-Zdg-Offline': '1' } });
+          if (r.ok) await c.put(url, r); else offDl.failed++;
+        }
+      } catch { offDl.failed++; }
+      offDl.done++;
+      bar();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  const failed = offDl.failed;
+  offDl = null;
+  if (!failed) { store.set(OFF_KEY, { version: o.version, at: Date.now() }); toast('Mappa del campo scaricata: funziona anche senza rete', 'ok', 6000); } else toast(`Mappa scaricata in parte (${failed} riquadri mancanti): riprova con più segnale`, 'error', 7000);
+  render();
+}
+async function removeOffline() { await caches.delete('zdg-offline'); store.del(OFF_KEY); render(); }
+const offMb = (n) => `${Math.max(1, Math.round((n * 18) / 1024))} MB`;
+// Sulla mappa: una striscia piccola che propone di scaricarla (o mostra l'avanzamento).
+function offlinePrompt() {
+  const info = offlineInfo();
+  if (!info || (info.ready && !offDl) || (info.skipped && !offDl)) return null;
+  if (offDl) return h('div', { class: 'off-prompt' }, h('span', null, '📥 Scarico la mappa del campo… ', h('strong', { id: 'off-txt', class: 'mono' }, `${offDl.done}/${offDl.total}`)), h('div', { class: 'off-track' }, h('i', { id: 'off-bar', style: { width: `${Math.round((offDl.done / offDl.total) * 100)}%` } })));
+  return h('div', { class: 'off-prompt' },
+    h('span', null, `📥 Mappa del campo offline · ~${offMb(info.o.count)}`),
+    h('div', { class: 'row' }, h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: downloadOffline }, 'Scarica'),
+      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { store.set('zdg_offline_skip', info.o.version); render(); } }, 'Dopo')));
+}
+// Nelle Impostazioni: stato e pulsanti.
+function offlineRow() {
+  const info = offlineInfo();
+  if (!info) return null;
+  return h('div', { class: 'card toggle-row' },
+    h('div', null, h('strong', null, 'Mappa del campo offline'),
+      h('div', { class: 'muted small' }, offDl ? `Scaricamento in corso: ${offDl.done}/${offDl.total}` : info.ready ? `Scaricata${info.at ? ` il ${new Date(info.at).toLocaleDateString('it-IT')}` : ''}: funziona anche senza rete.` : `Pronta da scaricare (~${offMb(info.o.count)}): poi la mappa funziona anche senza rete.`)),
+    info.ready ? h('button', { class: 'btn', type: 'button', onclick: removeOffline }, 'Rimuovi') : h('button', { class: 'btn btn-primary', type: 'button', disabled: !!offDl, onclick: downloadOffline }, 'Scarica'));
+}
 
 // ---- Posizione del telefono: mappa in tempo reale, zone decise sul telefono e invio al server.
 let localFixAt = 0;
@@ -2497,6 +2562,7 @@ function viewElectMap() {
   queueMicrotask(() => field.mapView.setPolygons(zonePolygons(S.state?.zones)));
   return h('div', { class: 'campo' },
     trackingNote(S.state),
+    offlinePrompt(),
     field.viewMap({ full: true, bare: true }));
 }
 
@@ -4092,6 +4158,7 @@ function viewSettings() {
       h('button', { class: `btn ${S.settings.sound ? 'btn-primary' : ''}`, onclick: () => { set('sound', !S.settings.sound); if (S.settings.sound) beep(true); } }, S.settings.sound ? 'Attivo' : 'Spento')),
     keepAwakeRow(render),
     dimRow(),
+    offlineRow(),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
       h('button', { class: `btn ${S.settings.sun ? 'btn-primary' : ''}`, onclick: () => set('sun', !S.settings.sun) }, S.settings.sun ? 'Attiva' : 'Spenta')),
     st ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? 'Iscrizione' : 'Coppia'), h('p', null, st.team.members.map((m) => (m.name ? m.name + (m.nickname ? ` «${m.nickname}»` : '') : m.nickname ? `«${m.nickname}»` : m.me ? 'Tu' : 'Legato')).join(isElect() ? ', ' : ' e ')), h('p', { class: 'muted small' }, st.game.name)) : null,
