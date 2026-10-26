@@ -1171,3 +1171,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 }
 .side-ico.poi { border-color: #9b6cf0; color: #b494f5; }
 .side-ico.guide { border-color: #3b82f6; color: #7fb0ff; border-radius: 6px; }
+.task-sub { margin-top: 12px; padding-top: 10px; border-top: 1.5px dashed var(--line); display: grid; gap: 8px; }

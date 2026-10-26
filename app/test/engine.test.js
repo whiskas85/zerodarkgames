@@ -2338,6 +2338,12 @@ test('Eletti: eventi della squadra (anche non lanciati), chat con le coppie iscr
   EV.sendChat(null, null, ev.id, { teamId: A.id, text: 'Dal Consiglio' }, true);
   assert.deepEqual(EV.teamEvents(A).find((x) => x.id === ev.id).chat.map((m) => m.fromKind), ['couple', 'elect', 'master']);
   assert.equal(EV.teamEvents(elect, pE).find((x) => x.id === ev.id).entries[0].chat.length, 3);
+  // Dalla bacheca Incarichi: l'evento passa alla regia e poi all'altra squadra.
+  EV.setSquad(ev.id, null, 'test');
+  assert.ok(!EV.teamEvents(elect, pE).some((x) => x.id === ev.id));
+  EV.setSquad(ev.id, beta, 'test');
+  assert.ok(EV.teamEvents(elect, pO).some((x) => x.id === ev.id));
+  assert.throws(() => EV.setSquad(ev.id, 999999, 'test'), /Squadra non valida/);
 });
 
 test('scontri degli Eletti: solo con le coppie visibili; vittoria = Veglia e Sigillo al cacciatore, sconfitta = caccia fallita', () => {

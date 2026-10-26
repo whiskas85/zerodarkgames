@@ -99,6 +99,19 @@ function setSchedule(id, data, actor) {
   changed(ev);
   return masterEvent(nx);
 }
+// Squadra di Eletti custode (null = la segue la regia): si affida dalla bacheca degli Incarichi.
+function setSquad(id, squadId, actor) {
+  const ev = getEvent(id);
+  if (!ev) throw err(404, 'Evento non trovato');
+  if (ev.status === 'done') throw err(409, 'Evento concluso');
+  const sq = squadId ? q.get('SELECT * FROM elect_squads WHERE id = ? AND gameId = ?', Number(squadId), ev.gameId) : null;
+  if (squadId && !sq) throw err(400, 'Squadra non valida');
+  q.run('UPDATE game_events SET squadId = ? WHERE id = ?', sq?.id || null, ev.id);
+  G.log(ev.gameId, actor, 'event_squad', { name: ev.name, squad: sq?.name || 'regia' });
+  if (sq) pushSquad({ ...ev, squadId: sq.id }, { title: `🏁 Evento affidato: ${ev.name}`, body: 'Lo seguite voi: lo trovate in Eventi.' });
+  changed(ev);
+  return masterEvent(getEvent(ev.id));
+}
 // Fine prevista: dall'avvio vero (o dall'orario d'inizio) più la durata.
 const endsAtOf = (ev) => (ev.durationMin ? (ev.startedAt || ev.startAt || 0) + ev.durationMin * 60000 || null : null);
 
@@ -467,4 +480,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { setSquad, sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

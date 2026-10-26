@@ -2441,14 +2441,18 @@ function viewTaskBoard(d) {
   const allTasks = [...(d.openTasks || []), ...d.squads.flatMap((sq) => sq.tasks.map((t) => ({ ...t, squadId: sq.id })))]
     .filter((t) => !t.doneAt && !t.cancelledAt)
     .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', hunt: '🎯', meet: '🤝' }[t.kind] || '☰', title: t.text, what: t.source === 'skill' ? 'Da una Skill' : t.source === 'gift' ? 'Da un Dono' : 'Incarico' }));
-  const all = [...items, ...allTasks];
+  // Eventi non conclusi: senza squadra li segue la regia (stanno in «Da affidare»), si affidano come gli altri.
+  const evs = (R.ms?.gameEvents?.list || []).filter((ev) => ev.status !== 'done').map((ev) => ({ key: `event${ev.id}`, kind: 'event', x: ev, squadId: ev.squadId || null, icon: '🏁', title: ev.name,
+    what: `Evento · ${(EVENT_STATUS[ev.status] || [ev.status])[0]}${ev.startAt ? ` · ${fmtWhen(ev.startAt)}` : ''}${ev.squadId ? '' : ' · lo segue la regia'}` }));
+  const all = [...items, ...allTasks, ...evs];
   const assign = async (it, squadId) => {
     if ((it.squadId || null) === (squadId || null)) return;
     if (it.kind === 'task' && !squadId) { toast('Un incarico già affidato resta alla squadra: annullalo dalla sua scheda', 'error', 6000); return; }
     try {
-      if (it.kind === 'task') await api('POST', `/api/m/tasks/${it.x.id}/assign`, { squadId });
+      if (it.kind === 'event') await api('PATCH', `/api/m/events/${it.x.id}/squad`, { squadId: squadId || null });
+      else if (it.kind === 'task') await api('POST', `/api/m/tasks/${it.x.id}/assign`, { squadId });
       else await api('POST', '/api/m/assign', { kind: it.kind, id: it.x.id, squadId: squadId || null, move: !!it.x.moveRequestedAt });
-      toast(squadId ? `Affidato alla squadra ${d.squads.find((q) => q.id === squadId)?.name}` : 'Tolto dalla squadra', 'ok');
+      toast(squadId ? `Affidato alla squadra ${d.squads.find((q) => q.id === squadId)?.name}` : it.kind === 'event' ? 'Evento di nuovo alla regia' : 'Tolto dalla squadra', 'ok');
       await Promise.all([load(), loadField(false)]);
     } catch (e) { toast(e.message, 'error', 7000); }
   };
@@ -2458,21 +2462,25 @@ function viewTaskBoard(d) {
     h('span', { class: 'task-ico', 'aria-hidden': 'true' }, it.icon || '•'),
     h('div', { class: 'grow' }, h('strong', null, it.title), h('div', { class: 'tiny muted' }, it.what, it.point ? ' · punto indicato' : '')),
     h('div', { class: 'task-actions' },
-      it.kind === 'task' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
+      it.kind === 'task' || it.kind === 'event' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
+      it.kind === 'event' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#eventi' }, 'Apri') : null,
       h('select', { class: 'input input-sm', 'aria-label': 'Affida a una squadra', onchange: (e) => assign(it, Number(e.target.value) || null) },
-        h('option', { value: '' }, it.squadId ? '— togli —' : '→ squadra'), d.squads.map((q) => h('option', { value: q.id, selected: q.id === it.squadId }, q.name)))));
+        h('option', { value: '' }, it.squadId ? (it.kind === 'event' ? '— alla regia —' : '— togli —') : '→ squadra'), d.squads.map((q) => h('option', { value: q.id, selected: q.id === it.squadId }, q.name)))));
   const zone = (squadId, head, list, extra = {}) => h('div', { class: `task-zone ${extra.cls || ''}`, style: extra.color ? { '--c': extra.color } : null,
     ondragover: (e) => { if (dragTask && (dragTask.squadId || null) !== squadId && !(dragTask.kind === 'task' && !squadId)) { e.preventDefault(); e.currentTarget.classList.add('drop'); } },
     ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drop'); },
     ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('drop'); const it = dragTask; dragTask = null; if (it) assign(it, squadId); } },
-  head, list.length ? h('div', { class: 'task-list' }, list.map(card)) : h('p', { class: 'tiny muted task-empty' }, extra.empty || 'Trascina qui un\'attività'));
-  const free = all.filter((it) => !it.squadId);
+  head, list.length ? h('div', { class: 'task-list' }, list.map(card)) : h('p', { class: 'tiny muted task-empty' }, extra.empty || 'Trascina qui un\'attività'), extra.after || null);
+  const free = all.filter((it) => !it.squadId && it.kind !== 'event');
+  const regia = evs.filter((it) => !it.squadId);
   return h('div', { class: 'stack' },
     sectionActions('Incarichi', [h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: newTaskDialog }, '＋ Nuovo incarico')],
       h('p', { class: 'muted tiny' }, 'Le attività da svolgere: prima del via soprattutto piazzare Altari, Soglia, Cerchio e Doni; durante il gioco spostare doni, dare la caccia a una coppia e gli incarichi che crei tu. Trascina un\'attività su una squadra per affidargliela: la squadra riceve una notifica e la trova nella sua app. «Punto…» indica anche dove piazzarla.')),
     d.squads.length ? null : h('p', { class: 'people-info' }, 'Crea prima una squadra nella scheda «Squadre ed Eletti».'),
     h('div', { class: 'task-board' },
-      zone(null, h('div', { class: 'task-head' }, h('strong', null, 'Da affidare'), h('span', { class: 'chip chip-warn' }, String(free.length))), free, { cls: 'free', empty: 'Tutto affidato.' }),
+      zone(null, h('div', { class: 'task-head' }, h('strong', null, 'Da affidare'), h('span', { class: 'chip chip-warn' }, String(free.length + regia.length))), free, { cls: 'free', empty: 'Tutto affidato.',
+        // Eventi che segue la regia: si possono affidare a una squadra trascinandoli.
+        after: regia.length ? h('div', { class: 'task-sub' }, h('div', { class: 'task-head' }, h('strong', null, '🏁 Eventi · li segue la regia'), h('span', { class: 'chip' }, String(regia.length))), h('div', { class: 'task-list' }, regia.map(card))) : null }),
       h('div', { class: 'task-squads' }, d.squads.map((q) => {
         const list = all.filter((it) => it.squadId === q.id);
         return zone(q.id, h('div', { class: 'task-head' }, h('strong', null, `Squadra ${q.name}`), h('span', { class: 'tiny muted' }, `${q.members.length} Eletti`), h('span', { class: 'chip' }, String(list.length))), list, { color: q.color });
