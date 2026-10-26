@@ -4,7 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
-import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow } from './lib.js';
+import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -36,6 +36,9 @@ if (cached?.state) {
 }
 
 // Lavoro sul campo degli Eletti (incarichi, piazzamenti, mappa del campo), dentro la loro app.
+// Questa è l'app dei giocatori: anche con una sessione di regia aperta sullo stesso browser, gli Eletti vedono
+// solo quello che vede un Eletto (il server lo distingue da questa intestazione).
+API_HEADERS['X-Zdg-App'] = 'team';
 const FE = { who: { role: 'elect', squad: null }, gameId: null, squadId: store.get('zdg_campo_squad'), data: null, me: null, geoError: null };
 const field = createField(FE, { rerender: (tab) => { if (tab === 'mappa') location.hash = '#/mappa'; else render(); } });
 const FIELD_VIEWS = ['campo', 'incarichi', 'mappa'];

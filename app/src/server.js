@@ -529,7 +529,8 @@ app.get('/api/stream', (req, res, next) => {
 
 // ---- strumento di campo (/campo): Master o Eletti, dal telefono
 // Regia sul campo: il master e chi nel Consiglio Zero ha l'azione «Campo».
-const fieldStaff = (req) => St.can(req.user, 'campo');
+// Dall'app dei giocatori (X-Zdg-App: team) vale sempre la vista da Eletto, anche se sullo stesso browser c'è una sessione di regia.
+const fieldStaff = (req) => req.get('X-Zdg-App') !== 'team' && St.can(req.user, 'campo');
 const needField = (req, _res, next) => {
   if (fieldStaff(req)) return next();
   if (req.team?.kind !== 'elect') return next(new HttpError(401, 'Riservato alla regia e agli Eletti del Consiglio'));

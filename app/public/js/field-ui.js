@@ -1,6 +1,6 @@
 // Lavoro sul campo (Altari e Doni da piazzare, incarichi delle squadre, mappa del campo).
 // Usato dall'app degli Eletti (dentro la loro app) e dallo strumento di campo della regia (/campo).
-import { h, mount, api, fmtTime, toast, dialog, store, scanQR, vibrate } from './lib.js';
+import { h, mount, api, API_HEADERS, fmtTime, toast, dialog, store, scanQR, vibrate } from './lib.js';
 import { createMapView, watchPosition, positionItem, landmarkItem, accuracyHint, PLACE_MAX_ACC } from './map.js';
 
 const GIFT_STATE = { draft: 'Da piazzare', placed: 'Piazzato · non ancora annunciato', revealed: 'Annunciato: in mappa alle coppie', claimed: 'Preso', expired: 'Svanito (scaduto)' };
@@ -479,7 +479,7 @@ export function createField(F, { rerender }) {
       const body = prov ? null : photo;
       try {
         const path = { gift: 'gifts', point: 'points', landmark: 'landmarks' }[target.kind];
-        const res = await fetch(`/api/field/${path}/${target.id}/place?${qs}`, { method: 'POST', headers: { 'Content-Type': body ? 'image/jpeg' : 'application/octet-stream' }, body: body || undefined, credentials: 'same-origin' });
+        const res = await fetch(`/api/field/${path}/${target.id}/place?${qs}`, { method: 'POST', headers: { ...API_HEADERS, 'Content-Type': body ? 'image/jpeg' : 'application/octet-stream' }, body: body || undefined, credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
         vibrate([80, 60, 200]);

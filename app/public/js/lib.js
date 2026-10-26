@@ -44,12 +44,14 @@ export class ApiError extends Error {
   }
 }
 
+// Intestazioni in più per tutte le chiamate (l'app dei giocatori si presenta come tale: vedi X-Zdg-App).
+export const API_HEADERS = {};
 export async function api(method, url, body) {
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+      headers: { ...API_HEADERS, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
       cache: 'no-store',
