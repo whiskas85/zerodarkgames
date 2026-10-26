@@ -1473,10 +1473,31 @@ function beaconTerminal() {
   const line = (t, cls = '') => { log.append(h('div', { class: `bt-line ${cls}` }, t)); while (log.children.length > 40) log.firstChild.remove(); log.scrollTop = log.scrollHeight; };
   return { el, line, bar, status, close, done: (ok) => { el.classList.add(ok ? 'bt-ok' : 'bt-fail'); close.hidden = false; } };
 }
-const getGps = () => new Promise((resolve, reject) => {
+// Posizione per il Beacon: al massimo maxMs (10 s), poi si usa la migliore avuta (o l'ultima nota della mappa, se recente).
+// Si risponde prima appena il GPS è preciso.
+const getGps = (maxMs = 10000, onTick = null) => new Promise((resolve, reject) => {
+  const fresh = myPos && Date.now() - (myPos.at || 0) < 5000 && myPos.acc <= 25;
+  if (fresh) return resolve({ lat: myPos.lat, lng: myPos.lng, acc: Math.round(myPos.acc) });
   if (!navigator.geolocation) return reject(new Error('GPS non disponibile su questo telefono'));
-  navigator.geolocation.getCurrentPosition((p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
-    (e) => reject(new Error(e.code === 1 ? 'Permesso di posizione negato' : 'Posizione GPS non disponibile')), { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+  let best = null;
+  let denied = false;
+  const t0 = Date.now();
+  const finish = () => {
+    clearInterval(tick);
+    clearTimeout(timer);
+    navigator.geolocation.clearWatch(id);
+    const last = myPos && Date.now() - (myPos.at || 0) < 60000 ? { lat: myPos.lat, lng: myPos.lng, acc: Math.round(myPos.acc) } : null;
+    const pos = best || last;
+    if (pos) resolve(pos);
+    else reject(new Error(denied ? 'Permesso di posizione negato' : 'Posizione GPS non disponibile'));
+  };
+  const id = navigator.geolocation.watchPosition((p) => {
+    const fix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+    if (!best || fix.acc <= best.acc) best = fix;
+    if (fix.acc <= 25) finish();
+  }, (e) => { if (e.code === 1) { denied = true; finish(); } }, { enableHighAccuracy: true, timeout: maxMs, maximumAge: 5000 });
+  const timer = setTimeout(finish, maxMs);
+  const tick = setInterval(() => onTick?.(Math.ceil((maxMs - (Date.now() - t0)) / 1000), best), 2000);
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -1487,11 +1508,11 @@ async function launchBeacon() {
   T.line(`  0x${hex(8)} memoria ok`);
   T.line('> gps --fix --high-accuracy');
   let pos;
-  try { pos = await getGps(); } catch (e) { return beaconFail(T, e.message); }
+  try { pos = await getGps(10000, (left, b) => T.line(`  ...fix ${b ? `±${b.acc}m` : 'in corso'} (${left}s)`)); } catch (e) { return beaconFail(T, e.message); }
   T.line(`  LAT ${pos.lat.toFixed(6)}  LNG ${pos.lng.toFixed(6)}  ±${pos.acc}m`);
-  await sleep(500);
+  await sleep(250);
   T.line('> zone --match polygon');
-  await sleep(500);
+  await sleep(250);
   let z;
   try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, /all'interno/.test(e.message || '')); }
   if (z.kind === 'altar') return beaconAltar(z, T);
