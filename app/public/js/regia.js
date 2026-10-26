@@ -3750,6 +3750,18 @@ function locationPreview(key, loc) {
 }
 
 let evLocation = null;
+// Chat dell'evento tra la coppia e gli Eletti custodi: la regia la legge e può intervenire.
+function eventChatBox(ev, x) {
+  const msgs = x.chat || [];
+  const input = h('input', { class: 'input', placeholder: 'Scrivi come Consiglio…', maxlength: 1000, 'data-keep': `evchat-${ev.id}-${x.teamId}` });
+  return h('details', { class: 'ev-chat', 'data-keep': `evchatopen-${ev.id}-${x.teamId}` },
+    h('summary', null, `💬 Chat con gli Eletti (${msgs.length})`),
+    msgs.length ? h('ul', { class: 'ev-chat-list' }, msgs.map((m) => h('li', null, h('span', { class: 'tiny muted' }, `${fmtTime(m.createdAt)} · `),
+      h('strong', null, m.fromKind === 'master' ? 'Consiglio' : m.fromKind === 'elect' ? `${m.author || 'Eletto'} (Eletti)` : m.author || 'Coppia'), ': ', m.text))) : h('p', { class: 'tiny muted' }, 'Nessun messaggio.'),
+    ev.chatOpen ? h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); const text = input.value.trim(); input.value = ''; if (text) call('POST', `/api/m/events/${ev.id}/chat`, { teamId: x.teamId, text }, 'Messaggio inviato'); } },
+      input, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')) : null);
+}
+
 function viewEvents() {
   const ms = R.ms;
   const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
@@ -3823,7 +3835,8 @@ function viewEvents() {
           x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'alleanza: deve confermare') : x.groupId ? h('span', { class: 'chip' }, 'in alleanza') : null,
           x.joinedBy ? h('span', { class: 'tiny muted' }, ` · ${x.joinedBy}`) : null,
           x.outcome ? h('span', { class: `chip ${x.outcome === 'lost' ? 'chip-blood' : 'chip-ok'}` }, x.outcome === 'lost' ? 'persa' : 'vinta') : null,
-          x.confirmedAt ? h('span', { class: 'chip' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : x.outcome === 'lost' ? ' · niente premio' : ''}`) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
+          x.confirmedAt ? h('span', { class: 'chip' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : x.outcome === 'lost' ? ' · niente premio' : ''}`) : null,
+          ev.squadId ? eventChatBox(ev, x) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
       h('div', { class: 'row-actions' },
         ev.status === 'draft' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Lanciare l\'evento?', `«${ev.name}» arriva adesso a tutte le coppie con una notifica${ev.windowMin ? `; candidature aperte per ${ev.windowMin} minuti` : ''}.`, 'POST', `/api/m/events/${ev.id}/launch`, {}, 'Evento lanciato alle coppie') }, 'Lancia') : null,
         ev.status === 'open' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !ev.joined, onclick: () => confirmCall('Avviare l\'evento?', `Le coppie iscritte (${ev.joined}) ricevono l'avviso della tregua finale; le alleanze non confermate da tutti decadono.`, 'POST', `/api/m/events/${ev.id}/start`, {}, 'Evento avviato') }, 'Avvia') : null,

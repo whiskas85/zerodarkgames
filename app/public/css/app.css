@@ -1060,3 +1060,11 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .boost { color: #d1ad62; }
 .boost-note { border-color: #d1ad62; color: #f3d98b; }
 @media (prefers-reduced-motion: reduce) { .zone-boost { animation: none; } }
+
+/* Chat dell'evento (coppia ↔ Eletti custodi) */
+.ev-chat { border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.ev-chat > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+.ev-chat-list { max-height: 260px; overflow-y: auto; margin: 8px 0; padding: 0; }
+.ev-chat-form { display: flex; gap: 6px; margin-top: 6px; }
+.ev-chat-form .input { flex: 1; min-width: 0; }
+.ev-teams li.ev-team-chat { display: grid; gap: 6px; }

@@ -389,12 +389,47 @@ function baseOut(ev) {
 const entryOut = (e) => ({ ...teamLite(team(e.teamId)), status: e.status, groupId: e.groupId, joinedBy: e.joinedBy, joinedAt: e.joinedAt, confirmedAt: e.confirmedAt, outcome: e.outcome, reward: e.reward ? JSON.parse(e.reward) : null });
 
 function masterEvent(ev) {
-  return { ...baseOut(ev), author: ev.author, closedBy: ev.closedBy, entries: entriesOf(ev.id).map(entryOut) };
+  return { ...baseOut(ev), author: ev.author, closedBy: ev.closedBy, chatOpen: chatOpen(ev), entries: entriesOf(ev.id).map((e) => ({ ...entryOut(e), chat: chatOf(ev.id, e.teamId) })) };
 }
 
 function masterEvents(gameId) {
   return { list: q.all('SELECT * FROM game_events WHERE gameId = ? ORDER BY id DESC', gameId).map(masterEvent), rewards: REWARDS,
     giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon })) };
+}
+
+// ---------------------------------------------------------------- chat dell'evento
+// Una conversazione per ogni coppia iscritta, con la squadra di Eletti custode (la regia la legge e può scrivere).
+const chatOf = (eventId, teamId) => q.all('SELECT id, fromKind, author, text, createdAt FROM event_messages WHERE eventId = ? AND teamId = ? ORDER BY id', eventId, teamId);
+const chatOpen = (ev) => !!ev.squadId && (LIVE.includes(ev.status) || (ev.doneAt && Date.now() - ev.doneAt < 30 * 60000));
+
+function sendChat(t, player, eventId, body, isMaster = false) {
+  const ev = getEvent(eventId);
+  if (!ev || ev.gameId !== (t?.gameId ?? ev.gameId)) throw err(404, 'Evento non trovato');
+  const text = String(body?.text || '').trim().slice(0, 1000);
+  if (!text) throw err(400, 'Scrivi un messaggio');
+  let teamId;
+  let fromKind;
+  let author;
+  if (isMaster) {
+    teamId = Number(body.teamId); fromKind = 'master'; author = 'Consiglio';
+  } else if (t.kind === 'elect') {
+    if (!player?.squadId || player.squadId !== ev.squadId) throw err(403, 'Solo la squadra custode dell\'evento può scrivere alle coppie iscritte');
+    teamId = Number(body.teamId); fromKind = 'elect'; author = player.nickname || player.name;
+  } else {
+    teamId = t.id; fromKind = 'couple'; author = player ? player.nickname || player.name : null;
+  }
+  if (!q.get('SELECT 1 FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, teamId)) throw err(403, 'La coppia non è iscritta a questo evento');
+  if (!chatOpen(ev)) throw err(409, ev.squadId ? 'La chat dell\'evento è chiusa' : 'Questo evento non ha una squadra di Eletti custode');
+  const id = Number(q.run('INSERT INTO event_messages (eventId, teamId, fromKind, author, text, createdAt) VALUES (?, ?, ?, ?, ?, ?)', ev.id, teamId, fromKind, author, text, Date.now()).lastInsertRowid);
+  // Aggiorna la coppia, gli Eletti della squadra e la regia; notifica a chi non ha scritto.
+  rt.toTeams(ev.gameId, 'state', {}, teamId);
+  const elect = q.get("SELECT id FROM teams WHERE gameId = ? AND kind = 'elect'", ev.gameId);
+  if (elect) rt.toTeams(ev.gameId, 'state', {}, elect.id);
+  rt.toStaff(ev.gameId, 'events');
+  const tl = team(teamId);
+  if (fromKind !== 'couple') pushTeamsOf(ev, [teamId], { title: `💬 ${ev.name}`, body: `${fromKind === 'master' ? 'Consiglio' : `Eletti (${squadName(ev.squadId)})`}: ${text.slice(0, 120)}` });
+  if (fromKind !== 'elect') pushSquad(ev, { title: `💬 ${ev.name} · ${tl?.roman || ''} ${tl?.sectorName || ''}`, body: text.slice(0, 120) });
+  return { ok: true, id };
 }
 
 // Per l'app: le coppie vedono gli eventi aperti e quelli a cui partecipano (finiti da poco compresi);
@@ -406,8 +441,10 @@ function teamEvents(t, player = null) {
   const all = q.all('SELECT * FROM game_events WHERE gameId = ? ORDER BY id DESC', t.gameId);
   if (t.kind === 'elect') {
     const squadId = player?.squadId || null;
-    return all.filter((ev) => squadId && ev.squadId === squadId && recent(ev))
-      .map((ev) => ({ ...baseOut(ev), custodian: true, entries: entriesOf(ev.id).map(entryOut) }));
+    // Anche gli eventi preparati e non ancora lanciati (o programmati per un orario): la squadra sa cosa l'aspetta.
+    return all.filter((ev) => squadId && ev.squadId === squadId && (ev.status === 'draft' || recent(ev)))
+      .map((ev) => ({ ...baseOut(ev), custodian: true, chatOpen: chatOpen(ev),
+        entries: entriesOf(ev.id).map((e) => ({ ...entryOut(e), chat: chatOf(ev.id, e.teamId) })) }));
   }
   if (t.kind !== 'couple') return [];
   const ally = K().allianceOf(t.id);
@@ -423,8 +460,11 @@ function teamEvents(t, player = null) {
       allianceSize: ally?.members.length || 1,
       // Dentro l'evento le coppie compaiono una per una, senza alleanze.
       participants: ev.status !== 'open' && mine ? accepted(ev.id).map((e) => teamLite(team(e.teamId))) : null,
+      // Chat con gli Eletti custodi (solo per chi è iscritto e se l'evento ha una squadra custode).
+      chat: mine && ev.squadId ? chatOf(ev.id, t.id) : null,
+      chatOpen: !!mine && chatOpen(ev),
     };
   }).filter(Boolean);
 }
 
-module.exports = { REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

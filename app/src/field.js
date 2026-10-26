@@ -931,6 +931,33 @@ function taskTargetPositions(squadId) {
   }));
 }
 
+// Le coppie che un Eletto può vedere sulla mappa, oltre ai bersagli degli incarichi della sua squadra:
+// quelle iscritte a un evento affidato alla sua squadra (finché l'evento non è concluso) e quelle che un effetto
+// rende visibili a tutti (Campo di Luce). Mai chi è nascosto (Cono d'Ombra, Skill Ombra).
+function electVisiblePositions(gameId, squadId) {
+  const S = require('./skills');
+  const Z = require('./zones');
+  const now = Date.now();
+  const out = squadId ? taskTargetPositions(squadId) : [];
+  const seen = new Set(out.map((x) => x.teamId));
+  const add = (teamId, who) => {
+    if (seen.has(teamId)) return;
+    const team = q.get('SELECT t.id, t.gameId, s.name, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', teamId);
+    if (!team || S.hiddenTeam(team) || Z.visibilityOf(team.id) === 'hidden') return;
+    const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', team.id, now - POSITION_MAX_AGE);
+    if (!p) return;
+    seen.add(teamId);
+    out.push({ deviceId: `see-${team.id}`, teamId: team.id, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: now - p.at > POSITION_STALE,
+      label: `${team.roman} · Settore ${team.name}`, who, roman: team.roman, color: team.color });
+  };
+  if (squadId) {
+    for (const e of q.all(`SELECT en.teamId, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
+                           WHERE ev.gameId = ? AND ev.squadId = ? AND ev.status IN ('open', 'running', 'closing', 'truce')`, Number(gameId), squadId)) add(e.teamId, `🏁 Iscritta a «${e.name}»`);
+  }
+  for (const t of q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple'", Number(gameId))) if (Z.visibilityOf(t.id) === 'shown') add(t.id, '☀️ Nel Campo di Luce');
+  return out;
+}
+
 function electSummary(team, player) {
   const squadId = player?.squadId || null;
   const squad = squadId ? q.get('SELECT id, name, color FROM elect_squads WHERE id = ?', squadId) : null;
@@ -1029,7 +1056,7 @@ function useGift(team, giftId, params = {}) {
 }
 
 module.exports = {
-  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
+  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, electVisiblePositions, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
   giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, resetAllGifts, revealGift, tickAll,
   createPoi, updatePoi, deletePoi, createGuide, updateGuide, deleteGuide, teamGuide, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

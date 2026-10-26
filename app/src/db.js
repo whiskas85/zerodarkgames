@@ -625,6 +625,11 @@ CREATE TABLE IF NOT EXISTS event_entries (
   confirmedAt INTEGER, reward TEXT,
   PRIMARY KEY (eventId, teamId)
 );
+CREATE TABLE IF NOT EXISTS event_messages (
+  id INTEGER PRIMARY KEY, eventId INTEGER NOT NULL REFERENCES game_events(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, fromKind TEXT NOT NULL, author TEXT,
+  text TEXT NOT NULL, createdAt INTEGER NOT NULL
+);
 `);
 
 // Eventi preparati e lanciati dopo: la finestra di candidatura parte al lancio.

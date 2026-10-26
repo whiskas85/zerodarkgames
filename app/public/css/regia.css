@@ -1142,3 +1142,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .side-ico.event { border-radius: 50%; border-color: #e5484d; font-size: 15px; }
 .zdg-pin.zdg-hi::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--blood, #e0603f); animation: zdg-hi 1.1s ease-out 3; pointer-events: none; }
 @keyframes zdg-hi { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+/* Chat dell'evento (coppia ↔ Eletti custodi), letta dalla regia */
+.ev-chat { margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.ev-chat > summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.ev-chat-list { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 3px; font-size: 13px; max-height: 220px; overflow-y: auto; }

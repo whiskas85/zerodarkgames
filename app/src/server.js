@@ -449,6 +449,8 @@ app.post('/api/team/notices/read', needMember, wrap((req) => G.readNotices(req.t
 app.post('/api/team/events/:id/join', needTeam, wrap((req) => EV.joinEvent(req.team, req.player, req.params.id, { alliance: !!req.body?.alliance })));
 app.post('/api/team/events/:id/leave', needTeam, wrap((req) => EV.leaveEvent(req.team, req.params.id)));
 app.post('/api/team/events/:id/confirm', needTeam, wrap((req) => EV.confirmClose(req.team, req.params.id)));
+// Chat dell'evento tra la coppia iscritta e la squadra di Eletti custode.
+app.post('/api/team/events/:id/chat', needTeam, wrap((req) => EV.sendChat(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null, req.params.id, req.body || {})));
 const electWho = (req) => {
   const pl = req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null;
   return { player: pl, actor: pl ? `eletto:${pl.name}` : 'eletti' };
@@ -561,9 +563,10 @@ app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.par
 app.post('/api/field/guide', needField, wrap((req) => F.createGuide(fieldGame(req), req.body || {}, fieldWho(req))));
 app.patch('/api/field/guide/:id', needField, wrap((req) => F.updateGuide(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/guide/:id', needField, wrap((req) => { F.deleteGuide(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
-// Agli Eletti: gli altri Eletti e, finché un incarico della loro squadra è aperto, la coppia bersaglio.
+// Agli Eletti: gli altri Eletti e solo le coppie che possono vedere (bersagli degli incarichi aperti della loro squadra,
+// iscritte agli eventi affidati alla squadra, nel Campo di Luce).
 app.get('/api/field/positions', needField, wrap((req) => (fieldStaff(req) ? F.positionsOf(fieldGame(req), 'master')
-  : [...F.positionsOf(fieldGame(req), 'elect'), ...(req.player?.squadId ? F.taskTargetPositions(req.player.squadId) : [])])));
+  : [...F.positionsOf(fieldGame(req), 'elect'), ...F.electVisiblePositions(fieldGame(req), req.player?.squadId || null)])));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text, fieldStaff(req))));
 // La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.
@@ -666,6 +669,7 @@ m.patch('/events/:eid/schedule', wrap((req) => EV.setSchedule(Number(req.params.
 m.patch('/events/:eid/location', wrap((req) => EV.setLocation(Number(req.params.eid), req.body?.location || null, actor(req))));
 m.post('/events/:eid/launch', wrap((req) => EV.launchEvent(Number(req.params.eid), actor(req))));
 m.delete('/events/:eid', wrap((req) => { EV.deleteEvent(Number(req.params.eid), actor(req)); return { ok: true }; }));
+m.post('/events/:eid/chat', wrap((req) => EV.sendChat(null, null, Number(req.params.eid), req.body || {}, true)));
 m.post('/events/:eid/start', wrap((req) => EV.startEvent(Number(req.params.eid), { master: true, actor: actor(req) })));
 m.post('/events/:eid/close', wrap((req) => EV.closeEvent(Number(req.params.eid), { master: true, actor: actor(req) }, req.body?.outcomes || {})));
 m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body || {}, actor(req))));

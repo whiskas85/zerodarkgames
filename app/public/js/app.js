@@ -23,6 +23,7 @@ const S = {
   // Annunci tolti con uno swipe: spariscono dall'elenco e contano come letti.
   annHidden: store.get('zdg_ann_hidden', []),
   seenMsg: store.get('zdg_seen_msg', 0),
+  evChatSeen: store.get('zdg_evchat_seen', {}),
   seenNotice: store.get('zdg_seen_notice', 0),
   giftResults: {},
   unveiled: new Set(store.get('zdg_unveiled', [])),
@@ -1311,7 +1312,7 @@ function viewElectHome(st) {
         tile('#/beacon', 'Beacon', mdi('satelliteUplink', 28), st.beacon?.running ? '●' : null, !!st.beacon?.running),
         // Punto di interesse: si segna dove si è (GPS) o toccando la mappa; lo vedono regia ed Eletti.
         h('button', { class: 'tile', type: 'button', onclick: () => field.openPoi() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('mapMarker', 28)), h('span', null, 'Punto di interesse'), h('span', { class: 'tiny muted' }, 'piazzalo qui')),
-        (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
+        st.field?.squad || (st.events || []).length ? tile('#/eventi', 'Eventi', mdi('flagCheckered', 28), (st.events || []).filter((e) => ['open', 'running'].includes(e.status)).length || null) : null,
         tile('#/mappa', 'Mappa del campo', mdi('map', 28)),
         tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
@@ -1576,7 +1577,7 @@ async function beaconSequence(z, T = beaconTerminal()) {
 // Badge: eventi aperti a cui non avete risposto, inviti dell'alleanza da confermare, chiusure da confermare.
 const eventsBadge = (st) => (st.events || []).filter((e) => (e.status === 'open' && e.open && (!e.mine || e.mine.status === 'pending')) || (e.status === 'closing' && e.mine?.status === 'accepted' && !e.mine.confirmedAt)).length;
 const rewardLine = (r) => (!r ? null : r.kind === 'gift' ? `${r.icon || '✦'} Dono: ${r.name}` : r.kind === 'fragment' ? `❖ Frammento: «${r.text}»` : `✱ Sigillo del Settore ${r.roman} ${r.sectorName}: ${r.code}`);
-const EV_STATUS = { open: 'Candidature aperte', running: 'In corso', closing: 'Concluso: confermate', truce: 'Tregua', done: 'Concluso' };
+const EV_STATUS = { draft: 'Programmato · non ancora lanciato', open: 'Candidature aperte', running: 'In corso', closing: 'Concluso: confermate', truce: 'Tregua', done: 'Concluso' };
 
 function eventHomeCards(st) {
   return (st.events || []).filter((e) => e.status !== 'done' && (e.mine || (e.status === 'open' && e.open))).map((e) => h('a', { class: `event-strip ev-${e.status}`, href: `#/eventi/${e.id}` },
@@ -1624,6 +1625,33 @@ function eventLocPreview(e) {
     h('summary', null, 'Mostra la posizione'), v.el);
 }
 
+// Chat dell'evento: la coppia iscritta con la squadra di Eletti custode (la regia la legge).
+const evChatOpen = new Set();
+function eventChat(e, teamId, msgs, title) {
+  const key = `${e.id}-${teamId}`;
+  const me = S.state?.player ? S.state.player.nickname || S.state.player.name : null;
+  const mineKind = isElect() ? 'elect' : 'couple';
+  const input = h('input', { class: 'input', placeholder: 'Scrivi…', maxlength: 1000, 'data-keep': `evchat-${key}` });
+  const send = async (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    try { await api('POST', `/api/team/events/${e.id}/chat`, { text, teamId }); input.value = ''; await refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per scrivere' : err.message, 'error', 6000); }
+  };
+  const unread = msgs.filter((m) => m.fromKind !== mineKind && m.id > (S.evChatSeen?.[key] || 0)).length;
+  return h('details', { class: 'ev-chat', open: evChatOpen.has(key) || null, ontoggle: (ev) => {
+    if (ev.target.open) { evChatOpen.add(key); (S.evChatSeen ||= {})[key] = msgs.at(-1)?.id || 0; store.set('zdg_evchat_seen', S.evChatSeen); } else evChatOpen.delete(key);
+  } },
+  h('summary', null, mdi('message', 16), ` ${title}`, msgs.length ? h('span', { class: 'chip' }, String(msgs.length)) : null, unread && !evChatOpen.has(key) ? h('span', { class: 'badge badge-alert' }, String(unread)) : null),
+  msgs.length ? h('ul', { class: 'chat ev-chat-list' }, msgs.map((m) => {
+    const mine = m.fromKind === mineKind && (!isElect() || m.author === me);
+    return h('li', { class: `bubble ${mine ? 'mine' : 'theirs'}` },
+      mine ? null : h('div', { class: 'bubble-who' }, m.fromKind === 'master' ? 'Consiglio' : m.fromKind === 'elect' ? `${m.author || 'Eletto'} · Eletti` : m.author || 'Coppia'),
+      h('div', { class: 'bubble-text' }, m.text), h('div', { class: 'bubble-time mono' }, fmtTime(m.createdAt)));
+  })) : h('p', { class: 'small muted' }, isElect() ? 'Nessun messaggio con questa coppia.' : 'Nessun messaggio: scrivete agli Eletti che seguono l\'evento.'),
+  e.chatOpen ? h('form', { class: 'ev-chat-form', onsubmit: send }, input, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Invia')) : h('p', { class: 'small muted' }, 'Chat chiusa.'));
+}
+
 function eventCard(e) {
   const st = S.state;
   const elect = isElect();
@@ -1643,9 +1671,10 @@ function eventCard(e) {
     e.status !== 'done' ? h('p', { class: 'ev-warn small' }, `⚠ Al termine dell'evento scatterà una tregua obbligatoria di ${e.truceMin} minuti prima di potersi ingaggiare.`) : null];
   let body = null;
   if (elect) {
-    body = [h('ul', { class: 'ev-teams' }, e.entries.length ? e.entries.map((x) => h('li', null, h('strong', null, `${x.roman} ${x.sectorName}`), x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'deve confermare') : null,
+    body = [e.status === 'draft' ? h('p', { class: 'small muted' }, 'La regia non l\'ha ancora lanciato alle coppie: quando lo lancia si aprono le candidature.') : null,
+      h('ul', { class: 'ev-teams' }, e.entries.length ? e.entries.map((x) => h('li', { class: 'ev-team-chat' }, h('div', { class: 'row' }, h('strong', null, `${x.roman} ${x.sectorName}`), x.status === 'pending' ? h('span', { class: 'chip chip-warn' }, 'deve confermare') : null,
       x.outcome ? h('span', { class: `chip ${x.outcome === 'lost' ? 'chip-blood' : 'chip-ok'}` }, x.outcome === 'lost' ? 'persa' : 'vinta') : null,
-      x.confirmedAt ? h('span', { class: 'chip' }, 'confermata') : null)) : h('li', { class: 'muted' }, 'Nessuna coppia ancora')),
+      x.confirmedAt ? h('span', { class: 'chip' }, 'confermata') : null), eventChat(e, x.teamId, x.chat || [], `Chat con ${x.roman} ${x.sectorName}`))) : h('li', { class: 'muted' }, e.status === 'draft' ? 'Le coppie si iscrivono quando l\'evento viene lanciato.' : 'Nessuna coppia ancora')),
     e.status === 'closing' ? h('p', { class: 'small' }, 'Conferme entro ', h('span', { class: 'mono', 'data-abs': e.closeDeadline }, '—')) : null,
     e.status === 'truce' ? h('p', { class: 'small' }, '🛡 Tregua tra i partecipanti · ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null,
     h('div', { class: 'row' },
@@ -1675,7 +1704,8 @@ function eventCard(e) {
       mine.outcome === 'lost' && mine.confirmedAt ? h('p', { class: 'ev-lost' }, 'Sfida persa: niente premio.') : null,
       e.status === 'truce' ? h('p', { class: 'ev-truce' }, '🛡 Tregua in corso: nessun ingaggio tra i partecipanti. Tempo residuo: ', h('span', { class: 'mono', 'data-abs': e.truceUntil }, '—')) : null];
   }
-  return h('section', { class: `card stack-sm event-card ev-${e.status}`, id: `eventi-${e.id}` }, ...head, body);
+  const chat = !elect && e.chat ? eventChat(e, st.team.id, e.chat, `Chat con gli Eletti custodi${e.squadName ? ` (${e.squadName})` : ''}`) : null;
+  return h('section', { class: `card stack-sm event-card ev-${e.status}`, id: `eventi-${e.id}` }, ...head, body, chat);
 }
 
 // Eletti custodi: com'è andata per ogni coppia (vinta = premio, persa = niente).

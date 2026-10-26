@@ -2300,6 +2300,46 @@ test('zone: abilitata (le coppie la vedono, anche spenta) e attiva (l\'effetto v
   assert.equal(Z.masterZones(g.id).list.find((z) => z.id === hidden.id).active, true);
 });
 
+test('Eletti: eventi della squadra (anche non lanciati), chat con le coppie iscritte e coppie visibili sulla mappa', () => {
+  const F = require('../src/field');
+  const EV = require('../src/events');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Custode' }, 'test');
+  const other = G.addElectPerson(g.id, { name: 'Altro' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  const beta = F.createSquad(g.id, { name: 'Beta' }, 'test').id;
+  F.setMemberSquad(eid, alfa, 'test');
+  F.setMemberSquad(other, beta, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const pE = q.get('SELECT * FROM players WHERE id = ?', eid);
+  const pO = q.get('SELECT * FROM players WHERE id = ?', other);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  const ev = EV.createEvent(g.id, { name: 'Guado', slots: 2, rewardKind: 'code', squadId: alfa, startAt: Date.now() + 3600000 }, 'test');
+  // Programmato e non ancora lanciato: la squadra custode lo vede già, le coppie no.
+  assert.equal(EV.teamEvents(elect, pE).find((x) => x.id === ev.id)?.status, 'draft');
+  assert.ok(!EV.teamEvents(elect, pO).some((x) => x.id === ev.id));
+  // Prima dell'iscrizione: nessuna coppia visibile al custode.
+  const plA = q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  const plB = q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', B.id);
+  F.recordPosition(A, plA, { deviceId: `dev-ea-${A.id}`, lat: 45, lng: 9, acc: 5 });
+  F.recordPosition(B, plB, { deviceId: `dev-eb-${B.id}`, lat: 45.5, lng: 9.5, acc: 5 });
+  assert.deepEqual(F.electVisiblePositions(g.id, alfa), []);
+  EV.launchEvent(ev.id, 'test');
+  EV.joinEvent(A, null, ev.id);
+  assert.deepEqual(F.electVisiblePositions(g.id, alfa).map((x) => x.teamId), [A.id]);
+  assert.deepEqual(F.electVisiblePositions(g.id, beta), []);
+  // Chat: la coppia scrive, il custode risponde; l'altra squadra e la coppia non iscritta no.
+  EV.sendChat(A, plA, ev.id, { text: 'Siamo al guado' });
+  EV.sendChat(elect, pE, ev.id, { teamId: A.id, text: 'Arriviamo' });
+  assert.throws(() => EV.sendChat(elect, pO, ev.id, { teamId: A.id, text: 'x' }), /custode/);
+  assert.throws(() => EV.sendChat(B, plB, ev.id, { text: 'x' }), /iscritta/);
+  assert.throws(() => EV.sendChat(elect, pE, ev.id, { teamId: B.id, text: 'x' }), /iscritta/);
+  EV.sendChat(null, null, ev.id, { teamId: A.id, text: 'Dal Consiglio' }, true);
+  assert.deepEqual(EV.teamEvents(A).find((x) => x.id === ev.id).chat.map((m) => m.fromKind), ['couple', 'elect', 'master']);
+  assert.equal(EV.teamEvents(elect, pE).find((x) => x.id === ev.id).entries[0].chat.length, 3);
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);
