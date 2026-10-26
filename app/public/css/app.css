@@ -314,8 +314,11 @@ body.chat-open .toasts { bottom: calc(var(--radio-h) + 84px + env(safe-area-inse
 .map-page { gap: 10px; }
 .map-wrap { position: relative; margin: 0 -16px; }
 .map-wrap .team-map { border-left: 0; border-right: 0; }
-.map-tools { position: absolute; left: 10px; bottom: 24px; z-index: 500; display: flex; gap: 6px; flex-wrap: wrap; }
-.map-tools .mt-ico { margin-right: 4px; }
+/* Pulsanti della mappa: solo icone, in colonna sotto lo zoom (la mappa resta tutta libera) */
+.map-tools { position: absolute; left: 10px; top: 84px; z-index: 500; display: flex; flex-direction: column; gap: 6px; }
+.map-tools .btn { width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; font-size: 18px; }
+.map-tools .mt-label { display: none; }
+.map-tools .mt-ico { margin: 0; }
 .map-tools .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 
@@ -426,10 +429,10 @@ body[data-view="mappa"] .main { padding-top: 8px; padding-bottom: 0; }
 /* Barra dell'account in fondo alla home: con chi sei entrato, profilo, Esci */
 
 /* Esito degli scontri: vittoria (Sigilli che si svelano) e sconfitta (tempo per tornare in battaglia) */
-.battle-overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(8, 10, 9, .97); backdrop-filter: blur(6px); animation: battle-in .35s ease-out both; }
+.battle-overlay { position: fixed; inset: 0; z-index: 2600; overflow-x: hidden; display: grid; place-items: center; padding: 20px; background: rgba(8, 10, 9, .97); backdrop-filter: blur(6px); animation: battle-in .35s ease-out both; }
 .battle-box { position: relative; width: min(100%, 420px); display: grid; gap: 12px; text-align: center; justify-items: center; }
 .battle-box .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
-.battle-title { font-family: var(--f-display); font-weight: 900; font-size: clamp(64px, 22vw, 110px); line-height: .9; text-transform: uppercase; margin: 0; }
+.battle-title { font-family: var(--f-display); font-weight: 900; font-size: clamp(40px, 14vw, 110px); line-height: .9; text-transform: uppercase; margin: 0; max-width: 100%; overflow-wrap: anywhere; }
 .victory .battle-title { color: var(--brass); text-shadow: 0 0 24px rgba(209, 173, 98, .6); animation: battle-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
 .defeat .battle-title { color: var(--blood); animation: battle-shake .6s ease-in-out both; }
 .battle-burst { position: absolute; top: 40px; left: 50%; width: 360px; height: 360px; margin-left: -180px; border-radius: 50%; background: radial-gradient(circle, rgba(209, 173, 98, .45), rgba(209, 173, 98, 0) 65%); animation: battle-burst 1.4s ease-out both; pointer-events: none; z-index: -1; }
