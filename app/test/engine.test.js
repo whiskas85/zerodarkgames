@@ -2235,6 +2235,13 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   Z.tickAll(Date.now() + 121000);
   assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, Cc.id);
   assert.equal(Z.teamZones(Cc).won.length, 1);
+  // Conquistata: si spegne (resta chi e quando); riaccesa torna in palio.
+  assert.equal(q.get('SELECT active FROM map_zones WHERE id = ?', cq.id).active, 0);
+  assert.ok(Z.teamZones(Cc).list.some((z) => z.id === cq.id && !z.active && z.winnerTeamId === Cc.id));
+  Z.updateZone(cq.id, { active: true }, 'test');
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null);
+  Z.tickAll(Date.now() + 121000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null, 'chi era già dentro non la riconquista senza uscire e rientrare');
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
   assert.equal(Z.masterZones(g.id).list.length, 6);
   // Ordine trascinando: la prima dell'elenco va in cima.

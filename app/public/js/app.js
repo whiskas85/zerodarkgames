@@ -2439,7 +2439,9 @@ function viewElectField() {
 // Come la mappa delle coppie: tutta la larghezza e l'altezza dello schermo; GPS e legenda sotto, richiudibili.
 // Zone sulla mappa (coppie ed Eletti); quelle spente in grigio: si sa cosa sono e che gli Eletti le possono accendere con un Beacon.
 // Un tocco sulla zona apre un riquadro con il nome e «?» per la descrizione completa.
-const zonePopup = (z) => `<strong>${z.icon} ${escHtml(z.name)}</strong>${[z.label && z.label !== z.name ? z.label : null, z.active ? null : 'spenta'].filter(Boolean).length ? `<br><small>${escHtml([z.label && z.label !== z.name ? z.label : null, z.active ? null : 'spenta'].filter(Boolean).join(' · '))}</small>` : ''}<div class="popup-actions"><button type="button" class="btn btn-sm" data-zone-help="${z.id}">? Cosa fa</button></div>`;
+const zoneConquered = (z) => (z.kind === 'conquista' && z.winnerTeamId && z.wonAt ? `👑 conquistata${z.winnerLabel ? ` da ${z.winnerLabel}` : ''} alle ${fmtTime(z.wonAt)}` : null);
+const zoneSub = (z) => [z.label && z.label !== z.name ? z.label : null, zoneConquered(z) || (z.active ? null : 'spenta')].filter(Boolean).join(' · ');
+const zonePopup = (z) => `<strong>${z.icon} ${escHtml(z.name)}</strong>${zoneSub(z) ? `<br><small>${escHtml(zoneSub(z))}</small>` : ''}<div class="popup-actions"><button type="button" class="btn btn-sm" data-zone-help="${z.id}">? Cosa fa</button></div>`;
 const zonePolygons = (zones) => (zones?.list || []).map((z) => (z.active
   ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, popup: zonePopup(z) }
   : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', popup: zonePopup(z) }));
@@ -2454,8 +2456,9 @@ function showZoneInfo(id) {
     body: h('div', { class: 'stack-sm zone-info', style: { '--c': z.active ? z.color : '#8a8a8a' } },
       h('div', { class: 'row' }, h('span', { class: 'chip' }, z.label || z.kind), here ? h('span', { class: 'chip chip-brass' }, 'siete qui') : null, z.active ? null : h('span', { class: 'chip' }, 'spenta')),
       h('p', null, z.effect),
-      z.active ? null : h('p', { class: 'small muted' }, isElect() ? 'Ora è spenta: accendetela lanciando un Beacon dentro l\'area.' : 'Ora è spenta: la possono accendere gli Eletti con un Beacon.'),
-      z.kind === 'conquista' && z.holdMin ? h('p', { class: 'small' }, `Per conquistarla restate dentro ${z.holdMin} minuti di fila.`) : null) });
+      zoneConquered(z) ? h('p', { class: 'small' }, `${zoneConquered(z).replace('conquistata', 'Conquistata')}.`) : null,
+      z.active ? null : h('p', { class: 'small muted' }, isElect() ? 'Ora è spenta: accendetela lanciando un Beacon dentro l\'area.' : `Ora è spenta: la possono riaccendere gli Eletti con un Beacon${zoneConquered(z) ? ' (e torna in palio)' : ''}.`),
+      z.kind === 'conquista' && z.holdMin && !zoneConquered(z) ? h('p', { class: 'small' }, `Per conquistarla restate dentro ${z.holdMin} minuti di fila.`) : null) });
 }
 // Il «?» nei riquadri della mappa (in cattura: Leaflet ferma i clic nei popup).
 document.addEventListener('click', (e) => {
