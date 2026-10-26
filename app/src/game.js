@@ -97,6 +97,7 @@ function log(gameId, actor, type, data = null) {
 
 const fill = (tpl, vars) => tpl.replace(/\[(\w+)\]/g, (m, k) => (vars[k] != null ? vars[k] : m));
 
+const COUPLES_ONLY_ANN = new Set(['revelation']);
 function announce(gameId, type, vars = {}, payload = null, customText = null) {
   const g = getGame(gameId);
   const text = customText || fill(templatesOf(g)[type] || '', vars);
@@ -104,8 +105,16 @@ function announce(gameId, type, vars = {}, payload = null, customText = null) {
   const r = q.run('INSERT INTO announcements (gameId, type, text, payload, createdAt) VALUES (?, ?, ?, ?, ?)',
     gameId, type, text, payload ? JSON.stringify(payload) : null, now);
   const a = { id: Number(r.lastInsertRowid), type, text, payload, createdAt: now };
-  rt.toTeams(gameId, 'announcement', a);
-  rt.pushTeams(gameId, { title: 'Consiglio Zero', body: text, tag: `ann-${a.id}`, url: `/#/annunci/${a.id}` });
+  const push = { title: 'Consiglio Zero', body: text, tag: `ann-${a.id}`, url: `/#/annunci/${a.id}` };
+  // Annunci che servono solo alle coppie (i tradimenti): gli Eletti non li ricevono.
+  const elect = COUPLES_ONLY_ANN.has(type) ? electOf(gameId) : null;
+  if (elect) {
+    rt.toTeamsWhere(gameId, 'announcement', a, (c) => c.teamId !== elect.id);
+    rt.pushTeamsExcept(gameId, push, elect.id);
+  } else {
+    rt.toTeams(gameId, 'announcement', a);
+    rt.pushTeams(gameId, push);
+  }
   log(gameId, 'sistema', 'announcement', { type, text });
   return a;
 }
@@ -2032,7 +2041,8 @@ function electState(team, player = null) {
     game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: team.id, kind: 'elect', displayName: team.displayName || 'Eletti del Consiglio', status: team.status, sector: null, members: membersOf(team.id).map((m) => ({ name: m.name, nickname: m.nickname })) },
     seal: null, fragments: [], notebook: [], visited: [],
-    announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
+    // I tradimenti servono solo alle coppie.
+    announcements: q.all("SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? AND type NOT IN ('revelation') ORDER BY id DESC LIMIT 200", g.id).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
     notices: noticesFor(team, player),
     // Conversazione con tutti gli Eletti più quella della propria squadra.
     messages: q.all('SELECT id, squadId, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? AND (squadId IS NULL OR squadId = ?) ORDER BY id', team.id, squadId)

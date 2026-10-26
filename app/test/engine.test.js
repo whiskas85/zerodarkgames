@@ -2391,6 +2391,17 @@ test('scontri degli Eletti: con qualsiasi coppia (prima quelle legate alla squad
   assert.ok(t3);
 });
 
+test('tradimenti: li ricevono le coppie, non gli Eletti', () => {
+  const g = setupGame(3);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.addElectPerson(g.id, { name: 'Senza tradimenti' }, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  G.revealNext(g.id, 'test');
+  assert.ok(G.teamState(A).announcements.some((a) => a.type === 'revelation'));
+  assert.ok(!G.teamState(elect).announcements.some((a) => a.type === 'revelation'));
+});
+
 test('zone: Beacon degli Eletti accende una zona spenta stando dentro l\'area per la durata scelta', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);

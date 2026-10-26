@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v259';
+const VERSION = 'zdg-v260';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',

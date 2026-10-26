@@ -114,6 +114,10 @@ function pushTeams(gameId, payload, teamId = null) {
   const subs = gameSubs(gameId).filter((s) => teamId == null || s.effTeamId === teamId);
   sendPush(subs, payload).catch(() => {});
 }
+// A tutti i telefoni della partita tranne una squadra (es. gli Eletti, per gli annunci che riguardano solo le coppie).
+function pushTeamsExcept(gameId, payload, exceptTeamId) {
+  sendPush(gameSubs(gameId).filter((s) => s.effTeamId !== exceptTeamId), payload).catch(() => {});
+}
 
 // Avvisi alla regia: push sui dispositivi dei master e, a chi ha la regia aperta, un avviso nella pagina.
 // Evento immediato alla regia (senza attesa): l'emergenza fa saltare la regia alla sua pagina.
@@ -139,4 +143,4 @@ function pushSubs(subs, payload) {
 }
 
 module.exports = {
-  onlineNow, addClient, toTeams, toTeamsWhere, toStaff, toStaffEvent, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushMasters, pushUser, pushSubs, gameSubs };
+  onlineNow, addClient, toTeams, toTeamsWhere, toStaff, toStaffEvent, onlineByTeam, initPush, publicKey, saveSubscription, pushTeams, pushTeamsExcept, pushMasters, pushUser, pushSubs, gameSubs };
