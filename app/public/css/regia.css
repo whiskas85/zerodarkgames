@@ -387,6 +387,9 @@ tr.gift-row-claimed td { opacity: .6; }
 .tl-past { position: absolute; top: 0; height: 104px; background: rgba(0, 0, 0, .25); pointer-events: none; }
 .tl-live .tl-now { border-left-width: 3px; pointer-events: none; transition: left 1s linear; }
 .tl-live .tl-now i { white-space: nowrap; font-weight: 700; bottom: -18px; }
+/* Verso la fine della partita l'etichetta «adesso» va a sinistra della linea: non deve uscire dallo schermo */
+.tl-now.tl-now-end i { left: auto; right: 4px; }
+.content { overflow-x: clip; }
 .tl-now-k { background: #3b82f6; }
 .action-list { display: grid; gap: 8px; }
 .plan-opt { align-items: flex-start; padding: 8px 10px; border: 2px solid var(--line); }
@@ -620,7 +623,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 
 /* Menu delle sezioni: su telefono e tablet si apre con l'hamburger (da sinistra) */
 .nav-toggle, .nav-backdrop { display: none; }
-@media (max-width: 860px) {
+@media (max-width: 1199px) {
+  .shell { grid-template-columns: 1fr; }
   .nav-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 22px; line-height: 1; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-radius: 4px; cursor: pointer; }
   .nav-toggle .badge { font-size: 11px; }
   .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: min(300px, 84vw); height: auto; display: grid; align-content: start; gap: 2px; overflow-y: auto; overflow-x: hidden;

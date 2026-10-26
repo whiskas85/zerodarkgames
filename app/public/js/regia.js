@@ -2616,7 +2616,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
       style: { left: pct(e.at), width: e.to != null ? `calc(${pct(e.to)} - ${pct(e.at)})` : null, top: `${18 + laneOf(e) * 9}px` },
       title: `${fmtClockMin(e.at)} · ${e.label}`,
     })),
-    tb.nowMin != null ? h('span', { class: 'tl-now', style: { left: pct(tb.nowMin) } }, h('i', null, 'adesso')) : null,
+    tb.nowMin != null ? h('span', { class: `tl-now ${parseFloat(pct(tb.nowMin)) > 80 ? 'tl-now-end' : ''}`, style: { left: pct(tb.nowMin) } }, h('i', null, 'adesso')) : null,
     sel, tip);
   setPastCuts(track, tb.nowMin);
   track.addEventListener('click', (e) => {
@@ -2715,7 +2715,7 @@ function liveTimeline() {
       'aria-label': `${fmtClockMin(e.at)} ${e.label}`,
       onclick: (ev) => { ev.stopPropagation(); eventDialog(e); },
     })),
-    h('span', { class: 'tl-now', id: 'tl-live-now', style: { left: pct(tb.nowMin ?? 0), display: tb.nowMin == null ? 'none' : null } }, h('i', { id: 'tl-live-now-label' }, 'adesso')));
+    h('span', { class: `tl-now ${tb.nowMin != null && parseFloat(pct(tb.nowMin)) > 80 ? 'tl-now-end' : ''}`, id: 'tl-live-now', style: { left: pct(tb.nowMin ?? 0), display: tb.nowMin == null ? 'none' : null } }, h('i', { id: 'tl-live-now-label' }, 'adesso')));
   track.addEventListener('click', (e) => {
     const r = track.getBoundingClientRect();
     const m = Math.max(0, Math.round(lo + ((e.clientX - r.left) / r.width) * (span - lo)));
@@ -2755,6 +2755,7 @@ function tickTimeline() {
   const span = Number(track.dataset.span);
   const p = ((Math.min(Math.max(tb.nowMin, lo), span) - lo) / (span - lo)) * 100;
   now.style.left = `${p}%`;
+  now.classList.toggle('tl-now-end', p > 80);
   const past = document.getElementById('tl-live-past');
   if (past) past.style.width = `${p}%`;
   const label = document.getElementById('tl-live-now-label');
