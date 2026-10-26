@@ -1080,3 +1080,5 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .ev-chat-form { display: flex; gap: 6px; margin-top: 6px; }
 .ev-chat-form .input { flex: 1; min-width: 0; }
 .ev-teams li.ev-team-chat { display: grid; gap: 6px; }
+.ef-row { display: grid; gap: 4px; width: 100%; }
+.ef-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

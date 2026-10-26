@@ -1865,7 +1865,9 @@ function viewAlliances() {
         ]));
 }
 
-// Scontri degli Eletti: solo con le coppie che la squadra vede (caccia, incarico, evento, Campo di Luce).
+// Scontri degli Eletti: prima le coppie legate alla squadra (caccia, incarico, evento, Campo di Luce), poi le altre,
+// che non si vedono in mappa ma si possono incontrare per caso.
+let electOpp = null;
 function viewElectCombat(c) {
   const st = S.state;
   const playing = ['hunt', 'last_half_hour'].includes(st.clock.status);
@@ -1874,25 +1876,38 @@ function viewElectCombat(c) {
       text: result === 'won' ? `Dichiarate di aver battuto ${teamName(t)}? La coppia deve confermare: poi per loro parte la Veglia${t.why?.includes('caccia') ? ' e il loro Sigillo va alla coppia che ha lanciato la caccia' : ''}.`
         : `Dichiarate di aver perso contro ${teamName(t)}? La coppia deve confermare: poi ${t.why?.includes('caccia') ? 'la caccia è fallita' : 'l\'incarico si chiude'} e per loro è Vittoria.`,
       okLabel: 'Registra', danger: result === 'lost' });
-    if (ok) combatCall('/api/team/elect-fight', { teamId: t.teamId, result }, `In attesa della conferma di ${t.sectorName}`);
+    if (ok && await combatCall('/api/team/elect-fight', { teamId: t.teamId, result }, `In attesa della conferma di ${t.sectorName}`)) electOpp = null;
   };
+  const linked = c.targets.filter((t) => t.linked);
+  const others = c.targets.filter((t) => !t.linked);
+  if (electOpp && !others.some((t) => t.teamId === electOpp && !t.pending)) electOpp = null;
+  const pick = others.find((t) => t.teamId === electOpp) || null;
   const label = (f) => ({ pending: 'da confermare', contested: 'contestato: decide la regia', cancelled: 'annullato', confirmed: f.winner === 'elect' ? 'vinto' : 'perso' }[f.status]);
   return h('div', { class: 'stack' },
     h('h2', null, 'Scontri'),
-    h('p', { class: 'muted small' }, 'Potete scontrarvi solo con le coppie che vedete: bersagli di una caccia o di un incarico, iscritte a un evento della vostra squadra, nel Campo di Luce. Dichiarate l\'esito: la coppia conferma, se contesta decide la regia.'),
+    h('p', { class: 'muted small' }, 'In alto le coppie legate alla vostra squadra (caccia, incarico, evento, Campo di Luce); sotto, quelle incontrate per caso. Dichiarate l\'esito: la coppia conferma, se contesta decide la regia.'),
     !st.field?.squad ? h('p', { class: 'empty' }, 'Serve una squadra: chiedete alla regia di inserirvi.') : null,
-    c.targets.length ? h('div', { class: 'stack-sm' }, c.targets.map((t) => h('div', { class: 'combat-card' },
+    linked.length ? h('div', { class: 'stack-sm' }, linked.map((t) => h('div', { class: 'combat-card' },
       h('div', { class: 'eyebrow' }, t.why),
       h('strong', null, teamName(t)),
       t.pending ? h('p', { class: 'small muted' }, 'Scontro dichiarato: in attesa della conferma della coppia.')
         : h('div', { class: 'row' },
           h('button', { class: 'btn btn-primary', disabled: !playing, onclick: () => report(t, 'won') }, 'Abbiamo vinto'),
-          h('button', { class: 'btn btn-danger', disabled: !playing, onclick: () => report(t, 'lost') }, 'Abbiamo perso'))))) : st.field?.squad ? h('p', { class: 'empty' }, 'Nessuna coppia da affrontare in questo momento.') : null,
+          h('button', { class: 'btn btn-danger', disabled: !playing, onclick: () => report(t, 'lost') }, 'Abbiamo perso'))))) : null,
+    // Le altre coppie non si vedono in mappa, ma si possono incontrare per caso sul campo.
+    others.length ? h('div', { class: 'combat-card' },
+      h('div', { class: 'eyebrow' }, 'Coppia incontrata sul campo'),
+      h('p', { class: 'small muted' }, 'Non la vedete in mappa ma l\'avete incontrata: sceglietela e dichiarate l\'esito.'),
+      h('div', { class: 'opp-grid' }, others.map((t) => h('button', { type: 'button', class: `opp ${electOpp === t.teamId ? 'on' : ''}`, disabled: t.pending, onclick: () => { electOpp = electOpp === t.teamId ? null : t.teamId; render(); } },
+        h('strong', null, teamName(t)), t.pending ? h('span', { class: 'tiny muted' }, 'da confermare') : null))),
+      pick ? h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', disabled: !playing, onclick: () => report(pick, 'won') }, `Abbiamo vinto contro ${pick.sectorName}`),
+        h('button', { class: 'btn btn-danger', disabled: !playing, onclick: () => report(pick, 'lost') }, 'Abbiamo perso')) : null) : null,
     !playing ? h('p', { class: 'small muted' }, 'Gli scontri si registrano durante la caccia.') : null,
     c.fights.length ? [h('h3', null, 'Scontri della squadra'), h('ul', { class: 'list' }, c.fights.map((f) => h('li', { class: `hist hist-${f.status === 'confirmed' ? (f.winner === 'elect' ? 'won' : 'lost') : 'draw'}` },
-      h('strong', null, `${f.winner === 'elect' ? 'Vinto contro' : 'Perso contro'} ${f.team ? teamName(f.team) : '?'}`),
-      h('span', { class: `chip ${f.status === 'confirmed' ? (f.winner === 'elect' ? 'chip-ok' : 'chip-blood') : f.status === 'contested' ? 'chip-warn' : ''}` }, label(f)),
-      h('span', { class: 'tiny muted' }, ` · ${f.author || ''} · ${fmtTime(f.createdAt)}`))))] : null);
+      h('div', { class: 'ef-row hist-wide' }, h('strong', null, `${f.winner === 'elect' ? 'Vinto contro' : 'Perso contro'} ${f.team ? teamName(f.team) : '?'}`),
+        h('div', { class: 'ef-meta' }, h('span', { class: `chip ${f.status === 'confirmed' ? (f.winner === 'elect' ? 'chip-ok' : 'chip-blood') : f.status === 'contested' ? 'chip-warn' : ''}` }, label(f)),
+          h('span', { class: 'tiny muted' }, `${f.author || ''} · ${fmtTime(f.createdAt)}`))))))] : null);
 }
 
 // Vittoria contro una squadra di Eletti.

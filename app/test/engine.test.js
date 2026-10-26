@@ -2346,7 +2346,7 @@ test('Eletti: eventi della squadra (anche non lanciati), chat con le coppie iscr
   assert.throws(() => EV.setSquad(ev.id, 999999, 'test'), /Squadra non valida/);
 });
 
-test('scontri degli Eletti: solo con le coppie visibili; vittoria = Veglia e Sigillo al cacciatore, sconfitta = caccia fallita', () => {
+test('scontri degli Eletti: con qualsiasi coppia (prima quelle legate alla squadra); vittoria = Veglia e Sigillo al cacciatore, sconfitta = caccia fallita', () => {
   const F = require('../src/field');
   const K = require('../src/combat');
   const g = setupGame(3);
@@ -2358,12 +2358,14 @@ test('scontri degli Eletti: solo con le coppie visibili; vittoria = Veglia e Sig
   const pE = q.get('SELECT * FROM players WHERE id = ?', eid);
   G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
   advanceTo(g.id, 6);
-  // Senza incarichi né eventi: nessuna coppia da affrontare.
-  assert.deepEqual(K.combatState(elect, pE).targets, []);
-  assert.throws(() => K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' }), /vedete/);
+  // Senza incarichi né eventi: tutte le coppie compaiono negli Scontri (incontri per caso), nessuna legata alla squadra.
+  assert.deepEqual(K.combatState(elect, pE).targets.filter((t) => t.linked), []);
+  assert.equal(K.combatState(elect, pE).targets.length, 3);
+  assert.throws(() => K.reportElectFight(elect, pE, { teamId: elect.id, result: 'won' }), /non valida/);
   // Caccia lanciata da B contro A, affidata alla squadra Alfa.
   const task = F.createTask(g.id, { kind: 'hunt', target: `team:${A.id}`, squadId: alfa }, 'test', { source: 'skill', sourceTeamId: B.id });
-  assert.deepEqual(K.combatState(elect, pE).targets.map((t) => t.teamId), [A.id]);
+  assert.deepEqual(K.combatState(elect, pE).targets.filter((t) => t.linked).map((t) => t.teamId), [A.id]);
+  assert.equal(K.combatState(elect, pE).targets[0].teamId, A.id);
   const f1 = K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' });
   assert.throws(() => K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' }), /già uno scontro/);
   assert.equal(K.combatState(A).electToConfirm.length, 1);
