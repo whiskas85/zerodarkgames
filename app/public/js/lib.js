@@ -557,6 +557,7 @@ try {
     label.textContent = 'Ambiente di test';
     el.append(label);
     document.body.prepend(el);
+    window.dispatchEvent(new Event('resize'));
   }).catch(() => {});
 } catch { /* niente rete */ }
 

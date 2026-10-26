@@ -257,8 +257,20 @@ function render() {
     mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
   labelTables($root);
+  fitShell();
   tick();
 }
+
+// Il menu laterale sta sotto la testata (che va a capo e cambia altezza) e scorre da solo: non allunga la pagina.
+function fitShell() {
+  const tb = $root.querySelector('.topbar');
+  const shell = $root.querySelector('.shell');
+  if (!tb || !shell) return;
+  const st = document.documentElement.style;
+  st.setProperty('--top-h', `${tb.offsetHeight}px`);
+  st.setProperty('--shell-top', `${shell.getBoundingClientRect().top + window.scrollY}px`);
+}
+window.addEventListener('resize', () => fitShell());
 
 // Sul telefono le tabelle diventano schede: ogni cella porta il nome della sua colonna (vedi regia.css).
 function labelTables(root) {

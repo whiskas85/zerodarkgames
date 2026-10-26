@@ -36,8 +36,8 @@ td.row-actions > * { margin: 3px 6px 3px 0; vertical-align: middle; }
 .top-clock { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .clock-big { font-size: 28px; font-weight: 600; line-height: 1; }
 .top-actions { display: flex; gap: 6px; }
-.shell { display: grid; grid-template-columns: 210px 1fr; min-height: calc(100vh - 64px); }
-.sidebar { border-right: 2px solid var(--line); padding: 12px 8px; display: grid; align-content: start; gap: 2px; position: sticky; top: 64px; height: calc(100vh - 64px); overflow: auto; }
+.shell { display: grid; grid-template-columns: 210px 1fr; min-height: calc(100vh - var(--shell-top, 64px)); }
+.sidebar { border-right: 2px solid var(--line); padding: 12px 8px; display: grid; align-content: start; gap: 2px; position: sticky; top: var(--top-h, 64px); height: calc(100vh - var(--shell-top, 64px)); overflow-y: auto; overscroll-behavior: contain; }
 .sidebar a { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; color: var(--ink); text-decoration: none; font-weight: 600; border-left: 4px solid transparent; }
 .sidebar a:hover { background: var(--paper); }
 .sidebar a.on { background: var(--paper); border-left-color: var(--blood); }
@@ -1093,7 +1093,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .dt-pair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 6px; }
 
 /* Mappa: mappa a sinistra, barra laterale a schede a destra (sotto la mappa su telefono) */
-.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: stretch; height: calc(100vh - 118px); min-height: 480px; }
+.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: stretch; height: calc(100vh - var(--shell-top, 78px) - 40px); min-height: 420px; }
 .map-layout > .map-full { height: 100%; min-height: 0; margin: 0; }
 .map-sidebar { display: flex; flex-direction: column; min-height: 0; border: 2px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
 .map-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-bottom: 1.5px solid var(--line); }
