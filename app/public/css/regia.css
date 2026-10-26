@@ -72,6 +72,14 @@ h3.sub { font-size: 18px; margin-top: 6px; }
 .control-status { font-family: var(--f-display); font-weight: 900; font-size: 44px; text-transform: uppercase; line-height: 1; margin: 4px 0; }
 .control-clock { text-align: right; }
 .control-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+/* Stato a sinistra mai schiacciato (niente lettere in colonna): l'orologio non va a capo e, se lo spazio manca, i pulsanti scendono sotto */
+.control { grid-template-columns: minmax(240px, 1fr) auto auto; }
+.control-status { overflow-wrap: normal; word-break: normal; hyphens: none; }
+.control-clock .huge { white-space: nowrap; }
+@media (max-width: 1400px) {
+  .control { grid-template-columns: minmax(240px, 1fr) auto; }
+  .control-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
 .status-bg-paused { border-color: var(--danger); background: rgba(255, 90, 74, .12); }
 .status-bg-truce { border-color: var(--brass); }
 .status-bg-hunt { border-color: var(--blood); }
