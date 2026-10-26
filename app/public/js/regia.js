@@ -1965,40 +1965,74 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'ally-line' }), ' Alleanza'),
     h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto'));
 
-  return h('div', { class: 'map-full' },
-    fieldMap.el,
-    h('div', { class: 'map-tools' },
-      h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, '◎ Centra'),
-      // Quando è tutto piazzato il pannello e il suo pulsante spariscono.
-      toPlace.length ? h('button', { class: `btn btn-sm ${R.mapSide === false ? '' : 'on'}`, onclick: () => { R.mapSide = R.mapSide === false; render(); } }, `Da piazzare (${toPlace.length})`) : null,
-      h('button', { class: `btn btn-sm ${R.mapAllies ? 'on' : ''}`, onclick: () => { R.mapAllies = !R.mapAllies; render(); } }, `Alleanze (${R.ms.combat?.alliances.length || 0})`),
-      h('button', { class: 'btn btn-sm btn-blue', title: 'Parcheggio, accettazione…: le coppie li vedono fino al Cerchio, con il pulsante Naviga', onclick: () => guideDialog() }, mdi('signDirection', 16), ` Indicazione campo${d.guide?.length ? ` (${d.guide.length})` : ''}`),
-      h('button', { class: `btn btn-sm ${R.mapZones ? 'on' : ''}`, onclick: () => { R.mapZones = !R.mapZones; render(); } }, `Zone (${R.ms.mapZones?.list.length || 0})`),
-      h('button', { class: `btn btn-sm ${R.mapLegend ? 'on' : ''}`, onclick: () => { R.mapLegend = !R.mapLegend; render(); } }, 'Legenda'),
-      h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
-      h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
-    R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) ? `Clicca sulla mappa ${R.mapPick.kind === 'guide-new' ? 'dove si trova' : 'il nuovo posto di'}: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
-      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
-    R.mapSide === false || !toPlace.length ? null : h('aside', { class: 'map-side' },
-      h('div', { class: 'eyebrow' }, `Da piazzare · Altari ${placedA}/${d.points.length}`),
+  // Barra laterale a schede (a destra su desktop, sotto la mappa sul telefono): niente più riquadri sopra la mappa.
+  const pois = d.pois || [];
+  const guide = d.guide || [];
+  const allies = R.ms.combat?.alliances.length || 0;
+  const tabs = [
+    ['piazzare', 'Da piazzare', toPlace.length],
+    ['zone', 'Zone', R.ms.mapZones?.list.length || 0],
+    ['punti', 'Punti di interesse', pois.length],
+    ['indicazioni', 'Indicazioni', guide.length],
+    ['alleanze', 'Alleanze', allies],
+    ['legenda', 'Legenda', null],
+  ];
+  const cur = tabs.some(([k]) => k === R.mapTab) ? R.mapTab : (toPlace.length ? 'piazzare' : 'zone');
+  const centerOn = (key) => { fieldMap.focus([key]); };
+  const panes = {
+    piazzare: () => [
+      h('div', { class: 'eyebrow' }, `Altari piazzati ${placedA}/${d.points.length}`),
       toPlace.length ? h('ul', { class: 'map-side-list' }, toPlace.map(({ kind, x, icon }) => h('li', null,
         h('span', { class: `side-ico ${kind}` }, icon),
         h('div', { class: 'grow' }, h('strong', null, kind === 'gift' ? `${x.label} · ${x.name}` : x.label),
           h('div', { class: 'tiny muted' }, x.squadId ? `Squadra ${sqName(x.squadId) || '?'}${x.targetLat != null ? ' · punto indicato' : ''}` : 'Nessuna squadra')),
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm btn-primary', title: 'Piazzalo tu con un clic sulla mappa (foto facoltativa)', onclick: () => startPick(x, kind) }, 'Segna'),
-          h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : null,
-      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per vederne foto e dettagli e per farlo spostare.')),
-    R.mapLegend ? h('div', { class: 'map-legend-box' }, legend,
-      h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
-      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per foto e dettagli e per spostarlo. Coppie in mappa dal VIA, Eletti da partita pronta.')) : null,
-    R.mapAllies ? h('div', { class: 'map-allies-box' }, alliancesList(true)) : null,
-    zd ? h('div', { class: 'map-pick zone-draw-bar' },
-      h('strong', null, `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
-      h('button', { class: 'btn btn-sm', disabled: !zd.pts.length, onclick: () => { zd.pts.pop(); render(); } }, 'Annulla ultimo'),
-      h('button', { class: 'btn btn-sm btn-primary', disabled: zd.pts.length < 3, onclick: saveZoneDraw }, 'Chiudi la zona'),
-      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneDraw = null; render(); } }, 'Annulla')) : null,
-    R.mapZones && !zd ? h('div', { class: 'map-zones-box' }, zonesPanel()) : null);
+          h('button', { class: 'btn btn-sm', onclick: () => assignDialog(kind, x, false) }, x.squadId ? 'Cambia' : 'Assegna'))))) : h('p', { class: 'empty' }, 'Tutto piazzato. 🎉'),
+      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto sulla mappa per vederne foto e dettagli e per farlo spostare.')],
+    zone: () => [zonesPanel()],
+    punti: () => [
+      h('p', { class: 'tiny muted' }, 'Li segnano gli Eletti dal campo («Punto di interesse»): radure, sentieri, ingressi, posti per Altari e doni.'),
+      pois.length ? h('ul', { class: 'map-side-list' }, pois.map((x) => h('li', null,
+        h('span', { class: 'side-ico poi' }, '◆'),
+        h('div', { class: 'grow' }, h('strong', null, x.label), x.description ? h('div', { class: 'tiny' }, x.description) : null,
+          h('div', { class: 'tiny muted' }, `${String(x.createdBy || '').replace('eletti:', '')} · ${fmtTime(x.createdAt)}${x.occupied ? ' · occupato' : ''}`)),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', onclick: () => centerOn(`poi${x.id}`) }, 'Mappa'),
+          h('button', { class: 'btn btn-sm', onclick: () => editPoi(x) }, 'Rinomina'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deletePoiDialog(x) }, 'Elimina'))))) : h('p', { class: 'empty' }, 'Nessun punto di interesse.')],
+    indicazioni: () => [
+      h('div', { class: 'row' }, h('p', { class: 'tiny muted grow' }, 'Parcheggio, accettazione…: le coppie li vedono fino al Cerchio, con il pulsante Naviga.'),
+        h('button', { class: 'btn btn-sm btn-blue', onclick: () => guideDialog() }, mdi('signDirection', 16), ' Nuova')),
+      guide.length ? h('ul', { class: 'map-side-list' }, guide.map((x) => h('li', null,
+        h('span', { class: 'side-ico guide' }, mdi(x.icon || 'mapMarker', 18)),
+        h('div', { class: 'grow' }, h('strong', null, x.label), x.description ? h('div', { class: 'tiny muted' }, x.description) : null),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', onclick: () => centerOn(`gd${x.id}`) }, 'Mappa'),
+          h('button', { class: 'btn btn-sm', onclick: () => guideDialog(x) }, 'Modifica'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deleteGuideDialog(x) }, 'Elimina'))))) : h('p', { class: 'empty' }, 'Nessuna indicazione.')],
+    alleanze: () => [alliancesList(true)],
+    legenda: () => [legend, h('p', { class: 'tiny muted', id: 'pos-count' }, positionsSummary()),
+      h('p', { class: 'tiny muted' }, 'Tocca un segnaposto per foto e dettagli e per spostarlo. Coppie in mappa dal VIA, Eletti da partita pronta.')],
+  };
+  return h('div', { class: 'map-layout' },
+    h('div', { class: 'map-full' },
+      fieldMap.el,
+      h('div', { class: 'map-tools' },
+        h('button', { class: 'btn btn-sm', onclick: () => fieldMap.autoCenter() }, '◎ Centra'),
+        h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${R.gameId}`, download: '', title: 'Tutti i punti (luoghi, Altari, Doni, punti indicati) per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
+        h('button', { class: 'btn btn-sm btn-primary', onclick: campoPhoneDialog }, '📱 Campo sul telefono')),
+      R.mapPick ? h('div', { class: 'map-pick' }, h('strong', null, ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) ? `Clicca sulla mappa ${R.mapPick.kind === 'guide-new' ? 'dove si trova' : 'il nuovo posto di'}: ${R.mapPick.label}` : `Clicca sulla mappa (o su un punto di interesse ◆) dove si trova: ${R.mapPick.label}`),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.mapPick = null; render(); } }, 'Annulla')) : null,
+      zd ? h('div', { class: 'map-pick zone-draw-bar' },
+        h('strong', null, `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
+        h('button', { class: 'btn btn-sm', disabled: !zd.pts.length, onclick: () => { zd.pts.pop(); render(); } }, 'Annulla ultimo'),
+        h('button', { class: 'btn btn-sm btn-primary', disabled: zd.pts.length < 3, onclick: saveZoneDraw }, 'Chiudi la zona'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneDraw = null; render(); } }, 'Annulla')) : null),
+    h('aside', { class: 'map-sidebar' },
+      h('nav', { class: 'map-tabs', role: 'tablist' }, tabs.map(([k, label, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === cur), class: k === cur ? 'on' : '', onclick: () => { R.mapTab = k; render(); } },
+        label, n ? h('span', { class: 'badge' }, n) : null))),
+      h('div', { class: 'map-tab-body' }, ...panes[cur]())));
 }
 
 // ---------------------------------------------------------------- ZONE DELLA MAPPA
@@ -2037,7 +2071,7 @@ async function saveZoneDraw() {
     else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, layer: zd.layer, holdMin: zd.holdMin, beaconMin: zd.beaconMin, active: zd.active, points: zd.pts });
     toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
     R.zoneDraw = null;
-    R.mapZones = true;
+    R.mapTab = 'zone';
     await load();
   } catch (e) { toast(e.message, 'error', 6000); }
 }
