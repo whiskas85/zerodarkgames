@@ -1320,7 +1320,7 @@ function viewElectHome(st) {
     tileGroups(
       ['Prima del via', 'g-prep', prepTiles()],
       ['Gioco', 'g-game', [
-        h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Scansiona'), h('span', { class: 'tiny muted' }, 'Altare o dono')),
+        h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Piazza da cartello'), h('span', { class: 'tiny muted' }, 'scansiona il QR')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
         tile('#/beacon', 'Beacon', mdi('satelliteUplink', 28), st.beacon?.running ? '●' : null, !!st.beacon?.running),
         st.field?.squad ? tile('#/scontri', 'Scontri', mdi('swordCross', 28), (st.combat?.targets || []).length || null) : null,
