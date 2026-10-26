@@ -2278,15 +2278,56 @@ async function squadCall(method, url, body, okMsg) {
 const squadOptions = (value, none = '— nessuna —') => [h('option', { value: '' }, none), ...R.ms.squads.map((sq) => h('option', { value: sq.id, selected: sq.id === value }, sq.name))];
 
 // Bersaglio di un incarico: una coppia o un punto già piazzato (Altare, luogo, punto di interesse, dono).
-function targetSelect(keep) {
-  const d = fieldData;
+// Bersaglio di un incarico: si sceglie in una finestra con schede (Coppie, Luoghi, Altari, Punti di interesse) e ricerca.
+// Il pulsante mostra la scelta; .value è il riferimento («team:3», «point:5»… o '' per un incarico libero) e resta
+// anche se la pagina si ridisegna (si ricorda per chiave).
+const TARGET_SEL = {};
+function targetOptions() {
+  const d = fieldData || {};
   const placed = (list) => (list || []).filter((x) => x.lat != null);
-  return h('select', { class: 'input input-sm', 'data-keep': keep, 'aria-label': 'Bersaglio' },
-    h('option', { value: '' }, 'Nessun bersaglio (incarico libero)'),
-    h('optgroup', { label: 'Raggiungere una coppia (la vedono in mappa)' }, R.ms.teams.filter((t) => t.status === 'active').map((t) => h('option', { value: `team:${t.id}` }, `${t.roman} · Settore ${t.sectorName}`))),
-    h('optgroup', { label: 'Luoghi' }, placed(d.landmarks).map((x) => h('option', { value: `landmark:${x.id}` }, x.label))),
-    h('optgroup', { label: 'Altari' }, placed(d.points).map((x) => h('option', { value: `point:${x.id}` }, x.label))),
-    h('optgroup', { label: 'Punti di interesse' }, placed(d.pois).map((x) => h('option', { value: `poi:${x.id}` }, x.label))));
+  return [
+    { key: 'coppie', title: 'Coppie', hint: 'Raggiungere una coppia: la squadra la vede in mappa finché l\'incarico è aperto.',
+      items: R.ms.teams.filter((t) => t.status === 'active').map((t) => ({ value: `team:${t.id}`, label: `${t.roman} · Settore ${t.sectorName}`, icon: t.roman, cls: 'point', sub: t.displayName || null })) },
+    { key: 'luoghi', title: 'Luoghi', items: placed(d.landmarks).map((x) => ({ value: `landmark:${x.id}`, label: x.label, icon: x.kind === 'soglia' ? '⛩' : '◯', cls: 'landmark' })) },
+    { key: 'altari', title: 'Altari', items: placed(d.points).map((x) => ({ value: `point:${x.id}`, label: x.label, icon: x.roman || '▲', cls: 'point' })) },
+    { key: 'poi', title: 'Punti di interesse', items: placed(d.pois).map((x) => ({ value: `poi:${x.id}`, label: x.label, icon: '◆', cls: 'poi', sub: x.description || null })) },
+  ].filter((g) => g.items.length);
+}
+const targetLabel = (value) => targetOptions().flatMap((g) => g.items).find((x) => x.value === value)?.label || null;
+
+async function pickTargetDialog(current = '') {
+  const groups = targetOptions();
+  let tabKey = groups.find((g) => g.items.some((x) => x.value === current))?.key || groups[0]?.key;
+  let q = '';
+  let chosen = current || '';
+  const tabsEl = h('nav', { class: 'loc-tabs', role: 'tablist' });
+  const listEl = h('ul', { class: 'loc-list' });
+  const hintEl = h('p', { class: 'tiny muted' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca una coppia, un luogo, un Altare…', oninput: () => { q = search.value.trim().toLowerCase(); draw(); } });
+  const draw = () => {
+    tabsEl.replaceChildren(...groups.map((g) => h('button', { type: 'button', role: 'tab', class: g.key === tabKey && !q ? 'on' : '', onclick: () => { tabKey = g.key; search.value = ''; q = ''; draw(); } }, g.title, h('span', { class: 'badge' }, String(g.items.length)))));
+    const g = groups.find((x) => x.key === tabKey);
+    hintEl.textContent = !q && g?.hint ? g.hint : '';
+    const shown = q ? groups.flatMap((gr) => gr.items.filter((x) => `${x.label} ${x.sub || ''}`.toLowerCase().includes(q)).map((x) => ({ ...x, group: gr.title }))) : (g?.items || []);
+    listEl.replaceChildren(...(shown.length ? shown.map((x) => h('li', null, h('button', { type: 'button', class: `loc-item ${x.value === chosen ? 'on' : ''}`, onclick: () => { chosen = x.value === chosen ? '' : x.value; draw(); } },
+      h('span', { class: `side-ico ${x.cls}` }, x.icon),
+      h('span', { class: 'grow' }, h('strong', null, x.label), x.group || x.sub ? h('span', { class: 'tiny muted' }, [x.group, x.sub].filter(Boolean).join(' · ')) : null),
+      x.value === chosen ? h('span', { class: 'chip chip-brass' }, 'scelto') : null))) : [h('li', { class: 'tiny muted loc-empty' }, q ? 'Nessun risultato.' : 'Niente in questa scheda.')]));
+  };
+  draw();
+  const ok = await modal({ title: 'Bersaglio dell\'incarico', okLabel: 'Usa questo', cancelLabel: 'Annulla',
+    body: h('div', { class: 'stack-sm' }, groups.length ? [tabsEl, search, hintEl, listEl] : h('p', { class: 'empty' }, 'Nessun bersaglio disponibile.'),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { chosen = ''; draw(); } }, 'Nessun bersaglio (incarico libero)')) });
+  return ok ? chosen : undefined;
+}
+
+function targetSelect(keep) {
+  const btn = h('button', { type: 'button', class: 'btn btn-sm target-pick' });
+  const paint = () => { const v = TARGET_SEL[keep] || ''; btn.textContent = v ? `⌖ ${targetLabel(v) || v}` : '⌖ Bersaglio: nessuno (libero)'; btn.classList.toggle('on', !!v); };
+  btn.addEventListener('click', async () => { const r = await pickTargetDialog(TARGET_SEL[keep] || ''); if (r !== undefined) { TARGET_SEL[keep] = r; paint(); } });
+  Object.defineProperty(btn, 'value', { get: () => TARGET_SEL[keep] || '', set: (v) => { TARGET_SEL[keep] = v || ''; paint(); } });
+  paint();
+  return btn;
 }
 
 const TASK_KIND = { text: '', goto: '⌖ ', hunt: '🎯 ', meet: '🤝 ' };
@@ -2491,9 +2532,10 @@ function viewTaskBoard(d) {
 async function newTaskDialog() {
   const text = h('input', { class: 'input', placeholder: 'es. Presidiate il Cuore dalle 10', maxlength: 300 });
   const target = targetSelect('new-task-target');
+  target.value = '';
   await modal({
     title: 'Nuovo incarico', okLabel: 'Crea',
-    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('label', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
+    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
       h('p', { class: 'tiny muted' }, 'Compare tra quelli «Da affidare»: trascinalo sulla squadra che deve svolgerlo.')),
     onOk: async () => {
       if (!text.value.trim() && !target.value) throw new Error('Scrivi l\'incarico');
