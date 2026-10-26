@@ -482,7 +482,8 @@ function render() {
   if (isLobby() && ['skill', 'uscita', 'altari', 'altare', 'frammenti', 'codici', 'messaggi', 'mappa', 'dono', 'doni', 'scontri', 'alleanze'].includes(view)) view = 'home';
   if (isElect() && view === 'alleanze') view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
-  if ((view === 'mappa' && !isElect()) || view === 'indicazioni') startMapGps(); else stopMapGps();
+  // Mappa, indicazioni e Beacon: GPS del telefono acceso in continuo (posizione in tempo reale).
+  if ((view === 'mappa' && !isElect()) || view === 'indicazioni' || view === 'beacon') startMapGps(); else stopMapGps();
   if (isElect() && FIELD_VIEWS.includes(view)) { field.startGps(); if (!FE.data) field.load(); } else field.stopGps();
   if (view !== 'mappa') field.leaveMap();
   if (view === 'sigillo') openSeal(); else closeSeal();
@@ -1566,11 +1567,20 @@ async function beaconSequence(z, T = beaconTerminal()) {
   T.line(`> beacon --zone ${z.id} --duration ${z.beaconMin}m`);
   const start = z.startedAt || Date.now();
   const end = z.endsAt;
+  // L'area della zona (dalla mappa): con il GPS del telefono si controlla in tempo reale di restare dentro.
+  const area = (S.state?.zones?.list || []).find((x) => x.id === z.id)?.points || null;
+  let wasOut = false;
   while (Date.now() < end) {
     if (!document.body.contains(T.el)) return;
     const f = Math.min(1, (Date.now() - start) / (end - start));
     T.bar.firstChild.style.width = `${Math.round(f * 100)}%`;
-    T.status.textContent = `Restate dentro l'area · ${fmtDuration(Math.max(0, end - Date.now()), false)} · ${Math.round(f * 100)}%`;
+    const fresh = myPos && Date.now() - (myPos.at || 0) < 15000 ? myPos : null;
+    const depth = area && fresh ? edgeDepthM(fresh, area) : null;
+    const out = depth != null && depth < 0;
+    if (out !== wasOut) { wasOut = out; if (out) { vibrate([300, 100, 300]); T.line(`!! FUORI DALL'AREA (${Math.round(-depth)} m): RIENTRATE`, 'bt-bad'); } else T.line('  segnale agganciato: siete dentro l\'area', 'bt-good'); }
+    T.status.textContent = out ? `⚠ Siete fuori dall'area di ${Math.round(-depth)} m: rientrate o il Beacon fallisce · ${fmtDuration(Math.max(0, end - Date.now()), false)}`
+      : `Restate dentro l'area · ${fmtDuration(Math.max(0, end - Date.now()), false)} · ${Math.round(f * 100)}%`;
+    T.status.classList.toggle('bad-text', out);
     T.line(`  [${hex(4)}] ${BEACON_LINES[Math.floor(Math.random() * BEACON_LINES.length)]} ${'.'.repeat(1 + Math.floor(Math.random() * 3))} ${Math.random() < 0.8 ? 'ok' : hex(6)}`);
     await sleep(650);
   }
