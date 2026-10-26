@@ -226,7 +226,9 @@ function setState(st, offset) {
   }
   if (prev?.team.kind === 'lobby' && st.team.kind === 'lobby' && prev.player?.status === 'pending' && st.player?.status === 'accepted') toast('Il Consiglio ha accettato la vostra candidatura', 'ok', 8000);
   // Primo accesso da questo dispositivo: parte il tour dell'app.
-  if (!store.get('zdg_tour_done') && !S.tourShown) { S.tourShown = true; setTimeout(() => openTour(), 400); }
+  // Gli Eletti hanno un tour loro (rifatto): lo vedono una volta anche se avevano già visto quello vecchio.
+  const tourKey = isElect() ? 'zdg_tour_done_elect2' : 'zdg_tour_done';
+  if (!store.get(tourKey) && !S.tourShown) { S.tourShown = true; setTimeout(() => openTour(), 400); }
 }
 
 let sse = null;
@@ -4031,9 +4033,33 @@ function tourSlides() {
     extra: installBox,
   };
   if (elect) {
+    // Il tour degli Eletti: quello che fanno davvero con l'app (squadra, piazzamenti, mappa, Beacon, eventi, scontri).
+    const chips = (list) => h('div', { class: 'tour-chips' }, list.map((t) => h('span', { class: 'chip chip-brass' }, t)));
     return [welcome,
-      { icon: h('div', { class: 'tour-ico' }, '⛨'), title: 'Il vostro compito', text: ['Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi: logistica, Altari, il Cuore, i doni. Non hanno Sigillo e non cercano la Parola: obbediscono al Consiglio.'] },
-      position, traccar, notices, timers, radio, install].filter(Boolean);
+      { icon: h('div', { class: 'tour-ico' }, '⛨'), title: 'Il vostro compito',
+        text: ['Gli Eletti tengono in piedi i Giochi: piazzano Altari, Soglia, Cerchio e Doni, presidiano i luoghi, danno la caccia alle coppie quando il Consiglio lo ordina e seguono gli eventi.',
+          'Non avete Sigillo, non cercate la Parola e non siete in classifica: obbedite al Consiglio.'] },
+      { icon: chips(['Squadra', 'Incarichi', 'Notifica']), title: 'Squadra e incarichi',
+        text: ['Il Consiglio vi mette in una squadra e le affida gli incarichi: piazzare o spostare un Altare o un Dono, raggiungere un punto, dare la caccia a una coppia, seguire un evento.',
+          'Li trovate in «Incarichi»: arriva una notifica per ogni incarico nuovo e lo segnate fatto quando avete finito.'] },
+      { icon: h('div', { class: 'tour-ico' }, '⌖'), title: 'Piazzare Altari e Doni',
+        text: ['In «Piazza Altari e Doni» scansionate il cartello (o sceglietelo dall\'elenco): l\'app prende la posizione GPS e vi chiede la foto del piazzamento.'],
+        extra: () => h('ol', { class: 'tour-steps' }, h('li', null, 'Scansionate il QR del cartello.'), h('li', null, 'Aspettate un GPS preciso (o toccate il punto sulla mappa).'), h('li', null, 'Scattate la foto e confermate.'), h('li', { class: 'muted' }, 'Con «Punto di interesse» segnate radure, sentieri e posti utili: li vede anche la regia.')) },
+      { icon: h('div', { class: 'tour-ico' }, '🗺'), title: 'La mappa del campo',
+        text: ['Vedete Altari, Doni, luoghi, zone e gli altri Eletti (il puntino blu siete voi).',
+          'Le coppie no: compaiono solo il bersaglio di una caccia o di un incarico, le coppie iscritte a un vostro evento e chi è nel Campo di Luce. Chi è nell\'Ombra sparisce anche per voi.'] },
+      { icon: h('div', { class: 'tour-ico' }, '📡'), title: 'Il Beacon',
+        text: ['Dentro una zona spenta, «Beacon» la accende: restate nell\'area per la durata indicata. Vicino a un Altare, il Beacon lo disattiva per alcuni minuti: le coppie non possono usarlo.',
+          'Se non siete nell\'area ve lo dice in pochi secondi.'] },
+      { icon: h('div', { class: 'tour-ico' }, '🏁'), title: 'Gli eventi',
+        text: ['Gli eventi affidati alla vostra squadra compaiono in «Eventi», anche quelli programmati e non ancora lanciati. Li seguite sul posto, li avviate e alla fine li chiudete indicando chi ha vinto e chi ha perso.',
+          'Con ogni coppia iscritta avete una chat: la legge anche la regia.'] },
+      { icon: chips(['Abbiamo vinto', 'Abbiamo perso']), title: 'Gli scontri',
+        text: ['In «Scontri» trovate solo le coppie che potete vedere. Dopo uno scontro dichiarate l\'esito: la coppia conferma, se contesta decide la regia.',
+          'Se vincete, la coppia fa la Veglia (e in una caccia il suo Sigillo va a chi l\'ha lanciata); se perdete, la caccia è fallita.'] },
+      { icon: h('div', { class: 'tour-ico' }, '✉'), title: 'Messaggi',
+        text: ['Due canali: «Tutti gli Eletti» e quello della vostra squadra. La regia li legge entrambi e vi scrive da lì.'] },
+      position, traccar, notices, radio, install].filter(Boolean);
   }
   return [welcome,
     { icon: sealDemo, title: 'Il Sigillo', text: ['Ogni coppia custodisce un Sigillo segreto. Prima del cerchio vedete solo un simulacro sfocato: si svela quando il Consiglio apre il cerchio. Toccate quello qui sopra.', 'Se perdete un ingaggio lo mostrate a tutto schermo, con l\'orologio che prova che non è uno screenshot.'] },
@@ -4049,6 +4075,7 @@ function openTour() {
   const box = h('div', { class: 'tour', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Tour dell\'app' });
   const close = () => {
     store.set('zdg_tour_done', true);
+    if (isElect()) store.set('zdg_tour_done_elect2', true);
     box.remove();
     document.body.classList.remove('no-scroll');
   };
