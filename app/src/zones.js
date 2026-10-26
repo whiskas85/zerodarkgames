@@ -157,7 +157,10 @@ function onPosition(team, pos, now = Date.now()) {
   if (!C.ACTIVE.includes(g.status)) return;
   let any = false;
   // Tutti i telefoni della coppia sentiti negli ultimi 2 minuti (la coppia è dentro se almeno uno lo è).
-  const devs = q.all('SELECT lat, lng FROM positions WHERE teamId = ? AND at > ?', team.id, now - 2 * 60000);
+  // Conta il GPS del telefono con l'app aperta (istantaneo); Traccar («trk-…») solo se l'app non manda da 1 minuto.
+  const recent = q.all('SELECT deviceId, lat, lng, at FROM positions WHERE teamId = ? AND at > ?', team.id, now - 2 * 60000);
+  const fromApp = recent.filter((r) => !String(r.deviceId).startsWith('trk-') && r.at > now - 60000);
+  const devs = fromApp.length ? fromApp : recent;
   if (!devs.length) devs.push(pos);
   for (const z of zonesOf(g.id)) {
     const poly = pointsOf(z);
@@ -345,6 +348,8 @@ function teamZones(t) {
     here: mine.map((z) => ({ id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,
       holdUntil: z.kind === 'conquista' && !z.winnerTeamId ? z.enteredAt + z.holdMin * 60000 : null })),
     visibility: visibilityOf(t.id),
+    // Zone in cui la coppia era già dentro quando sono nate: il telefono non ne mostra l'effetto finché non esce e rientra.
+    immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),
     // Dentro un Santuario: la ricarica delle Skill corre più veloce (×2).
     recharge: mine.some((z) => z.kind === 'santuario') ? SANCTUARY_RATE : 1,

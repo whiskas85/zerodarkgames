@@ -2270,6 +2270,11 @@ test('zone: sul bordo il GPS che balla non fa entrare e uscire (isteresi, due te
   go(0, edge + 5 * m); go(1, edge + 5 * m);
   q.run('UPDATE zone_presence SET outsideSince = ? WHERE zoneId = ? AND teamId = ?', Date.now() - 50000, z.id, A.id);
   go(0, edge + 5 * m); assert.equal(isIn(), false);
+  // Con l'app aperta conta il GPS del telefono: un punto di Traccar dentro la zona non tiene dentro la coppia.
+  go(0, edge - 10 * m); assert.equal(isIn(), true);
+  F.recordPosition(A, pls[0], { deviceId: `trk-${pls[0].id}-zona`, lat: edge - 30 * m, lng: 9, acc: 10 });
+  q.run("DELETE FROM positions WHERE deviceId = ?", `dev-edge-${A.id}-1`);
+  go(0, edge + 30 * m); assert.equal(isIn(), false, 'il telefono è fuori: Traccar non conta');
 });
 
 test('zone: abilitata (le coppie la vedono, anche spenta) e attiva (l\'effetto vale)', () => {

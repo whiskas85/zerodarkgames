@@ -279,7 +279,7 @@ export function watchPosition(onPos, onError) {
   const id = navigator.geolocation.watchPosition(
     (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: p.timestamp }),
     (e) => onError?.(e.code === 1 ? 'Permesso di posizione negato: consentilo dalle impostazioni del browser' : 'Posizione non disponibile: andate all\'aperto e riprovate'),
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 },
   );
   return () => navigator.geolocation.clearWatch(id);
 }

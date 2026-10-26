@@ -2050,24 +2050,24 @@ function trackingOn(st) {
 // Distanza approssimata in metri (basta per decidere se inviare).
 const meters = (a, b) => Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
 
-function sendPosition(pos) {
+function sendPosition(pos, force = false) {
   // Posizione di rete (centinaia di metri o chilometri): meglio niente che un punto sbagliato in mappa.
   if (pos.acc > SEND_MAX_ACC) return;
   const now = Date.now();
-  if (now - lastSent.at < 20000 && meters(pos, lastSent) < 15) return;
+  if (!force && now - lastSent.at < 20000 && meters(pos, lastSent) < 15) return;
   lastSent = { at: now, lat: pos.lat, lng: pos.lng };
   api('POST', '/api/team/position', { deviceId, lat: pos.lat, lng: pos.lng, acc: pos.acc }).catch(() => { lastSent.at = 0; });
 }
 
-// Batteria: il GPS dell'app serve solo se Traccar Client non sta già mandando la posizione, e solo con l'app in primo
-// piano (con lo schermo spento ci pensa Traccar). Sulla mappa il GPS resta acceso a parte (startMapGps).
+// Con l'app aperta comanda il GPS del telefono: è istantaneo, decide subito le zone e va al server (anche se c'è
+// Traccar Client, che serve a informare il server quando l'app è chiusa o lo schermo è spento).
 function updateTracking(st) {
-  const on = trackingOn(st) && !document.hidden && !st?.tracking?.on;
+  const on = trackingOn(st) && !document.hidden;
   if (on && !trackStop) {
     trackStop = watchPosition((pos) => {
       const hint = pos.acc > SEND_MAX_ACC ? accuracyHint(pos.acc) : null;
       if (hint !== trackMsg) { const had = !!trackMsg; trackMsg = hint; const el = document.getElementById('track-msg'); if (el && hint) el.textContent = hint; else if (had !== !!hint) render(); }
-      sendPosition(pos);
+      onPhonePos(pos);
     }, (msg) => { trackMsg = msg; });
   } else if (!on && trackStop) {
     trackStop();
@@ -2077,7 +2077,7 @@ function updateTracking(st) {
 
 // Solo se c'è un problema con la posizione (GPS negato o assente): il messaggio e il link a Traccar.
 function trackingNote(st) {
-  if (!trackingOn(st) || !trackMsg) return null;
+  if (!trackingOn(st) || !trackMsg || st?.tracking?.on) return null;
   return h('p', { class: 'track-note small' }, '📍 ', h('span', { class: 'bad-text', id: 'track-msg' }, trackMsg),
     st.player ? [' ', h('a', { href: '#/traccar' }, 'Traccar →')] : null);
 }
@@ -2102,10 +2102,8 @@ let gpsMsg = null;
 function startMapGps() {
   if (stopGps) return;
   stopGps = watchPosition((p) => {
-    myPos = p;
     gpsMsg = null;
-    teamMapView.setMe(p);
-    guideMapView.setMe(p);
+    onPhonePos(p);
     const el = document.getElementById('map-gps');
     if (el) el.hidden = true;
   }, (msg) => { gpsMsg = msg; const el = document.getElementById('map-gps'); if (el) { el.textContent = msg; el.hidden = false; } });
@@ -2267,11 +2265,96 @@ function viewMap(focus = null) {
 
 // ---------------------------------------------------------------- Zone della mappa
 
+// ---- Posizione del telefono: mappa in tempo reale, zone decise sul telefono e invio al server.
+let localFixAt = 0;
+function onPhonePos(p) {
+  myPos = p;
+  teamMapView.setMe(p);
+  guideMapView.setMe(p);
+  const changed = localZoneCheck(p);
+  // Appena si entra o si esce da una zona la posizione parte subito (il server applica gli effetti di gioco).
+  if (S.state && trackingOn(S.state)) sendPosition(p, changed);
+}
+
+// Zone dal GPS del telefono, con lo stesso margine sul bordo del server: si entra a 3 m dentro, si esce oltre 12 m
+// fuori o dopo 45 secondi appena fuori. Gli effetti a schermo e l'avviso partono subito, senza aspettare il server.
+const LZ = new Map(); // id zona -> { outSince }
+function edgeDepthM(pt, poly) {
+  const M = 111320;
+  const c = Math.cos((pt.lat * Math.PI) / 180);
+  const xy = ([la, ln]) => [(ln - pt.lng) * M * c, (la - pt.lat) * M];
+  let best = Infinity;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = xy(poly[j]); const [bx, by] = xy(poly[i]);
+    if (((by > 0) !== (ay > 0)) && 0 < ((ax - bx) * (0 - by)) / (ay - by) + bx) inside = !inside;
+    const dx = bx - ax; const dy = by - ay;
+    const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return inside ? best : -best;
+}
+const zonesLive = () => S.state?.team?.kind === 'couple' && ACTIVE_OR_PAUSED.includes(S.state?.clock?.status);
+function localZoneCheck(p) {
+  const zs = S.state?.zones;
+  if (!zs || !zonesLive() || p.acc > 60) return false;
+  localFixAt = Date.now();
+  const now = Date.now();
+  let changed = false;
+  const entered = [];
+  const ids = new Set(zs.list.map((z) => z.id));
+  for (const id of [...LZ.keys()]) if (!ids.has(id)) { LZ.delete(id); changed = true; }
+  for (const z of zs.list) {
+    if (!z.active) { if (LZ.delete(z.id)) changed = true; continue; }
+    const d = edgeDepthM(p, z.points);
+    const st = LZ.get(z.id);
+    if (!st) { if (d >= 3) { LZ.set(z.id, { outSince: null }); entered.push(z); changed = true; } continue; }
+    if (d >= 0) { st.outSince = null; continue; }
+    st.outSince ||= now;
+    if (d <= -12 || now - st.outSince >= 45000) { LZ.delete(z.id); changed = true; }
+  }
+  if (changed) {
+    for (const z of entered) if (!(zs.immune || []).includes(z.id)) showZoneEnter(z);
+    applyZoneFx();
+  }
+  return changed;
+}
+// Zone attive su di noi adesso: dal telefono se il GPS è fresco, altrimenti quelle del server.
+function hereZones() {
+  const zs = S.state?.zones;
+  if (!zs) return [];
+  if (zonesLive() && Date.now() - localFixAt < 60000) {
+    const imm = new Set(zs.immune || []);
+    return zs.list.filter((z) => z.active && LZ.has(z.id) && !imm.has(z.id));
+  }
+  return zs.here.map((x) => zs.list.find((z) => z.id === x.id) || x);
+}
+function applyZoneFx() {
+  // Ordine per strato: l'ultima vince (Ombra sopra Luce…), come sul server.
+  document.documentElement.dataset.zones = [...hereZones()].sort((a, b) => (a.layer || 0) - (b.layer || 0)).map((z) => z.kind).join(' ');
+}
+// Avviso d'ingresso (una volta per zona per minuto: lo può dare il telefono e poi il server).
+const zoneEnterShown = new Map();
+function showZoneEnter(info) {
+  const last = zoneEnterShown.get(info.id) || 0;
+  if (Date.now() - last < 60000) return;
+  zoneEnterShown.set(info.id, Date.now());
+  vibrate(ZONE_VIBE[info.kind] || [200]);
+  document.querySelector('.zone-enter')?.remove();
+  const el = h('div', { class: `zone-enter zk-${info.kind}`, role: 'status', style: { '--c': info.color }, onclick: () => el.remove() },
+    h('div', { class: 'ze-ico', 'aria-hidden': 'true' }, info.icon),
+    h('div', { class: 'eyebrow' }, 'Entrate in'),
+    h('h2', null, info.name),
+    h('p', null, info.effect));
+  document.body.append(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
 // Effetto a schermo finché si è dentro, e anello della Conquista.
 const ZONE_VIBE = { ombra: [80], luce: [700], emp: [40, 40, 40, 40, 40, 40, 40, 40, 40], santuario: [120, 80, 120, 80, 240], conquista: [300, 100, 300] };
 function zoneHud() {
   const zs = S.state?.zones;
-  document.documentElement.dataset.zones = (zs?.here || []).map((z) => z.kind).join(' ');
+  applyZoneFx();
   const cq = (zs?.here || []).find((z) => z.kind === 'conquista' && z.holdUntil);
   const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', String(zs.recharge)) : null;
   if (!cq) return boost;
@@ -2289,16 +2372,7 @@ function zoneEvents(prev, st) {
   const entered = prev ? zs.here.filter((z) => !before.has(z.id)) : [];
   for (const z of entered.slice(-1)) {
     const info = zs.list.find((x) => x.id === z.id);
-    if (!info) continue;
-    vibrate(ZONE_VIBE[z.kind] || [200]);
-    document.querySelector('.zone-enter')?.remove();
-    const el = h('div', { class: `zone-enter zk-${z.kind}`, role: 'status', style: { '--c': info.color }, onclick: () => el.remove() },
-      h('div', { class: 'ze-ico', 'aria-hidden': 'true' }, info.icon),
-      h('div', { class: 'eyebrow' }, 'Entrate in'),
-      h('h2', null, info.name),
-      h('p', null, info.effect));
-    document.body.append(el);
-    setTimeout(() => el.remove(), 3200);
+    if (info) showZoneEnter(info);
   }
   for (const w of zs.won || []) {
     if (seenZoneWins.has(w.id)) continue;
