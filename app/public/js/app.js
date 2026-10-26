@@ -483,7 +483,7 @@ function render() {
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), zoneHud(), radioBar());
     document.body.dataset.view = view;
-    if (view === 'mappa' && !isElect()) requestAnimationFrame(fitMap);
+    if (view === 'mappa') requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', view === 'messaggi');
     if (view === 'messaggi' && !arg && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
   });
@@ -702,13 +702,14 @@ const sosOn = () => !SOS_OFF.includes(S.state?.clock?.status);
 
 // La mappa occupa tutto lo spazio libero sotto i banner (sopra la barra radio, se è in fondo).
 function fitMap() {
-  const el = teamMapView.el;
+  const mv = isElect() ? field.mapView : teamMapView;
+  const el = mv.el;
   if (!document.body.contains(el)) return;
   const radio = document.querySelector('.radio');
   const bottom = radio && radio.getBoundingClientRect().top > window.innerHeight / 2 ? radio.offsetHeight : 0;
   const top = el.getBoundingClientRect().top + window.scrollY;
   const height = Math.max(240, Math.round(window.innerHeight - top - bottom));
-  if (el.style.height !== `${height}px`) { el.style.height = `${height}px`; teamMapView.resize(); }
+  if (el.style.height !== `${height}px`) { el.style.height = `${height}px`; mv.resize(); }
 }
 window.addEventListener('resize', () => { if (document.body.dataset.view === 'mappa') requestAnimationFrame(fitMap); });
 
@@ -2126,10 +2127,7 @@ function viewMap(focus = null) {
     ...(S.state?.skills?.giftHints || []).map((x) => ({ key: `h${x.id}`, lat: x.lat, lng: x.lng, radius: x.radius, color: '#d1ad62', title: 'Presagio del Dono: il dono è qui dentro' })),
   ]);
   const zones = S.state?.zones;
-  // Zone spente in grigio: si sa cosa sono e che gli Eletti le possono accendere con un Beacon.
-  teamMapView.setPolygons((zones?.list || []).map((z) => (z.active
-    ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` }
-    : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', title: `${z.icon} ${z.name} · spenta: ${z.effect}` })));
+  teamMapView.setPolygons(zonePolygons(zones));
   if (myPos) teamMapView.setMe(myPos);
   teamMapView.refresh();
   // Dalla Parola intera: la mappa si apre sulla Soglia (e su di voi, se il GPS c'è).
@@ -2248,12 +2246,17 @@ function viewElectField() {
     which === 'doni' ? field.viewGifts() : which === 'punti' ? field.viewPois() : field.viewAltars());
 }
 
+// Come la mappa delle coppie: tutta la larghezza e l'altezza dello schermo; GPS e legenda sotto, richiudibili.
+// Zone sulla mappa (coppie ed Eletti); quelle spente in grigio: si sa cosa sono e che gli Eletti le possono accendere con un Beacon.
+const zonePolygons = (zones) => (zones?.list || []).map((z) => (z.active
+  ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, title: `${z.icon} ${z.name}: ${z.effect}` }
+  : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', title: `${z.icon} ${z.name} · spenta: ${z.effect}${isElect() ? ' (accendila con il Beacon)' : ''}` }));
+
 function viewElectMap() {
-  return h('div', { class: 'stack campo' },
-    h('h2', null, 'Mappa del campo'),
-    h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()),
-    field.viewMap(),
-    trackingNote(S.state));
+  queueMicrotask(() => field.mapView.setPolygons(zonePolygons(S.state?.zones)));
+  return h('div', { class: 'campo' },
+    trackingNote(S.state),
+    field.viewMap({ full: true, extra: h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()) }));
 }
 
 // ---------------------------------------------------------------- Doni del Consiglio (QR)

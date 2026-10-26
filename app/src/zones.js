@@ -328,7 +328,11 @@ function masterZones(gameId) {
 
 // Per la coppia: tutte le zone attive (con l'effetto), quelle in cui è adesso e l'avanzamento della Conquista.
 function teamZones(t) {
-  if (!t || t.kind !== 'couple') return null;
+  if (!t || !['couple', 'elect'].includes(t.kind)) return null;
+  // Eletti: vedono le zone abilitate (accese e spente: dove lanciare il Beacon), senza effetti su di loro.
+  if (t.kind === 'elect') {
+    return { list: q.all('SELECT * FROM map_zones WHERE gameId = ? AND enabled = 1 ORDER BY layer, id', t.gameId).map(zoneOut), here: [], visibility: null, emp: false, won: [], recharge: 1 };
+  }
   // Prima del Cerchio le coppie non vedono le zone (come gli altri luoghi del gioco).
   if (['created', 'draft', 'ready'].includes(G.getGame(t.gameId).status)) return null;
   const now = Date.now();

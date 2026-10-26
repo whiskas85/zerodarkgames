@@ -203,11 +203,25 @@ export function createField(F, { rerender }) {
     if (F.me) mapView.setMe(F.me);
   }
 
-  function viewMap() {
+  // full: mappa a tutto schermo come quella delle coppie (app degli Eletti), con i pulsanti a icona sopra e la legenda sotto.
+  function viewMap({ full = false, extra = null } = {}) {
     const d = F.data;
     if (!d) return h('p', { class: 'empty' }, 'Caricamento…');
     if (!mapOn) { mapOn = true; loadPositions(); }
     queueMicrotask(() => { updateMap(); mapView.refresh(); });
+    if (full) {
+      mapView.el.classList.add('team-map');
+      const tool = (ico, label, onclick) => h('button', { class: 'btn btn-sm', type: 'button', title: label, 'aria-label': label, onclick }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, ico), h('span', { class: 'mt-label' }, label));
+      return h('div', { class: 'stack map-page' },
+        h('div', { class: 'map-wrap' },
+          mapView.el,
+          h('div', { class: 'map-tools' },
+            tool('◎', 'La mia posizione', () => mapView.centerMe()),
+            tool('⛶', 'Tutto il campo', () => mapView.autoCenter()),
+            tool('＋', 'Punto di interesse', () => openPoi()),
+            h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))),
+        h('details', { class: 'card map-legend-card' }, h('summary', null, 'Legenda e GPS'), extra, legend(), missing(d)));
+    }
     return h('div', { class: 'stack-sm' },
       mapView.el,
       h('div', { class: 'row-actions' },
@@ -215,7 +229,14 @@ export function createField(F, { rerender }) {
         h('button', { class: 'btn btn-sm', onclick: () => mapView.autoCenter() }, 'Tutto il campo'),
         h('a', { class: 'btn btn-sm', href: `/api/field/export.kmz?gameId=${F.gameId}`, download: '', title: 'Tutti i punti per ATAK o Google Earth' }, '⇩ KMZ (ATAK)'),
         h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => openPoi() }, '＋ Punto di interesse')),
-      h('div', { class: 'map-legend' },
+      legend(),
+      missing(d));
+  }
+  function missing(d) {
+    return d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null;
+  }
+  function legend() {
+    return h('div', { class: 'map-legend' },
         h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
         h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
         h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
@@ -224,8 +245,7 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato dalla regia'),
         h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse'),
         h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Altri Eletti (colore della squadra)'),
-        h('span', null, h('span', { class: 'pin pin-me' }), ' Tu')),
-      d.points.some((p) => p.lat == null) ? h('p', { class: 'muted small' }, `Altari ancora da piazzare: ${d.points.filter((p) => p.lat == null).map((p) => p.sectorName).join(', ')}`) : null);
+        h('span', null, h('span', { class: 'pin pin-me' }), ' Tu'));
   }
 
   // ------------------------------------------------------------ punti di interesse
