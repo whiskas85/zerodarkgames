@@ -978,16 +978,28 @@ html.sos-open, html.sos-open body { overflow: hidden; overscroll-behavior: none;
 .ev-truce { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--ok-soft); }
 .ev-prize { margin: 12px 0; padding: 14px; border: 2px solid var(--brass); border-radius: 8px; display: grid; gap: 4px; font-size: 18px; }
 
-/* Zone della mappa: finché si è dentro, solo una cornice sui bordi dello schermo (il centro resta libero per giocare) */
-html[data-zones] body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 60; border: 4px solid transparent; }
-html[data-zones~="ombra"] body::after { border-color: rgba(60, 30, 110, .85); box-shadow: inset 0 0 18px 2px rgba(20, 10, 40, .7); }
-html[data-zones~="luce"] body::after { border-color: rgba(240, 160, 32, .8); animation: zone-luce 1.6s ease-in-out infinite; }
-html[data-zones~="santuario"] body::after { border-color: rgba(209, 173, 98, .85); box-shadow: inset 0 0 16px 1px rgba(209, 173, 98, .45); }
-html[data-zones~="emp"] body::after { animation: zone-emp .35s steps(2) infinite; }
-html[data-zones~="conquista"] body::after { border-color: rgba(229, 72, 77, .8); box-shadow: inset 0 0 16px 1px rgba(229, 72, 77, .4); }
-@keyframes zone-luce { 0%, 100% { box-shadow: inset 0 0 8px 0 rgba(240, 160, 32, .35); } 50% { box-shadow: inset 0 0 22px 3px rgba(255, 90, 40, .6); } }
-@keyframes zone-emp { 0% { border-color: rgba(34, 195, 230, .85); box-shadow: inset 3px 0 0 rgba(255, 0, 80, .45); } 100% { border-color: rgba(255, 0, 80, .7); box-shadow: inset -3px 0 0 rgba(34, 195, 230, .5); } }
-@media (prefers-reduced-motion: reduce) { html[data-zones] body::after { animation: none !important; } }
+/* Zone della mappa: finché si è dentro, un alone (glow) dai bordi dello schermo: si vede bene ma il centro resta libero.
+   Solo box-shadow su un livello fisso (niente bordi: non deve far scorrere la pagina). Il Disturbo invece dà fastidio apposta. */
+html[data-zones] body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 60; box-sizing: border-box; }
+html[data-zones~="ombra"] body::after { box-shadow: inset 0 0 70px 26px rgba(30, 12, 70, .9), inset 0 0 14px 4px rgba(120, 70, 220, .55); }
+html[data-zones~="luce"] body::after { animation: zone-luce 1.6s ease-in-out infinite; }
+html[data-zones~="santuario"] body::after { box-shadow: inset 0 0 60px 18px rgba(209, 173, 98, .6), inset 0 0 12px 3px rgba(255, 220, 140, .6); animation: zone-santo 3.2s ease-in-out infinite; }
+html[data-zones~="conquista"] body::after { box-shadow: inset 0 0 60px 18px rgba(229, 72, 77, .55), inset 0 0 12px 3px rgba(255, 110, 110, .55); }
+@keyframes zone-luce { 0%, 100% { box-shadow: inset 0 0 40px 10px rgba(240, 160, 32, .45); } 50% { box-shadow: inset 0 0 85px 28px rgba(255, 100, 40, .7), inset 0 0 14px 4px rgba(255, 200, 80, .6); } }
+@keyframes zone-santo { 50% { box-shadow: inset 0 0 75px 24px rgba(209, 173, 98, .7), inset 0 0 14px 4px rgba(255, 220, 140, .7); } }
+/* Zona di Disturbo: deve intralciare. Righe di interferenza su tutto lo schermo, sfarfallio, colori sballati e scatti. */
+html[data-zones~="emp"] body::after {
+  background: repeating-linear-gradient(0deg, rgba(34, 195, 230, .10) 0 2px, transparent 2px 5px), linear-gradient(rgba(5, 20, 30, .28), rgba(5, 20, 30, .28));
+  box-shadow: inset 0 0 70px 22px rgba(34, 195, 230, .55), inset 0 0 0 3px rgba(255, 0, 80, .6);
+  animation: zone-emp .18s steps(2) infinite, zone-emp-roll 2.4s linear infinite; }
+html[data-zones~="emp"] body::before { content: ''; position: fixed; left: 0; right: 0; height: 14vh; top: 0; pointer-events: none; z-index: 61;
+  background: linear-gradient(transparent, rgba(34, 195, 230, .22) 45%, rgba(255, 0, 80, .25) 55%, transparent); mix-blend-mode: screen; animation: zone-emp-bar 1.7s linear infinite; }
+html[data-zones~="emp"] .main { animation: zone-emp-jit 2.6s steps(1) infinite; }
+@keyframes zone-emp { 0% { opacity: 1; filter: hue-rotate(0deg); } 100% { opacity: .75; filter: hue-rotate(60deg); } }
+@keyframes zone-emp-roll { 0% { background-position: 0 0, 0 0; } 100% { background-position: 0 40px, 0 0; } }
+@keyframes zone-emp-bar { 0% { transform: translateY(-15vh); } 100% { transform: translateY(100dvh); } }
+@keyframes zone-emp-jit { 0%, 86%, 100% { transform: none; filter: none; } 88% { transform: translateX(-6px) skewX(-2deg); filter: hue-rotate(90deg) saturate(2); } 91% { transform: translateX(5px); filter: invert(.15); } 94% { transform: translateX(-2px); filter: none; } }
+@media (prefers-reduced-motion: reduce) { html[data-zones] body::after, html[data-zones] body::before, html[data-zones~="emp"] .main { animation: none !important; } }
 /* Alone sul puntatore «voi» della mappa */
 html[data-zones~="ombra"] .pin-me { box-shadow: 0 0 0 12px rgba(40, 20, 70, .55), 0 0 34px 18px rgba(10, 5, 20, .7); }
 html[data-zones~="luce"] .pin-me { animation: pin-luce 1.2s ease-in-out infinite; }
