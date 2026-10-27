@@ -1093,3 +1093,4 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .off-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .off-track i { display: block; height: 100%; background: var(--brass, #d1ad62); transition: width .2s; }
 .campo > .off-prompt { position: relative; top: auto; left: auto; right: auto; margin: 6px 10px; }
+.tour-radio .tour-sos { pointer-events: none; padding: 8px 14px; font-size: 14px; }

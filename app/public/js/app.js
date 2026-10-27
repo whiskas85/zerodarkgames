@@ -4219,10 +4219,15 @@ function tourSlides() {
     title: 'I timer',
     text: ['Un tocco e partono: Veglia, Stallo, Trattativa, Blocchi. Vibrano a fine tempo e funzionano anche senza rete. Il suono è spento: nel bosco il rumore tradisce.'],
   };
+  // Come la barra in fondo all'app: canale radio d'emergenza e pulsante EMERGENZA (fuori dal gioco).
   const radio = {
-    icon: h('div', { class: 'tour-radio' }, h('span', { class: 'eyebrow' }, 'Radio d\'emergenza'), h('strong', { class: 'mono' }, st?.game.emergencyRadioChannel || 'PMR 8')),
-    title: 'Regia e radio',
-    text: ['In fondo allo schermo c\'è sempre il canale radio d\'emergenza. Per tutto il resto scrivete alla regia dall\'app. Se la partita viene sospesa, lo schermo diventa rosso: fermatevi e ascoltate la radio.'],
+    icon: h('div', { class: 'tour-radio' },
+      h('div', null, h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono' }, ` ${st?.game.emergencyRadioChannel || 'PMR 8'}`)),
+      h('span', { class: 'btn-sos tour-sos', 'aria-hidden': 'true' }, 'EMERGENZA')),
+    title: 'Emergenze e radio',
+    text: ['In fondo allo schermo c\'è sempre il canale radio d\'emergenza e il pulsante EMERGENZA.',
+      'EMERGENZA è solo per i problemi veri, fuori dal gioco (OFF GAME): un infortunio, un malore, una persona dispersa. Avvisa subito la Direzione con la vostra posizione; potete dire quanto è grave e aggiungere una nota. Funziona anche l\'SOS di Traccar Client.',
+      'Per tutto il resto scrivete alla regia dall\'app. Se la partita viene sospesa lo schermo diventa rosso: fermatevi e ascoltate la radio.'],
   };
   const position = {
     icon: h('div', { class: 'tour-ico' }, '📍'),
