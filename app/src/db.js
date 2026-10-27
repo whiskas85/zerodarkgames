@@ -669,6 +669,8 @@ addColumn('points', 'disabledBy', 'TEXT');
 addColumn('zone_presence', 'outsideSince', 'INTEGER');
 addColumn('map_zones', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
 addColumn('games', 'offlineMap', 'TEXT');
+addColumn('games', 'acceptanceClosedAt', 'INTEGER');
+addColumn('games', 'acceptanceClosedBy', 'TEXT');
 
 // Tipi di cronografo oltre all'Acetech AC6000 (integrato): come leggere la velocità dal canale Bluetooth.
 db.exec(`

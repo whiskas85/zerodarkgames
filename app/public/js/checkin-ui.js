@@ -30,7 +30,9 @@ export function viewCheckin(ctx) {
   const present = accepted.filter((p) => p.checkinAt).length;
   const teamsOk = ms.teams.filter((t) => t.checkinAt).length;
   const pending = ms.players.filter((p) => p.status === 'pending').length;
-  const toggle = (p) => personModal(ctx, p);
+  const acc = ms.acceptance || {};
+  const closed = !!acc.closedAt;
+  const toggle = (p) => (closed ? toast('Accettazione chiusa: riaprila per cambiare') : personModal(ctx, p));
   const teamToggle = async (t) => {
     if (t.checkinAt && !(await dialog({ title: 'Annullare la conferma?', text: `${t.roman} · Settore ${t.sectorName}: la coppia torna da confermare.`, okLabel: 'Annulla conferma' }))) return;
     ctx.call('POST', (`/checkin/team/${t.id}`), { on: !t.checkinAt }, t.checkinAt ? 'Conferma annullata' : 'Coppia confermata');
@@ -40,17 +42,18 @@ export function viewCheckin(ctx) {
       h('p', { class: 'muted tiny' }, 'All\'arrivo al campo: segna chi è presente, poi conferma la coppia quando ci sono tutti e due. Solo gli iscritti già approvati; chi è presente compare nel Test repliche.'),
       h('div', { class: 'ck-counts' }, ckCount(present, accepted.length, 'presenti'), ckCount(teamsOk, ms.teams.length, 'coppie confermate')),
       pending ? h('p', { class: 'small warn-text' }, `${pending} iscrizioni ancora da approvare: le trovi nella pagina Persone.`) : null,
+      acceptanceBar(ctx, acc),
       ckSearch(ctx)),
-    h('p', { class: 'tiny muted' }, 'Manca qualcuno? Trascina le persone con la maniglia ⠿ da una coppia all\'altra (se ha un posto libero), tra le squadre degli Eletti o su «Nuova squadra di Eletti». La coppia toccata torna da confermare.'),
+    closed ? null : h('p', { class: 'tiny muted' }, 'Manca qualcuno? Trascina le persone con la maniglia ⠿ da una coppia all\'altra (se ha un posto libero), tra le squadre degli Eletti o su «Nuova squadra di Eletti». La coppia toccata torna da confermare.'),
     // In tabella: una riga per Settore con i due Legati affiancati; poi Eletti (per squadra) e chi è senza coppia.
     // Ogni riga è un punto di rilascio: anche un Settore rimasto vuoto resta, per trascinarci dentro qualcuno.
     h('div', { class: 'ck-tables' }, (() => {
       const groups = peopleGroups(ctx, () => true, true);
-      const row = (p) => h('div', { class: 'ck-row' }, h('span', { class: 'ck-grip', title: 'Trascina per spostare', 'aria-label': `Sposta ${p.name}`, onpointerdown: (e) => ckDrag(ctx, e, p) }, '⠿'), h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
+      const row = (p) => h('div', { class: 'ck-row' }, closed ? null : h('span', { class: 'ck-grip', title: 'Trascina per spostare', 'aria-label': `Sposta ${p.name}`, onpointerdown: (e) => ckDrag(ctx, e, p) }, '⠿'), h('button', { class: `ck-person ${p.checkinAt ? 'on' : ''}`, type: 'button', onclick: () => toggle(p) },
         h('span', { class: 'ck-box', 'aria-hidden': 'true' }, p.checkinAt ? '✓' : ''),
         h('span', { class: 'grow' }, h('strong', null, personLabel(p)), h('span', { class: 'tiny muted' }, [p.username ? `@${p.username}` : null, p.softairTeam].filter(Boolean).join(' · '))),
         h('span', { class: 'ck-side tiny' }, p.checkinAt ? `accettato ${fmtTime(p.checkinAt)}` : 'da accettare', checkSummary(p))));
-      const slot = () => h('div', { class: 'ck-slot tiny muted' }, 'posto libero: trascina qui qualcuno');
+      const slot = () => h('div', { class: 'ck-slot tiny muted' }, closed ? 'posto libero' : 'posto libero: trascina qui qualcuno');
       const couples = groups.filter((g) => g.team);
       const others = groups.filter((g) => !g.team);
       return [
@@ -63,7 +66,7 @@ export function viewCheckin(ctx) {
               h('td', { class: 'ck-sector' }, h('strong', null, g.title), g.sub ? h('div', { class: 'tiny muted' }, g.sub) : null),
               h('td', null, p1 ? row(p1) : slot()),
               h('td', null, p2 ? row(p2) : g.all.length < 2 ? slot() : null),
-              h('td', { class: 'ck-confirm' }, h('button', { class: `btn btn-sm btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: !g.team.checkinAt && !allIn, onclick: () => teamToggle(g.team) },
+              h('td', { class: 'ck-confirm' }, h('button', { class: `btn btn-sm btn-block ${g.team.checkinAt ? 'btn-ok' : 'btn-primary'}`, type: 'button', disabled: closed || (!g.team.checkinAt && !allIn), onclick: () => teamToggle(g.team) },
                 g.team.checkinAt ? `✓ Confermata · ${fmtTime(g.team.checkinAt)}` : allIn ? 'Conferma la coppia' : 'Manca qualcuno')));
           })))) : null,
         h('div', { class: 'table-wrap' }, h('table', { class: 'ck-table ck-table-others' },
@@ -74,10 +77,35 @@ export function viewCheckin(ctx) {
       ];
     })(),
     // Nuova squadra di Eletti: si crea toccando, oppure trascinandoci sopra qualcuno.
-    h('button', { class: 'panel ck-group ck-new', type: 'button', 'data-drop': JSON.stringify({ newSquad: true }), onclick: async () => {
+    closed ? null : h('button', { class: 'panel ck-group ck-new', type: 'button', 'data-drop': JSON.stringify({ newSquad: true }), onclick: async () => {
       const name = await dialog({ title: 'Nuova squadra di Eletti', input: { placeholder: 'Nome della squadra' }, okLabel: 'Crea' });
       if (name && name.trim()) ctx.call('POST', ('/squads'), { name: name.trim() }, 'Squadra creata');
     } }, h('strong', null, '＋ Nuova squadra di Eletti'), h('span', { class: 'tiny muted' }, 'Tocca per crearla vuota, o trascina qui una persona'))));
+}
+
+// Chiusura dell'accettazione: da lì in poi coppie e squadre sono quelle accettate. Si riapre e si richiude quando
+// serve; ogni passaggio (chi e quando) resta nello storico e nel registro.
+function acceptanceBar(ctx, acc) {
+  const ms = ctx.data;
+  const closed = !!acc.closedAt;
+  const people = ms.players.filter((p) => p.status === 'accepted' && p.checkinAt);
+  const couples = ms.teams.filter((t) => t.status !== 'withdrawn' && people.some((p) => p.teamId === t.id)).length;
+  const out = ms.teams.filter((t) => t.status !== 'withdrawn' && !people.some((p) => p.teamId === t.id)).length;
+  const toggle = async () => {
+    const ok = closed
+      ? await dialog({ title: 'Riaprire l\'accettazione?', text: 'Si potrà di nuovo accettare, togliere l\'accettazione e spostare le persone tra coppie e squadre. La riapertura resta nello storico.', okLabel: 'Riapri' })
+      : await dialog({ title: 'Chiudere l\'accettazione?', text: `Da ora coppie e squadre restano quelle accettate: ${couples} ${couples === 1 ? 'coppia' : 'coppie'} e ${people.length} ${people.length === 1 ? 'persona' : 'persone'}.${out ? ` ${out === 1 ? '1 coppia senza nessuno accettato resta fuori' : `${out} coppie senza nessuno accettato restano fuori`}.` : ''} Puoi riaprirla quando serve; tutto resta nello storico.`, okLabel: '🔒 Chiudi l\'accettazione', danger: true });
+    if (ok) ctx.call('POST', '/acceptance', { closed: !closed }, closed ? 'Accettazione riaperta' : 'Accettazione chiusa');
+  };
+  const hist = acc.history || [];
+  return h('div', { class: `ck-close ${closed ? 'on' : ''}` },
+    h('div', { class: 'ck-close-row' },
+      h('span', { class: 'grow' }, closed
+        ? [h('strong', null, '🔒 Accettazione chiusa'), h('span', { class: 'tiny muted' }, ` alle ${fmtTime(acc.closedAt)}${acc.closedBy ? ` · ${acc.closedBy}` : ''}: coppie e squadre sono bloccate.`)]
+        : [h('strong', null, 'Accettazione aperta'), h('span', { class: 'tiny muted' }, ' · quando hai finito chiudila: da lì in poi le squadre sono quelle.')]),
+      h('button', { class: `btn btn-sm ${closed ? '' : 'btn-primary'}`, type: 'button', onclick: toggle }, closed ? '🔓 Riapri' : '🔒 Chiudi l\'accettazione')),
+    hist.length ? h('details', { class: 'ck-hist', 'data-keep': 'ck-hist' }, h('summary', { class: 'tiny' }, `Storico aperture e chiusure (${hist.length})`),
+      h('ul', { class: 'list tiny' }, hist.map((x) => h('li', null, `${x.closed ? '🔒 Chiusa' : '🔓 Riaperta'} alle ${fmtTime(x.at)} · ${x.by || '?'}${x.closed && x.data ? ` · ${x.data.coppie} coppie, ${x.data.persone} persone` : ''}`)))) : null);
 }
 
 // Quante voci della checklist sono a posto (rilevate dall'app o spuntate dal Consiglio).

@@ -508,7 +508,7 @@ function reportElectFight(electTeam, player, body) {
   if (!winner) throw err(400, 'Esito non valido');
   // Qualsiasi coppia in gioco (si incontrano anche per caso sul campo); se è un bersaglio o un evento della squadra, lo scontro vi si lega.
   const opp = team(body.teamId);
-  if (!opp || opp.gameId !== electTeam.gameId || opp.kind !== 'couple' || opp.status === 'withdrawn' || !opp.sectorId) throw err(400, 'Coppia non valida');
+  if (!opp || opp.gameId !== electTeam.gameId || !G.playingCouples(opp.gameId).some((t) => t.id === opp.id)) throw err(400, 'Coppia non valida');
   const linked = F().electVisibleTeams(electTeam.gameId, player.squadId).find((x) => x.teamId === opp.id);
   const target = { teamId: opp.id, roman: opp.roman, sectorName: opp.sectorName, taskId: linked?.taskId || null, eventId: linked?.eventId || null };
   if (q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND squadId = ? AND status = 'pending'", target.teamId, player.squadId)) throw err(409, 'C\'è già uno scontro da confermare con questa coppia');
@@ -595,14 +595,16 @@ function electCombatState(electTeam, player) {
   return {
     elect: true,
     // Prima le coppie legate alla squadra (caccia, incarico, evento, Campo di Luce), poi tutte le altre: si incontrano anche per caso.
-    targets: squadId ? (() => {
-      const pending = (id) => !!q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND squadId = ? AND status = 'pending'", id, squadId);
-      const linked = F().electVisibleTeams(electTeam.gameId, squadId);
+    // Tutte le coppie in gioco (accettate, se l'accettazione è in uso): anche chi è ancora senza squadra le vede.
+    targets: (() => {
+      const pending = (id) => !!squadId && !!q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND squadId = ? AND status = 'pending'", id, squadId);
+      const playing = G.playingCouples(electTeam.gameId);
+      const inPlay = new Set(playing.map((t) => t.id));
+      const linked = squadId ? F().electVisibleTeams(electTeam.gameId, squadId).filter((x) => inPlay.has(x.teamId)) : [];
       const ids = new Set(linked.map((x) => x.teamId));
       return [...linked.map((x) => ({ ...teamLite(x.teamId), why: x.why, linked: true, pending: pending(x.teamId) })),
-        ...G.teamsOf(electTeam.gameId).filter((t) => t.kind === 'couple' && t.sectorId && t.status !== 'withdrawn' && !ids.has(t.id))
-          .map((t) => ({ ...teamLite(t.id), why: null, linked: false, pending: pending(t.id) }))];
-    })() : [],
+        ...playing.filter((t) => !ids.has(t.id)).map((t) => ({ ...teamLite(t.id), why: null, linked: false, pending: pending(t.id) }))];
+    })(),
     fights: squadId ? q.all('SELECT * FROM elect_fights WHERE squadId = ? ORDER BY id DESC LIMIT 20', squadId).map(electFightOut) : [],
   };
 }
@@ -722,7 +724,7 @@ function combatState(me, player = null) {
     maxAlliance: MAX_ALLIANCE,
     alliance: a ? { id: a.id, members: a.members.map(teamLite) } : null,
     allianceNews: allianceNews(me, a, now),
-    teams: G.teamsOf(me.gameId).filter((t) => t.id !== me.id && t.sectorId && t.status !== 'withdrawn')
+    teams: G.playingCouples(me.gameId).filter((t) => t.id !== me.id)
       .map((t) => ({ teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, allied: allied.has(t.id), retryAt: blocks[t.id] || null })),
     incoming: q.all("SELECT * FROM alliance_requests WHERE toTeamId = ? AND status = 'pending' ORDER BY id", me.id)
       .map((r) => ({ ...reqOut(r), team: teamLite(r.fromTeamId) })),

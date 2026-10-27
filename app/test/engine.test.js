@@ -2497,3 +2497,31 @@ test('tipi di cronografo: AC6000 integrato, nuovi tipi con servizio, caratterist
   CT.deleteType(t.id);
   assert.equal(CT.listTypes().custom.length, before);
 });
+
+test('accettazione chiusa: coppie e squadre bloccate, riapribile, tracciata; Scontri con le sole coppie accettate', () => {
+  const CK = require('../src/checkin');
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B, C3] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  q.run("UPDATE players SET status = 'accepted' WHERE gameId = ?", g.id);
+  assert.throws(() => CK.setAcceptanceClosed(g.id, true, 'test'), /Nessuna persona accettata/);
+  for (const p of q.all('SELECT * FROM players WHERE teamId IN (?, ?)', A.id, B.id)) CK.setPlayerCheckin(g.id, p.id, true, 'test');
+  const c3p = q.get('SELECT * FROM players WHERE teamId = ?', C3.id);
+  CK.setAcceptanceClosed(g.id, true, 'regia1');
+  assert.ok(G.acceptanceClosed(g.id));
+  assert.throws(() => CK.setPlayerCheckin(g.id, c3p.id, true, 'test'), /Accettazione chiusa/);
+  assert.throws(() => CK.placePlayer(g.id, c3p.id, { elect: true }, 'test'), /Accettazione chiusa/);
+  assert.throws(() => CK.setTeamCheckin(g.id, A.id, true, 'test'), /Accettazione chiusa/);
+  // La checklist si salva anche ad accettazione chiusa.
+  CK.setPlayerCheckin(g.id, c3p.id, null, 'test', { app: true });
+  // Solo le coppie accettate negli Scontri.
+  const st = K.combatState(q.get('SELECT * FROM teams WHERE id = ?', A.id));
+  assert.deepEqual(st.teams.map((t) => t.teamId), [B.id]);
+  CK.setAcceptanceClosed(g.id, false, 'regia2');
+  CK.setPlayerCheckin(g.id, c3p.id, true, 'test');
+  CK.setAcceptanceClosed(g.id, true, 'regia1');
+  const acc = CK.acceptanceOf(g.id);
+  assert.deepEqual(acc.history.map((x) => [x.closed, x.by]), [[true, 'regia1'], [false, 'regia2'], [true, 'regia1']]);
+  assert.equal(G.playingCouples(g.id).length, 3);
+  assert.ok(G.masterState(g.id).acceptance.closedAt);
+});

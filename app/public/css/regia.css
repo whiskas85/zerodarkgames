@@ -1173,3 +1173,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Nuovo avviso: modulo e anteprima affiancati (uno sotto l'altro sul telefono) */
 .notice-compose { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 760px) { .notice-compose { grid-template-columns: 1fr; } }
+
+/* Chiusura dell'accettazione */
+.ck-close { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2, rgba(255,255,255,.03)); }
+.ck-close.on { border-color: var(--brass, #d1ad62); background: rgba(209, 173, 98, .08); }
+.ck-close-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ck-hist { margin-top: 8px; }
+.ck-hist summary { cursor: pointer; color: var(--muted); }
+.ck-hist .list li { padding: 3px 0; }

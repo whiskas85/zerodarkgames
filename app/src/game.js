@@ -487,6 +487,7 @@ function ensureElect(gameId) {
 
 function addToElect(gameId, playerIds, actor) {
   const g = getGame(gameId);
+  requireAcceptanceOpen(g.id);
   const e = ensureElect(g.id);
   const ids = [...new Set((playerIds || []).map(Number))];
   if (!ids.length) throw err(400, 'Nessuna persona selezionata');
@@ -512,6 +513,7 @@ function addElectPerson(gameId, p, actor) {
 function removeFromElect(playerId, actor) {
   const p = q.get('SELECT * FROM players WHERE id = ?', playerId);
   if (!p) throw err(404, 'Persona non trovata');
+  requireAcceptanceOpen(p.gameId);
   const e = electOf(p.gameId);
   if (!e || p.teamId !== e.id) throw err(409, 'Questa persona non è tra gli Eletti');
   q.run('UPDATE players SET teamId = NULL WHERE id = ?', p.id);
@@ -526,6 +528,7 @@ function movePlayer(playerId, { toTeamId, swapWithId } = {}, actor) {
   if (!p || !p.teamId) throw err(404, 'Persona non trovata in una coppia o tra gli Eletti');
   const g = getGame(p.gameId);
   if (g.status === 'ended') throw err(409, 'Partita finita');
+  requireAcceptanceOpen(g.id);
   const from = q.get('SELECT * FROM teams WHERE id = ?', p.teamId);
   const to = q.get('SELECT * FROM teams WHERE id = ? AND gameId = ?', Number(toTeamId), g.id);
   if (!to) throw err(404, 'Destinazione non trovata');
@@ -1074,6 +1077,19 @@ function editFragment(fragmentId, data, actor) {
 // Accettazione all'arrivo: se la regia la usa in questa partita (almeno una persona accettata), a gioco iniziato
 // chi non è stato accettato non partecipa. Con l'accesso della coppia (senza persona) basta un accettato nella coppia.
 const acceptanceUsed = (gameId) => !!q.get('SELECT 1 FROM players WHERE gameId = ? AND checkinAt IS NOT NULL LIMIT 1', gameId);
+// Accettazione chiusa: da lì in poi coppie e squadre restano quelle (niente spostamenti né nuove accettazioni)
+// finché la regia non la riapre. Ogni chiusura e riapertura resta nel registro.
+const acceptanceClosed = (gameId) => !!q.get('SELECT acceptanceClosedAt FROM games WHERE id = ?', Number(gameId))?.acceptanceClosedAt;
+function requireAcceptanceOpen(gameId) {
+  if (acceptanceClosed(gameId)) throw err(409, 'Accettazione chiusa: coppie e squadre sono bloccate. Riaprila per cambiare.');
+}
+// Coppia accettata: con l'accettazione in uso conta chi ha almeno una persona accettata (come notAccepted).
+const teamAccepted = (teamId) => !!q.get('SELECT 1 FROM players WHERE teamId = ? AND checkinAt IS NOT NULL LIMIT 1', teamId);
+// Coppie in gioco: con un Settore, non ritirate e, se l'accettazione è in uso, accettate.
+function playingCouples(gameId) {
+  const used = acceptanceUsed(gameId);
+  return teamsOf(gameId).filter((t) => t.sectorId && t.status !== 'withdrawn' && (!used || teamAccepted(t.id)));
+}
 function notAccepted(g, player, team) {
   if (C.PRE_START.includes(g.status) || g.status === 'ended' || !acceptanceUsed(g.id)) return false;
   if (player) return !q.get('SELECT checkinAt FROM players WHERE id = ?', player.id)?.checkinAt;
@@ -2255,6 +2271,7 @@ function masterState(gameId) {
   return {
     clock: clockOf(g),
     game: { ...g, templates: templatesOf(g), timers: timersOf(g) },
+    acceptance: require('./checkin').acceptanceOf(g.id),
     // Altari con coordinate: solo su questi vale il raggio di lettura.
     altarRejections: altarRejections(g.id),
     altarsPlaced: q.get('SELECT COUNT(*) AS total, SUM(lat IS NOT NULL) AS placed FROM points WHERE gameId = ?', g.id),
@@ -2335,7 +2352,7 @@ function boardState(gameId) {
 }
 
 module.exports = {
-  notAccepted, acceptanceUsed, landmarksOf, scanExpiresAt,
+  notAccepted, acceptanceUsed, acceptanceClosed, requireAcceptanceOpen, playingCouples, landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, readNotices, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,

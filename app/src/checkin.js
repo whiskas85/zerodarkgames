@@ -26,6 +26,7 @@ function setPlayerCheckin(gameId, playerId, on, actor, checks = null) {
     q.run('UPDATE players SET checkinChecks = ? WHERE id = ?', JSON.stringify(Object.fromEntries(keys.filter((k) => checks[k] != null).map((k) => [k, !!checks[k]]))), p.id);
   }
   if (on === null) { G.notifyState(gameId); return { ok: true }; }
+  if (!!on !== !!p.checkinAt) G.requireAcceptanceOpen(gameId);
   q.run('UPDATE players SET checkinAt = ?, checkinBy = ? WHERE id = ?', on ? (p.checkinAt || Date.now()) : null, on ? (p.checkinBy || actor) : null, p.id);
   // Chi non è più presente non è più confermato nemmeno come coppia.
   if (!on && p.teamId) q.run('UPDATE teams SET checkinAt = NULL, checkinBy = NULL WHERE id = ?', p.teamId);
@@ -37,6 +38,7 @@ function setPlayerCheckin(gameId, playerId, on, actor, checks = null) {
 function setTeamCheckin(gameId, teamId, on, actor) {
   const t = q.get('SELECT * FROM teams WHERE id = ? AND gameId = ?', Number(teamId), gameId);
   if (!t) throw err(404, 'Coppia non trovata');
+  G.requireAcceptanceOpen(gameId);
   if (on) {
     const missing = q.all('SELECT name FROM players WHERE teamId = ? AND checkinAt IS NULL', t.id);
     if (missing.length) throw err(409, `Manca la presenza di: ${missing.map((m) => m.name).join(', ')}`);
@@ -93,6 +95,7 @@ function setChronoDone(gameId, playerId, on, actor) {
 function placePlayer(gameId, playerId, dest = {}, actor) {
   const g = G.getGame(gameId);
   if (g.status === 'ended') throw err(409, 'Partita finita');
+  G.requireAcceptanceOpen(g.id);
   const p = playerOf(gameId, playerId);
   if (p.status !== 'accepted') throw err(409, 'Prima approva l\'iscrizione');
   let teamId = null;
@@ -130,12 +133,37 @@ function placePlayer(gameId, playerId, dest = {}, actor) {
   return { ok: true };
 }
 
+// Chiusura dell'accettazione: da lì in poi le coppie e le squadre sono quelle accettate. Si può riaprire e
+// richiudere quante volte serve: ogni passaggio resta nel registro (chi e quando).
+function setAcceptanceClosed(gameId, closed, actor) {
+  const g = G.getGame(gameId);
+  if (!!closed === !!g.acceptanceClosedAt) return acceptanceOf(g.id);
+  if (closed && !G.acceptanceUsed(g.id)) throw err(409, 'Nessuna persona accettata: accetta chi è presente prima di chiudere');
+  const ok = closed ? G.playingCouples(g.id).length : null;
+  q.run('UPDATE games SET acceptanceClosedAt = ?, acceptanceClosedBy = ? WHERE id = ?', closed ? Date.now() : null, closed ? actor : null, g.id);
+  const people = q.get("SELECT COUNT(*) AS n FROM players WHERE gameId = ? AND status = 'accepted' AND checkinAt IS NOT NULL", g.id).n;
+  G.log(g.id, actor, closed ? 'acceptance_closed' : 'acceptance_reopened', closed ? { coppie: ok, persone: people } : null);
+  G.notifyState(g.id);
+  rt.toTeams(g.id, 'state', {});
+  return acceptanceOf(g.id);
+}
+
+function acceptanceOf(gameId) {
+  const g = G.getGame(gameId);
+  return {
+    closedAt: g.acceptanceClosedAt || null, closedBy: g.acceptanceClosedBy || null,
+    history: q.all("SELECT at, actor, type, data FROM event_log WHERE gameId = ? AND type IN ('acceptance_closed', 'acceptance_reopened') ORDER BY id DESC LIMIT 30", g.id)
+      .map((r) => ({ at: r.at, by: r.actor, closed: r.type === 'acceptance_closed', data: r.data ? JSON.parse(r.data) : null })),
+  };
+}
+
 // Dati per le pagine di accettazione e test repliche dello staff (stessa forma dello stato della regia).
 function checkinData(gameId) {
   const g = G.getGame(gameId);
   const elect = G.electOf(g.id);
   return {
     game: { id: g.id, name: g.name, status: g.status, scheduledStart: g.scheduledStart || null },
+    acceptance: acceptanceOf(g.id),
     clock: G.clockOf(g),
     players: q.all(`SELECT p.*, a.username FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.id`, g.id)
       .map((p) => ({ id: p.id, name: p.name, nickname: p.nickname, status: p.status, teamId: p.teamId, squadId: p.squadId, softairTeam: p.softairTeam, checkinAt: p.checkinAt,
@@ -189,4 +217,4 @@ function editWeapons(gameId, playerId, { action, label, key } = {}, actor) {
   return { ok: true, weapons: list };
 }
 
-module.exports = { editWeapons, setChronoLive, setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, WEAPONS };
+module.exports = { editWeapons, setChronoLive, setPlayerCheckin, setTeamCheckin, setChrono, setChronoDone, placePlayer, checkinData, setAcceptanceClosed, acceptanceOf, WEAPONS };

@@ -660,6 +660,7 @@ m.post('/games/:id/checkin/player/:pid', wrap((req) => CK.setPlayerCheckin(gameI
 m.post('/games/:id/weapons/:pid', wrap((req) => CK.editWeapons(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid/live', wrap((req) => CK.setChronoLive(gameId(req), req.params.pid, req.body?.weapon, req.body?.readings, { open: req.body?.open !== false, grams: req.body?.grams })));
 m.post('/games/:id/checkin/team/:tid', wrap((req) => CK.setTeamCheckin(gameId(req), req.params.tid, req.body?.on !== false, actor(req))));
+m.post('/games/:id/acceptance', wrap((req) => CK.setAcceptanceClosed(gameId(req), req.body?.closed !== false, actor(req))));
 m.post('/games/:id/place/:pid', wrap((req) => CK.placePlayer(gameId(req), req.params.pid, req.body || {}, actor(req))));
 m.post('/games/:id/chrono/:pid/done', wrap((req) => CK.setChronoDone(gameId(req), req.params.pid, req.body?.on !== false, actor(req))));
 m.post('/games/:id/chrono/:pid', wrap((req) => CK.setChrono(gameId(req), req.params.pid, req.body?.weapon, req.body?.on !== false, actor(req), req.body?.shot || null, req.body?.fail === true)));
@@ -904,6 +905,7 @@ v.post('/games/:id/checkin/player/:pid', needPerm('accettazione'), wrap((req) =>
 v.post('/games/:id/weapons/:pid', needPerm('armi'), wrap((req) => CK.editWeapons(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
 v.post('/games/:id/chrono/:pid/live', needPerm('armi'), wrap((req) => CK.setChronoLive(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.readings, { open: req.body?.open !== false, grams: req.body?.grams })));
 v.post('/games/:id/checkin/team/:tid', needPerm('accettazione'), wrap((req) => CK.setTeamCheckin(Number(req.params.id), req.params.tid, req.body?.on !== false, sActor(req))));
+v.post('/games/:id/acceptance', needPerm('accettazione'), wrap((req) => CK.setAcceptanceClosed(Number(req.params.id), req.body?.closed !== false, sActor(req))));
 v.post('/games/:id/place/:pid', needPerm('accettazione'), wrap((req) => CK.placePlayer(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
 v.post('/games/:id/chrono/:pid/done', needPerm('armi'), wrap((req) => CK.setChronoDone(Number(req.params.id), req.params.pid, req.body?.on !== false, sActor(req))));
 v.post('/games/:id/chrono/:pid', needPerm('armi'), wrap((req) => CK.setChrono(Number(req.params.id), req.params.pid, req.body?.weapon, req.body?.on !== false, sActor(req), req.body?.shot || null, req.body?.fail === true)));

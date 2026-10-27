@@ -1881,7 +1881,8 @@ function viewAlliances() {
 let electOpp = null;
 function viewElectCombat(c) {
   const st = S.state;
-  const playing = ['hunt', 'last_half_hour'].includes(st.clock.status);
+  // Senza squadra si vedono le coppie, ma lo scontro si registra solo da una squadra.
+  const playing = ['hunt', 'last_half_hour'].includes(st.clock.status) && !!st.field?.squad;
   const report = async (t, result) => {
     const ok = await dialog({ title: result === 'won' ? 'Scontro vinto' : 'Scontro perso',
       text: result === 'won' ? `Dichiarate di aver battuto ${teamName(t)}? La coppia deve confermare: poi per loro parte la Veglia${t.why?.includes('caccia') ? ' e il loro Sigillo va alla coppia che ha lanciato la caccia' : ''}.`
@@ -1914,7 +1915,8 @@ function viewElectCombat(c) {
       pick ? h('div', { class: 'row' },
         h('button', { class: 'btn btn-primary', disabled: !playing, onclick: () => report(pick, 'won') }, `Abbiamo vinto contro ${pick.sectorName}`),
         h('button', { class: 'btn btn-danger', disabled: !playing, onclick: () => report(pick, 'lost') }, 'Abbiamo perso')) : null) : null,
-    !playing ? h('p', { class: 'small muted' }, 'Gli scontri si registrano durante la caccia.') : null,
+    !playing && st.field?.squad ? h('p', { class: 'small muted' }, 'Gli scontri si registrano durante la caccia.') : null,
+    !c.targets.length ? h('p', { class: 'empty' }, 'Nessuna coppia in gioco.') : null,
     c.fights.length ? [h('h3', null, 'Scontri della squadra'), h('ul', { class: 'list' }, c.fights.map((f) => h('li', { class: `hist hist-${f.status === 'confirmed' ? (f.winner === 'elect' ? 'won' : 'lost') : 'draw'}` },
       h('div', { class: 'ef-row hist-wide' }, h('strong', null, `${f.winner === 'elect' ? 'Vinto contro' : 'Perso contro'} ${f.team ? teamName(f.team) : '?'}`),
         h('div', { class: 'ef-meta' }, h('span', { class: `chip ${f.status === 'confirmed' ? (f.winner === 'elect' ? 'chip-ok' : 'chip-blood') : f.status === 'contested' ? 'chip-warn' : ''}` }, label(f)),
