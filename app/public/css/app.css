@@ -200,13 +200,14 @@ a.won span { font-weight: 700; }
 .elect-members { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 
 /* Tour guidato */
-.tour { position: fixed; inset: 0; z-index: 3000; background: var(--bg); display: grid; grid-template-rows: auto 1fr auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); overflow: auto; }
+.tour { position: fixed; inset: 0; z-index: 3000; background: var(--bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); overflow: hidden; }
 .tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tour-dots { display: flex; gap: 6px; flex: 1; }
 .tour-dots i { flex: 1; height: 4px; background: var(--line); max-width: 40px; }
 .tour-dots i.past { background: var(--muted); }
 .tour-dots i.on { background: var(--blood); }
-.tour-body { max-width: 520px; width: 100%; margin: 0 auto; display: grid; align-content: center; gap: 12px; padding: 16px 0; }
+.tour-body { max-width: 520px; width: 100%; margin: 0 auto; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); align-content: start; gap: 12px; padding: 16px 0 8px; min-height: 0; height: 100%; }
+.tour-text { display: grid; gap: 12px; align-content: start; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 18px; -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); }
 .tour-body h2 { font-size: clamp(36px, 11vw, 52px); }
 .tour-body p { margin: 0; font-family: var(--f-body); font-size: 18px; line-height: 1.5; }
 .tour-visual { min-height: 120px; display: grid; place-items: center start; }

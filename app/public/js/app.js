@@ -4304,12 +4304,12 @@ function openTour() {
       h('div', { class: 'tour-top' },
         h('div', { class: 'tour-dots' }, slides.map((_, k) => h('i', { class: k === i ? 'on' : k < i ? 'past' : '' }))),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: close }, 'Salta')),
+      // Titolo fermo, scorre solo il testo: i pulsanti in fondo restano sempre visibili.
       h('div', { class: 'tour-body' },
         h('div', { class: 'tour-visual' }, sl.icon),
         h('div', { class: 'eyebrow' }, `${i + 1} di ${slides.length}`),
         h('h2', null, sl.title),
-        sl.text.map((t) => h('p', null, t)),
-        sl.extra ? sl.extra() : null),
+        h('div', { class: 'tour-text' }, sl.text.map((t) => h('p', null, t)), sl.extra ? sl.extra() : null)),
       h('div', { class: 'tour-nav' },
         h('button', { class: 'btn', type: 'button', disabled: i === 0, onclick: () => { i--; show(); } }, '‹ Indietro'),
         h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { if (last) close(); else { i++; show(); } } }, last ? 'Iniziamo' : 'Avanti ›')));
