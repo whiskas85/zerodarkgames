@@ -1170,3 +1170,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .target-pick.on { border-color: var(--brass); color: var(--brass); }
 .off-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .off-track i { display: block; height: 100%; background: #3b82f6; transition: width .2s; }
+/* Nuovo avviso: modulo e anteprima affiancati (uno sotto l'altro sul telefono) */
+.notice-compose { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .notice-compose { grid-template-columns: 1fr; } }

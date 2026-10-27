@@ -3615,17 +3615,17 @@ function noticeReadsView(rd) {
       h('ul', { class: 'nr-list' }, [...rd.persons].sort((a, b) => !!b.at - !!a.at).map((p) => h('li', null, mark(p), ' ', p.name, h('span', { class: 'tiny muted' }, ` · ${where(p)}`))))) : null);
 }
 
-function viewNotices() {
+// Nuovo avviso in una finestra: modulo a sinistra, anteprima di come appare nell'app a destra.
+async function newNoticeDialog() {
   const ms = R.ms;
-  const title = h('input', { class: 'input', 'data-keep': 'nt-title', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
-  const editor = mdEditor({ rows: 6, maxlength: 4000, keep: 'nt-body', placeholder: 'Testo dell\'avviso', extra: ICE_TOOL });
+  const title = h('input', { class: 'input', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
+  const editor = mdEditor({ rows: 6, maxlength: 4000, placeholder: 'Testo dell\'avviso', extra: ICE_TOOL });
   const body = editor.textarea;
-  const teamSel = h('select', { class: 'input', 'data-keep': 'nt-team' }, ms.teams.map((t) => h('option', { value: t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` (${t.displayName})` : ''}`)));
+  const teamSel = h('select', { class: 'input' }, ms.teams.map((t) => h('option', { value: t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` (${t.displayName})` : ''}`)));
   const teamWrap = h('label', { class: 'field hidden' }, h('span', null, 'Coppia'), teamSel);
-  const poll = h('input', { type: 'checkbox', 'data-keep': 'nt-poll' });
-  const target = h('select', { class: 'input', 'data-keep': 'nt-target', onchange: () => teamWrap.classList.toggle('hidden', target.value !== 'team') },
+  const poll = h('input', { type: 'checkbox' });
+  const target = h('select', { class: 'input', onchange: () => teamWrap.classList.toggle('hidden', target.value !== 'team') },
     Object.entries(ms.noticeTargets).map(([k, v]) => h('option', { value: k }, v)));
-  queueMicrotask(() => teamWrap.classList.toggle('hidden', target.value !== 'team'));
   // Anteprima: stessa resa dell'app (markdown ridotto), aggiornata a ogni tasto.
   const preview = h('div', { class: 'notice-preview' });
   const drawPreview = () => {
@@ -3638,42 +3638,43 @@ function viewNotices() {
   for (const el of [title, body]) el.addEventListener('input', drawPreview);
   target.addEventListener('change', drawPreview);
   poll.addEventListener('change', drawPreview);
-  queueMicrotask(drawPreview);
-
-  return h('div', { class: 'stack' },
-    h('div', { class: 'cols-2' },
-      section('Nuovo avviso',
+  drawPreview();
+  await modal({ title: 'Nuovo avviso', wide: true, okLabel: 'Invia avviso',
+    body: h('div', { class: 'notice-compose' },
+      h('div', { class: 'stack-sm' },
         h('p', { class: 'muted tiny' }, 'L\'avviso arriva sul telefono come notifica (Android: anche a schermo spento, se le notifiche sono attive). Toccandola si apre la pagina Avvisi dell\'app. Chi ha l\'app aperta lo vede subito, con vibrazione.'),
-        h('form', { class: 'stack-sm', onsubmit: async (e) => {
-          e.preventDefault();
-          if (!title.value.trim()) return toast('Scrivi il titolo', 'error');
-          const dest = target.value === 'team' ? `Settore ${ms.teams.find((t) => String(t.id) === teamSel.value)?.sectorName}` : ms.noticeTargets[target.value];
-          if (!(await dialog({ title: 'Inviare l\'avviso?', text: `«${title.value}» a: ${dest}.`, okLabel: 'Invia' }))) return;
-          try {
-            const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null, poll: poll.checked });
-            toast(`Avviso inviato · notifica a ${r.devices} dispositivi`, 'ok', 6000);
-            title.value = '';
-            body.value = '';
-            load();
-          } catch (err) { toast(err.message, 'error', 6000); }
-        } },
         h('label', { class: 'field' }, h('span', null, 'Titolo'), title),
         h('div', { class: 'field' }, h('span', null, 'Testo'), editor.el),
-        h('p', { class: 'tiny muted' }, 'Markdown: # titolo, **grassetto**, *corsivo*, - elenco, > citazione, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento. «Schermo intero» apre l\'editor grande con l\'anteprima.'),
+        h('details', { class: 'tiny muted' }, h('summary', null, 'Come si formatta'),
+          h('p', null, 'Markdown: # titolo, **grassetto**, *corsivo*, - elenco, > citazione, riga vuota per un nuovo paragrafo. Un link come [Compila i dati ICE](#/ice) diventa un pulsante. Pagine dell\'app utili: #/ice, #/skill, #/mappa, #/doni, #/regolamento. «Schermo intero» apre l\'editor grande con l\'anteprima.')),
         h('label', { class: 'field' }, h('span', null, 'Destinatari'), target),
         teamWrap,
-        h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Invia avviso'))),
-      // Anteprima di come appare l'avviso nell'app, aggiornata mentre scrivi.
-      section('Anteprima nell\'app', preview)),
-    section(`Avvisi inviati (${ms.notices.length})`,
+        h('label', { class: 'check' }, poll, ' 📊 Sondaggio: chi lo riceve risponde Sì / No / Forse')),
+      h('div', { class: 'stack-sm' }, h('div', { class: 'eyebrow' }, 'Anteprima nell\'app'), preview)),
+    onOk: async () => {
+      if (!title.value.trim()) { toast('Scrivi il titolo', 'error'); return false; }
+      const dest = target.value === 'team' ? `Settore ${ms.teams.find((t) => String(t.id) === teamSel.value)?.sectorName}` : ms.noticeTargets[target.value];
+      if (!(await dialog({ title: 'Inviare l\'avviso?', text: `«${title.value}» a: ${dest}.`, okLabel: 'Invia' }))) return false;
+      try {
+        const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null, poll: poll.checked });
+        toast(`Avviso inviato · notifica a ${r.devices} dispositivi`, 'ok', 6000);
+        load();
+        return true;
+      } catch (err) { toast(err.message, 'error', 6000); return false; }
+    } });
+}
+
+function viewNotices() {
+  const ms = R.ms;
+  return h('div', { class: 'stack' },
+    sectionActions(`Avvisi inviati (${ms.notices.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newNoticeDialog }, '＋ Crea avviso')],
       ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', null,
         h('div', { class: 'grow' },
           h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
           n.body ? h('p', null, n.body) : null,
           n.results ? pollResultsView(n.results) : null,
           noticeReadsView(n.reads && { ...n.reads, id: n.id })),
-        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato.')));
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato: creane uno con «Crea avviso».')));
 }
 
 // ---------------------------------------------------------------- STAMPE
