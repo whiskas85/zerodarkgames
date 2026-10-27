@@ -635,12 +635,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .shell { grid-template-columns: 1fr; }
   .nav-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 22px; line-height: 1; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-radius: 4px; cursor: pointer; }
   .nav-toggle .badge { font-size: 11px; }
-  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: min(300px, 84vw); height: auto; display: grid; align-content: start; gap: 2px; overflow-y: auto; overflow-x: hidden;
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 3000; width: min(300px, 84vw); height: auto; display: grid; align-content: start; gap: 2px; overflow-y: auto; overflow-x: hidden;
     padding: calc(12px + env(safe-area-inset-top)) 8px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-right: 2px solid var(--blood); border-bottom: 0; transform: translateX(-105%); transition: transform .2s; }
   body.nav-open .sidebar { transform: none; }
   .sidebar a, .sidebar span.off { white-space: normal; border-bottom: 0; border-left: 4px solid transparent; }
   .sidebar a.on { border-bottom-color: transparent; border-left-color: var(--blood); }
-  body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .55); }
+  body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 2990; background: rgba(0, 0, 0, .55); }
 }
 
 /* Accettazione e test armi */
