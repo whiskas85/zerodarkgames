@@ -2525,3 +2525,34 @@ test('accettazione chiusa: coppie e squadre bloccate, riapribile, tracciata; Sco
   assert.equal(G.playingCouples(g.id).length, 3);
   assert.ok(G.masterState(g.id).acceptance.closedAt);
 });
+
+test('zone: accesa da un Beacon resta accesa i minuti impostati e poi si spegne; accesa dalla regia resta accesa', () => {
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const elect = G.ensureElect(g.id);
+  const pid = Number(q.run("INSERT INTO players (gameId, teamId, name, status, createdAt) VALUES (?, ?, 'Eletto Tre', 'accepted', ?)", g.id, elect.id, Date.now()).lastInsertRowid);
+  const pl = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const sq = [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]];
+  const z = Z.createZone(g.id, { kind: 'ombra', points: sq, active: false, beaconMin: 1, beaconOnMin: 20 }, 'test');
+  assert.equal(z.beaconOnMin, 20);
+  const fire = () => { Z.launchBeacon(elect, pl, { lat: 45, lng: 9 }); q.run('UPDATE map_zones SET beaconEndsAt = ? WHERE id = ?', Date.now() - 1000, z.id); return Z.completeBeacon(elect, pl, z.id, { lat: 45, lng: 9 }); };
+  const r = fire();
+  assert.ok(Math.abs(r.zone.activeUntil - (Date.now() + 20 * 60000)) < 2000);
+  Z.tickAll(Date.now() + 10 * 60000);
+  assert.equal(q.get('SELECT active FROM map_zones WHERE id = ?', z.id).active, 1);
+  Z.tickAll(Date.now() + 21 * 60000);
+  const off = q.get('SELECT active, activeUntil FROM map_zones WHERE id = ?', z.id);
+  assert.equal(off.active, 0);
+  assert.equal(off.activeUntil, null);
+  // La regia la tiene accesa: niente scadenza.
+  fire();
+  Z.updateZone(z.id, { active: true }, 'regia');
+  Z.tickAll(Date.now() + 60 * 60000);
+  assert.equal(q.get('SELECT active FROM map_zones WHERE id = ?', z.id).active, 1);
+  // Per sempre: senza minuti il Beacon non mette scadenza.
+  Z.updateZone(z.id, { active: false, beaconOnMin: null }, 'regia');
+  assert.equal(fire().zone.activeUntil, null);
+});

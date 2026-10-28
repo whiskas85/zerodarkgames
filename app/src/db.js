@@ -668,6 +668,9 @@ addColumn('points', 'disabledUntil', 'INTEGER');
 addColumn('points', 'disabledBy', 'TEXT');
 addColumn('zone_presence', 'outsideSince', 'INTEGER');
 addColumn('map_zones', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+// Accesa da un Beacon: resta accesa beaconOnMin minuti (NULL = finché non la spegne la regia), fino ad activeUntil.
+addColumn('map_zones', 'beaconOnMin', 'INTEGER');
+addColumn('map_zones', 'activeUntil', 'INTEGER');
 addColumn('games', 'offlineMap', 'TEXT');
 addColumn('games', 'acceptanceClosedAt', 'INTEGER');
 addColumn('games', 'acceptanceClosedBy', 'TEXT');

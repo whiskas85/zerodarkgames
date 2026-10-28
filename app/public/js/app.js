@@ -1476,7 +1476,7 @@ function viewBeacon() {
     h('button', { class: 'btn btn-primary btn-xl btn-block btn-beacon', type: 'button', onclick: launchBeacon }, mdi('satelliteUplink', 26), ' Lancia il Beacon'),
     h('section', { class: 'card stack-sm' },
       h('div', { class: 'eyebrow' }, `Zone spente (${b.off.length})`),
-      b.off.length ? h('ul', { class: 'beacon-zones' }, b.off.map((z) => h('li', { style: { '--c': z.color } }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name), h('span', { class: 'tiny muted' }, `${z.label} · Beacon ${z.beaconMin}′`)))) : h('p', { class: 'small muted' }, 'Nessuna zona da accendere, per ora.')));
+      b.off.length ? h('ul', { class: 'beacon-zones' }, b.off.map((z) => h('li', { style: { '--c': z.color } }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name), h('span', { class: 'tiny muted' }, `${z.label} · Beacon ${z.beaconMin}′ · accesa ${z.beaconOnMin ? `${z.beaconOnMin}′` : 'per sempre'}`)))) : h('p', { class: 'small muted' }, 'Nessuna zona da accendere, per ora.')));
 }
 
 const hex = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('').toUpperCase();
@@ -1588,12 +1588,15 @@ async function beaconSequence(z, T = beaconTerminal()) {
   T.line('> gps --verify inside');
   let pos;
   try { pos = await getGps(); } catch (e) { return beaconFail(T, e.message); }
+  let res;
   try {
-    await api('POST', `/api/team/beacon/${z.id}/complete`, pos);
+    res = await api('POST', `/api/team/beacon/${z.id}/complete`, pos);
   } catch (e) { return beaconFail(T, e.message, false); }
   vibrate([120, 60, 120, 60, 400]);
   T.line(`>> ZONA ATTIVA: ${z.name.toUpperCase()}`, 'bt-good');
-  T.status.textContent = `${z.icon || ''} ${z.name} è accesa.`;
+  const until = res?.zone?.activeUntil;
+  if (until) T.line(`> uptime ${res.zone.beaconOnMin}m · shutdown ${fmtTime(until)}`);
+  T.status.textContent = `${z.icon || ''} ${z.name} è accesa${until ? ` fino alle ${fmtTime(until)}` : ''}.`;
   T.done(true);
 }
 

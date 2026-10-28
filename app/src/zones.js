@@ -80,14 +80,17 @@ function createZone(gameId, data, actor) {
   const active = data.active === false ? 0 : 1;
   const enabled = data.enabled === false ? 0 : 1;
   const beaconMin = clampBeacon(data.beaconMin);
-  const id = Number(q.run('INSERT INTO map_zones (gameId, kind, name, points, layer, active, enabled, holdMin, beaconMin, createdAt, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    g.id, data.kind, name, JSON.stringify(pts), layer, active, enabled, holdMin, beaconMin, Date.now(), actor || null).lastInsertRowid);
+  const beaconOnMin = clampOn(data.beaconOnMin);
+  const id = Number(q.run('INSERT INTO map_zones (gameId, kind, name, points, layer, active, enabled, holdMin, beaconMin, beaconOnMin, createdAt, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, data.kind, name, JSON.stringify(pts), layer, active, enabled, holdMin, beaconMin, beaconOnMin, Date.now(), actor || null).lastInsertRowid);
   if (active && enabled) markImmune(getZone(id));
   G.log(g.id, actor, 'zone_created', { name, kind: data.kind, layer });
   changed(g.id);
   return zoneOut(getZone(id));
 }
 const clampBeacon = (v) => Math.max(1, Math.min(60, Math.round(Number(v)) || 1));
+// Quanto resta accesa dopo un Beacon: vuoto o 0 = per sempre (finché non la spegne la regia), altrimenti minuti.
+const clampOn = (v) => (v == null || v === '' || !(Number(v) > 0) ? null : Math.max(1, Math.min(600, Math.round(Number(v)))));
 const getZone = (id) => q.get('SELECT * FROM map_zones WHERE id = ?', Number(id));
 
 function updateZone(id, data, actor) {
@@ -101,12 +104,15 @@ function updateZone(id, data, actor) {
   if (data.active !== undefined) next.active = data.active ? 1 : 0;
   if (data.enabled !== undefined) next.enabled = data.enabled ? 1 : 0;
   if (data.beaconMin !== undefined) next.beaconMin = clampBeacon(data.beaconMin);
+  if (data.beaconOnMin !== undefined) next.beaconOnMin = clampOn(data.beaconOnMin);
+  // Accesa o spenta dalla regia (o rimessa in palio): niente scadenza, decide la regia. Il Beacon la rimette dopo.
+  if (data.active !== undefined || data.reset) next.activeUntil = null;
   // Conquista rimessa in palio: si azzera il vincitore.
   // Riaccesa (dalla regia o da un Beacon) dopo essere stata conquistata: torna in palio.
   const reopen = z.kind === 'conquista' && (data.reset || (!z.active && next.active && !!z.winnerTeamId));
   if (data.reset && z.kind === 'conquista') next.active = 1;
-  q.run('UPDATE map_zones SET name = ?, layer = ?, holdMin = ?, points = ?, active = ?, enabled = ?, beaconMin = ?, winnerTeamId = ?, wonAt = ?, reward = ? WHERE id = ?',
-    next.name, next.layer, next.holdMin, next.points, next.active, next.enabled, next.beaconMin, reopen ? null : z.winnerTeamId, reopen ? null : z.wonAt, reopen ? null : z.reward, z.id);
+  q.run('UPDATE map_zones SET name = ?, layer = ?, holdMin = ?, points = ?, active = ?, enabled = ?, beaconMin = ?, beaconOnMin = ?, activeUntil = ?, winnerTeamId = ?, wonAt = ?, reward = ? WHERE id = ?',
+    next.name, next.layer, next.holdMin, next.points, next.active, next.enabled, next.beaconMin, next.beaconOnMin, next.activeUntil, reopen ? null : z.winnerTeamId, reopen ? null : z.wonAt, reopen ? null : z.reward, z.id);
   // Accesa (dalla regia o da un Beacon): un eventuale Beacon in corso non serve più.
   // Accesa o non più abilitata: un eventuale Beacon in corso non serve più.
   if (next.active || !next.enabled) q.run('UPDATE map_zones SET beaconStartedAt = NULL, beaconEndsAt = NULL, beaconBy = NULL, beaconPlayerId = NULL WHERE id = ?', z.id);
@@ -214,6 +220,11 @@ function tickAll(now = Date.now()) {
   lastTick = now;
   const games = q.all(`SELECT id FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(',')})`, ...C.ACTIVE);
   for (const { id: gameId } of games) {
+    // Accesa da un Beacon a tempo: allo scadere si spegne da sola.
+    for (const z of q.all('SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND activeUntil IS NOT NULL AND activeUntil <= ?', gameId, now)) {
+      updateZone(z.id, { active: false }, 'sistema');
+      G.log(gameId, 'sistema', 'zone_beacon_expired', { zone: z.name, minutes: z.beaconOnMin });
+    }
     if (dt) {
       for (const p of q.all(`SELECT DISTINCT p.teamId FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
                              WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0`, gameId)) {
@@ -232,7 +243,7 @@ function conquer(z, teamId, now) {
     const t = q.get('SELECT t.*, s.name AS sectorName FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', teamId);
     const gift = SK().grantVirtualGift(t, `Conquista · ${z.name}`.slice(0, 36));
     // Conquistata: la zona si spegne (resta segnato chi e quando); la riaccendono gli Eletti con un Beacon o la regia.
-    q.run('UPDATE map_zones SET winnerTeamId = ?, wonAt = ?, reward = ?, active = 0 WHERE id = ?', teamId, now, JSON.stringify(gift), z.id);
+    q.run('UPDATE map_zones SET winnerTeamId = ?, wonAt = ?, reward = ?, active = 0, activeUntil = NULL WHERE id = ?', teamId, now, JSON.stringify(gift), z.id);
     q.run('DELETE FROM zone_presence WHERE zoneId = ?', z.id);
     G.log(z.gameId, `coppia:${teamId}`, 'zone_conquered', { teamId, zone: z.name, gift: gift.name });
     rt.pushTeams(z.gameId, { title: `${KINDS.conquista.icon} Zona conquistata`, body: `Avete conquistato «${z.name}»: ${gift.icon} ${gift.name} è tra i vostri doni.`, tag: `zona-${z.id}`, url: '/#/doni' }, teamId);
@@ -308,12 +319,15 @@ function completeBeacon(team, player, zoneId, body) {
     throw err(409, 'Siete usciti dall\'area: Beacon interrotto');
   }
   updateZone(z.id, { active: true }, `eletti:${electName(player)}`);
-  G.log(z.gameId, `giocatore:${player.id}`, 'zone_beacon_done', { zone: z.name, lat: pos.lat, lng: pos.lng });
+  // Accesa dal Beacon: resta accesa per i minuti impostati dalla regia (o per sempre), poi si spegne da sola.
+  const until = z.beaconOnMin ? Date.now() + z.beaconOnMin * 60000 : null;
+  if (until) { q.run('UPDATE map_zones SET activeUntil = ? WHERE id = ?', until, z.id); changed(z.gameId); }
+  G.log(z.gameId, `giocatore:${player.id}`, 'zone_beacon_done', { zone: z.name, minutes: z.beaconOnMin || null, lat: pos.lat, lng: pos.lng });
   return { ok: true, active: true, zone: beaconOut(getZone(z.id)) };
 }
 
 const beaconOut = (z) => ({ id: z.id, name: z.name, kind: z.kind, label: KINDS[z.kind].label, icon: KINDS[z.kind].icon, color: KINDS[z.kind].color,
-  active: !!z.active, beaconMin: z.beaconMin, startedAt: z.beaconStartedAt, endsAt: z.beaconEndsAt, by: z.beaconBy });
+  active: !!z.active, beaconMin: z.beaconMin, beaconOnMin: z.beaconOnMin || null, activeUntil: z.activeUntil || null, startedAt: z.beaconStartedAt, endsAt: z.beaconEndsAt, by: z.beaconBy });
 
 // Per l'app degli Eletti: le zone spente (da attivare) e il Beacon in corso di questa persona.
 function electBeacon(team, player) {
@@ -326,7 +340,7 @@ function electBeacon(team, player) {
 // ---------------------------------------------------------------- viste
 
 function zoneOut(z) {
-  return { id: z.id, kind: z.kind, name: z.name, points: pointsOf(z), layer: z.layer, active: !!z.active, enabled: z.enabled !== 0, holdMin: z.holdMin, beaconMin: z.beaconMin, beaconEndsAt: z.beaconEndsAt, beaconBy: z.beaconBy,
+  return { id: z.id, kind: z.kind, name: z.name, points: pointsOf(z), layer: z.layer, active: !!z.active, enabled: z.enabled !== 0, holdMin: z.holdMin, beaconMin: z.beaconMin, beaconOnMin: z.beaconOnMin || null, activeUntil: z.activeUntil || null, beaconEndsAt: z.beaconEndsAt, beaconBy: z.beaconBy,
     label: KINDS[z.kind].label, icon: KINDS[z.kind].icon, color: KINDS[z.kind].color, effect: effectOf(z),
     winnerTeamId: z.winnerTeamId, wonAt: z.wonAt, reward: z.reward ? JSON.parse(z.reward) : null,
     winnerLabel: z.winnerTeamId ? (() => { const w = q.get('SELECT s.roman, s.name FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', z.winnerTeamId); return w ? `${w.roman} ${w.name}` : null; })() : null };
