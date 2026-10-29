@@ -1742,7 +1742,7 @@ function viewCodes() {
 // ---------------------------------------------------------------- MAPPA E CAMPO
 
 const FIELD_TABS = ['mappa', 'doniqr', 'squadre', 'altari', 'live'];
-const fieldMap = createMapView({ className: 'regia-map' });
+const fieldMap = createMapView({ className: 'regia-map', remember: 'regia' });
 let fieldData = null;
 
 async function loadField(doRender = true) {

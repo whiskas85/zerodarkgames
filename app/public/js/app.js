@@ -2217,7 +2217,7 @@ function traccarOffCard(st) {
 
 // ---------------------------------------------------------------- Mappa
 
-const teamMapView = createMapView({ className: 'team-map' });
+const teamMapView = createMapView({ className: 'team-map', remember: 'team' });
 let stopGps = null;
 let myPos = null;
 let gpsMsg = null;

@@ -90,7 +90,12 @@ function clipSeg(p, q, [x0, y0, x1, y1]) {
 // Basta che un pezzo di lato si veda: anche una zona piccola sullo schermo mostra il suo conto alla rovescia.
 const EDGE_MIN_PX = 1;
 
-export function createMapView({ className = '' } = {}) {
+// remember: chiave per ricordare zoom e posizione della mappa tra un'apertura e l'altra (e tra una sessione e l'altra).
+// Con una vista ricordata, all'apertura la mappa si centra sul puntatore (la vostra posizione) tenendo lo zoom;
+// senza puntatore resta dov'era. La prima volta in assoluto inquadra tutto come sempre.
+export function createMapView({ className = '', remember = null } = {}) {
+  const viewKey = remember ? `zdg_mapview_${remember}` : null;
+  const savedView = (() => { try { const v = viewKey && JSON.parse(localStorage.getItem(viewKey) || 'null'); return v && Number.isFinite(v.lat) && Number.isFinite(v.lng) && Number.isFinite(v.z) ? v : null; } catch { return null; } })();
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
   const markers = new Map();
@@ -144,7 +149,12 @@ export function createMapView({ className = '' } = {}) {
   const autoFit = () => {
     if (!auto || !map) return;
     clearTimeout(fitTimer);
-    fitTimer = setTimeout(() => { if (auto) view.fit(); }, 250);
+    fitTimer = setTimeout(() => {
+      if (!auto) return;
+      // Vista ricordata: sul puntatore con lo zoom di adesso, se c'è (e il GPS è vero); se no la mappa resta com'è.
+      if (savedView) { if (me && (meAcc == null || meAcc <= 300)) map.setView(me.getLatLng(), map.getZoom()); return; }
+      view.fit();
+    }, 250);
   };
   const outOfView = (ll) => map && !map.getBounds().pad(-0.05).contains(ll);
   for (const ev of ['pointerdown', 'wheel', 'touchstart']) el.addEventListener(ev, () => { auto = false; }, { passive: true });
@@ -156,7 +166,9 @@ export function createMapView({ className = '' } = {}) {
 
   const ready = loadLeaflet().then((lib) => {
     L = lib;
-    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, 6);
+    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(savedView ? [savedView.lat, savedView.lng] : ITALY, savedView ? savedView.z : 6);
+    if (savedView) fitted = true;
+    if (viewKey) map.on('moveend', () => { const c = map.getCenter(); try { localStorage.setItem(viewKey, JSON.stringify({ lat: c.lat, lng: c.lng, z: map.getZoom() })); } catch { /* */ } });
     // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
     const topo = L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, attribution: ATTRIBUTION }).addTo(map);
     // Se il nostro server non lo dà (né su disco né dai server delle mappe), quel riquadro si prende da OpenStreetMap.

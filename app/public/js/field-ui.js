@@ -30,7 +30,7 @@ export const isPending = (x, kind) => (kind !== 'gift'
  * rerender(): ridisegna la pagina che ospita le viste.
  */
 export function createField(F, { rerender }) {
-  const mapView = createMapView({ className: 'campo-map' });
+  const mapView = createMapView({ className: 'campo-map', remember: 'campo' });
   let stopWatch = null;
   let positions = [];
   let mapOn = false;
