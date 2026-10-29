@@ -1104,3 +1104,14 @@ html.sos-mode .main, html.sos-mode .pin-me { animation: none !important; }
 html.sos-mode .pin-me { box-shadow: none !important; }
 html.sos-mode .battle-overlay, html.sos-mode .zone-enter, html.sos-mode .map-emp, html.sos-mode #zdg-dim,
 html.sos-mode .zone-ring, html.sos-mode .zone-boost { display: none !important; }
+
+/* Beacon: più bersagli nel raggio, si sceglie quale. */
+.bt-choices { display: grid; gap: 8px; }
+.bt-choices[hidden] { display: none; }
+.bt-choice { display: flex; align-items: center; gap: 10px; text-align: left; background: rgba(61, 255, 122, .06); color: #b7ffcf; border: 1.5px solid #3dff7a; font-family: inherit; text-shadow: none; padding: 10px 12px; min-height: 56px; }
+.bt-choice.bt-zone { border-color: var(--c, #3dff7a); }
+.bt-choice .grow { display: grid; gap: 2px; }
+.bt-choice .tiny { color: #7fd9a0; }
+.bt-ch-ico { font-size: 22px; }
+.bt-ch-act { font-weight: 700; letter-spacing: .08em; padding: 4px 8px; border: 1px solid currentColor; }
+.bt-choice.bt-altar .bt-ch-act { color: #ff8a65; }

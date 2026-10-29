@@ -277,15 +277,27 @@ function requireElect(team, player) {
   if (!player) throw err(403, 'Serve il tuo accesso personale di Eletto');
 }
 
-// Lancio: dentro una zona spenta parte la sequenza (beaconMin minuti); fuori, nessuna area.
+// Lancio: vicino a un Altare lo disattiva, dentro una zona spenta parte la sequenza (beaconMin minuti).
+// Se nel punto ci sono più bersagli (un Altare dentro una zona, zone sovrapposte…) si risponde con l'elenco e
+// l'Eletto sceglie: il telefono rimanda la richiesta con target { kind: 'altar' | 'zone', id }.
+function beaconTargets(gameId, pos) {
+  return [
+    ...altarsAt(gameId, pos).map((p) => ({ kind: 'altar', id: p.id, name: p.label, action: 'disattiva', icon: '⛬', off: (p.disabledUntil || 0) > Date.now() })),
+    ...offZonesAt(gameId, pos).map((z) => ({ kind: 'zone', id: z.id, name: z.name, action: 'attiva', icon: KINDS[z.kind].icon, label: KINDS[z.kind].label, color: KINDS[z.kind].color, beaconMin: z.beaconMin })),
+  ];
+}
 function launchBeacon(team, player, body) {
   requireElect(team, player);
   const pos = readPos(body);
+  const targets = beaconTargets(team.gameId, pos);
+  if (!targets.length) throw err(409, 'Non siete all\'interno di un\'area da attivare né vicino a un Altare');
+  const want = body?.target;
+  const pick = want ? targets.find((t) => t.kind === want.kind && t.id === Number(want.id)) : targets.length === 1 ? targets[0] : null;
+  if (want && !pick) throw err(409, 'Non siete più nel raggio di quel bersaglio: rilanciate il Beacon');
+  if (!pick) return { choose: true, targets };
   // Vicino a un Altare (entro il suo raggio di lettura): l'Altare si disattiva subito per altarBeaconMin minuti.
-  const altar = altarAt(team.gameId, pos);
-  if (altar) return disableAltar(team, player, altar, pos);
-  const z = offZonesAt(team.gameId, pos)[0];
-  if (!z) throw err(409, 'Non siete all\'interno di un\'area da attivare né vicino a un Altare');
+  if (pick.kind === 'altar') return disableAltar(team, player, q.get('SELECT * FROM points WHERE id = ?', pick.id), pos);
+  const z = getZone(pick.id);
   const now = Date.now();
   if (!(z.beaconEndsAt && z.beaconEndsAt > now - 60000)) {
     q.run('UPDATE map_zones SET beaconStartedAt = ?, beaconEndsAt = ?, beaconBy = ?, beaconPlayerId = ? WHERE id = ?', now, now + z.beaconMin * 60000, electName(player), player.id, z.id);
@@ -295,11 +307,12 @@ function launchBeacon(team, player, body) {
   return beaconOut(getZone(z.id));
 }
 
-function altarAt(gameId, pos) {
+// Altari nel raggio di lettura, dal più vicino.
+function altarsAt(gameId, pos) {
   const g = G.getGame(gameId);
   const radius = Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30;
   return q.all('SELECT * FROM points WHERE gameId = ? AND lat IS NOT NULL', gameId)
-    .map((p) => ({ p, d: SK().distM(pos, p) })).filter((x) => x.d <= radius).sort((a, b) => a.d - b.d)[0]?.p || null;
+    .map((p) => ({ p, d: SK().distM(pos, p) })).filter((x) => x.d <= radius).sort((a, b) => a.d - b.d).map((x) => x.p);
 }
 function disableAltar(team, player, p, pos) {
   const g = G.getGame(team.gameId);

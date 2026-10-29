@@ -1504,10 +1504,11 @@ function beaconTerminal() {
   const bar = h('div', { class: 'bt-bar' }, h('i'));
   const status = h('div', { class: 'bt-status' }, '');
   const close = h('button', { class: 'btn btn-block', type: 'button', hidden: true, onclick: () => { el.remove(); refresh(); } }, 'Chiudi');
-  const el = h('div', { class: 'beacon-term', role: 'dialog', 'aria-modal': 'true' }, h('div', { class: 'bt-head' }, '▌BEACON // CONSIGLIO ZERO'), log, bar, status, close);
+  const choices = h('div', { class: 'bt-choices', hidden: true });
+  const el = h('div', { class: 'beacon-term', role: 'dialog', 'aria-modal': 'true' }, h('div', { class: 'bt-head' }, '▌BEACON // CONSIGLIO ZERO'), log, bar, choices, status, close);
   document.body.append(el);
   const line = (t, cls = '') => { log.append(h('div', { class: `bt-line ${cls}` }, t)); while (log.children.length > 40) log.firstChild.remove(); log.scrollTop = log.scrollHeight; };
-  return { el, line, bar, status, close, done: (ok) => { el.classList.add(ok ? 'bt-ok' : 'bt-fail'); close.hidden = false; } };
+  return { el, line, bar, status, close, choices, done: (ok) => { el.classList.add(ok ? 'bt-ok' : 'bt-fail'); close.hidden = false; } };
 }
 // Posizione per il Beacon: al massimo maxMs (10 s), poi si usa la migliore avuta (o l'ultima nota della mappa, se recente).
 // Si risponde prima appena il GPS è preciso.
@@ -1551,9 +1552,44 @@ async function launchBeacon() {
   await sleep(250);
   let z;
   try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, /all'interno/.test(e.message || '')); }
+  if (z.choose) return beaconChoose(z.targets, pos, T);
+  beaconStart(z, T);
+}
+function beaconStart(z, T) {
   if (z.kind === 'altar') return beaconAltar(z, T);
   T.line(`  MATCH: ${z.name.toUpperCase()} [${z.label}]`, 'bt-good');
   beaconSequence(z, T);
+}
+
+// Più bersagli nel punto (un Altare dentro una zona, zone sovrapposte…): dopo qualche secondo di scansione
+// l'Eletto sceglie quale disattivare (Altare) o attivare (zona).
+const BEACON_CHOOSE_MS = 3000;
+async function beaconChoose(targets, pos, T) {
+  T.line(`  MULTI-TARGET: ${targets.length} bersagli nel raggio`, 'bt-good');
+  const t0 = Date.now();
+  while (Date.now() - t0 < BEACON_CHOOSE_MS) {
+    if (!document.body.contains(T.el)) return;
+    T.bar.firstChild.style.width = `${Math.round(((Date.now() - t0) / BEACON_CHOOSE_MS) * 100)}%`;
+    T.line(`  [${hex(4)}] triangolazione ${['node', 'seal', 'grid', 'mesh'][Math.floor(Math.random() * 4)]}.${hex(2)} ${'.'.repeat(1 + Math.floor(Math.random() * 3))} ok`);
+    await sleep(400);
+  }
+  T.bar.firstChild.style.width = '100%';
+  for (const t of targets) T.line(`  > ${t.kind === 'altar' && /^altare/i.test(t.name) ? '' : t.kind === 'altar' ? 'ALTARE ' : 'ZONA '}${t.name.toUpperCase()} :: ${t.action.toUpperCase()}`);
+  vibrate([60, 40, 60]);
+  T.status.textContent = 'Più bersagli nel raggio: scegliete quale.';
+  T.choices.hidden = false;
+  T.choices.replaceChildren(...targets.map((t) => h('button', { type: 'button', class: `btn btn-block bt-choice bt-${t.kind}`, style: t.color ? { '--c': t.color } : null, onclick: async () => {
+    for (const b of T.choices.querySelectorAll('button')) b.disabled = true;
+    T.line(`> beacon --target ${t.kind}:${t.id}`);
+    let z;
+    try { z = await api('POST', '/api/team/beacon', { ...pos, target: { kind: t.kind, id: t.id } }); } catch (e) { T.choices.hidden = true; return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message); }
+    T.choices.hidden = true;
+    T.status.textContent = '';
+    beaconStart(z, T);
+  } },
+  h('span', { class: 'bt-ch-ico', 'aria-hidden': 'true' }, t.icon),
+  h('span', { class: 'grow' }, h('strong', null, t.name), h('span', { class: 'tiny' }, t.kind === 'altar' ? (t.off ? 'Altare già disattivato: si allunga' : 'Altare · disattivalo') : `${t.label} spenta · attivala (Beacon ${t.beaconMin}′)`)),
+  h('span', { class: 'bt-ch-act' }, t.kind === 'altar' ? 'DISATTIVA' : 'ATTIVA'))));
 }
 
 // Vicino a un Altare: il Beacon lo disattiva subito per i minuti scelti dalla regia.

@@ -2576,3 +2576,29 @@ test('Santuario: moltiplicatore della ricarica scelto dalla regia', () => {
   const o = Z.createZone(g.id, { kind: 'ombra', points: [[1, 1], [1, 2], [2, 2]], rate: 3 }, 'test');
   assert.equal(o.rate, null);
 });
+
+test('Beacon: con un Altare dentro una zona spenta l\'Eletto sceglie quale bersaglio', () => {
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const elect = G.ensureElect(g.id);
+  const pid = Number(q.run("INSERT INTO players (gameId, teamId, name, status, createdAt) VALUES (?, ?, 'Eletto Quattro', 'accepted', ?)", g.id, elect.id, Date.now()).lastInsertRowid);
+  const pl = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const [, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const p = pointOf(g.id, B.sectorId);
+  q.run('UPDATE points SET lat = 45, lng = 9 WHERE id = ?', p.id);
+  const z = Z.createZone(g.id, { kind: 'luce', points: [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]], active: false, beaconMin: 2 }, 'test');
+  const r = Z.launchBeacon(elect, pl, { lat: 45, lng: 9 });
+  assert.equal(r.choose, true);
+  assert.deepEqual(r.targets.map((t) => t.kind).sort(), ['altar', 'zone']);
+  // Scelta la zona: parte la sequenza, l'Altare resta attivo.
+  const s1 = Z.launchBeacon(elect, pl, { lat: 45, lng: 9, target: { kind: 'zone', id: z.id } });
+  assert.equal(s1.id, z.id);
+  assert.ok(s1.endsAt > Date.now());
+  assert.ok(!q.get('SELECT disabledUntil FROM points WHERE id = ?', p.id).disabledUntil);
+  // Scelto l'Altare: si disattiva.
+  const s2 = Z.launchBeacon(elect, pl, { lat: 45, lng: 9, target: { kind: 'altar', id: p.id } });
+  assert.equal(s2.kind, 'altar');
+  assert.ok(q.get('SELECT disabledUntil FROM points WHERE id = ?', p.id).disabledUntil > Date.now());
+  // Bersaglio non più nel raggio.
+  assert.throws(() => Z.launchBeacon(elect, pl, { lat: 46, lng: 9, target: { kind: 'altar', id: p.id } }), /Non siete/);
+});
