@@ -88,6 +88,7 @@ export function createMapView({ className = '' } = {}) {
   let meCircle = null;
   let onTap = null;
   let onMarkerTap = null;
+  let onShapeTap = null;
   let pending = null;
   let meAcc = null;
   let hi = null;
@@ -196,7 +197,7 @@ export function createMapView({ className = '' } = {}) {
         let pg = polys.get(z.key);
         const style = { color: z.color || '#d1ad62', weight: z.weight ?? 2, fillOpacity: z.fill ?? 0.18, dashArray: z.dash || null, interactive: !!(z.title || z.popup) };
         // Con un popup (tocco sulla zona) niente tooltip: sul telefono si sovrapporrebbero.
-        if (!pg) { pg = L.polygon(z.points, style).addTo(map); if (z.popup) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
+        if (!pg) { pg = L.polygon(z.points, style).addTo(map); pg.on('click', () => onShapeTap?.(z.key)); if (z.popup) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
         else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.popup) { if (pg.getPopup()) pg.setPopupContent(z.popup); else pg.bindPopup(z.popup, { maxWidth: 260 }); } else if (z.title) pg.setTooltipContent(z.title); }
       }
       for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
@@ -229,6 +230,8 @@ export function createMapView({ className = '' } = {}) {
     centerMe(zoom = 17) { if (map && me) { auto = false; map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
     onTap(fn) { onTap = fn; },
     onMarkerTap(fn) { onMarkerTap = fn; },
+    // Tocco su una zona (poligono con titolo o popup): riceve la sua chiave.
+    onShapeTap(fn) { onShapeTap = fn; },
     // Da chiamare dopo che l'elemento è stato riagganciato alla pagina.
     refresh() { if (map) setTimeout(() => { map.invalidateSize(); autoFit(); }, 30); },
     resize() { if (map) map.invalidateSize(); },

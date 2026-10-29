@@ -1181,3 +1181,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ck-hist { margin-top: 8px; }
 .ck-hist summary { cursor: pointer; color: var(--muted); }
 .ck-hist .list li { padding: 3px 0; }
+
+/* Voce scelta dalla mappa (clic su un segnaposto o una zona): bordo dorato e un lampo. */
+.map-side-list li.map-sel, .zone-list li.map-sel { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 2px rgba(209, 173, 98, .45); }
+.map-sel-flash { animation: map-sel-flash 1.4s ease-out; }
+@keyframes map-sel-flash { 0%, 30% { background: rgba(209, 173, 98, .35); } 100% { background: transparent; } }

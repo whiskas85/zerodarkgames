@@ -1893,8 +1893,32 @@ function startPick(x, kind = 'landmark') {
   render();
 }
 // Spostando un oggetto si può toccare un punto di interesse: l'oggetto prende il suo posto (e il punto non si vede più).
+// Clic su un segnaposto o su una zona della mappa: nella barra a fianco si apre la sua scheda con la voce in evidenza.
+const SEL_TABS = [[/^(l|p)\d+$/, 'altari'], [/^g\d+$/, 'doni'], [/^ev\d+$/, 'eventi'], [/^z\d+$/, 'zone'], [/^poi\d+$/, 'punti'], [/^gd\d+$/, 'indicazioni']];
+function selectOnSide(key) {
+  if (R.mapPick || R.zoneDraw || R.zoneEdit) return;
+  // Punto indicato per un piazzamento (tpoint5, tgift3, tlandmark1): si mostra l'oggetto da piazzare.
+  const t = /^t(point|gift|landmark)(\d+)$/.exec(key);
+  if (t) key = `${{ point: 'p', gift: 'g', landmark: 'l' }[t[1]]}${t[2]}`;
+  const tab = SEL_TABS.find(([re]) => re.test(key))?.[1];
+  if (!tab) return;
+  R.mapTab = tab;
+  R.mapSel = key;
+  render();
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.map-sidebar [data-key="${key}"]`);
+    if (!el) return;
+    const body = el.closest('.map-tab-body');
+    // Nella barra laterale scorre solo l'elenco; sul telefono (barra sotto la mappa) scorre la pagina.
+    if (body && body.scrollHeight > body.clientHeight && getComputedStyle(body).overflowY !== 'visible') body.scrollTo({ top: el.offsetTop - body.offsetTop - 12, behavior: 'smooth' });
+    else el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    el.classList.remove('map-sel-flash'); void el.offsetWidth; el.classList.add('map-sel-flash');
+  });
+}
+fieldMap.onShapeTap((key) => selectOnSide(key));
 fieldMap.onMarkerTap((key) => {
-  if (!R.mapPick || ['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) || !key.startsWith('poi')) return false;
+  if (!R.mapPick) { selectOnSide(key); return false; }
+  if (['poi', 'guide', 'guide-new'].includes(R.mapPick.kind) || !key.startsWith('poi')) return false;
   const x = (fieldData?.pois || []).find((p) => `poi${p.id}` === key);
   if (!x) return false;
   placePicked({ lat: x.lat, lng: x.lng }, x.label);
@@ -2019,8 +2043,8 @@ function viewFieldMap() {
   ];
   const cur = tabs.some(([k]) => k === R.mapTab) ? R.mapTab : (toPlace.length ? 'piazzare' : 'zone');
   // Un clic su una voce con una posizione: la mappa la centra e la porta sopra a tutto.
-  const centerOn = (key) => { if (!fieldMap.highlight(key)) toast('Non è ancora sulla mappa', 'warn'); };
-  const locRow = (key, has, ...kids) => h('li', { class: has ? 'locatable' : '', title: has ? 'Mostra sulla mappa' : '', onclick: has ? (e) => { if (!e.target.closest('button, a, input')) centerOn(key); } : null }, ...kids);
+  const centerOn = (key) => { R.mapSel = key; document.querySelectorAll('.map-sidebar .map-sel').forEach((x) => x.classList.remove('map-sel')); document.querySelector(`.map-sidebar [data-key="${key}"]`)?.classList.add('map-sel'); if (!fieldMap.highlight(key)) toast('Non è ancora sulla mappa', 'warn'); };
+  const locRow = (key, has, ...kids) => h('li', { 'data-key': key, class: `${has ? 'locatable' : ''} ${R.mapSel === key ? 'map-sel' : ''}`, title: has ? 'Mostra sulla mappa' : '', onclick: has ? (e) => { if (!e.target.closest('button, a, input')) centerOn(key); } : null }, ...kids);
   const now = Date.now();
   const panes = {
     piazzare: () => [
@@ -2197,7 +2221,7 @@ function zonesPanel() {
   const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
-    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.enabled && z.active ? '' : 'off'} ${z.enabled ? '' : 'disabled'} locatable`, 'data-id': z.id, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
+    Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.enabled && z.active ? '' : 'off'} ${z.enabled ? '' : 'disabled'} locatable ${R.mapSel === `z${z.id}` ? 'map-sel' : ''}`, 'data-id': z.id, 'data-key': `z${z.id}`, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
       h('div', { class: 'zl-head' },
         h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),
         h('button', { type: 'button', class: `switch switch-sm ${z.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': z.enabled ? 'true' : 'false',
