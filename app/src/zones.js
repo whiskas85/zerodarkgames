@@ -380,7 +380,8 @@ function teamZones(t) {
   if (!t || !['couple', 'elect'].includes(t.kind)) return null;
   // Eletti: vedono le zone abilitate (accese e spente: dove lanciare il Beacon), senza effetti su di loro.
   if (t.kind === 'elect') {
-    return { list: q.all('SELECT * FROM map_zones WHERE gameId = ? AND enabled = 1 ORDER BY layer, id', t.gameId).map(zoneOut), here: [], visibility: null, emp: false, won: [], recharge: 1 };
+    return { list: q.all('SELECT * FROM map_zones WHERE gameId = ? AND enabled = 1 ORDER BY layer, id', t.gameId).map(zoneOut), here: [], visibility: null, emp: false, won: [], recharge: 1,
+      countdown: !!G.getGame(t.gameId).zoneCountdown };
   }
   // Prima del Cerchio le coppie non vedono le zone (come gli altri luoghi del gioco).
   if (['created', 'draft', 'ready'].includes(G.getGame(t.gameId).status)) return null;
@@ -394,6 +395,8 @@ function teamZones(t) {
     here: mine.map((z) => ({ id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,
       holdUntil: z.kind === 'conquista' && !z.winnerTeamId ? z.enteredAt + z.holdMin * 60000 : null })),
     visibility: visibilityOf(t.id),
+    // La regia sceglie se mostrare sulla mappa quanto manca allo spegnimento delle zone a tempo.
+    countdown: !!g.zoneCountdown,
     // Zone in cui la coppia era già dentro quando sono nate: il telefono non ne mostra l'effetto finché non esce e rientra.
     immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),

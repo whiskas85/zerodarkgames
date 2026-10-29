@@ -127,7 +127,7 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
@@ -160,7 +160,7 @@ function updateGame(id, data, actor) {
     }
     if (f === 'codeLength' && (v < 4 || v > 12)) throw err(400, 'La lunghezza del Sigillo deve essere tra 4 e 12');
     if (f === 'durationMin' && v < 40) throw err(400, 'Durata troppo breve');
-    if (f === 'registrationOpen' || f === 'altarCheckOn') v = v && v !== '0' && v !== 'false' ? 1 : 0;
+    if (f === 'registrationOpen' || f === 'altarCheckOn' || f === 'zoneCountdown') v = v && v !== '0' && v !== 'false' ? 1 : 0;
     if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
     sets.push(`${f} = ?`);
     vals.push(v === '' ? null : v);

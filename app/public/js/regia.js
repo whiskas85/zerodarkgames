@@ -2241,6 +2241,15 @@ function zonesPanel() {
   const patch = (z, body, msg) => call('PATCH', `/api/m/zones/${z.id}`, body, msg);
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'row' }, h('div', { class: 'eyebrow grow' }, `Zone della mappa (${Z.list.length})`), h('button', { class: 'btn btn-sm btn-primary', onclick: zoneDialog }, '＋ Nuova zona')),
+    // Conto alla rovescia sulle mappe di coppie ed Eletti, solo per le zone accese a tempo (non per sempre).
+    (() => {
+      const on = !!R.ms.game.zoneCountdown;
+      return h('div', { class: 'zl-countdown' },
+        h('div', { class: 'grow' }, h('strong', { class: 'small' }, 'Conto alla rovescia sulle app'), h('div', { class: 'tiny muted' }, 'Sulle mappe di coppie ed Eletti, piccolo al centro delle zone accese a tempo: «⏱ 14:00» alla scadenza. Le zone accese per sempre non lo mostrano.')),
+        h('button', { type: 'button', class: `switch switch-sm ${on ? 'on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': 'Conto alla rovescia delle zone sulle app',
+          onclick: () => call('PATCH', `/api/m/games/${R.ms.game.id}`, { zoneCountdown: !on }, on ? 'Conto alla rovescia delle zone nascosto sulle app' : 'Conto alla rovescia delle zone visibile sulle app') },
+        h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), on ? 'ACCESO' : 'SPENTO'));
+    })(),
     Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.enabled && z.active ? '' : 'off'} ${z.enabled ? '' : 'disabled'} locatable ${R.mapSel === `z${z.id}` ? 'map-sel' : ''}`, 'data-id': z.id, 'data-key': `z${z.id}`, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
       h('div', { class: 'zl-head' },
         h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),

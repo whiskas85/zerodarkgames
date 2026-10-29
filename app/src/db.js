@@ -674,6 +674,8 @@ addColumn('map_zones', 'activeUntil', 'INTEGER');
 // Santuario: di quante volte corre la ricarica delle Skill (NULL = 2).
 addColumn('map_zones', 'rate', 'REAL');
 addColumn('games', 'offlineMap', 'TEXT');
+// Conto alla rovescia delle zone a tempo sulle mappe di coppie ed Eletti (scelta della regia).
+addColumn('games', 'zoneCountdown', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('games', 'acceptanceClosedAt', 'INTEGER');
 addColumn('games', 'acceptanceClosedBy', 'TEXT');
 

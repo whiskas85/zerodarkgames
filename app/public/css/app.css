@@ -1115,3 +1115,9 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost { display: none !important; 
 .bt-ch-ico { font-size: 22px; }
 .bt-ch-act { font-weight: 700; letter-spacing: .08em; padding: 4px 8px; border: 1px solid currentColor; }
 .bt-choice.bt-altar .bt-ch-act { color: #ff8a65; }
+
+/* Conto alla rovescia di una zona a tempo (se la regia lo mostra): piccolo e discreto al centro della zona. */
+.leaflet-tooltip.zone-badge { background: rgba(10, 10, 10, .55); color: #fff; border: 0; border-radius: 999px; padding: 1px 7px; font-size: 11px; line-height: 1.5;
+  font-family: "IBM Plex Mono", ui-monospace, monospace; box-shadow: none; opacity: .85; pointer-events: none; }
+.leaflet-tooltip.zone-badge::before { display: none; }
+.leaflet-tooltip.zone-badge .zt-ico { margin-right: 3px; opacity: .8; }
