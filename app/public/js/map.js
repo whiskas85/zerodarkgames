@@ -90,12 +90,14 @@ function clipSeg(p, q, [x0, y0, x1, y1]) {
 // Basta che un pezzo di lato si veda: anche una zona piccola sullo schermo mostra il suo conto alla rovescia.
 const EDGE_MIN_PX = 1;
 
-// remember: chiave per ricordare zoom e posizione della mappa tra un'apertura e l'altra (e tra una sessione e l'altra).
-// Con una vista ricordata, all'apertura la mappa si centra sul puntatore (la vostra posizione) tenendo lo zoom;
-// senza puntatore resta dov'era. La prima volta in assoluto inquadra tutto come sempre.
+// remember: chiave per ricordare lo zoom della mappa tra un'apertura e l'altra (anche tra una sessione e l'altra).
+// Con uno zoom ricordato, all'apertura la mappa si centra sul puntatore (la vostra posizione) o, senza, al centro
+// di ciò che c'è da vedere, sempre a quello zoom. La prima volta in assoluto inquadra tutto come sempre.
 export function createMapView({ className = '', remember = null } = {}) {
-  const viewKey = remember ? `zdg_mapview_${remember}` : null;
-  const savedView = (() => { try { const v = viewKey && JSON.parse(localStorage.getItem(viewKey) || 'null'); return v && Number.isFinite(v.lat) && Number.isFinite(v.lng) && Number.isFinite(v.z) ? v : null; } catch { return null; } })();
+  const zoomKey = remember ? `zdg_mapzoom_${remember}` : null;
+  const savedZoom = (() => { try { const z = zoomKey && Number(localStorage.getItem(zoomKey)); return z >= 3 && z <= 20 ? z : null; } catch { return null; } })();
+  // Una richiesta esplicita (mostra un incarico, un punto…) vince sulla centratura automatica dell'apertura.
+  let focusAt = 0;
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
   const markers = new Map();
@@ -134,6 +136,7 @@ export function createMapView({ className = '', remember = null } = {}) {
   let map = null;
   let L = null;
   let fitted = false;
+  let placed = false;
   let me = null;
   let meCircle = null;
   let onTap = null;
@@ -151,8 +154,13 @@ export function createMapView({ className = '', remember = null } = {}) {
     clearTimeout(fitTimer);
     fitTimer = setTimeout(() => {
       if (!auto) return;
-      // Vista ricordata: sul puntatore con lo zoom di adesso, se c'è (e il GPS è vero); se no la mappa resta com'è.
-      if (savedView) { if (me && (meAcc == null || meAcc <= 300)) map.setView(me.getLatLng(), map.getZoom()); return; }
+      // Zoom ricordato: sul puntatore (se il GPS è vero) o al centro dei segnaposto, a quello zoom.
+      if (savedZoom) {
+        const z = map.getZoom();
+        if (me && (meAcc == null || meAcc <= 300)) map.setView(me.getLatLng(), z);
+        else if (markers.size) map.setView(L.latLngBounds([...markers.values()].map((m) => m.getLatLng())).getCenter(), z);
+        return;
+      }
       view.fit();
     }, 250);
   };
@@ -160,15 +168,15 @@ export function createMapView({ className = '', remember = null } = {}) {
   for (const ev of ['pointerdown', 'wheel', 'touchstart']) el.addEventListener(ev, () => { auto = false; }, { passive: true });
   if ('IntersectionObserver' in window) {
     new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.isIntersecting && map) { auto = true; map.invalidateSize(); autoFit(); }
+      for (const e of entries) if (e.isIntersecting && map) { map.invalidateSize(); if (Date.now() - focusAt > 3000) { auto = true; autoFit(); } }
     }).observe(el);
   }
 
   const ready = loadLeaflet().then((lib) => {
     L = lib;
-    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(savedView ? [savedView.lat, savedView.lng] : ITALY, savedView ? savedView.z : 6);
-    if (savedView) fitted = true;
-    if (viewKey) map.on('moveend', () => { const c = map.getCenter(); try { localStorage.setItem(viewKey, JSON.stringify({ lat: c.lat, lng: c.lng, z: map.getZoom() })); } catch { /* */ } });
+    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, savedZoom || 6);
+    if (savedZoom) fitted = true;
+    if (zoomKey) map.on('zoomend', () => { try { localStorage.setItem(zoomKey, String(map.getZoom())); } catch { /* */ } });
     // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
     const topo = L.tileLayer(TILES, { maxZoom: 20, maxNativeZoom: 17, attribution: ATTRIBUTION }).addTo(map);
     // Se il nostro server non lo dà (né su disco né dai server delle mappe), quel riquadro si prende da OpenStreetMap.
@@ -218,7 +226,7 @@ export function createMapView({ className = '', remember = null } = {}) {
         if (it.popup) { if (m.getPopup()) m.setPopupContent(it.popup); else m.bindPopup(it.popup, { maxWidth: 260 }); }
       }
       for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
-      if (!fitted && keep.size) { view.fit(); fitted = true; } else if (changed) autoFit();
+      if (!fitted && keep.size) { view.fit(); fitted = true; } else if (savedZoom && !placed && keep.size) { placed = true; autoFit(); } else if (changed) autoFit();
     },
     // Aree circolari (posizioni sfocate, presagi, copertura degli Altari): [{ key, lat, lng, radius, color, title, fill, weight, dash, interactive }]
     setCircles(list) {
@@ -314,6 +322,8 @@ export function createMapView({ className = '', remember = null } = {}) {
       if ((first || outOfView(me.getLatLng())) && (meAcc == null || meAcc <= 300)) autoFit();
     },
     // "Dove siamo": scelta esplicita, la centratura automatica si ferma fino alla prossima apertura.
+    // Centra su un punto qualsiasi (es. il bersaglio di un incarico): la centratura automatica si ferma.
+    centerOn(lat, lng, zoom = 17) { if (!map) return; auto = false; focusAt = Date.now(); clearTimeout(fitTimer); map.setView([lat, lng], Math.max(map.getZoom(), zoom)); },
     centerMe(zoom = 17) { if (map && me) { auto = false; map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
     onTap(fn) { onTap = fn; },
     onMarkerTap(fn) { onMarkerTap = fn; },
@@ -328,6 +338,7 @@ export function createMapView({ className = '', remember = null } = {}) {
       const pts = keys.map((k) => (markers.get(k) || circles.get(k))?.getLatLng()).filter(Boolean);
       if (!pts.length) return false;
       auto = false;
+      focusAt = Date.now();
       clearTimeout(fitTimer);
       if (me && (meAcc == null || meAcc <= 300)) pts.push(me.getLatLng());
       if (pts.length === 1) map.setView(pts[0], 17);
@@ -341,6 +352,7 @@ export function createMapView({ className = '', remember = null } = {}) {
       const pg = polys.get(key);
       if (!m && !pg) return false;
       auto = false;
+      focusAt = Date.now();
       clearTimeout(fitTimer);
       if (hi && hi !== m) { hi.setZIndexOffset(hi._zdgZ || 0); hi.getElement()?.classList.remove('zdg-hi'); }
       hi = null;

@@ -355,7 +355,7 @@ export function createField(F, { rerender }) {
   function showOnMap(target) {
     focusTarget = target;
     rerender('mappa');
-    setTimeout(() => { mapView.map?.setView([focusTarget.lat, focusTarget.lng], 17); }, 250);
+    setTimeout(() => { mapView.centerOn(focusTarget.lat, focusTarget.lng, 17); }, 250);
   }
 
   // ------------------------------------------------------------ scansione del cartello
