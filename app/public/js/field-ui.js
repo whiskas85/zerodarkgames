@@ -67,7 +67,7 @@ export function createField(F, { rerender }) {
   }
   setInterval(() => { if (mapOn) loadPositions(); }, 15000);
 
-  const TASK_ICON = { hunt: '🎯 ', goto: '⌖ ', meet: '🤝 ' };
+  const TASK_ICON = { hunt: '🎯 ', goto: '⌖ ', meet: '🤝 ', beacon: '📡 ' };
   const mySquad = () => (F.data?.squads || []).find((x) => x.id === F.squadId) || null;
 
   // ------------------------------------------------------------ incarichi della squadra

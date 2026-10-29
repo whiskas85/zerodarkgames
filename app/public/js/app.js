@@ -1483,17 +1483,72 @@ const fightPending = (st) => (st?.combat && !st.combat.elect ? st.combat.toConfi
 
 // Una zona spenta si accende lanciando un Beacon dentro l'area: il telefono manda le coordinate, il server
 // controlla; la sequenza (stile codice) dura i minuti scelti dalla regia, poi si ricontrolla di essere ancora dentro.
+// Beacon degli Eletti: tutto ciò che si può azionare (zone spente da accendere, Altari da disattivare) con la
+// distanza dal centro e dal punto più vicino da cui il Beacon funziona, con 5 m di margine per l'incertezza del GPS.
+// In cima gli incarichi Beacon della squadra, poi dal più vicino; oltre 150 m in un gruppo che si apre a richiesta.
+const BEACON_MARGIN_M = 5;
+const BEACON_FAR_M = 150;
+const geoDist = (a, b) => Math.hypot((a.lat - b.lat) * 111320, (a.lng - b.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
+const fmtM = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m)} m`);
+let beaconFarOpen = false;
+function beaconMeasure(t, pos) {
+  if (t.kind === 'altar') {
+    const d = geoDist(pos, t);
+    return { center: d, reach: Math.max(0, d - (t.radius - BEACON_MARGIN_M)) };
+  }
+  const c = { lat: t.points.reduce((a, p) => a + p[0], 0) / t.points.length, lng: t.points.reduce((a, p) => a + p[1], 0) / t.points.length };
+  // edgeDepthM: metri dentro (positivo) o fuori (negativo) dal bordo; per stare sicuri servono 5 m dentro.
+  return { center: geoDist(pos, c), reach: Math.max(0, BEACON_MARGIN_M - edgeDepthM(pos, t.points)) };
+}
+// Ordine e gruppi della lista: se col GPS non cambiano, si aggiornano solo i numeri (niente ridisegno sotto il dito).
+function beaconLayout() {
+  const b = S.state?.beacon;
+  const pos = myPos && Date.now() - (myPos.at || 0) < 60000 ? myPos : null;
+  const list = (b?.targets || []).map((t) => ({ t, m: pos ? beaconMeasure(t, pos) : null }));
+  list.sort((x, y) => (!!y.t.task - !!x.t.task) || ((x.m?.reach ?? 0) - (y.m?.reach ?? 0)) || x.t.name.localeCompare(y.t.name));
+  const near = list.filter((x) => x.t.task || !x.m || x.m.reach <= BEACON_FAR_M);
+  const far = list.filter((x) => !near.includes(x));
+  const sig = `${!!pos}|${near.map((x) => x.t.ref).join(',')}|${far.map((x) => x.t.ref).join(',')}|${list.map((x) => (x.m && x.m.reach === 0 ? 1 : 0)).join('')}`;
+  return { pos, list, near, far, sig };
+}
+let beaconSig = '';
+const beaconDist = (m) => [m.reach === 0 ? h('strong', { class: 'ok-text' }, 'Ci sei') : h('strong', null, fmtM(m.reach)),
+  h('span', { class: 'tiny muted' }, `centro ${fmtM(m.center)}`)];
+function beaconTick() {
+  const L = beaconLayout();
+  if (L.sig !== beaconSig) { render(); return; }
+  for (const { t, m } of L.list) {
+    const el = m && document.querySelector(`.bcn-row[data-ref="${t.ref}"] .bcn-dist`);
+    if (el) el.replaceChildren(...beaconDist(m));
+  }
+}
 function viewBeacon() {
   const b = S.state?.beacon;
   if (!b) return h('p', { class: 'empty' }, 'Il Beacon lo lanciano gli Eletti.');
+  const { pos, list, near, far, sig } = beaconLayout();
+  beaconSig = sig;
+  const row = ({ t, m }) => h('li', { 'data-ref': t.ref, class: `bcn-row ${t.task ? 'bcn-task' : ''} ${m && m.reach === 0 ? 'bcn-here' : ''}`, style: t.color ? { '--c': t.color } : null },
+    h('span', { class: 'bcn-ico', 'aria-hidden': 'true' }, t.icon),
+    h('div', { class: 'grow' },
+      t.task ? h('span', { class: 'chip chip-brass bcn-chip' }, '📡 Incarico') : null,
+      h('strong', null, t.name),
+      h('div', { class: 'tiny muted' }, t.kind === 'altar'
+        ? `Altare · disattiva per ${t.minutes}′${t.disabledUntil ? ` · già disattivato fino alle ${fmtTime(t.disabledUntil)}` : ''}`
+        : `${t.label} spenta · accendi (Beacon ${t.beaconMin}′ · accesa ${t.beaconOnMin ? `${t.beaconOnMin}′` : 'per sempre'})`)),
+    m ? h('div', { class: 'bcn-dist' }, ...beaconDist(m)) : null);
   return h('div', { class: 'stack' },
     h('h2', null, 'Beacon'),
-    h('p', { class: 'muted small' }, 'Vicino a un Altare il Beacon lo disattiva subito (le coppie non possono né inquadrarlo né sbloccarlo per alcuni minuti). Dentro una zona spenta parte la sequenza: restate dentro fino alla fine e la zona si accende per tutte le coppie.'),
+    h('p', { class: 'muted small' }, 'Vicino a un Altare il Beacon lo disattiva subito; dentro una zona spenta parte la sequenza: restate dentro fino alla fine e la zona si accende. Con più bersagli nel raggio scegliete quale.'),
     b.running ? h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: () => beaconSequence(b.running) }, '📡 Riprendi la sequenza in corso') : null,
     h('button', { class: 'btn btn-primary btn-xl btn-block btn-beacon', type: 'button', onclick: launchBeacon }, mdi('satelliteUplink', 26), ' Lancia il Beacon'),
     h('section', { class: 'card stack-sm' },
-      h('div', { class: 'eyebrow' }, `Zone spente (${b.off.length})`),
-      b.off.length ? h('ul', { class: 'beacon-zones' }, b.off.map((z) => h('li', { style: { '--c': z.color } }, h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name), h('span', { class: 'tiny muted' }, `${z.label} · Beacon ${z.beaconMin}′ · accesa ${z.beaconOnMin ? `${z.beaconOnMin}′` : 'per sempre'}`)))) : h('p', { class: 'small muted' }, 'Nessuna zona da accendere, per ora.')));
+      h('div', { class: 'eyebrow' }, `Azionabili col Beacon (${list.length})`),
+      pos ? h('p', { class: 'tiny muted' }, `In grande: quanto manca al punto più vicino da cui il Beacon funziona (${BEACON_MARGIN_M} m di margine per il GPS); sotto: la distanza dal centro · GPS ±${Math.round(pos.acc || 0)} m`)
+        : h('p', { class: 'tiny warn-text' }, 'Posizione non ancora disponibile: le distanze compaiono appena il GPS risponde.'),
+      near.length ? h('ul', { class: 'bcn-list' }, near.map(row)) : list.length ? null : h('p', { class: 'small muted' }, 'Nessuna zona spenta né Altare piazzato, per ora.'),
+      far.length ? h('details', { class: 'bcn-far', open: beaconFarOpen, ontoggle: (e) => { beaconFarOpen = e.target.open; } },
+        h('summary', { class: 'small' }, `Più lontani di ${BEACON_FAR_M} m (${far.length})`),
+        h('ul', { class: 'bcn-list' }, far.map(row))) : null));
 }
 
 const hex = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('').toUpperCase();
@@ -2400,8 +2455,11 @@ function offlineRow() {
 
 // ---- Posizione del telefono: mappa in tempo reale, zone decise sul telefono e invio al server.
 let localFixAt = 0;
+let beaconPaintAt = 0;
 function onPhonePos(p) {
   myPos = p;
+  // Pagina Beacon: le distanze seguono il GPS (al più ogni 2 secondi).
+  if (route().view === 'beacon' && Date.now() - beaconPaintAt > 2000) { beaconPaintAt = Date.now(); beaconTick(); }
   teamMapView.setMe(p);
   guideMapView.setMe(p);
   const changed = localZoneCheck(p);

@@ -655,14 +655,21 @@ function assignToSquad(kind, id, squadId, actor, opts = {}) {
 }
 
 // Incarichi degli Eletti. kind: text (libero), goto (raggiungere un punto o una coppia), hunt (caccia a una coppia,
-// da Maestro della caccia), meet (incontro con una coppia per Alleanze sporche). Senza squadra = da assegnare.
-const TASK_KINDS = ['text', 'goto', 'hunt', 'meet'];
+// da Maestro della caccia), meet (incontro con una coppia per Alleanze sporche), beacon (accendere una zona o
+// disattivare un Altare con il Beacon: si chiude da solo quando la squadra ci riesce). Senza squadra = da assegnare.
+const TASK_KINDS = ['text', 'goto', 'hunt', 'meet', 'beacon'];
 
-// Bersaglio: "team:ID", "point:ID", "landmark:ID", "poi:ID", "gift:ID" oppure { lat, lng }.
+// Bersaglio: "team:ID", "point:ID", "landmark:ID", "poi:ID", "gift:ID", "zone:ID" oppure { lat, lng }.
 function taskTarget(gameId, data) {
   const ref = String(data.target || '');
   const [kind, raw] = ref.split(':');
   const id = Number(raw);
+  if (kind === 'zone') {
+    const z = q.get('SELECT * FROM map_zones WHERE id = ? AND gameId = ?', id, gameId);
+    if (!z) throw err(400, 'Zona non valida');
+    const pts = JSON.parse(z.points);
+    return { targetLat: pts.reduce((a, p) => a + p[0], 0) / pts.length, targetLng: pts.reduce((a, p) => a + p[1], 0) / pts.length, targetLabel: z.name, targetRef: `zone:${z.id}` };
+  }
   if (kind === 'team') {
     const t = q.get("SELECT t.id, s.name, s.roman FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ? AND t.gameId = ? AND t.kind = 'couple'", id, gameId);
     if (!t) throw err(400, 'Coppia non valida');
@@ -672,7 +679,7 @@ function taskTarget(gameId, data) {
   if (table) {
     const r = q.get(`SELECT * FROM ${table} WHERE id = ? AND gameId = ?`, id, gameId);
     if (!r || r.lat == null) throw err(400, 'Punto non valido o non ancora piazzato');
-    return { targetLat: r.lat, targetLng: r.lng, targetLabel: r.label || r.name || 'Punto' };
+    return { targetLat: r.lat, targetLng: r.lng, targetLabel: r.label || r.name || 'Punto', ...(kind === 'point' ? { targetRef: `point:${r.id}` } : {}) };
   }
   const t = readTarget(data);
   return t.lat != null ? { targetLat: t.lat, targetLng: t.lng, targetLabel: String(data.targetLabel || 'Punto sulla mappa').slice(0, 80) } : {};
@@ -683,14 +690,18 @@ function createTask(gameId, data, actor, extra = {}) {
   if (s && s.gameId !== Number(gameId)) throw err(400, 'Squadra di un\'altra partita');
   const target = taskTarget(Number(gameId), data);
   let kind = TASK_KINDS.includes(data.kind) ? data.kind : 'text';
+  // Una zona si può solo accendere con il Beacon.
+  if (target.targetRef?.startsWith('zone:')) kind = 'beacon';
+  if (kind === 'beacon' && !target.targetRef) throw err(400, 'Per un incarico Beacon scegli una zona o un Altare');
   if (kind === 'text' && (target.targetTeamId || target.targetLat != null)) kind = 'goto';
   const text = String(data.text || '').trim().slice(0, 300)
-    || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
+    || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'beacon' ? `Beacon: ${target.targetRef.startsWith('zone:') ? 'accendete' : 'disattivate'} ${target.targetLabel}`
+      : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
   if (!text) throw err(400, 'Scrivi l\'incarico');
   const now = Date.now();
-  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, source, sourceTeamId, assignedAt)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null,
+  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, targetRef, source, sourceTeamId, assignedAt)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null, kind === 'beacon' ? target.targetRef : null,
   extra.source || 'regia', extra.sourceTeamId ?? null, s ? now : null).lastInsertRowid);
   G.log(Number(gameId), actor, 'squad_task', { squad: s?.name || null, text });
   if (s) notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });

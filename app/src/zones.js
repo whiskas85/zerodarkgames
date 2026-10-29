@@ -321,6 +321,7 @@ function disableAltar(team, player, p, pos) {
   const until = Math.max(p.disabledUntil || 0, now + min * 60000);
   q.run('UPDATE points SET disabledUntil = ?, disabledBy = ? WHERE id = ?', until, electName(player), p.id);
   G.log(g.id, `giocatore:${player.id}`, 'altar_beacon', { point: p.label, minutes: min, lat: pos.lat, lng: pos.lng });
+  closeBeaconTasks(player, `point:${p.id}`);
   rt.toStaff(g.id, 'points');
   rt.toTeams(g.id, 'state', {});
   return { kind: 'altar', id: p.id, name: p.label, until, minutes: min };
@@ -346,6 +347,7 @@ function completeBeacon(team, player, zoneId, body) {
   // Accesa dal Beacon: resta accesa per i minuti impostati dalla regia (o per sempre), poi si spegne da sola.
   const until = z.beaconOnMin ? Date.now() + z.beaconOnMin * 60000 : null;
   if (until) { q.run('UPDATE map_zones SET activeUntil = ? WHERE id = ?', until, z.id); changed(z.gameId); }
+  closeBeaconTasks(player, `zone:${z.id}`);
   G.log(z.gameId, `giocatore:${player.id}`, 'zone_beacon_done', { zone: z.name, minutes: z.beaconOnMin || null, lat: pos.lat, lng: pos.lng });
   return { ok: true, active: true, zone: beaconOut(getZone(z.id)) };
 }
@@ -354,11 +356,32 @@ const beaconOut = (z) => ({ id: z.id, name: z.name, kind: z.kind, label: KINDS[z
   active: !!z.active, beaconMin: z.beaconMin, beaconOnMin: z.beaconOnMin || null, activeUntil: z.activeUntil || null, startedAt: z.beaconStartedAt, endsAt: z.beaconEndsAt, by: z.beaconBy });
 
 // Per l'app degli Eletti: le zone spente (da attivare) e il Beacon in corso di questa persona.
+// Per l'app degli Eletti: tutto ciò che il Beacon può azionare (zone spente da accendere, Altari piazzati da
+// disattivare) con la geometria per le distanze dal telefono, gli incarichi Beacon della squadra e il Beacon in corso.
 function electBeacon(team, player) {
   if (!team || team.kind !== 'elect') return null;
+  const g = G.getGame(team.gameId);
   const off = q.all('SELECT * FROM map_zones WHERE gameId = ? AND active = 0 AND enabled = 1 ORDER BY name', team.gameId);
   const mine = player ? off.find((z) => z.beaconPlayerId === player.id && z.beaconEndsAt && z.beaconEndsAt > Date.now() - 60000) : null;
-  return { off: off.map(beaconOut), running: mine ? beaconOut(mine) : null };
+  const radius = Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30;
+  const tasks = player?.squadId ? q.all("SELECT id, text, targetRef FROM squad_tasks WHERE squadId = ? AND kind = 'beacon' AND doneAt IS NULL AND cancelledAt IS NULL", player.squadId) : [];
+  const taskOf = (ref) => tasks.find((t) => t.targetRef === ref) || null;
+  const targets = [
+    ...off.map((z) => ({ ...beaconOut(z), ref: `zone:${z.id}`, points: pointsOf(z), task: taskOf(`zone:${z.id}`) })),
+    ...q.all('SELECT * FROM points WHERE gameId = ? AND lat IS NOT NULL ORDER BY id', team.gameId).map((p) => ({
+      kind: 'altar', id: p.id, ref: `point:${p.id}`, name: p.label, icon: '⛬', lat: p.lat, lng: p.lng, radius, minutes: Number(g.altarBeaconMin) > 0 ? Number(g.altarBeaconMin) : 15,
+      disabledUntil: (p.disabledUntil || 0) > Date.now() ? p.disabledUntil : null, task: taskOf(`point:${p.id}`) })),
+  ];
+  return { off: off.map(beaconOut), targets, running: mine ? beaconOut(mine) : null };
+}
+
+// Incarico Beacon della squadra su quel bersaglio: riuscito il Beacon, si chiude da solo.
+function closeBeaconTasks(player, ref) {
+  if (!player?.squadId) return;
+  const F = require('./field');
+  for (const t of q.all("SELECT id FROM squad_tasks WHERE squadId = ? AND kind = 'beacon' AND targetRef = ? AND doneAt IS NULL AND cancelledAt IS NULL", player.squadId, ref)) {
+    F.setTaskDone(t.id, true, `eletti:${electName(player)}`);
+  }
 }
 
 // ---------------------------------------------------------------- viste

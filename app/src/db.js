@@ -502,6 +502,8 @@ addColumn('squad_tasks', 'startedAt', 'INTEGER');
 addColumn('squad_tasks', 'endsAt', 'INTEGER');
 // Avviso alla coppia bersaglio (1 minuto dopo che la squadra la vede).
 addColumn('squad_tasks', 'notifiedAt', 'INTEGER');
+// Incarico Beacon: il bersaglio da azionare («zone:ID» da accendere, «point:ID» Altare da disattivare).
+addColumn('squad_tasks', 'targetRef', 'TEXT');
 
 // Emergenze reali (OFF GAME): dal pulsante dell'app o dall'SOS di Traccar, con la posizione di chi chiama.
 db.exec(`

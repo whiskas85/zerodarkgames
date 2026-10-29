@@ -2602,3 +2602,35 @@ test('Beacon: con un Altare dentro una zona spenta l\'Eletto sceglie quale bersa
   // Bersaglio non più nel raggio.
   assert.throws(() => Z.launchBeacon(elect, pl, { lat: 46, lng: 9, target: { kind: 'altar', id: p.id } }), /Non siete/);
 });
+
+test('Beacon: incarico Beacon su una zona o un Altare, in cima nella pagina e chiuso da solo quando riesce', () => {
+  const Z = require('../src/zones');
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const elect = G.ensureElect(g.id);
+  const sq = F.createSquad(g.id, { name: 'Lupi' }, 'test');
+  const pid = Number(q.run("INSERT INTO players (gameId, teamId, squadId, name, status, createdAt) VALUES (?, ?, ?, 'Eletto Cinque', 'accepted', ?)", g.id, elect.id, sq.id, Date.now()).lastInsertRowid);
+  const pl = q.get('SELECT * FROM players WHERE id = ?', pid);
+  const [, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const p = pointOf(g.id, B.sectorId);
+  q.run('UPDATE points SET lat = 45.01, lng = 9 WHERE id = ?', p.id);
+  const z = Z.createZone(g.id, { kind: 'luce', points: [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]], active: false, beaconMin: 1 }, 'test');
+  const tz = F.createTask(g.id, { squadId: sq.id, target: `zone:${z.id}` }, 'test');
+  const ta = F.createTask(g.id, { squadId: sq.id, target: `point:${p.id}`, kind: 'beacon' }, 'test');
+  assert.throws(() => F.createTask(g.id, { squadId: sq.id, kind: 'beacon' }, 'test'), /zona o un Altare/);
+  const t1 = q.get('SELECT * FROM squad_tasks WHERE id = ?', tz.id);
+  assert.equal(t1.kind, 'beacon');
+  assert.match(t1.text, /accendete/);
+  const eb = Z.electBeacon(elect, pl);
+  assert.ok(eb.targets.find((t) => t.ref === `zone:${z.id}`).task);
+  assert.ok(eb.targets.find((t) => t.ref === `point:${p.id}`).task);
+  assert.ok(eb.targets.find((t) => t.kind === 'altar' && t.radius > 0 && t.lat === 45.01));
+  // Riuscito il Beacon sull'Altare: l'incarico si chiude.
+  Z.launchBeacon(elect, pl, { lat: 45.01, lng: 9 });
+  assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', ta.id).doneAt);
+  // Zona accesa col Beacon: anche l'altro.
+  Z.launchBeacon(elect, pl, { lat: 45, lng: 9 });
+  q.run('UPDATE map_zones SET beaconEndsAt = ? WHERE id = ?', Date.now() - 1000, z.id);
+  Z.completeBeacon(elect, pl, z.id, { lat: 45, lng: 9 });
+  assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', tz.id).doneAt);
+});
