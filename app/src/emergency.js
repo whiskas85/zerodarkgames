@@ -63,6 +63,7 @@ function raise({ gameId, team = null, player = null, pos = null, source = 'app',
       rt.toStaff(gameId, 'emergency');
     }
     rt.toStaffEvent('emergency', { gameId, id: open.id, repeat: true });
+    if (team) rt.toTeams(gameId, 'state', {}, team.id);
     return { ok: true, id: open.id, repeat: true, located: !!p };
   }
   const who = whoOf(player, team);
@@ -74,6 +75,7 @@ function raise({ gameId, team = null, player = null, pos = null, source = 'app',
     tag: `emergency-${id}`, url: '/regia#emergenze', requireInteraction: true });
   rt.toStaffEvent('emergency', { gameId, id });
   rt.toStaff(gameId, 'emergency');
+  if (team) rt.toTeams(gameId, 'state', {}, team.id);
   return { ok: true, id, located: !!p };
 }
 
@@ -106,6 +108,7 @@ function ack(id, actor) {
   // Chi ha chiamato sa che la regia ha preso in carico.
   if (e.teamId) rt.pushTeams(e.gameId, { title: 'Emergenza ricevuta', body: 'La Direzione ha preso in carico la vostra emergenza. Restate dove siete e tenete la radio accesa.', tag: `emergency-${e.id}`, url: '/#/home' }, e.teamId);
   rt.toStaff(e.gameId, 'emergency');
+  if (e.teamId) rt.toTeams(e.gameId, 'state', {}, e.teamId);
 }
 
 function close(id, actor, note) {
@@ -115,6 +118,8 @@ function close(id, actor, note) {
     Date.now(), actor, String(note || '').trim().slice(0, 300) || null, Date.now(), actor, e.id);
   G.log(e.gameId, actor, 'emergency_closed', { id: e.id, who: e.who });
   rt.toStaff(e.gameId, 'emergency');
+  // Chiusa: sul telefono tornano gli effetti di gioco.
+  if (e.teamId) rt.toTeams(e.gameId, 'state', {}, e.teamId);
 }
 
 module.exports = { fromApp, fromTraccar, list, ack, close, raise };

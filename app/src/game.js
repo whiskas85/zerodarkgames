@@ -2095,6 +2095,10 @@ function teamState(team, player = null) {
   const st = teamStateCore(team, player);
   st.player = playerInfo(player);
   st.notAccepted = notAccepted(getGame(team.gameId), player, team);
+  // Emergenza aperta da questo telefono (OFF GAME): l'app toglie ogni effetto di gioco finché la Direzione non la chiude.
+  const em = q.get(`SELECT id, createdAt, ackAt FROM emergencies WHERE gameId = ? AND closedAt IS NULL AND ${player ? 'playerId = ?' : 'teamId = ? AND playerId IS NULL'} ORDER BY id DESC LIMIT 1`,
+    team.gameId, player ? player.id : team.id);
+  st.emergency = em ? { id: em.id, createdAt: em.createdAt, ackAt: em.ackAt || null } : null;
   return st;
 }
 

@@ -1095,3 +1095,12 @@ html[data-zones~="emp"] .pin-me { animation: pin-emp .25s steps(2) infinite; }
 .off-track i { display: block; height: 100%; background: var(--brass, #d1ad62); transition: width .2s; }
 .campo > .off-prompt { position: relative; top: auto; left: auto; right: auto; margin: 6px 10px; }
 .tour-radio .tour-sos { pointer-events: none; padding: 8px 14px; font-size: 14px; }
+
+/* Modalità emergenza (OFF GAME): spariscono tutti gli effetti di gioco, la mappa si vede normalmente. */
+button.banner-sos { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; background: #b00012; color: #fff; display: grid; gap: 2px; animation: none; }
+button.banner-sos strong { letter-spacing: .08em; }
+html.sos-mode body::after, html.sos-mode body::before { display: none !important; animation: none !important; }
+html.sos-mode .main, html.sos-mode .pin-me { animation: none !important; }
+html.sos-mode .pin-me { box-shadow: none !important; }
+html.sos-mode .battle-overlay, html.sos-mode .zone-enter, html.sos-mode .map-emp, html.sos-mode #zdg-dim,
+html.sos-mode .zone-ring, html.sos-mode .zone-boost { display: none !important; }

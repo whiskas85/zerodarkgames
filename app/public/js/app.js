@@ -498,6 +498,7 @@ function render() {
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), zoneHud(), radioBar());
     document.body.dataset.view = view;
+    applySosMode();
     if (view === 'mappa') requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', view === 'messaggi');
     if (view === 'messaggi' && !arg && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
@@ -683,6 +684,10 @@ function banners() {
   if (!st) return null;
   const c = st.clock;
   const out = [];
+  // Emergenza aperta: resta in cima finché la Direzione non la chiude (si riapre la schermata toccando).
+  if (st.emergency) out.push(h('button', { type: 'button', class: 'banner banner-sos', onclick: emergencyModal },
+    h('strong', null, st.emergency.ackAt ? '🚨 EMERGENZA PRESA IN CARICO' : '🚨 EMERGENZA INVIATA'),
+    h('span', null, `Effetti di gioco sospesi finché la Direzione non chiude l'emergenza. Restate dove siete${st.game.emergencyRadioChannel ? ` · radio ${st.game.emergencyRadioChannel}` : ''}.`)));
   if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + st.game.emergencyRadioChannel : ''}`)));
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
@@ -714,6 +719,14 @@ function radioBar() {
 // Il pulsante EMERGENZA si attiva quando l'evento si avvia (dall'apertura del Cerchio); prima resta spento.
 const SOS_OFF = ['created', 'draft', 'ready'];
 const sosOn = () => !SOS_OFF.includes(S.state?.clock?.status);
+// Modalità emergenza: dalla pressione di EMERGENZA finché la Direzione non chiude l'emergenza, sul telefono spariscono
+// tutti gli effetti di gioco (zone, Disturbo, animazioni, luminosità ridotta) e la mappa si vede normalmente.
+const sosMode = () => !!(S.sosOpen || S.state?.emergency);
+function applySosMode() {
+  const on = sosMode();
+  document.documentElement.classList.toggle('sos-mode', on);
+  applyZoneFx();
+}
 
 // La mappa occupa tutto lo spazio libero sotto i banner (sopra la barra radio, se è in fondo).
 function fitMap() {
@@ -815,7 +828,9 @@ function emergencyModal() {
   const ov = h('div', { class: 'sos-overlay sos-full', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
   // Finché è aperta la pagina sotto non scorre.
   document.documentElement.classList.add('sos-open');
-  const close = () => { ov.remove(); document.documentElement.classList.remove('sos-open'); };
+  S.sosOpen = true;
+  applySosMode();
+  const close = () => { ov.remove(); document.documentElement.classList.remove('sos-open'); S.sosOpen = false; applySosMode(); render(); };
   let severity = null;
   let sent = false;
   const status = h('p', { class: 'sos-status', 'aria-live': 'polite' });
@@ -865,6 +880,8 @@ function emergencyModal() {
       h('div', { class: 'sos-form' }, h('div', { class: 'eyebrow' }, 'Gravità'), levels, comment, update),
       h('div', { class: 'sos-action' }, big, status)),
     ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch)) : null,
+    // La mappa in emergenza si vede normalmente (senza effetti di gioco): per orientarsi o dire dove si è.
+    h('a', { class: 'btn btn-block sos-map', href: '#/mappa', onclick: close }, '🗺 Vedi la mappa'),
     offGameStripe()));
   document.body.append(ov);
 }
@@ -2271,7 +2288,7 @@ function viewMap(focus = null) {
     h('div', { class: 'map-wrap' },
       teamMapView.el,
       offlinePrompt(),
-      zones?.emp ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.')) : null,
+      zones?.emp && !sosMode() ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.')) : null,
       h('div', { class: 'map-tools' },
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
         h('button', { class: 'btn btn-sm', title: 'Dove siamo', 'aria-label': 'Dove siamo', onclick: () => teamMapView.centerMe() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '◎'), h('span', { class: 'mt-label' }, 'Dove siamo')),
@@ -2414,6 +2431,8 @@ function hereZones() {
   return zs.here.map((x) => zs.list.find((z) => z.id === x.id) || x);
 }
 function applyZoneFx() {
+  // In emergenza nessun effetto di zona.
+  if (sosMode()) { delete document.documentElement.dataset.zones; return; }
   // Ordine per strato: l'ultima vince (Ombra sopra Luce…), come sul server.
   document.documentElement.dataset.zones = [...hereZones()].sort((a, b) => (a.layer || 0) - (b.layer || 0)).map((z) => z.kind).join(' ');
 }
@@ -2421,7 +2440,7 @@ function applyZoneFx() {
 const zoneEnterShown = new Map();
 function showZoneEnter(info) {
   const last = zoneEnterShown.get(info.id) || 0;
-  if (Date.now() - last < 60000) return;
+  if (Date.now() - last < 60000 || sosMode()) return;
   zoneEnterShown.set(info.id, Date.now());
   vibrate(ZONE_VIBE[info.kind] || [200]);
   document.querySelector('.zone-enter')?.remove();
@@ -2439,6 +2458,7 @@ const ZONE_VIBE = { ombra: [80], luce: [700], emp: [40, 40, 40, 40, 40, 40, 40, 
 function zoneHud() {
   const zs = S.state?.zones;
   applyZoneFx();
+  if (sosMode()) return null;
   // Conquista: dal telefono (sparisce appena si esce); il tempo è quello del server se lui vi sa dentro, se no da quando
   // il telefono vi ha visti entrare (uscendo si azzera).
   const cqZone = hereZones().find((z) => z.kind === 'conquista' && !z.winnerTeamId);
