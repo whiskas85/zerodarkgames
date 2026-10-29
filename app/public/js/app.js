@@ -2571,7 +2571,7 @@ const zonePopup = (z) => `<strong>${z.icon} ${escHtml(z.name)}</strong>${zoneSub
 // Zona accesa a tempo (non per sempre) e conto alla rovescia acceso dalla regia: piccola etichetta discreta al centro.
 const zoneTimer = (zones, z) => (zones?.countdown && z.active && z.activeUntil ? `<span class="zt-ico" aria-hidden="true">⏱</span><span data-abs="${z.activeUntil}">—</span>` : null);
 const zonePolygons = (zones) => (zones?.list || []).map((z) => (z.active
-  ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, popup: zonePopup(z), badge: zoneTimer(zones, z) }
+  ? { key: `z${z.id}`, points: z.points, color: z.color, fill: 0.16, dash: z.kind === 'conquista' ? '8 6' : null, popup: zonePopup(z), badge: zoneTimer(zones, z), badgeEdge: true }
   : { key: `z${z.id}`, points: z.points, color: '#8a8a8a', fill: 0.06, dash: '4 6', popup: zonePopup(z) }));
 
 // Descrizione di una zona in un popup (dal «?» sulla mappa o dalla pagina delle zone).

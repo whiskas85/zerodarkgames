@@ -74,6 +74,17 @@ export function tilesFor(b, minZ, maxZ) {
   return out;
 }
 
+// Metà del lato più a nord di un poligono [[lat, lng], …]: lì si appoggia un'etichetta senza coprire la zona.
+function topEdgeMid(pts) {
+  let best = null;
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % pts.length];
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (!best || mid[0] > best[0]) best = mid;
+  });
+  return best;
+}
+
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
   el.className = `zdg-map ${className}`;
@@ -206,7 +217,8 @@ export function createMapView({ className = '' } = {}) {
       for (const z of list) {
         let b = badges.get(z.key);
         if (!z.badge) { if (b) { b.remove(); badges.delete(z.key); } continue; }
-        const at = polys.get(z.key)?.getCenter();
+        // badgeEdge: sul bordo della zona (a metà del lato più a nord), per non coprire l'interno; se no al centro.
+        const at = z.badgeEdge ? topEdgeMid(z.points) : polys.get(z.key)?.getCenter();
         if (!at) continue;
         if (!b) { b = L.tooltip({ permanent: true, direction: 'center', className: 'zone-badge', interactive: false }).setLatLng(at).setContent(z.badge).addTo(map); badges.set(z.key, b); }
         else { b.setLatLng(at); if (b._zdgHtml !== z.badge) b.setContent(z.badge); }
