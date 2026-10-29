@@ -74,16 +74,20 @@ export function tilesFor(b, minZ, maxZ) {
   return out;
 }
 
-// Metà del lato più a nord di un poligono [[lat, lng], …]: lì si appoggia un'etichetta senza coprire la zona.
-function topEdgeMid(pts) {
-  let best = null;
-  pts.forEach((a, i) => {
-    const b = pts[(i + 1) % pts.length];
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if (!best || mid[0] > best[0]) best = mid;
-  });
-  return best;
+// Taglia il segmento p→q (pixel) dentro il rettangolo [x0, y0, x1, y1] (Liang–Barsky): null se ne resta fuori.
+function clipSeg(p, q, [x0, y0, x1, y1]) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  for (const [pp, qq] of [[-dx, p.x - x0], [dx, x1 - p.x], [-dy, p.y - y0], [dy, y1 - p.y]]) {
+    if (pp === 0) { if (qq < 0) return null; continue; }
+    const r = qq / pp;
+    if (pp < 0) { if (r > t1) return null; if (r > t0) t0 = r; } else { if (r < t0) return null; if (r < t1) t1 = r; }
+  }
+  return [{ x: p.x + t0 * dx, y: p.y + t0 * dy }, { x: p.x + t1 * dx, y: p.y + t1 * dy }];
 }
+const EDGE_MIN_PX = 70;
 
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
@@ -93,6 +97,34 @@ export function createMapView({ className = '' } = {}) {
   const circles = new Map();
   const polys = new Map();
   const badges = new Map();
+  // Etichette sul bordo (conto alla rovescia): sul lato che si vede, ruotate come il lato.
+  const edgeBadges = new Map();
+  // Fra i lati della zona che si vedono sullo schermo si sceglie quello col tratto visibile più lungo: l'etichetta
+  // va a metà di quel tratto (a metà tra i due vertici se il lato si vede tutto), inclinata come il lato.
+  // Se nessun lato si vede abbastanza, niente etichetta.
+  function placeEdge(e) {
+    if (!map) return;
+    const size = map.getSize();
+    const pad = 16;
+    const rect = [pad, pad, size.x - pad, size.y - pad];
+    const px = e.points.map((p) => map.latLngToContainerPoint(p));
+    let best = null;
+    px.forEach((a, i) => {
+      const seg = clipSeg(a, px[(i + 1) % px.length], rect);
+      if (!seg) return;
+      const len = Math.hypot(seg[1].x - seg[0].x, seg[1].y - seg[0].y);
+      if (len >= EDGE_MIN_PX && (!best || len > best.len)) best = { seg, len };
+    });
+    const el = e.marker.getElement();
+    if (!best) { if (el) el.style.display = 'none'; return; }
+    const [a, b] = best.seg;
+    let ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    // La scritta non va mai a testa in giù.
+    if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
+    e.marker.setLatLng(map.containerPointToLatLng([(a.x + b.x) / 2, (a.y + b.y) / 2]));
+    if (el) { el.style.display = ''; const box = el.firstElementChild; if (box) box.style.transform = `translate(-50%, -50%) rotate(${ang.toFixed(1)}deg)`; }
+  }
+  const placeEdges = () => { for (const e of edgeBadges.values()) placeEdge(e); };
   let map = null;
   let L = null;
   let fitted = false;
@@ -133,6 +165,8 @@ export function createMapView({ className = '' } = {}) {
       e.tile.src = FALLBACK_TILES.replace('{z}', e.coords.z).replace('{x}', e.coords.x).replace('{y}', e.coords.y);
     });
     map.on('click', (e) => onTap?.(e.latlng));
+    // Spostando o ingrandendo la mappa l'etichetta del conto alla rovescia passa sul lato che si vede.
+    map.on('moveend zoomend resize', placeEdges);
     if (pending) { view.setItems(pending); pending = null; }
     return view;
   }).catch((e) => {
@@ -213,18 +247,34 @@ export function createMapView({ className = '' } = {}) {
         else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.popup) { if (pg.getPopup()) pg.setPopupContent(z.popup); else pg.bindPopup(z.popup, { maxWidth: 260 }); } else if (z.title) pg.setTooltipContent(z.title); }
       }
       for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
-      // Etichetta fissa al centro di una zona (es. conto alla rovescia): z.badge è HTML.
+      // Etichetta di una zona (es. conto alla rovescia): z.badge è HTML. badgeEdge: sul lato visibile, inclinata come
+      // il lato; se no fissa al centro.
       for (const z of list) {
+        let e = edgeBadges.get(z.key);
+        if (!z.badge || !z.badgeEdge) { if (e) { e.marker.remove(); edgeBadges.delete(z.key); } }
+        else {
+          if (!e) {
+            const marker = L.marker(z.points[0], { interactive: false, keyboard: false, zIndexOffset: -500,
+              icon: L.divIcon({ className: 'zone-edge', html: `<div class="zone-badge zone-edge-badge">${z.badge}</div>`, iconSize: [0, 0] }) }).addTo(map);
+            e = { marker, html: z.badge };
+            edgeBadges.set(z.key, e);
+          } else if (e.html !== z.badge) {
+            e.marker.setIcon(L.divIcon({ className: 'zone-edge', html: `<div class="zone-badge zone-edge-badge">${z.badge}</div>`, iconSize: [0, 0] }));
+            e.html = z.badge;
+          }
+          e.points = z.points;
+          placeEdge(e);
+        }
         let b = badges.get(z.key);
-        if (!z.badge) { if (b) { b.remove(); badges.delete(z.key); } continue; }
-        // badgeEdge: sul bordo della zona (a metà del lato più a nord), per non coprire l'interno; se no al centro.
-        const at = z.badgeEdge ? topEdgeMid(z.points) : polys.get(z.key)?.getCenter();
+        if (!z.badge || z.badgeEdge) { if (b) { b.remove(); badges.delete(z.key); } continue; }
+        const at = polys.get(z.key)?.getCenter();
         if (!at) continue;
         if (!b) { b = L.tooltip({ permanent: true, direction: 'center', className: 'zone-badge', interactive: false }).setLatLng(at).setContent(z.badge).addTo(map); badges.set(z.key, b); }
         else { b.setLatLng(at); if (b._zdgHtml !== z.badge) b.setContent(z.badge); }
         b._zdgHtml = z.badge;
       }
       for (const [k, b] of badges) if (!keep.has(k)) { b.remove(); badges.delete(k); }
+      for (const [k, e] of edgeBadges) if (!keep.has(k)) { e.marker.remove(); edgeBadges.delete(k); }
     },
     // Centra su tutti i segnaposto (e sulla mia posizione).
     fit() {

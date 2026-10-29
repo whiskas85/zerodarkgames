@@ -1121,3 +1121,8 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost { display: none !important; 
   font-family: "IBM Plex Mono", ui-monospace, monospace; box-shadow: none; opacity: .85; pointer-events: none; }
 .leaflet-tooltip.zone-badge::before { display: none; }
 .leaflet-tooltip.zone-badge .zt-ico { margin-right: 3px; opacity: .8; }
+/* Sul bordo: ruotata come il lato (la rotazione la imposta la mappa), centrata sul punto. */
+.zone-edge { background: none; border: 0; }
+.zone-edge-badge { position: absolute; left: 0; top: 0; white-space: nowrap; background: rgba(10, 10, 10, .6); color: #fff; border-radius: 999px;
+  padding: 1px 7px; font-size: 11px; line-height: 1.5; font-family: "IBM Plex Mono", ui-monospace, monospace; opacity: .9; pointer-events: none; }
+.zone-edge-badge .zt-ico { margin-right: 3px; opacity: .8; }
