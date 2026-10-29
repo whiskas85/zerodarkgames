@@ -87,7 +87,8 @@ function clipSeg(p, q, [x0, y0, x1, y1]) {
   }
   return [{ x: p.x + t0 * dx, y: p.y + t0 * dy }, { x: p.x + t1 * dx, y: p.y + t1 * dy }];
 }
-const EDGE_MIN_PX = 70;
+// Basta che un pezzo di lato si veda: anche una zona piccola sullo schermo mostra il suo conto alla rovescia.
+const EDGE_MIN_PX = 1;
 
 export function createMapView({ className = '' } = {}) {
   const el = document.createElement('div');
@@ -254,7 +255,7 @@ export function createMapView({ className = '' } = {}) {
         if (!z.badge || !z.badgeEdge) { if (e) { e.marker.remove(); edgeBadges.delete(z.key); } }
         else {
           if (!e) {
-            const marker = L.marker(z.points[0], { interactive: false, keyboard: false, zIndexOffset: -500,
+            const marker = L.marker(z.points[0], { interactive: false, keyboard: false, zIndexOffset: 5000,
               icon: L.divIcon({ className: 'zone-edge', html: `<div class="zone-badge zone-edge-badge">${z.badge}</div>`, iconSize: [0, 0] }) }).addTo(map);
             e = { marker, html: z.badge };
             edgeBadges.set(z.key, e);
