@@ -220,6 +220,8 @@ async function confirmCall(title, text, method, url, body, okMsg, danger = false
 
 // ---------------------------------------------------------------- render
 
+// Contenitori con lo scorrimento proprio (le chat no: restano in fondo da sole).
+const SCROLLERS = ['.sidebar', '.feed', '.frag-checks', '.comms-tree', '.tl-list', '.map-side', '.gift-cards', '.bt-log', '.rw-cols', '.rw-col', '.map-zones-box', '.loc-list', '.table-wrap', '.dlg form'];
 function preserve(fn) {
   const keep = {};
   for (const el of $root.querySelectorAll('[data-keep]')) keep[el.dataset.keep] = el.type === 'checkbox' ? el.checked : el.tagName === 'DETAILS' ? el.open : el.value;
@@ -228,11 +230,20 @@ function preserve(fn) {
   let sel = null;
   try { sel = focus ? [a.selectionStart, a.selectionEnd] : null; } catch { /* select */ }
   const scroll = document.querySelector('.content')?.scrollTop;
-  // Elenchi che scorrono per conto loro (es. la barra della mappa): restano dov'erano dopo un ridisegno.
+  // Dopo un'azione (interruttore, casella, salvataggio…) la pagina e gli elenchi che scorrono per conto loro restano
+  // dov'erano; cambiando pagina si riparte dall'alto. Le chat hanno la loro regola (restano in fondo).
+  const page = location.hash;
+  const samePage = preserve.page === page;
+  preserve.page = page;
+  const winY = window.scrollY;
   const scrolls = {};
-  for (const el of $root.querySelectorAll('[data-keep-scroll]')) scrolls[el.dataset.keepScroll] = el.scrollTop;
+  const scrollKey = (el, i) => `${el.dataset.keepScroll || SCROLLERS.find((sel) => el.matches(sel))}#${i}`;
+  const scrollers = () => [...$root.querySelectorAll(`[data-keep-scroll], ${SCROLLERS.join(', ')}`)];
+  scrollers().forEach((el, i) => { if (el.scrollTop) scrolls[scrollKey(el, i)] = el.scrollTop; });
   fn();
-  for (const el of $root.querySelectorAll('[data-keep-scroll]')) if (scrolls[el.dataset.keepScroll]) el.scrollTop = scrolls[el.dataset.keepScroll];
+  // Il menu a sinistra resta dov'era anche cambiando pagina.
+  scrollers().forEach((el, i) => { const k = scrollKey(el, i); if (scrolls[k] && (samePage || el.matches('.sidebar'))) el.scrollTop = scrolls[k]; });
+  if (samePage && window.scrollY !== winY) window.scrollTo(0, winY);
   for (const el of $root.querySelectorAll('[data-keep]')) {
     const v = keep[el.dataset.keep];
     if (v === undefined || el.dataset.fresh) continue;
