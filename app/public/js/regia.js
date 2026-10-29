@@ -228,7 +228,11 @@ function preserve(fn) {
   let sel = null;
   try { sel = focus ? [a.selectionStart, a.selectionEnd] : null; } catch { /* select */ }
   const scroll = document.querySelector('.content')?.scrollTop;
+  // Elenchi che scorrono per conto loro (es. la barra della mappa): restano dov'erano dopo un ridisegno.
+  const scrolls = {};
+  for (const el of $root.querySelectorAll('[data-keep-scroll]')) scrolls[el.dataset.keepScroll] = el.scrollTop;
   fn();
+  for (const el of $root.querySelectorAll('[data-keep-scroll]')) if (scrolls[el.dataset.keepScroll]) el.scrollTop = scrolls[el.dataset.keepScroll];
   for (const el of $root.querySelectorAll('[data-keep]')) {
     const v = keep[el.dataset.keep];
     if (v === undefined || el.dataset.fresh) continue;
@@ -2127,7 +2131,7 @@ function viewFieldMap() {
     h('aside', { class: 'map-sidebar' },
       h('nav', { class: 'map-tabs', role: 'tablist' }, tabs.map(([k, label, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === cur), class: k === cur ? 'on' : '', onclick: () => { R.mapTab = k; render(); } },
         label, n ? h('span', { class: 'badge' }, n) : null))),
-      h('div', { class: 'map-tab-body' }, ...panes[cur]())));
+      h('div', { class: 'map-tab-body', 'data-keep-scroll': `map-${cur}` }, ...panes[cur]())));
 }
 
 // ---------------------------------------------------------------- ZONE DELLA MAPPA
@@ -2224,12 +2228,12 @@ function zonesPanel() {
     Z.list.length ? h('ul', { class: 'zone-list' }, [...Z.list].sort((a, b) => (b.layer - a.layer) || (b.id - a.id)).map((z) => h('li', { style: { '--c': z.color }, class: `${z.enabled && z.active ? '' : 'off'} ${z.enabled ? '' : 'disabled'} locatable ${R.mapSel === `z${z.id}` ? 'map-sel' : ''}`, 'data-id': z.id, 'data-key': `z${z.id}`, title: 'Mostra sulla mappa', onclick: (e) => { if (!e.target.closest('button, a, input, .zl-grip') && !R.zoneEdit) fieldMap.highlight(`z${z.id}`); } },
       h('div', { class: 'zl-head' },
         h('span', { class: 'zl-grip', title: 'Trascina per spostarla sopra o sotto le altre', onpointerdown: (e) => zoneDrag(e) }, '⠿', h('span', { 'aria-hidden': 'true' }, z.icon), h('strong', null, z.name)),
-        h('button', { type: 'button', class: `switch switch-sm ${z.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': z.enabled ? 'true' : 'false',
-          'aria-label': z.enabled ? 'Zona abilitata: tocca per nasconderla alle coppie' : 'Zona non abilitata: tocca per mostrarla alle coppie',
-          onclick: () => patch(z, { enabled: !z.enabled }, z.enabled ? 'Zona non abilitata: le coppie non la vedono più' : 'Zona abilitata: le coppie la vedono') }, h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), z.enabled ? 'ABILITATA' : 'NON ABILITATA')),
+        h('button', { type: 'button', class: `switch switch-sm ${z.active ? 'on' : ''}`, role: 'switch', 'aria-checked': z.active ? 'true' : 'false',
+          'aria-label': z.active ? 'Zona attiva: tocca per spegnerla' : 'Zona spenta: tocca per accenderla',
+          onclick: () => patch(z, { active: !z.active }, z.active ? 'Zona spenta' : 'Zona accesa') }, h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), z.active ? 'ATTIVA' : 'SPENTA')),
       h('div', { class: 'tiny muted' }, z.effect),
-      h('label', { class: 'check zl-active' }, h('input', { type: 'checkbox', checked: z.active, onchange: (e) => patch(z, { active: e.target.checked }, e.target.checked ? 'Zona accesa' : 'Zona spenta') }),
-        ' Attiva (accesa)', h('span', { class: 'tiny muted' }, z.enabled ? (z.active ? ' · l\'effetto vale' : ' · le coppie la vedono in grigio') : ' · nascosta finché non è abilitata')),
+      h('label', { class: 'check zl-active' }, h('input', { type: 'checkbox', checked: z.enabled, onchange: (e) => patch(z, { enabled: e.target.checked }, e.target.checked ? 'Zona abilitata: le coppie la vedono' : 'Zona non abilitata: le coppie non la vedono più') }),
+        ' Abilitata', h('span', { class: 'tiny muted' }, z.enabled ? (z.active ? ' · le coppie la vedono e l\'effetto vale' : ' · le coppie la vedono in grigio') : ' · nascosta alle coppie, gli Eletti non la accendono')),
       z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
       !z.enabled ? h('div', { class: 'tiny' }, 'Non abilitata: le coppie non la vedono e gli Eletti non la possono accendere.') : z.active ? h('div', { class: 'tiny' }, z.activeUntil
         ? [`📡 Accesa dal Beacon: si spegne da sola alle ${fmtTime(z.activeUntil)} `, h('button', { class: 'btn btn-sm', title: 'Toglie la scadenza: resta accesa finché non la spegni tu', onclick: () => patch(z, { active: true }, 'Zona accesa senza scadenza') }, 'Tienila accesa')]
@@ -2248,7 +2252,7 @@ function zonesPanel() {
         h('button', { class: 'btn btn-sm', title: 'Sposta, aggiungi o togli i punti del poligono', onclick: () => { R.zoneDraw = null; R.zoneEdit = { id: z.id, name: z.name, color: z.color, pts: z.points.map((p) => [...p]) }; render(); setTimeout(() => fieldMap.map?.fitBounds(z.points, { padding: [40, 40] }), 80); } }, 'Modifica punti'),
         h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
-    h('p', { class: 'tiny muted' }, 'Abilitata: la zona esiste per le coppie (spenta la vedono in grigio e gli Eletti la accendono con un Beacon). Non abilitata: è come se non ci fosse. L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
+    h('p', { class: 'tiny muted' }, 'Interruttore ATTIVA/SPENTA: accende o spegne l\'effetto. Abilitata: la zona esiste per le coppie (spenta la vedono in grigio e gli Eletti la accendono con un Beacon). Non abilitata: è come se non ci fosse. L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
 }
 
 // Modifica dei punti di una zona: vertici trascinabili, «＋» a metà di ogni lato per aggiungerne uno,
