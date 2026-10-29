@@ -1915,7 +1915,13 @@ function selectOnSide(key) {
   // Punto indicato per un piazzamento (tpoint5, tgift3, tlandmark1): si mostra l'oggetto da piazzare.
   const t = /^t(point|gift|landmark)(\d+)$/.exec(key);
   if (t) key = `${{ point: 'p', gift: 'g', landmark: 'l' }[t[1]]}${t[2]}`;
-  const tab = SEL_TABS.find(([re]) => re.test(key))?.[1];
+  // Telefono di una coppia o di un Eletto: si mostra la coppia o la persona nelle schede Coppie ed Eletti.
+  let tab = null;
+  if (key.startsWith('pos-')) {
+    const p = groupPositions(fieldPositions).find((x) => `pos-${x.deviceId}` === key);
+    if (!p) return;
+    if (p.kind === 'team') { tab = 'coppie'; key = `ct${p.teamId}`; } else if (p.playerId) { tab = 'eletti'; key = `el${p.playerId}`; } else return;
+  } else tab = SEL_TABS.find(([re]) => re.test(key))?.[1];
   if (!tab) return;
   R.mapTab = tab;
   R.mapSel = key;
@@ -2047,11 +2053,28 @@ function viewFieldMap() {
   const guide = d.guide || [];
   const allies = R.ms.combat?.alliances.length || 0;
   const evs = R.ms.gameEvents?.list || [];
+  // Coppie ed Eletti: dove sono (i segnaposto dei loro telefoni); un clic centra la mappa sulla persona o sulla coppia.
+  const posGroups = groupPositions(fieldPositions);
+  const couplesOnMap = R.ms.teams.filter((t) => t.status !== 'withdrawn').map((t) => ({ t, pins: posGroups.filter((p) => p.kind === 'team' && p.teamId === t.id) }));
+  const electOnMap = (R.ms.elect?.members || []).map((m) => ({ m, pin: posGroups.find((p) => p.kind === 'elect' && p.playerId === m.id) || null, squad: (R.ms.squads || []).find((x) => x.id === m.squadId) || null }))
+    .sort((a, b) => (a.squad?.name || '~').localeCompare(b.squad?.name || '~') || (a.m.nickname || a.m.name).localeCompare(b.m.nickname || b.m.name));
+  const showPins = (key, pins) => {
+    R.mapSel = key;
+    document.querySelectorAll('.map-sidebar .map-sel').forEach((x) => x.classList.remove('map-sel'));
+    document.querySelector(`.map-sidebar [data-key="${key}"]`)?.classList.add('map-sel');
+    const keys = pins.map((p) => `pos-${p.deviceId}`);
+    if (!keys.length) { toast('Nessuna posizione recente', 'warn'); return; }
+    if (keys.length === 1) fieldMap.highlight(keys[0]); else fieldMap.focus(keys);
+  };
+  const lastAt = (pins) => Math.max(...pins.map((p) => p.at));
+  const posLine = (pins) => (pins.length ? ['in mappa · ', h('span', { 'data-ago': lastAt(pins) }, agoText(lastAt(pins))), pins.length > 1 ? ' · separati (oltre 30 m)' : ''] : 'nessuna posizione recente');
   const tabs = [
     ['piazzare', 'Da piazzare', toPlace.length],
     ['altari', 'Altari e luoghi', d.points.length + (d.landmarks || []).length],
     ['doni', 'Doni', d.gifts.length],
     ['eventi', 'Eventi', evs.length],
+    ['coppie', 'Coppie', couplesOnMap.length],
+    ['eletti', 'Eletti', electOnMap.length],
     ['zone', 'Zone', R.ms.mapZones?.list.length || 0],
     ['punti', 'Punti di interesse', pois.length],
     ['indicazioni', 'Indicazioni', guide.length],
@@ -2098,6 +2121,18 @@ function viewFieldMap() {
         h('div', { class: 'grow' }, h('strong', null, ev.name),
           h('div', { class: 'tiny muted' }, `${EVENT_STATUS[ev.status]?.[0] || ev.status} · ${ev.location ? ev.location.label || 'posizione sulla mappa' : 'senza posizione'}${ev.startAt ? ` · inizio ${fmtTime(ev.startAt)}` : ''}`))))) : h('p', { class: 'empty' }, 'Nessun evento.'),
       h('p', { class: 'tiny muted' }, 'La posizione si sceglie dalla pagina Eventi.')],
+    coppie: () => [
+      h('p', { class: 'tiny muted' }, 'Tocca una coppia per vederla sulla mappa (le coppie compaiono dal VIA).'),
+      h('ul', { class: 'map-side-list' }, couplesOnMap.map(({ t, pins }) => h('li', { 'data-key': `ct${t.id}`, class: `${pins.length ? 'locatable' : ''} ${R.mapSel === `ct${t.id}` ? 'map-sel' : ''}`, title: pins.length ? 'Mostra sulla mappa' : '', onclick: pins.length ? () => showPins(`ct${t.id}`, pins) : null },
+        h('span', { class: 'side-ico point', style: t.color ? { borderColor: t.color } : null }, t.roman || '?'),
+        h('div', { class: 'grow' }, h('strong', null, `Settore ${t.sectorName || '?'}`), h('div', { class: 'tiny muted' }, [t.displayName ? `${t.displayName} · ` : '', ...[posLine(pins)].flat()])),
+        pins.some((p) => p.stale) ? h('span', { class: 'chip' }, 'ferma') : null)))],
+    eletti: () => [
+      h('p', { class: 'tiny muted' }, 'Tocca un Eletto per vederlo sulla mappa.'),
+      electOnMap.length ? h('ul', { class: 'map-side-list' }, electOnMap.map(({ m, pin, squad }) => h('li', { 'data-key': `el${m.id}`, class: `${pin ? 'locatable' : ''} ${R.mapSel === `el${m.id}` ? 'map-sel' : ''}`, title: pin ? 'Mostra sulla mappa' : '', onclick: pin ? () => showPins(`el${m.id}`, [pin]) : null },
+        h('span', { class: 'side-ico landmark', style: squad?.color ? { borderColor: squad.color, color: squad.color } : null }, (m.nickname || m.name || '?').slice(0, 2).toUpperCase()),
+        h('div', { class: 'grow' }, h('strong', null, m.nickname || m.name), h('div', { class: 'tiny muted' }, [squad ? `Squadra ${squad.name} · ` : 'Senza squadra · ', ...[posLine(pin ? [pin] : [])].flat()])),
+        pin?.stale ? h('span', { class: 'chip' }, 'fermo') : null))) : h('p', { class: 'empty' }, 'Nessun Eletto.')],
     zone: () => [zonesPanel()],
     punti: () => [
       h('p', { class: 'tiny muted' }, 'Li segnano gli Eletti dal campo («Punto di interesse»): radure, sentieri, ingressi, posti per Altari e doni.'),
