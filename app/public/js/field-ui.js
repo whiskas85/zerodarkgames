@@ -245,7 +245,7 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
         h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato dalla regia'),
         h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse'),
-        h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Altri Eletti (colore della squadra)'),
+        h('span', null, h('span', { class: 'who-pin who-elect legend-who', style: { '--c': '#d1ad62' } }, h('span', { class: 'who-mark' })), ' Altri Eletti (rombo del colore della squadra, nome sopra)'),
         h('span', null, h('span', { class: 'pin pin-me' }), ' Tu'));
   }
 

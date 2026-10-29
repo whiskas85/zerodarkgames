@@ -912,7 +912,16 @@ function positionsOf(gameId, viewer = 'master') {
     const k = r.playerId != null ? `p${r.playerId}` : `d${r.deviceId}`;
     if (!latest.has(k) || latest.get(k).at < r.at) latest.set(k, r);
   }
+  // Le persone della coppia (o della squadra di Eletti), per il popup del segnaposto.
+  const nameOf = (m) => m.nickname || m.name;
+  const teamMembers = new Map();
+  const squadMembers = new Map();
+  for (const m of q.all('SELECT name, nickname, teamId, squadId FROM players WHERE gameId = ? AND teamId IS NOT NULL ORDER BY id', Number(gameId))) {
+    (teamMembers.get(m.teamId) || teamMembers.set(m.teamId, []).get(m.teamId)).push(nameOf(m));
+    if (m.squadId) (squadMembers.get(m.squadId) || squadMembers.set(m.squadId, []).get(m.squadId)).push(nameOf(m));
+  }
   return [...latest.values()].filter((r) => viewer === 'master' || r.kind === 'elect').map((r) => ({
+    members: r.kind === 'elect' ? (r.squadId ? squadMembers.get(r.squadId) || [] : []) : teamMembers.get(r.teamId) || [],
     deviceId: r.deviceId, playerId: r.playerId ?? null, teamId: r.teamId, kind: r.kind === 'elect' ? 'elect' : 'team', lat: r.lat, lng: r.lng, acc: r.acc, at: r.at, stale: now - r.at > POSITION_STALE,
     label: r.kind === 'elect' ? (r.nickname || r.playerName || 'Eletto') : `${r.roman} ${r.sectorName}`,
     who: r.kind === 'elect' ? (r.squadName ? `Squadra ${r.squadName}` : 'Eletti del Consiglio') : (r.nickname || r.playerName || r.displayName || 'coppia'),

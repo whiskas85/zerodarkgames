@@ -52,11 +52,13 @@ export function pinHtml(item) {
   if (item.kind === 'event') return `<span class="pin pin-event">${mdiSvg('flagCheckered', 18)}</span>`;
   if (item.kind === 'guide') return `<span class="pin pin-guide">${mdiSvg(item.icon, 18)}</span>`;
   if (item.kind === 'gift') return `<span class="pin pin-gift pin-${item.state}" style="--c:${esc(item.color || '#d1ad62')}">${esc(item.text || '✦')}</span>`;
-  // Persone (telefoni di coppie ed Eletti): solo un pallino colorato, per non confonderle con i punti del gioco.
-  // Coppie magenta, Eletti del colore della squadra; chi è, lo dice il popup.
-  // Coppie: il pallino porta il numero romano del Settore.
-  if (item.kind === 'team' && item.text) return `<span class="dot-wrap"><span class="pin-dot pin-dot-num ${item.stale ? 'pin-stale' : ''} ${isLight(item.color || PERSON_TEAM) ? 'on-light' : ''}" style="--c:${esc(item.color || PERSON_TEAM)}">${esc(item.text)}</span></span>`;
-  if (item.kind === 'team' || item.kind === 'elect') return `<span class="dot-wrap"><span class="pin-dot ${item.stale ? 'pin-stale' : ''}" style="--c:${esc(item.color || (item.kind === 'team' ? PERSON_TEAM : PERSON_ELECT))}"></span></span>`;
+  // Persone (telefoni di coppie ed Eletti), riconoscibili a colpo d'occhio e sempre della stessa misura:
+  // coppia = cerchio del colore del Settore con il numero romano sopra; Eletto = rombo del colore della squadra con il nome sopra.
+  if (item.kind === 'team' || item.kind === 'elect') {
+    const c = esc(item.color || (item.kind === 'team' ? PERSON_TEAM : PERSON_ELECT));
+    const label = item.text ? `<span class="who-label">${esc(item.text)}</span>` : '';
+    return `<span class="who-pin who-${item.kind} ${item.stale ? 'pin-stale' : ''}" style="--c:${c}">${label}<span class="who-mark"></span></span>`;
+  }
   return '<span class="pin pin-me"></span>';
 }
 
@@ -443,7 +445,8 @@ export function positionItem(p) {
   const ago = Math.max(0, Math.round((Date.now() - p.at) / 60000));
   return {
     key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color,
-    text: p.kind === 'team' ? p.roman || '?' : (p.label || '?').slice(0, 2).toUpperCase(), title: p.label,
-    popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}${p.together ? '<br><small>insieme (entro 30 m)</small>' : ''}<br><small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,
+    text: p.kind === 'team' ? p.roman || '?' : p.label || '?', title: p.label,
+    // Popup: chi è, le persone della coppia (o della squadra di Eletti) e da quando è ferma la posizione.
+    popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}${p.together ? '<br><small>insieme (entro 30 m)</small>' : ''}${p.members?.length ? `<div class="pop-members"><small>${p.kind === 'team' ? 'Coppia' : 'Squadra'}:</small> ${p.members.map(esc).join(', ')}</div>` : ''}<small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,
   };
 }

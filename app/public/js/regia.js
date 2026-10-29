@@ -2044,9 +2044,9 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
     h('span', null, h('span', { class: 'pin pin-gift pin-claimed' }, '✦'), ' Dono preso'),
-    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#e5484d' } }), ' Coppia (colore del Settore; un pallino se i due sono entro 30 m)'),
+    h('span', null, h('span', { class: 'who-pin who-team legend-who', style: { '--c': '#e5484d' } }, h('span', { class: 'who-mark' })), ' Coppia: cerchio del colore del Settore con il numero romano sopra (uno solo se i due sono entro 30 m)'),
     h('span', null, h('span', { class: 'ally-line' }), ' Alleanza'),
-    h('span', null, h('span', { class: 'pin-dot', style: { '--c': '#d1ad62' } }), ' Eletto'));
+    h('span', null, h('span', { class: 'who-pin who-elect legend-who', style: { '--c': '#d1ad62' } }, h('span', { class: 'who-mark' })), ' Eletto: rombo del colore della squadra con il nome sopra'));
 
   // Barra laterale a schede (a destra su desktop, sotto la mappa sul telefono): niente più riquadri sopra la mappa.
   const pois = d.pois || [];
