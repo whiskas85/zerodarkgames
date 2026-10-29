@@ -2465,7 +2465,7 @@ function zoneHud() {
   const srv = cqZone ? (zs?.here || []).find((x) => x.id === cqZone.id && x.holdUntil) : null;
   const since = srv ? srv.enteredAt : LZ.get(cqZone?.id)?.since;
   const cq = cqZone && since ? { enteredAt: since, holdUntil: srv ? srv.holdUntil : since + (cqZone.holdMin || 3) * 60000, holdMin: cqZone.holdMin || 3 } : null;
-  const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', String(zs.recharge)) : null;
+  const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', rateText(zs.recharge)) : null;
   if (!cq) return boost;
   return [h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
     h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, '👑'),
@@ -2818,11 +2818,12 @@ async function chooseSkill(s, on) {
 const closeDlg = (el) => { const d = el?.closest?.('dialog'); d?.close(); d?.remove(); };
 const skillPlaying = () => ACTIVE.includes(S.state?.clock.status) && S.state?.team.status === 'active';
 
-// Ricarica di una Skill: nel Santuario va più veloce (×2) e lo si dice accanto al tempo.
+// Ricarica di una Skill: nel Santuario va più veloce (×2 o quanto scelto dalla regia) e lo si dice accanto al tempo.
 const rechargeRate = () => S.state?.zones?.recharge || 1;
+const rateText = (r) => String(r).replace('.', ',');
 const rechargeLabel = (until) => {
   const r = rechargeRate();
-  return ['Ricarica ', h('span', { class: 'mono', 'data-abs': until, 'data-rate': r > 1 ? r : null }, '—'), r > 1 ? h('strong', { class: 'boost', title: 'Nel Santuario la ricarica è più veloce' }, ` ×${r}`) : null];
+  return ['Ricarica ', h('span', { class: 'mono', 'data-abs': until, 'data-rate': r > 1 ? r : null }, '—'), r > 1 ? h('strong', { class: 'boost', title: 'Nel Santuario la ricarica è più veloce' }, ` ×${rateText(r)}`) : null];
 };
 
 // Stato della Skill posseduta in gioco: pronta, in ricarica, in corso, automatica, da usare in un'altra pagina.
@@ -2974,7 +2975,7 @@ function viewSkills() {
     skillSlots(sk),
     skillBar(mineHit.length + others.length),
     q && !mineHit.length && !others.length ? noSkillHit() : null,
-    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rechargeRate()} finché restate dentro.`) : null,
+    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rateText(rechargeRate())} finché restate dentro.`) : null,
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
       const list = mineHit.filter((s) => s.kind === kind);

@@ -81,6 +81,7 @@ export function createMapView({ className = '' } = {}) {
   const lines = new Map();
   const circles = new Map();
   const polys = new Map();
+  const badges = new Map();
   let map = null;
   let L = null;
   let fitted = false;
@@ -201,6 +202,17 @@ export function createMapView({ className = '' } = {}) {
         else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.popup) { if (pg.getPopup()) pg.setPopupContent(z.popup); else pg.bindPopup(z.popup, { maxWidth: 260 }); } else if (z.title) pg.setTooltipContent(z.title); }
       }
       for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
+      // Etichetta fissa al centro di una zona (es. conto alla rovescia): z.badge è HTML.
+      for (const z of list) {
+        let b = badges.get(z.key);
+        if (!z.badge) { if (b) { b.remove(); badges.delete(z.key); } continue; }
+        const at = polys.get(z.key)?.getCenter();
+        if (!at) continue;
+        if (!b) { b = L.tooltip({ permanent: true, direction: 'center', className: 'zone-badge', interactive: false }).setLatLng(at).setContent(z.badge).addTo(map); badges.set(z.key, b); }
+        else { b.setLatLng(at); if (b._zdgHtml !== z.badge) b.setContent(z.badge); }
+        b._zdgHtml = z.badge;
+      }
+      for (const [k, b] of badges) if (!keep.has(k)) { b.remove(); badges.delete(k); }
     },
     // Centra su tutti i segnaposto (e sulla mia posizione).
     fit() {

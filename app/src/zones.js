@@ -1,6 +1,7 @@
 // Zone della mappa (geofencing lato server): la regia disegna poligoni, le posizioni delle coppie che arrivano
 // dicono chi è dentro. Gli effetti valgono solo entrando: chi è già dentro quando la zona nasce (o viene accesa)
-// non la subisce finché non esce e rientra. Quando le zone si sovrappongono, per la visibilità vince lo strato più alto.
+// (se non la conosceva: nuova, non abilitata o ridisegnata) non la subisce finché non esce e rientra; se la vedeva già
+// in grigio (abilitata e spenta) e viene accesa, la subisce subito. Quando le zone si sovrappongono, per la visibilità vince lo strato più alto.
 const { q, tx } = require('./db');
 const C = require('./constants');
 const G = require('./game');
@@ -14,10 +15,15 @@ const KINDS = {
   ombra: { label: 'Cono d\'Ombra', icon: '🌑', color: '#5b4b8a', effect: 'Finché restate dentro nessuna coppia vi vede sulla mappa, qualunque Skill o Dono usi (la regia sì).' },
   luce: { label: 'Campo di Luce', icon: '☀️', color: '#f0a020', effect: 'Finché restate dentro tutte le coppie vi vedono sulla mappa.' },
   emp: { label: 'Zona di Disturbo', icon: '⚡', color: '#22c3e6', effect: 'Dentro non funzionano le Skill attive e la mappa è oscurata.' },
-  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano al doppio della velocità (×2).' },
+  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano più in fretta (×{rate}).' },
   conquista: { label: 'Zona di Conquista', icon: '👑', color: '#e5484d', effect: 'La prima coppia che resta dentro {min} minuti di fila vince un Dono a caso.' },
 };
-const effectOf = (z) => KINDS[z.kind].effect.replace('{min}', z.holdMin || 3);
+// Santuario: moltiplicatore della ricarica scelto dalla regia (da ×1,1 a ×10; di base ×2).
+const DEFAULT_RATE = 2;
+const rateOf = (z) => (Number(z.rate) > 1 ? Number(z.rate) : DEFAULT_RATE);
+const clampRate = (v) => (v == null || v === '' ? null : Math.max(1.1, Math.min(10, Math.round(Number(String(v).replace(',', '.')) * 10) / 10 || DEFAULT_RATE)));
+const fmtRate = (r) => String(r).replace('.', ',');
+const effectOf = (z) => KINDS[z.kind].effect.replace('{min}', z.holdMin || 3).replace('{rate}', fmtRate(rateOf(z)));
 
 // ---------------------------------------------------------------- geometria
 
@@ -81,8 +87,9 @@ function createZone(gameId, data, actor) {
   const enabled = data.enabled === false ? 0 : 1;
   const beaconMin = clampBeacon(data.beaconMin);
   const beaconOnMin = clampOn(data.beaconOnMin);
-  const id = Number(q.run('INSERT INTO map_zones (gameId, kind, name, points, layer, active, enabled, holdMin, beaconMin, beaconOnMin, createdAt, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    g.id, data.kind, name, JSON.stringify(pts), layer, active, enabled, holdMin, beaconMin, beaconOnMin, Date.now(), actor || null).lastInsertRowid);
+  const rate = data.kind === 'santuario' ? clampRate(data.rate) : null;
+  const id = Number(q.run('INSERT INTO map_zones (gameId, kind, name, points, layer, active, enabled, holdMin, beaconMin, beaconOnMin, rate, createdAt, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, data.kind, name, JSON.stringify(pts), layer, active, enabled, holdMin, beaconMin, beaconOnMin, rate, Date.now(), actor || null).lastInsertRowid);
   if (active && enabled) markImmune(getZone(id));
   G.log(g.id, actor, 'zone_created', { name, kind: data.kind, layer });
   changed(g.id);
@@ -105,21 +112,23 @@ function updateZone(id, data, actor) {
   if (data.enabled !== undefined) next.enabled = data.enabled ? 1 : 0;
   if (data.beaconMin !== undefined) next.beaconMin = clampBeacon(data.beaconMin);
   if (data.beaconOnMin !== undefined) next.beaconOnMin = clampOn(data.beaconOnMin);
+  if (data.rate !== undefined && z.kind === 'santuario') next.rate = clampRate(data.rate);
   // Accesa o spenta dalla regia (o rimessa in palio): niente scadenza, decide la regia. Il Beacon la rimette dopo.
   if (data.active !== undefined || data.reset) next.activeUntil = null;
   // Conquista rimessa in palio: si azzera il vincitore.
   // Riaccesa (dalla regia o da un Beacon) dopo essere stata conquistata: torna in palio.
   const reopen = z.kind === 'conquista' && (data.reset || (!z.active && next.active && !!z.winnerTeamId));
   if (data.reset && z.kind === 'conquista') next.active = 1;
-  q.run('UPDATE map_zones SET name = ?, layer = ?, holdMin = ?, points = ?, active = ?, enabled = ?, beaconMin = ?, beaconOnMin = ?, activeUntil = ?, winnerTeamId = ?, wonAt = ?, reward = ? WHERE id = ?',
-    next.name, next.layer, next.holdMin, next.points, next.active, next.enabled, next.beaconMin, next.beaconOnMin, next.activeUntil, reopen ? null : z.winnerTeamId, reopen ? null : z.wonAt, reopen ? null : z.reward, z.id);
+  q.run('UPDATE map_zones SET name = ?, layer = ?, holdMin = ?, points = ?, active = ?, enabled = ?, beaconMin = ?, beaconOnMin = ?, activeUntil = ?, rate = ?, winnerTeamId = ?, wonAt = ?, reward = ? WHERE id = ?',
+    next.name, next.layer, next.holdMin, next.points, next.active, next.enabled, next.beaconMin, next.beaconOnMin, next.activeUntil, next.rate ?? null, reopen ? null : z.winnerTeamId, reopen ? null : z.wonAt, reopen ? null : z.reward, z.id);
   // Accesa (dalla regia o da un Beacon): un eventuale Beacon in corso non serve più.
   // Accesa o non più abilitata: un eventuale Beacon in corso non serve più.
   if (next.active || !next.enabled) q.run('UPDATE map_zones SET beaconStartedAt = NULL, beaconEndsAt = NULL, beaconBy = NULL, beaconPlayerId = NULL WHERE id = ?', z.id);
   const on = next.active && next.enabled;
   const wasOn = z.active && z.enabled !== 0;
-  // Accesa (o ridisegnata, o rimessa in palio): chi è già dentro non la subisce finché non esce.
-  if (on && (!wasOn || data.points !== undefined || reopen)) markImmune(getZone(z.id));
+  // Accesa (o ridisegnata, o rimessa in palio): chi è già dentro la subisce subito solo se la zona era già abilitata
+  // (la vedeva in grigio: sapeva che poteva accendersi); se non era abilitata o è stata ridisegnata, è immune finché non esce e rientra.
+  if (on && (!wasOn || data.points !== undefined || reopen)) markImmune(getZone(z.id), z.enabled === 0 || data.points !== undefined);
   if (!on) q.run('DELETE FROM zone_presence WHERE zoneId = ?', z.id);
   G.log(z.gameId, actor, 'zone_updated', { name: next.name, active: !!next.active, enabled: !!next.enabled, reset: !!reopen });
   changed(z.gameId);
@@ -145,12 +154,14 @@ function deleteZone(id, actor) {
   changed(z.gameId);
 }
 
-function markImmune(z) {
+// Chi è dentro quando la zona si accende: immune (non la subisce finché non esce e rientra) se la zona non la
+// conosceva (nuova, non abilitata, ridisegnata); se invece la vedeva già in grigio sapeva del rischio e la subisce subito.
+function markImmune(z, immune = true) {
   q.run('DELETE FROM zone_presence WHERE zoneId = ?', z.id);
   const poly = pointsOf(z);
   for (const t of G.teamsOf(z.gameId)) {
     const p = teamPos(t.id);
-    if (p && inside(p, poly)) q.run('INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt) VALUES (?, ?, 1, 1, ?)', z.id, t.id, Date.now());
+    if (p && inside(p, poly)) q.run('INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt) VALUES (?, ?, 1, ?, ?)', z.id, t.id, immune ? 1 : 0, Date.now());
   }
 }
 
@@ -212,7 +223,6 @@ function visibilityOf(teamId) {
 const inEmp = (teamId) => { const g = q.get('SELECT g.status FROM games g JOIN teams t ON t.gameId = g.id WHERE t.id = ?', teamId); return !!g && C.ACTIVE.includes(g.status) && appliedZones(teamId).some((z) => z.kind === 'emp'); };
 
 // Santuario: quante volte più veloce corre la ricarica delle Skill.
-const SANCTUARY_RATE = 2;
 // Ogni pochi secondi: Santuario (la ricarica corre al doppio) e Conquista (chi resta dentro abbastanza vince).
 let lastTick = Date.now();
 function tickAll(now = Date.now()) {
@@ -226,9 +236,10 @@ function tickAll(now = Date.now()) {
       G.log(gameId, 'sistema', 'zone_beacon_expired', { zone: z.name, minutes: z.beaconOnMin });
     }
     if (dt) {
-      for (const p of q.all(`SELECT DISTINCT p.teamId FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
-                             WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0`, gameId)) {
-        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (SANCTUARY_RATE - 1), p.teamId, now);
+      // Dentro più Santuari vale il moltiplicatore più alto.
+      for (const p of q.all(`SELECT p.teamId, MAX(COALESCE(z.rate, ${DEFAULT_RATE})) AS rate FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
+                             WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0 GROUP BY p.teamId`, gameId)) {
+        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (p.rate - 1), p.teamId, now);
       }
     }
     for (const z of q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND enabled = 1 AND kind = 'conquista' AND winnerTeamId IS NULL", gameId)) {
@@ -340,7 +351,7 @@ function electBeacon(team, player) {
 // ---------------------------------------------------------------- viste
 
 function zoneOut(z) {
-  return { id: z.id, kind: z.kind, name: z.name, points: pointsOf(z), layer: z.layer, active: !!z.active, enabled: z.enabled !== 0, holdMin: z.holdMin, beaconMin: z.beaconMin, beaconOnMin: z.beaconOnMin || null, activeUntil: z.activeUntil || null, beaconEndsAt: z.beaconEndsAt, beaconBy: z.beaconBy,
+  return { id: z.id, kind: z.kind, name: z.name, points: pointsOf(z), layer: z.layer, active: !!z.active, enabled: z.enabled !== 0, holdMin: z.holdMin, rate: z.kind === 'santuario' ? rateOf(z) : null, beaconMin: z.beaconMin, beaconOnMin: z.beaconOnMin || null, activeUntil: z.activeUntil || null, beaconEndsAt: z.beaconEndsAt, beaconBy: z.beaconBy,
     label: KINDS[z.kind].label, icon: KINDS[z.kind].icon, color: KINDS[z.kind].color, effect: effectOf(z),
     winnerTeamId: z.winnerTeamId, wonAt: z.wonAt, reward: z.reward ? JSON.parse(z.reward) : null,
     winnerLabel: z.winnerTeamId ? (() => { const w = q.get('SELECT s.roman, s.name FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', z.winnerTeamId); return w ? `${w.roman} ${w.name}` : null; })() : null };
@@ -373,8 +384,8 @@ function teamZones(t) {
     // Zone in cui la coppia era già dentro quando sono nate: il telefono non ne mostra l'effetto finché non esce e rientra.
     immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),
-    // Dentro un Santuario: la ricarica delle Skill corre più veloce (×2).
-    recharge: mine.some((z) => z.kind === 'santuario') ? SANCTUARY_RATE : 1,
+    // Dentro un Santuario: la ricarica delle Skill corre più veloce (il moltiplicatore più alto).
+    recharge: Math.max(1, ...mine.filter((z) => z.kind === 'santuario').map(rateOf)),
     won: q.all('SELECT * FROM map_zones WHERE gameId = ? AND winnerTeamId = ? AND wonAt > ?', t.gameId, t.id, now - 30 * 60000).map((z) => ({ id: z.id, name: z.name, wonAt: z.wonAt, reward: JSON.parse(z.reward || 'null') })),
   };
 }

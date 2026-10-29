@@ -671,6 +671,8 @@ addColumn('map_zones', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
 // Accesa da un Beacon: resta accesa beaconOnMin minuti (NULL = finché non la spegne la regia), fino ad activeUntil.
 addColumn('map_zones', 'beaconOnMin', 'INTEGER');
 addColumn('map_zones', 'activeUntil', 'INTEGER');
+// Santuario: di quante volte corre la ricarica delle Skill (NULL = 2).
+addColumn('map_zones', 'rate', 'REAL');
 addColumn('games', 'offlineMap', 'TEXT');
 addColumn('games', 'acceptanceClosedAt', 'INTEGER');
 addColumn('games', 'acceptanceClosedBy', 'TEXT');

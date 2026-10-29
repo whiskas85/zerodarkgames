@@ -2203,7 +2203,12 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.equal(Z.teamZones(B).here[0].kind, 'luce');
   // Cono d'Ombra sopra (strato più alto): vince l'Ombra.
   const ombra = Z.createZone(g.id, { kind: 'ombra', points: sq(45, 9.01, 0.0005), layer: 2, active: false }, 'test');
-  Z.updateZone(ombra.id, { active: true }, 'test'); // B già dentro: immune
+  // Era abilitata e spenta (B la vedeva in grigio): accesa, B la subisce subito.
+  Z.updateZone(ombra.id, { active: true }, 'test');
+  assert.equal(Z.visibilityOf(B.id), 'hidden');
+  // Non abilitata (B non la vedeva): abilitata, B è immune finché non esce e rientra.
+  Z.updateZone(ombra.id, { enabled: false }, 'test');
+  Z.updateZone(ombra.id, { enabled: true }, 'test');
   assert.equal(Z.visibilityOf(B.id), 'shown');
   go(B, 45.01, 9.01); go(B, 45, 9.01);
   assert.equal(Z.visibilityOf(B.id), 'hidden');
@@ -2240,8 +2245,11 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.ok(Z.teamZones(Cc).list.some((z) => z.id === cq.id && !z.active && z.winnerTeamId === Cc.id));
   Z.updateZone(cq.id, { active: true }, 'test');
   assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null);
+  // Era abilitata (la vedevano in grigio): chi è dentro è in gara da subito, il tempo parte dalla riaccensione.
+  Z.tickAll(Date.now() + 60000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null);
   Z.tickAll(Date.now() + 121000);
-  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null, 'chi era già dentro non la riconquista senza uscire e rientrare');
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, Cc.id);
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
   assert.equal(Z.masterZones(g.id).list.length, 6);
   // Ordine trascinando: la prima dell'elenco va in cima.
@@ -2555,4 +2563,16 @@ test('zone: accesa da un Beacon resta accesa i minuti impostati e poi si spegne;
   // Per sempre: senza minuti il Beacon non mette scadenza.
   Z.updateZone(z.id, { active: false, beaconOnMin: null }, 'regia');
   assert.equal(fire().zone.activeUntil, null);
+});
+
+test('Santuario: moltiplicatore della ricarica scelto dalla regia', () => {
+  const Z = require('../src/zones');
+  const g = setupGame(2);
+  const z = Z.createZone(g.id, { kind: 'santuario', points: [[1, 1], [1, 2], [2, 2]], rate: 3 }, 'test');
+  assert.equal(z.rate, 3);
+  assert.match(z.effect, /×3/);
+  assert.equal(Z.updateZone(z.id, { rate: '1,5' }, 'test').rate, 1.5);
+  assert.equal(Z.updateZone(z.id, { rate: 50 }, 'test').rate, 10);
+  const o = Z.createZone(g.id, { kind: 'ombra', points: [[1, 1], [1, 2], [2, 2]], rate: 3 }, 'test');
+  assert.equal(o.rate, null);
 });

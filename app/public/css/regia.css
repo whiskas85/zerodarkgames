@@ -1186,3 +1186,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .map-side-list li.map-sel, .zone-list li.map-sel { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 2px rgba(209, 173, 98, .45); }
 .map-sel-flash { animation: map-sel-flash 1.4s ease-out; }
 @keyframes map-sel-flash { 0%, 30% { background: rgba(209, 173, 98, .35); } 100% { background: transparent; } }
+
+/* Conto alla rovescia sulle zone della mappa (Beacon in corso, accesa a tempo). */
+.leaflet-tooltip.zone-badge { background: rgba(15, 12, 8, .88); color: #fff; border: 1px solid var(--brass, #d1ad62); border-radius: 999px; padding: 3px 10px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.leaflet-tooltip.zone-badge::before { display: none; }
+.leaflet-tooltip.zone-badge b { font-family: var(--f-mono, monospace); }

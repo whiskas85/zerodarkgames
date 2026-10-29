@@ -2010,7 +2010,10 @@ function viewFieldMap() {
     fieldMap.setLines([...allianceLines(), ...(zd && zd.pts.length > 1 ? [{ key: 'zone-draw', points: zd.pts, color: zk[zd.kind]?.color }] : [])]);
     fieldMap.setPolygons([
       ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.enabled ? z.color : '#8a8a8a', fill: !z.enabled ? 0.02 : z.active ? 0.18 : 0.04, dash: z.active && z.enabled ? null : z.enabled ? '6 6' : '2 6',
-        title: `${z.icon} ${z.name}${!z.enabled ? ' · non abilitata (le coppie non la vedono)' : z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}` })),
+        title: `${z.icon} ${z.name}${!z.enabled ? ' · non abilitata (le coppie non la vedono)' : z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}`,
+        // Conto alla rovescia sulla mappa: Beacon in corso (si accende tra…) o accesa a tempo (si spegne tra…).
+        badge: !z.active && z.beaconEndsAt > Date.now() ? `📡 si accende tra <b data-clock="abs:${z.beaconEndsAt}">—</b>`
+          : z.active && z.activeUntil ? `⏱ si spegne tra <b data-clock="abs:${z.activeUntil}">—</b>` : null })),
       ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
       // Area della mappa offline (scheda «Mappa offline»): rettangolo tratteggiato.
       ...(R.mapTab === 'offline' && (R.offDraft || R.offline?.area) ? [(() => { const b = (R.offDraft || R.offline.area).bounds; return { key: 'offline-area', points: [[b.south, b.west], [b.south, b.east], [b.north, b.east], [b.north, b.west]], color: '#3b82f6', fill: 0.05, dash: '8 6' }; })()] : []),
@@ -2158,18 +2161,20 @@ async function zoneDialog() {
   const startOff = h('input', { type: 'checkbox' });
   const hidden = h('input', { type: 'checkbox' });
   const holdWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Minuti da restare dentro di fila'), hold);
+  const rate = h('input', { class: 'input', type: 'number', min: 1.1, max: 10, step: 0.1, value: 2 });
+  const rateWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Ricarica delle Skill più veloce di (×)'), rate);
   const cards = h('div', { class: 'zone-kinds' }, Object.entries(K).map(([k, z]) => h('button', { type: 'button', class: `zone-kind ${k === kind ? 'on' : ''}`, style: { '--c': z.color },
-    onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; } },
-  h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X')))));
+    onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; rateWrap.hidden = k !== 'santuario'; } },
+  h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X').replace('{rate}', 'X')))));
   const r = await modal({ title: 'Nuova zona', wide: true, okLabel: 'Disegna sulla mappa',
     body: h('div', { class: 'stack-sm' }, cards,
-      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap,
+      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap, rateWrap,
         h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon),
         h('label', { class: 'field' }, h('span', null, 'Accesa dal Beacon per (min · vuoto = per sempre)'), onFor)),
       h('label', { class: 'check' }, startOff, ' Nasce spenta: la accendono gli Eletti lanciando un Beacon dentro l\'area (o la regia)'),
       h('label', { class: 'check' }, hidden, ' Nasce non abilitata: le coppie non la vedono finché non la abiliti'),
-      h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce non la subisce finché non esce e rientra.')),
-    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, beaconOnMin: Number(onFor.value) > 0 ? Number(onFor.value) : null, active: !startOff.checked, enabled: !hidden.checked }) });
+      h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce (o viene abilitata) non la subisce finché non esce e rientra. Se invece era già abilitata e spenta (in grigio) e la accendi, chi è dentro la subisce subito.')),
+    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, rate: kind === 'santuario' ? Number(rate.value) || 2 : undefined, beaconOnMin: Number(onFor.value) > 0 ? Number(onFor.value) : null, active: !startOff.checked, enabled: !hidden.checked }) });
   if (!r || typeof r !== 'object') return;
   R.zoneDraw = { ...r, pts: [] };
   R.mapZones = false;
@@ -2181,7 +2186,7 @@ async function saveZoneDraw() {
   if (!zd || zd.pts.length < 3) return;
   try {
     if (zd.id) await api('PATCH', `/api/m/zones/${zd.id}`, { points: zd.pts });
-    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, beaconMin: zd.beaconMin, beaconOnMin: zd.beaconOnMin, active: zd.active, enabled: zd.enabled, points: zd.pts });
+    else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, rate: zd.rate, beaconMin: zd.beaconMin, beaconOnMin: zd.beaconOnMin, active: zd.active, enabled: zd.enabled, points: zd.pts });
     toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
     R.zoneDraw = null;
     R.mapTab = 'zone';
@@ -2247,8 +2252,8 @@ function zonesPanel() {
         ' Abilitata', h('span', { class: 'tiny muted' }, z.enabled ? (z.active ? ' · le coppie la vedono e l\'effetto vale' : ' · le coppie la vedono in grigio') : ' · nascosta alle coppie, gli Eletti non la accendono')),
       z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
       !z.enabled ? h('div', { class: 'tiny' }, 'Non abilitata: le coppie non la vedono e gli Eletti non la possono accendere.') : z.active ? h('div', { class: 'tiny' }, z.activeUntil
-        ? [`📡 Accesa dal Beacon: si spegne da sola alle ${fmtTime(z.activeUntil)} `, h('button', { class: 'btn btn-sm', title: 'Toglie la scadenza: resta accesa finché non la spegni tu', onclick: () => patch(z, { active: true }, 'Zona accesa senza scadenza') }, 'Tienila accesa')]
-        : `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)`) : h('div', { class: 'tiny' },  z.beaconEndsAt && z.beaconEndsAt > Date.now() ? `📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende alle ${fmtTime(z.beaconEndsAt)}` : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
+        ? [`📡 Accesa dal Beacon: si spegne da sola tra `, h('strong', { class: 'mono', 'data-clock': `abs:${z.activeUntil}` }, '—'), ` (alle ${fmtTime(z.activeUntil)}) `, h('button', { class: 'btn btn-sm', title: 'Toglie la scadenza: resta accesa finché non la spegni tu', onclick: () => patch(z, { active: true }, 'Zona accesa senza scadenza') }, 'Tienila accesa')]
+        : `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)`) : h('div', { class: 'tiny' },  z.beaconEndsAt && z.beaconEndsAt > Date.now() ? [`📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende tra `, h('strong', { class: 'mono', 'data-clock': `abs:${z.beaconEndsAt}` }, '—'), ` (alle ${fmtTime(z.beaconEndsAt)})`] : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
       z.kind === 'conquista' ? h('div', { class: 'tiny' }, z.winnerTeamId ? `👑 Conquistata da ${teamName(z.winnerTeamId)} alle ${fmtTime(z.wonAt)}${z.reward ? ` · ${z.reward.icon} ${z.reward.name}` : ''} · si è spenta: riaccendila (o con un Beacon degli Eletti) per rimetterla in palio` : `In palio: resistere ${z.holdMin} minuti di fila`) : null,
       h('div', { class: 'row-actions' },
         z.kind === 'conquista' && z.winnerTeamId ? h('button', { class: 'btn btn-sm', title: 'Riaccende la zona e azzera il vincitore', onclick: () => patch(z, { reset: true }, 'Zona riaccesa e di nuovo in palio') }, 'Rimetti in palio') : null,
@@ -2260,6 +2265,10 @@ function zonesPanel() {
           const v = await dialog({ title: `Accesa dal Beacon · ${z.name}`, text: 'Minuti che la zona resta accesa dopo un Beacon degli Eletti, poi si spegne da sola. Lascia vuoto (o 0) per tenerla accesa per sempre. Vale solo per il Beacon: se la accendi tu dalla regia resta accesa.', input: { type: 'number', value: z.beaconOnMin || '', min: 0, max: 600, placeholder: '∞ per sempre' }, okLabel: 'Salva' });
           if (v != null && v !== false) patch(z, { beaconOnMin: Number(v) > 0 ? Number(v) : null }, Number(v) > 0 ? `Dopo il Beacon resta accesa ${Number(v)}′` : 'Dopo il Beacon resta accesa per sempre');
         } }, `Accesa ${z.beaconOnMin ? `${z.beaconOnMin}′` : '∞'}`),
+        z.kind === 'santuario' ? h('button', { class: 'btn btn-sm', title: 'Di quante volte corre la ricarica delle Skill dentro il Santuario', onclick: async () => {
+          const v = await dialog({ title: `Ricarica nel Santuario · ${z.name}`, text: 'Moltiplicatore della ricarica delle Skill per chi è dentro: 2 = il doppio della velocità, 1,5 = una volta e mezza (da 1,1 a 10).', input: { type: 'text', value: String(z.rate || 2).replace('.', ','), placeholder: 'es. 2 oppure 1,5' }, okLabel: 'Salva' });
+          if (v != null && v !== false && String(v).trim()) patch(z, { rate: String(v).replace(',', '.') }, 'Moltiplicatore della ricarica salvato');
+        } }, `Ricarica ×${String(z.rate || 2).replace('.', ',')}`) : null,
         h('button', { class: 'btn btn-sm', title: 'Sposta, aggiungi o togli i punti del poligono', onclick: () => { R.zoneDraw = null; R.zoneEdit = { id: z.id, name: z.name, color: z.color, pts: z.points.map((p) => [...p]) }; render(); setTimeout(() => fieldMap.map?.fitBounds(z.points, { padding: [40, 40] }), 80); } }, 'Modifica punti'),
         h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
