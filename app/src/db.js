@@ -703,4 +703,14 @@ CREATE TABLE IF NOT EXISTS chrono_types (
 // vince chi non viene ingaggiato dagli Eletti entro la fine).
 addColumn('game_events', 'mode', "TEXT NOT NULL DEFAULT 'manual'");
 
+// Zone NO PLAY: chi ci entra (coppia, o singolo Eletto) ha 30 secondi per uscire, poi la regia viene avvisata.
+db.exec(`
+CREATE TABLE IF NOT EXISTS noplay_hits (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  zoneId INTEGER NOT NULL REFERENCES map_zones(id) ON DELETE CASCADE, teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  playerId INTEGER, enteredAt INTEGER NOT NULL, alertedAt INTEGER, leftAt INTEGER, lat REAL, lng REAL
+);
+CREATE INDEX IF NOT EXISTS ix_noplay_open ON noplay_hits(gameId, leftAt);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

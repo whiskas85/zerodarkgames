@@ -154,6 +154,23 @@ function setSquad(id, squadId, actor) {
 // Fine prevista: dall'avvio vero (o dall'orario d'inizio) più la durata.
 const endsAtOf = (ev) => (ev.durationMin ? (ev.startedAt || ev.startAt || 0) + ev.durationMin * 60000 || null : null);
 
+// Taglia su sé stessi: gli Eletti vedono le coppie a intermittenza, 5 minuti tracciate e 5 minuti solo con l'ultima
+// posizione nota (quella di quando il tracciamento si è fermato); gli ultimi 5 minuti dell'evento sempre tracciate.
+const BOUNTY_SLICE_MS = 5 * 60000;
+function bountyPhase(ev, now = Date.now()) {
+  if (ev.mode !== 'bounty' || ev.status !== 'running' || !ev.startedAt) return null;
+  const end = endsAtOf(ev);
+  if (end && end - now <= BOUNTY_SLICE_MS) return { on: true, since: Math.max(ev.startedAt, end - BOUNTY_SLICE_MS), until: end, last: true };
+  const k = Math.max(0, Math.floor((now - ev.startedAt) / BOUNTY_SLICE_MS));
+  const since = ev.startedAt + k * BOUNTY_SLICE_MS;
+  const on = k % 2 === 0;
+  let until = since + BOUNTY_SLICE_MS;
+  // Lo spegnimento finisce dove cominciano gli ultimi 5 minuti; un tracciamento che li tocca prosegue fino alla fine.
+  if (end && !on) until = Math.min(until, end - BOUNTY_SLICE_MS);
+  if (end && on && until >= end - BOUNTY_SLICE_MS) until = end;
+  return { on, since, until, last: false };
+}
+
 // Luogo: { label, lat, lng } oppure null per toglierlo.
 function readLocation(loc) {
   if (!loc) return { label: null, lat: null, lng: null };
@@ -450,6 +467,7 @@ function baseOut(ev) {
     location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null,
     startAt: ev.startAt, durationMin: ev.durationMin, endsAt: endsAtOf(ev), timeUp: !!ev.endNotifiedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
     startedAt: ev.startedAt, closingAt: ev.closingAt, closeDeadline: ev.closeDeadline, truceUntil: ev.truceUntil, doneAt: ev.doneAt,
+    tracking: bountyPhase(ev),
     squadId: ev.squadId, squadName: squadName(ev.squadId), createdAt: ev.createdAt,
   };
 }
@@ -537,4 +555,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { updateEvent, setSquad, sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { bountyPhase, BOUNTY_SLICE_MS, updateEvent, setSquad, sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

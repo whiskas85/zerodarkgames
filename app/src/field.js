@@ -509,6 +509,7 @@ function deletePoi(id, gameId, who) {
 // ---------------------------------------------------------------- KMZ per ATAK
 
 const GIFT_LABEL = { draft: 'da piazzare', placed: 'piazzato, non ancora comparso', revealed: 'comparso in mappa', claimed: 'preso', expired: 'svanito' };
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'Europe/Rome' });
 const when = (ms) => (ms ? new Date(ms).toLocaleString('it-IT', { timeZone: process.env.TZ || 'Europe/Rome', dateStyle: 'short', timeStyle: 'short' }) : '');
 const kmzName = (game) => `giochi-del-buio-${String(game.name || game.id).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || game.id}.kmz`;
 const placeDesc = (x) => [
@@ -669,6 +670,7 @@ function taskTarget(gameId, data) {
   if (kind === 'zone') {
     const z = q.get('SELECT * FROM map_zones WHERE id = ? AND gameId = ?', id, gameId);
     if (!z) throw err(400, 'Zona non valida');
+    if (z.kind === 'noplay') throw err(400, 'Una zona NO PLAY non si accende con il Beacon');
     const pts = JSON.parse(z.points);
     return { targetLat: pts.reduce((a, p) => a + p[0], 0) / pts.length, targetLng: pts.reduce((a, p) => a + p[1], 0) / pts.length, targetLabel: z.name, targetRef: `zone:${z.id}` };
   }
@@ -728,7 +730,7 @@ function assignTask(taskId, squadId, actor) {
   if (prev && prev !== s.id) notifySquad(prev, { title: 'Incarico tolto', body: t.text, tag: `task-${t.id}` });
   notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: t.text, tag: `task-${t.id}` });
   if (t.kind === 'meet' && t.targetTeamId) {
-    rt.pushTeams(t.gameId, { title: 'Alleanze sporche', body: `La squadra ${s.name} degli Eletti vi raggiunge: la vedete sulla mappa.`, tag: `meet-${t.id}`, url: '/#/mappa' }, t.targetTeamId);
+    rt.pushTeams(t.gameId, { title: 'Alleanze sporche', body: `Chiamata la squadra ${s.name} degli Eletti: la vedrete sulla mappa appena prende in consegna l'incarico.`, tag: `meet-${t.id}`, url: '/#/home' }, t.targetTeamId);
     rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   }
   rt.toStaff(t.gameId, 'field');
@@ -759,6 +761,11 @@ function acceptTask(taskId, who, gameId = null, squadId = null) {
   G.log(t.gameId, who, 'squad_task_accepted', { text: t.text, minutes: t.timeMin });
   notifySquad(t.squadId, { title: 'Incarico accettato', body: t.timeMin ? `${t.text} · avete ${t.timeMin} minuti` : t.text, tag: `task-${t.id}` });
   // Da adesso la coppia bersaglio (taglia, caccia, da raggiungere) compare alla squadra: si aggiornano anche le coppie.
+  // Alleanze sporche: presa in consegna, la coppia vede la squadra arrivare (l'alleanza parte quando sono vicini).
+  if (t.kind === 'meet' && t.targetTeamId) {
+    const s = getSquad(t.squadId);
+    rt.pushTeams(t.gameId, { title: 'Alleanze sporche', body: `La squadra ${s.name} degli Eletti vi raggiunge: la vedete sulla mappa. Quando siete vicini parte l'alleanza.`, tag: `meet-${t.id}`, url: '/#/mappa' }, t.targetTeamId);
+  }
   if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
   return { ok: true, acceptedAt: now };
@@ -918,7 +925,7 @@ function recordPosition(team, player, body) {
          lat = excluded.lat, lng = excluded.lng, acc = excluded.acc, at = excluded.at`,
     deviceId, game.id, team.id, player?.id ?? null, lat, lng, acc, Date.now());
   trackPoint(game.id, team.id, player?.id ?? null, deviceId, lat, lng, acc);
-  require('./zones').onPosition(team, { lat, lng });
+  require('./zones').onPosition(team, { lat, lng }, Date.now(), player);
   return { ok: true, tracking: true };
 }
 
@@ -993,8 +1000,9 @@ function electVisibleTeams(gameId, squadId) {
   const S = require('./skills');
   const Z = require('./zones');
   const out = new Map();
+  // Una posizione ferma (taglia a intermittenza) cede il posto a un motivo per vederla dal vivo.
   const add = (teamId, why, extra = {}) => {
-    if (out.has(teamId)) return;
+    if (out.has(teamId) && (extra.frozenAt || !out.get(teamId).frozenAt)) return;
     const team = q.get("SELECT t.id, t.gameId, s.name, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ? AND t.kind = 'couple'", teamId);
     if (!team || S.hiddenTeam(team) || Z.visibilityOf(team.id) === 'hidden') return;
     out.set(teamId, { teamId: team.id, roman: team.roman, sectorName: team.name, color: team.color, why, ...extra });
@@ -1004,10 +1012,18 @@ function electVisibleTeams(gameId, squadId) {
       add(t.targetTeamId, t.kind === 'hunt' ? '🎯 Bersaglio della caccia' : t.kind === 'bounty' ? '💰 Taglia' : t.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere', { taskId: t.id, taskKind: t.kind });
     }
     for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
-                           WHERE ev.gameId = ? AND ev.squadId = ? AND ev.status IN ('open', 'running', 'closing', 'truce')`, Number(gameId), squadId)) add(e.teamId, `🏁 Iscritta a «${e.name}»`, { eventId: e.id });
-    // Taglia su sé stessi in corso: le coppie iscritte le vedono (e le cacciano) tutte le squadre.
-    for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
-                           WHERE ev.gameId = ? AND ev.mode = 'bounty' AND ev.status = 'running' AND en.status = 'accepted'`, Number(gameId))) add(e.teamId, `🎯 Taglia · «${e.name}»`, { eventId: e.id });
+                           WHERE ev.gameId = ? AND ev.squadId = ? AND ev.status IN ('open', 'running', 'closing', 'truce')
+                           AND NOT (ev.mode = 'bounty' AND ev.status = 'running')`, Number(gameId), squadId)) add(e.teamId, `🏁 Iscritta a «${e.name}»`, { eventId: e.id });
+    // Taglia su sé stessi in corso: le coppie iscritte le vedono (e le cacciano) tutte le squadre, a intermittenza:
+    // 5 minuti dal vivo, 5 minuti ferme all'ultima posizione nota; gli ultimi 5 minuti sempre dal vivo.
+    const EV = require('./events');
+    for (const e of q.all(`SELECT en.teamId, ev.* FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
+                           WHERE ev.gameId = ? AND ev.mode = 'bounty' AND ev.status = 'running' AND en.status = 'accepted'`, Number(gameId))) {
+      const ph = EV.bountyPhase(e);
+      if (!ph) continue;
+      add(e.teamId, ph.on ? `🎯 Taglia · «${e.name}» · tracciata fino alle ${hhmm(ph.until)}` : `🎯 Taglia · «${e.name}» · ultima posizione nota (${hhmm(ph.since)}) · di nuovo tracciata alle ${hhmm(ph.until)}`,
+        { eventId: e.id, ...(ph.on ? {} : { frozenAt: ph.since }), trackUntil: ph.until });
+    }
   }
   for (const t of q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple'", Number(gameId))) if (Z.visibilityOf(t.id) === 'shown') add(t.id, '☀️ Nel Campo di Luce');
   return [...out.values()];
@@ -1017,8 +1033,12 @@ function electVisibleTeams(gameId, squadId) {
 function electVisiblePositions(gameId, squadId) {
   const now = Date.now();
   return electVisibleTeams(gameId, squadId).map((x) => {
-    const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, now - POSITION_MAX_AGE);
-    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: now - p.at > POSITION_STALE,
+    // Taglia a intermittenza, fuori dal tracciamento: il punto resta dov'era quando il tracciamento si è fermato (in grigio).
+    const p = x.frozenAt
+      ? q.get('SELECT lat, lng, at FROM position_track WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
+        || q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
+      : q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, now - POSITION_MAX_AGE);
+    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: !!x.frozenAt || now - p.at > POSITION_STALE, frozen: !!x.frozenAt,
       label: `${x.roman} · Settore ${x.sectorName}`, who: x.why, roman: x.roman, color: x.color } : null;
   }).filter(Boolean);
 }

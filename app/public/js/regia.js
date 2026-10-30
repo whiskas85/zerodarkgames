@@ -940,7 +940,7 @@ const EVENT_LABELS = {
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
   squad_task_assigned: 'Incarico assegnato', squad_task_cancelled: 'Incarico annullato', squad_task_accepted: 'Incarico accettato', dirty_alliance: 'Alleanza sporca', alliance_poisoned: 'Velenoso',
   skill_chosen: 'Skill scelta', skill_removed: 'Skill tolta', skill_used: 'Skill usata', skill_auto: 'Skill automatica',
-  altar_scanned: 'Altare inquadrato', zone_created: 'Zona creata', zone_updated: 'Zona modificata', zone_deleted: 'Zona eliminata', zone_enter: 'Entrata in zona', zone_exit: 'Uscita dalla zona', zone_conquered: 'Zona conquistata', zone_beacon: 'Beacon lanciato', zone_beacon_done: 'Zona accesa dal Beacon', zone_beacon_failed: 'Beacon interrotto', zone_beacon_expired: 'Zona spenta: finito il tempo del Beacon', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
+  altar_scanned: 'Altare inquadrato', zone_created: 'Zona creata', zone_updated: 'Zona modificata', zone_deleted: 'Zona eliminata', zone_enter: 'Entrata in zona', zone_exit: 'Uscita dalla zona', noplay_enter: '⛔ Vicino alla NO PLAY', noplay_exit: 'Fuori dalla NO PLAY', noplay_alert: '⛔ NO PLAY violata', zone_conquered: 'Zona conquistata', zone_beacon: 'Beacon lanciato', zone_beacon_done: 'Zona accesa dal Beacon', zone_beacon_failed: 'Beacon interrotto', zone_beacon_expired: 'Zona spenta: finito il tempo del Beacon', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
 };
 
@@ -952,6 +952,7 @@ function eventText(e) {
     case 'unlock': return `${who} ha sbloccato ${d.point}`;
     case 'altar_scanned': return `${who} ha inquadrato ${d.point}`;
     case 'zone_enter': case 'zone_exit': return `${who} · ${d.zone}`;
+    case 'noplay_enter': case 'noplay_exit': case 'noplay_alert': return `${d.who || who} · ${d.zone}`;
     case 'zone_beacon': case 'zone_beacon_done': case 'zone_beacon_failed': case 'zone_beacon_expired': return d.zone || '';
     case 'zone_conquered': return `${who} ha conquistato ${d.zone} (${d.gift})`;
     case 'zone_created': case 'zone_updated': case 'zone_deleted': return d.name || '';
@@ -1794,9 +1795,16 @@ function targetItems(d) {
 // Segnaposto della mappa della regia, con le azioni nei popup (pulsanti data-act gestiti qui sotto).
 const actBtn = (act, kind, id, label) => `<button type="button" class="btn btn-sm" data-act="${act}" data-kind="${kind}" data-id="${id}">${label}</button>`;
 const placedInfo = (x) => `<small>${x.provisional ? '⚠ Provvisorio · ' : ''}Piazzato ${fmtTime(x.placedAt)} da ${String(x.placedBy || '?').replace('eletti:', '')}${x.accuracy ? ` · ±${x.accuracy} m` : ''}${x.placeSource === 'manual' ? ' · punto manuale' : ''}</small>`;
+// Violazioni aperte delle zone NO PLAY: un segnale rosso dove è stata vista la coppia o l'Eletto.
+function noplayItems() {
+  return (R.ms?.mapZones?.list || []).flatMap((z) => (z.violations || []).filter((v) => !v.leftAt && v.lat != null).map((v) => ({
+    key: `np${v.id}`, kind: 'emergency', lat: v.lat, lng: v.lng, text: '⛔', state: v.alertedAt ? 'live' : '', title: `NO PLAY · ${v.who}`,
+    popup: `<strong>⛔ ${escHtml(v.who)}</strong><br>dentro «${escHtml(z.name)}» dalle ${fmtTime(v.enteredAt)}${v.alertedAt ? '<br><strong>oltre i 30 secondi</strong>' : ''}` })));
+}
 function fieldMapItems(d) {
   return [
     ...groupPositions(fieldPositions).map(positionItem),
+    ...noplayItems(),
     ...(d.landmarks || []).map((l) => landmarkItem(l, `<br>${placedInfo(l)}${l.hasPhoto ? `<img src="/api/media/landmark/${l.id}?v=${l.placedAt}" alt="">` : ''}
       <div class="popup-actions">${actBtn('pick', 'landmark', l.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'landmark', l.id, 'Fai spostare a una squadra')}</div>`)),
     ...targetItems(d),
@@ -2019,7 +2027,7 @@ function viewFieldMap() {
         title: `${z.icon} ${z.name}${!z.enabled ? ' · non abilitata (le coppie non la vedono)' : z.active ? '' : ' · spenta'}${z.inside.length ? ` · dentro: ${z.inside.length}` : ''}`,
         // Conto alla rovescia sulla mappa: Beacon in corso (si accende tra…) o accesa a tempo (si spegne tra…).
         badge: !z.active && z.beaconEndsAt > Date.now() ? `📡 si accende tra <b data-clock="abs:${z.beaconEndsAt}">—</b>`
-          : z.active && z.activeUntil ? `⏱ si spegne tra <b data-clock="abs:${z.activeUntil}">—</b>` : null })),
+          : z.active && z.activeUntil ? `⏱ si spegne tra <b data-clock="abs:${z.activeUntil}">—</b>` : null, badgeEdge: true })),
       ...(zd && zd.pts.length > 2 ? [{ key: 'zone-draw-poly', points: zd.pts, color: zk[zd.kind]?.color, fill: 0.1, dash: '4 4' }] : []),
       // Area della mappa offline (scheda «Mappa offline»): rettangolo tratteggiato.
       ...(R.mapTab === 'offline' && (R.offDraft || R.offline?.area) ? [(() => { const b = (R.offDraft || R.offline.area).bounds; return { key: 'offline-area', points: [[b.south, b.west], [b.south, b.east], [b.north, b.east], [b.north, b.west]], color: '#3b82f6', fill: 0.05, dash: '8 6' }; })()] : []),
@@ -2173,10 +2181,12 @@ function viewFieldMap() {
         h('button', { class: 'btn btn-sm btn-primary', onclick: saveZoneEdit }, 'Salva forma'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneEdit = null; render(); } }, 'Annulla')) : null,
       zd ? h('div', { class: 'map-pick zone-draw-bar' },
-        h('strong', null, `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
+        h('strong', null, zd.walk ? `${zk[zd.kind]?.icon || ''} ${zd.name}: cammina lungo il confine e aggiungi un punto a ogni angolo (${zd.pts.length})` : `${zk[zd.kind]?.icon || ''} ${zd.name}: clicca sulla mappa i vertici della zona (${zd.pts.length})`),
+        zd.walk ? h('span', { class: 'tiny mono', id: 'walk-gps' }, walkGpsText()) : null,
+        zd.walk ? h('button', { class: 'btn btn-sm btn-primary', id: 'walk-add', disabled: !walkFix || walkFix.acc > 30, onclick: addWalkPoint }, '📍 Aggiungi punto qui') : null,
         h('button', { class: 'btn btn-sm', disabled: !zd.pts.length, onclick: () => { zd.pts.pop(); render(); } }, 'Annulla ultimo'),
-        h('button', { class: 'btn btn-sm btn-primary', disabled: zd.pts.length < 3, onclick: saveZoneDraw }, 'Chiudi la zona'),
-        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneDraw = null; render(); } }, 'Annulla')) : null),
+        h('button', { class: `btn btn-sm ${zd.walk ? '' : 'btn-primary'}`, disabled: zd.pts.length < 3, onclick: saveZoneDraw }, 'Chiudi la zona'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.zoneDraw = null; stopWalk(); render(); } }, 'Annulla')) : null),
     h('aside', { class: 'map-sidebar' },
       h('nav', { class: 'map-tabs', role: 'tablist' }, tabs.map(([k, label, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === cur), class: k === cur ? 'on' : '', onclick: () => { R.mapTab = k; render(); } },
         label, n ? h('span', { class: 'badge' }, n) : null))),
@@ -2198,21 +2208,61 @@ async function zoneDialog() {
   const holdWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Minuti da restare dentro di fila'), hold);
   const rate = h('input', { class: 'input', type: 'number', min: 1.1, max: 10, step: 0.1, value: 2 });
   const rateWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Ricarica delle Skill più veloce di (×)'), rate);
+  const beaconWrap = h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon);
+  const onForWrap = h('label', { class: 'field' }, h('span', null, 'Accesa dal Beacon per (min · vuoto = per sempre)'), onFor);
+  const startOffWrap = h('label', { class: 'check' }, startOff, ' Nasce spenta: la accendono gli Eletti lanciando un Beacon dentro l\'area (o la regia)');
+  // Come si traccia il confine: cliccando sulla mappa o camminandoci intorno con il telefono (un punto a ogni angolo).
+  let how = 'draw';
+  const hows = h('div', { class: 'row-actions' }, [['draw', '✏️ Disegna sulla mappa'], ['walk', '🚶 Percorri a piedi (GPS)']].map(([k, l]) => h('button', { type: 'button', class: `btn btn-sm ${k === how ? 'btn-primary' : ''}`,
+    onclick: (e) => { how = k; for (const b of hows.children) b.classList.toggle('btn-primary', b === e.currentTarget); } }, l)));
   const cards = h('div', { class: 'zone-kinds' }, Object.entries(K).map(([k, z]) => h('button', { type: 'button', class: `zone-kind ${k === kind ? 'on' : ''}`, style: { '--c': z.color },
-    onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; rateWrap.hidden = k !== 'santuario'; } },
+    onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; rateWrap.hidden = k !== 'santuario'; beaconWrap.hidden = onForWrap.hidden = startOffWrap.hidden = k === 'noplay'; } },
   h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X').replace('{rate}', 'X')))));
-  const r = await modal({ title: 'Nuova zona', wide: true, tall: true, okLabel: 'Disegna sulla mappa',
+  const r = await modal({ title: 'Nuova zona', wide: true, tall: true, okLabel: 'Traccia il confine',
     body: h('div', { class: 'stack-sm' }, cards,
-      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap, rateWrap,
-        h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon),
-        h('label', { class: 'field' }, h('span', null, 'Accesa dal Beacon per (min · vuoto = per sempre)'), onFor)),
-      h('label', { class: 'check' }, startOff, ' Nasce spenta: la accendono gli Eletti lanciando un Beacon dentro l\'area (o la regia)'),
+      h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap, rateWrap, beaconWrap, onForWrap),
+      startOffWrap,
       h('label', { class: 'check' }, hidden, ' Nasce non abilitata: le coppie non la vedono finché non la abiliti'),
-      h('p', { class: 'tiny muted' }, 'Poi clicca sulla mappa i vertici del poligono e «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce (o viene abilitata) non la subisce finché non esce e rientra. Se invece era già abilitata e spenta (in grigio) e la accendi, chi è dentro la subisce subito.')),
-    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, rate: kind === 'santuario' ? Number(rate.value) || 2 : undefined, beaconOnMin: Number(onFor.value) > 0 ? Number(onFor.value) : null, active: !startOff.checked, enabled: !hidden.checked }) });
+      h('div', { class: 'field' }, h('span', null, 'Confine'), hows),
+      h('p', { class: 'tiny muted' }, 'Disegna: clicca sulla mappa i vertici del poligono. A piedi: cammina lungo il confine con il telefono e premi «Aggiungi punto qui» a ogni angolo. Poi «Chiudi la zona». Le coppie vedono la zona e il suo effetto; l\'effetto vale solo entrando: chi è già dentro quando la zona nasce (o viene abilitata) non la subisce finché non esce e rientra. Se invece era già abilitata e spenta (in grigio) e la accendi, chi è dentro la subisce subito.')),
+    onOk: () => ({ kind, name: name.value.trim() || K[kind].label, holdMin: Number(hold.value) || 3, beaconMin: Number(beacon.value) || 1, rate: kind === 'santuario' ? Number(rate.value) || 2 : undefined, beaconOnMin: Number(onFor.value) > 0 ? Number(onFor.value) : null, active: kind === 'noplay' || !startOff.checked, enabled: !hidden.checked, walk: how === 'walk' }) });
   if (!r || typeof r !== 'object') return;
   R.zoneDraw = { ...r, pts: [] };
+  if (r.walk) startWalk();
   R.mapZones = false;
+  render();
+}
+
+// Confine percorso a piedi: il GPS del telefono della regia, un vertice a ogni pressione (precisione entro 30 m).
+let walkFix = null;
+let walkStop = null;
+const walkGpsText = () => (walkFix ? `GPS ±${walkFix.acc} m${walkFix.acc > 30 ? ' · troppo impreciso, aspetta' : ''}` : 'In attesa del GPS…');
+function startWalk() {
+  stopWalk();
+  if (!navigator.geolocation) { toast('GPS non disponibile su questo dispositivo', 'error'); return; }
+  const id = navigator.geolocation.watchPosition((p) => {
+    const first = !walkFix;
+    walkFix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: Date.now() };
+    fieldMap.setMe(walkFix);
+    if (first) { fieldMap.map?.setView([walkFix.lat, walkFix.lng], Math.max(17, fieldMap.map.getZoom())); render(); return; }
+    const el = document.getElementById('walk-gps');
+    if (el) el.textContent = walkGpsText();
+    const btn = document.getElementById('walk-add');
+    if (btn) btn.disabled = walkFix.acc > 30;
+  }, (e) => {
+    // Solo il permesso negato merita un avviso (una volta): gli altri errori sono attese del GPS e si riprova da soli.
+    if (e.code === 1) { toast('Permesso GPS negato: abilitalo per tracciare la zona a piedi', 'error', 6000); stopWalk(); }
+    const el = document.getElementById('walk-gps');
+    if (el && !walkFix) el.textContent = 'GPS non ancora disponibile…';
+  }, { enableHighAccuracy: true, maximumAge: 2000 });
+  walkStop = () => navigator.geolocation.clearWatch(id);
+}
+function stopWalk() { walkStop?.(); walkStop = null; walkFix = null; fieldMap.setMe(null); }
+function addWalkPoint() {
+  const zd = R.zoneDraw;
+  if (!zd || !walkFix) return;
+  zd.pts.push([walkFix.lat, walkFix.lng]);
+  navigator.vibrate?.(60);
   render();
 }
 
@@ -2224,6 +2274,7 @@ async function saveZoneDraw() {
     else await api('POST', G('/zones'), { kind: zd.kind, name: zd.name, holdMin: zd.holdMin, rate: zd.rate, beaconMin: zd.beaconMin, beaconOnMin: zd.beaconOnMin, active: zd.active, enabled: zd.enabled, points: zd.pts });
     toast(zd.id ? 'Zona ridisegnata' : 'Zona creata: le coppie la vedono sulla mappa', 'ok');
     R.zoneDraw = null;
+    stopWalk();
     R.mapTab = 'zone';
     await load();
   } catch (e) { toast(e.message, 'error', 6000); }
@@ -2295,17 +2346,17 @@ function zonesPanel() {
       h('label', { class: 'check zl-active' }, h('input', { type: 'checkbox', checked: z.enabled, onchange: (e) => patch(z, { enabled: e.target.checked }, e.target.checked ? 'Zona abilitata: le coppie la vedono' : 'Zona non abilitata: le coppie non la vedono più') }),
         ' Abilitata', h('span', { class: 'tiny muted' }, z.enabled ? (z.active ? ' · le coppie la vedono e l\'effetto vale' : ' · le coppie la vedono in grigio') : ' · nascosta alle coppie, gli Eletti non la accendono')),
       z.inside.length ? h('div', { class: 'tiny' }, 'Dentro: ', z.inside.map((p) => `${teamName(p.teamId)}${p.immune ? ' (era già dentro)' : ''}`).join(', ')) : null,
-      !z.enabled ? h('div', { class: 'tiny' }, 'Non abilitata: le coppie non la vedono e gli Eletti non la possono accendere.') : z.active ? h('div', { class: 'tiny' }, z.activeUntil
+      z.kind === 'noplay' ? noplayInfo(z) : !z.enabled ? h('div', { class: 'tiny' }, 'Non abilitata: le coppie non la vedono e gli Eletti non la possono accendere.') : z.active ? h('div', { class: 'tiny' }, z.activeUntil
         ? [`📡 Accesa dal Beacon: si spegne da sola tra `, h('strong', { class: 'mono', 'data-clock': `abs:${z.activeUntil}` }, '—'), ` (alle ${fmtTime(z.activeUntil)}) `, h('button', { class: 'btn btn-sm', title: 'Toglie la scadenza: resta accesa finché non la spegni tu', onclick: () => patch(z, { active: true }, 'Zona accesa senza scadenza') }, 'Tienila accesa')]
         : `Beacon: ${z.beaconMin}′ (per riaccenderla quando la spegni)`) : h('div', { class: 'tiny' },  z.beaconEndsAt && z.beaconEndsAt > Date.now() ? [`📡 Beacon in corso (${z.beaconBy || 'Eletti'}) · si accende tra `, h('strong', { class: 'mono', 'data-clock': `abs:${z.beaconEndsAt}` }, '—'), ` (alle ${fmtTime(z.beaconEndsAt)})`] : `Spenta · la accendono gli Eletti con un Beacon di ${z.beaconMin}′ dentro l'area`),
       z.kind === 'conquista' ? h('div', { class: 'tiny' }, z.winnerTeamId ? `👑 Conquistata da ${teamName(z.winnerTeamId)} alle ${fmtTime(z.wonAt)}${z.reward ? ` · ${z.reward.icon} ${z.reward.name}` : ''} · si è spenta: riaccendila (o con un Beacon degli Eletti) per rimetterla in palio` : `In palio: resistere ${z.holdMin} minuti di fila`) : null,
       h('div', { class: 'row-actions' },
         z.kind === 'conquista' && z.winnerTeamId ? h('button', { class: 'btn btn-sm', title: 'Riaccende la zona e azzera il vincitore', onclick: () => patch(z, { reset: true }, 'Zona riaccesa e di nuovo in palio') }, 'Rimetti in palio') : null,
-        h('button', { class: 'btn btn-sm', title: 'Quanto dura la sequenza del Beacon degli Eletti', onclick: async () => {
+        z.kind === 'noplay' ? null : h('button', { class: 'btn btn-sm', title: 'Quanto dura la sequenza del Beacon degli Eletti', onclick: async () => {
           const v = await dialog({ title: `Durata del Beacon · ${z.name}`, text: 'Minuti che gli Eletti devono restare dentro l\'area perché la zona si accenda.', input: { type: 'number', value: z.beaconMin, min: 1, max: 60 }, okLabel: 'Salva' });
           if (v != null && v !== false) patch(z, { beaconMin: Number(v) || 1 }, 'Durata del Beacon salvata');
         } }, `Beacon ${z.beaconMin}′`),
-        h('button', { class: 'btn btn-sm', title: 'Quanto resta accesa quando la accendono gli Eletti con il Beacon', onclick: async () => {
+        z.kind === 'noplay' ? null : h('button', { class: 'btn btn-sm', title: 'Quanto resta accesa quando la accendono gli Eletti con il Beacon', onclick: async () => {
           const v = await dialog({ title: `Accesa dal Beacon · ${z.name}`, text: 'Minuti che la zona resta accesa dopo un Beacon degli Eletti, poi si spegne da sola. Lascia vuoto (o 0) per tenerla accesa per sempre. Vale solo per il Beacon: se la accendi tu dalla regia resta accesa.', input: { type: 'number', value: z.beaconOnMin || '', min: 0, max: 600, placeholder: '∞ per sempre' }, okLabel: 'Salva' });
           if (v != null && v !== false) patch(z, { beaconOnMin: Number(v) > 0 ? Number(v) : null }, Number(v) > 0 ? `Dopo il Beacon resta accesa ${Number(v)}′` : 'Dopo il Beacon resta accesa per sempre');
         } }, `Accesa ${z.beaconOnMin ? `${z.beaconOnMin}′` : '∞'}`),
@@ -2317,6 +2368,17 @@ function zonesPanel() {
         h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
     h('p', { class: 'tiny muted' }, 'Interruttore ATTIVA/SPENTA: accende o spegne l\'effetto. Abilitata: la zona esiste per le coppie (spenta la vedono in grigio e gli Eletti la accendono con un Beacon). Non abilitata: è come se non ci fosse. L\'ordine conta: quando le zone si sovrappongono vince quella più in alto nell\'elenco (es. Cono d\'Ombra sopra un Campo di Luce: la coppia resta nascosta). Trascina una zona dal titolo per spostarla.'));
+}
+
+// NO PLAY: chi è dentro adesso (e da quando) e le ultime uscite.
+function noplayInfo(z) {
+  const open = (z.violations || []).filter((v) => !v.leftAt);
+  const past = (z.violations || []).filter((v) => v.leftAt).slice(0, 5);
+  return h('div', { class: 'stack-xs' },
+    h('div', { class: 'tiny' }, !z.enabled || !z.active ? 'Spenta o non abilitata: nessun avviso.' : 'Chi arriva a 5 m dal bordo vede la schermata NO PLAY e ha 30 secondi per allontanarsi; poi arriva l\'avviso qui.'),
+    open.length ? h('ul', { class: 'np-list' }, open.map((v) => h('li', { class: v.alertedAt ? 'bad-text' : '' }, `⛔ ${v.who} · dalle ${fmtTime(v.enteredAt)}`, v.alertedAt ? h('strong', null, ' · oltre 30″') : ' · conto alla rovescia in corso',
+      v.lat != null ? h('button', { class: 'btn btn-sm btn-ghost', onclick: (e) => { e.stopPropagation(); fieldMap.highlight(`np${v.id}`); } }, 'Mostra') : null))) : null,
+    past.length ? h('div', { class: 'tiny muted' }, 'Ultime uscite: ', past.map((v) => `${v.who} (${fmtTime(v.enteredAt)}–${fmtTime(v.leftAt)}${v.alertedAt ? ', avvisata' : ''})`).join(' · ')) : null);
 }
 
 // Modifica dei punti di una zona: vertici trascinabili, «＋» a metà di ogni lato per aggiungerne uno,

@@ -1808,8 +1808,11 @@ function eventCard(e) {
     e.description ? h('div', { class: 'md' }, md(e.description)) : null,
     // Taglia su sé stessi: la regola, chiara, per chi si iscrive (e per gli Eletti che cacciano).
     e.mode === 'bounty' ? h('div', { class: 'note ev-bounty' }, isElect()
-      ? `🎯 Taglia: le coppie iscritte compaiono sulla vostra mappa e negli Scontri. Ingaggiatele entro ${e.durationMin} minuti: chi ingaggiate perde il premio.`
-      : `🎯 Taglia su di voi: all'avvio gli Eletti vi vedono sulla mappa per ${e.durationMin} minuti. Se nessuno vi ingaggia entro la fine, vincete il premio; se vi ingaggiano, perdete.`) : null,
+      ? `🎯 Taglia: le coppie iscritte compaiono sulla vostra mappa e negli Scontri, a intermittenza: 5 minuti tracciate, 5 minuti solo l'ultima posizione nota (in grigio); gli ultimi 5 minuti sempre tracciate. Ingaggiatele entro ${e.durationMin} minuti: chi ingaggiate perde il premio.`
+      : `🎯 Taglia su di voi: per ${e.durationMin} minuti gli Eletti vi cacciano. Vi vedono a intermittenza: 5 minuti tracciati, 5 minuti solo la vostra ultima posizione; gli ultimi 5 minuti sempre tracciati. Se nessuno vi ingaggia entro la fine, vincete il premio; se vi ingaggiano, perdete.`,
+    e.tracking ? h('div', { class: `ev-track ${e.tracking.on ? 'on' : ''}` }, e.tracking.on
+      ? [h('strong', null, '📡 Tracciati adesso'), e.tracking.last ? ' · fino alla fine: ' : ' · ancora ', h('span', { class: 'mono', 'data-abs': e.tracking.until }, '—')]
+      : [h('strong', null, '🌫 Vedono solo l\'ultima posizione'), ' · tracciati di nuovo tra ', h('span', { class: 'mono', 'data-abs': e.tracking.until }, '—')]) : null) : null,
     h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
     eventWhen(e),
     e.location ? h('div', { class: 'ev-place' }, h('span', null, mdi('mapMarker', 18), ' ', h('strong', null, e.location.label)),
@@ -2489,16 +2492,22 @@ function offlineRow() {
 // ---- Posizione del telefono: mappa in tempo reale, zone decise sul telefono e invio al server.
 let localFixAt = 0;
 let beaconPaintAt = 0;
+let myPosAt = 0;
 function onPhonePos(p) {
   myPos = p;
+  myPosAt = Date.now();
   paintEmpGuide();
   // Pagina Beacon: le distanze seguono il GPS (al più ogni 2 secondi).
   if (route().view === 'beacon' && Date.now() - beaconPaintAt > 2000) { beaconPaintAt = Date.now(); beaconTick(); }
   teamMapView.setMe(p);
   guideMapView.setMe(p);
   const changed = localZoneCheck(p);
-  // Appena si entra o si esce da una zona la posizione parte subito (il server applica gli effetti di gioco).
-  if (S.state && trackingOn(S.state)) sendPosition(p, changed);
+  const np = noplayCheck(p);
+  if (np) render();
+  else document.getElementById('np-guide') && paintExitGuide(document.getElementById('np-guide'), noplayNow()?.z, NP_CLEAR_M, '#ff2a2a', 'allontanatevi dalla zona');
+  // Appena si entra o si esce da una zona la posizione parte subito (il server applica gli effetti di gioco);
+  // vicino a una NO PLAY ogni 5 secondi, perché la regia sappia subito se uscite.
+  if (S.state && trackingOn(S.state)) sendPosition(p, changed || np || (!!NP && Date.now() - lastSent.at > 5000));
 }
 
 // Zone dal GPS del telefono, con lo stesso margine sul bordo del server: si entra a 3 m dentro, si esce oltre 12 m
@@ -2521,8 +2530,11 @@ function empGuide() {
   return box;
 }
 function paintEmpGuide(box = document.getElementById('emp-guide')) {
-  if (!box) return;
-  const z = empZone();
+  if (box) paintExitGuide(box, empZone(), EMP_EXIT_M, '#22c3e6', 'appena fuori il disturbo finisce');
+}
+// Guida per uscire da una zona (Disturbo, NO PLAY): mini mappa del confine con voi al centro, freccia e metri.
+// Da dentro la freccia punta al bordo più vicino; da appena fuori punta dalla parte opposta (allontanatevi).
+function paintExitGuide(box, z, margin, color, outText) {
   if (!z || !myPos) { box.replaceChildren(h('span', { class: 'small' }, myPos ? '' : 'In attesa del GPS per indicarvi l\'uscita…')); return; }
   // Coordinate locali in metri (x a est, y a nord) attorno a voi.
   const M = 111320;
@@ -2539,16 +2551,17 @@ function paintEmpGuide(box = document.getElementById('emp-guide')) {
     if (!best || d < best.d) best = { x: px, y: py, d };
   }
   const depth = edgeDepthM(myPos, z.points);
-  const toGo = Math.max(0, Math.round(depth + EMP_EXIT_M));
-  const ang = (Math.atan2(best.x, best.y) * 180) / Math.PI; // 0 = nord, in senso orario
+  const toGo = Math.max(0, Math.round(depth + margin));
+  const ang = (Math.atan2(depth < 0 ? -best.x : best.x, depth < 0 ? -best.y : best.y) * 180) / Math.PI; // 0 = nord, in senso orario
   const dir = DIRS[Math.round(((ang + 360) % 360) / 45) % 8];
   // Mini mappa del confine: la zona e voi, in scala, nord in alto.
   const span = Math.max(30, ...pts.map(([x, y]) => Math.max(Math.abs(x), Math.abs(y)))) * 1.1;
   const sc = 70 / span;
   const P = ([x, y]) => `${(80 + x * sc).toFixed(1)},${(80 - y * sc).toFixed(1)}`;
-  const ex = 80 + best.x * sc; const ey = 80 - best.y * sc;
+  const away = depth < 0 ? Math.max(1, best.d) : 0;
+  const ex = depth < 0 ? 80 - (best.x / away) * 30 : 80 + best.x * sc; const ey = depth < 0 ? 80 + (best.y / away) * 30 : 80 - best.y * sc;
   const svg = `<svg viewBox="0 0 160 160" width="160" height="160" aria-hidden="true">
-    <polygon points="${pts.map(P).join(' ')}" fill="rgba(34,195,230,.12)" stroke="#22c3e6" stroke-width="2" stroke-dasharray="5 4"/>
+    <polygon points="${pts.map(P).join(' ')}" fill="${color}22" stroke="${color}" stroke-width="2" stroke-dasharray="5 4"/>
     <line x1="80" y1="80" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#fff" stroke-width="2.5" marker-end="url(#emp-arr)"/>
     <defs><marker id="emp-arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fff"/></marker></defs>
     <circle cx="80" cy="80" r="6" fill="#3b82f6" stroke="#fff" stroke-width="2"/>
@@ -2556,7 +2569,7 @@ function paintEmpGuide(box = document.getElementById('emp-guide')) {
   const mini = h('div', { class: 'emp-mini' });
   mini.innerHTML = svg;
   box.replaceChildren(mini,
-    depth < 0 ? h('div', { class: 'emp-out' }, h('strong', null, `Ancora ${toGo} m`), h('span', { class: 'small' }, `verso ${dir}: appena fuori il disturbo finisce`))
+    depth < 0 ? h('div', { class: 'emp-out' }, h('span', { class: 'emp-arrow', style: { transform: `rotate(${ang.toFixed(0)}deg)` }, 'aria-hidden': 'true' }, '⬆'), h('strong', null, `Ancora ${toGo} m`), h('span', { class: 'small' }, `verso ${dir}: ${outText}`))
       : h('div', { class: 'emp-out' }, h('span', { class: 'emp-arrow', style: { transform: `rotate(${ang.toFixed(0)}deg)` }, 'aria-hidden': 'true' }, '⬆'),
         h('strong', null, `${toGo} m per uscire`), h('span', { class: 'small' }, `verso ${dir} (nord in alto) · GPS ±${Math.round(myPos.acc || 0)} m`)));
 }
@@ -2577,6 +2590,55 @@ function edgeDepthM(pt, poly) {
   return inside ? best : -best;
 }
 const zonesLive = () => S.state?.team?.kind === 'couple' && ACTIVE_OR_PAUSED.includes(S.state?.clock?.status);
+
+// ---- Zona NO PLAY (coppie ed Eletti): a 5 m dal bordo parte la schermata con 30 secondi per allontanarsi (oltre 15 m
+// fuori è finita), poi la regia viene avvisata. Il telefono la mostra subito; il tempo vero è quello del server.
+const NP_NEAR_M = 5;
+const NP_CLEAR_M = 15;
+const NP_GRACE_MS = 30000;
+let NP = null; // { zoneId, since } dal GPS del telefono
+const noplayLive = () => ['couple', 'elect'].includes(S.state?.team?.kind) && ACTIVE.includes(S.state?.clock?.status);
+const noplayZones = () => (S.state?.zones?.list || []).filter((z) => z.kind === 'noplay' && z.active && z.points);
+function noplayCheck(p) {
+  if (!noplayLive() || p.acc > 60) { const was = !!NP; NP = null; return was; }
+  const zs = noplayZones();
+  if (NP) {
+    const z = zs.find((x) => x.id === NP.zoneId);
+    if (z && edgeDepthM(p, z.points) >= -NP_CLEAR_M) return false;
+    NP = null;
+  }
+  const z = zs.find((x) => edgeDepthM(p, x.points) >= -NP_NEAR_M);
+  if (z) { NP = { zoneId: z.id, since: clock.serverNow() }; vibrate([400, 150, 400, 150, 400]); }
+  return true;
+}
+// La violazione da mostrare: quella del server (tempo vero) o quella vista dal telefono.
+function noplayNow() {
+  if (!noplayLive() || sosMode()) return null;
+  const srv = S.state?.zones?.noplay;
+  // Il telefono vi sa già fuori (GPS fresco): la schermata sparisce subito, il server chiude al prossimo invio.
+  const fresh = myPos && Date.now() - myPosAt < 30000;
+  const zoneId = NP?.zoneId ?? (fresh && myPos ? null : srv?.zoneId);
+  if (zoneId == null) return null;
+  const z = (S.state?.zones?.list || []).find((x) => x.id === zoneId);
+  if (!z) return null;
+  const s = srv && srv.zoneId === zoneId ? srv : null;
+  return { z, deadline: s ? s.deadline : NP.since + NP_GRACE_MS, alerted: !!s?.alertedAt };
+}
+function noplayScreen() {
+  const np = noplayNow();
+  if (!np) return null;
+  const late = np.alerted || np.deadline <= clock.serverNow();
+  const box = h('div', { class: 'emp-guide', id: 'np-guide' });
+  paintExitGuide(box, np.z, NP_CLEAR_M, '#ff2a2a', 'allontanatevi dalla zona');
+  return h('div', { class: `noplay-screen ${late ? 'late' : ''}`, role: 'alertdialog', 'aria-live': 'assertive' },
+    h('div', { class: 'np-ico', 'aria-hidden': 'true' }, '⛔'),
+    h('h2', null, 'Zona NO PLAY'),
+    np.z.name && np.z.name !== np.z.label ? h('div', { class: 'eyebrow' }, np.z.name) : null,
+    h('p', null, 'Qui non si gioca: non potete entrare. Allontanatevi subito.'),
+    late ? h('div', { class: 'np-late' }, h('strong', null, 'La regia è stata avvisata'), h('span', { class: 'small' }, 'Uscite dalla zona e restate in ascolto della radio.'))
+      : h('div', { class: 'np-count' }, h('span', { class: 'small' }, 'Avete'), h('strong', { class: 'mono', 'data-abs': np.deadline }, '—'), h('span', { class: 'small' }, 'per uscire, poi viene avvisata la regia')),
+    box);
+}
 function localZoneCheck(p) {
   const zs = S.state?.zones;
   if (!zs || !zonesLive() || p.acc > 60) return false;
@@ -2587,7 +2649,7 @@ function localZoneCheck(p) {
   const ids = new Set(zs.list.map((z) => z.id));
   for (const id of [...LZ.keys()]) if (!ids.has(id)) { LZ.delete(id); changed = true; }
   for (const z of zs.list) {
-    if (!z.active) { if (LZ.delete(z.id)) changed = true; continue; }
+    if (!z.active || z.kind === 'noplay') { if (LZ.delete(z.id)) changed = true; continue; }
     const d = edgeDepthM(p, z.points);
     const st = LZ.get(z.id);
     if (!st) { if (d >= 3) { LZ.set(z.id, { outSince: null, since: now }); entered.push(z); changed = true; } continue; }
@@ -2644,6 +2706,8 @@ function zoneHud() {
   const zs = S.state?.zones;
   applyZoneFx();
   if (sosMode()) return null;
+  const np = noplayScreen();
+  if (np) return np;
   // Conquista: dal telefono (sparisce appena si esce); il tempo è quello del server se lui vi sa dentro, se no da quando
   // il telefono vi ha visti entrare (uscendo si azzera).
   const cqZone = hereZones().find((z) => z.kind === 'conquista' && !z.winnerTeamId);
@@ -2999,6 +3063,7 @@ function trackingCards(st) {
 // Alleanze sporche: la squadra di Eletti in arrivo, poi alleata per 30 minuti.
 function dirtyLine(d) {
   if (!d.squadName) return h('div', null, '🤝 Alleanze sporche: il Consiglio sta scegliendo la squadra di Eletti.');
+  if (!d.acceptedAt) return h('div', null, `🤝 Chiamata la squadra ${d.squadName}: la vedrete sulla mappa appena prende in consegna l'incarico.`);
   if (!d.startedAt) return h('div', null, `🤝 La squadra ${d.squadName} vi raggiunge (pallini sulla mappa): l'alleanza parte quando siete vicini.`);
   return h('div', null, `🤝 Alleati con la squadra ${d.squadName} ancora `, h('span', { class: 'mono', 'data-abs': d.endsAt }, '—'));
 }

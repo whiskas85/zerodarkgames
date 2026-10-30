@@ -17,7 +17,12 @@ const KINDS = {
   emp: { label: 'Zona di Disturbo', icon: '⚡', color: '#22c3e6', effect: 'Dentro non funzionano le Skill attive e la mappa è oscurata.' },
   santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano più in fretta (×{rate}).' },
   conquista: { label: 'Zona di Conquista', icon: '👑', color: '#e5484d', effect: 'La prima coppia che resta dentro {min} minuti di fila vince un Dono a caso.' },
+  noplay: { label: 'Zona NO PLAY', icon: '⛔', color: '#ff2a2a', effect: 'Vietato entrare, per coppie ed Eletti. Chi si avvicina ha 30 secondi per allontanarsi, poi la regia viene avvisata.' },
 };
+// NO PLAY: scatta a 5 m dal bordo (il GPS sbaglia di qualche metro), finisce oltre 15 m fuori; 30 secondi per uscire.
+const NOPLAY_NEAR_M = 5;
+const NOPLAY_CLEAR_M = 15;
+const NOPLAY_GRACE_MS = 30000;
 // Santuario: moltiplicatore della ricarica scelto dalla regia (da ×1,1 a ×10; di base ×2).
 const DEFAULT_RATE = 2;
 const rateOf = (z) => (Number(z.rate) > 1 ? Number(z.rate) : DEFAULT_RATE);
@@ -83,7 +88,7 @@ function createZone(gameId, data, actor) {
   const layer = data.layer != null && data.layer !== '' ? Math.max(1, Math.min(999, Math.round(Number(data.layer)) || 1)) : top + 1;
   const holdMin = data.kind === 'conquista' ? Math.max(1, Math.min(60, Math.round(Number(data.holdMin)) || 3)) : null;
   const name = String(data.name || '').trim().slice(0, 60) || KINDS[data.kind].label;
-  const active = data.active === false ? 0 : 1;
+  const active = data.active === false && data.kind !== 'noplay' ? 0 : 1;
   const enabled = data.enabled === false ? 0 : 1;
   const beaconMin = clampBeacon(data.beaconMin);
   const beaconOnMin = clampOn(data.beaconOnMin);
@@ -158,6 +163,7 @@ function deleteZone(id, actor) {
 // conosceva (nuova, non abilitata, ridisegnata); se invece la vedeva già in grigio sapeva del rischio e la subisce subito.
 function markImmune(z, immune = true) {
   q.run('DELETE FROM zone_presence WHERE zoneId = ?', z.id);
+  if (z.kind === 'noplay') return;
   const poly = pointsOf(z);
   for (const t of G.teamsOf(z.gameId)) {
     const p = teamPos(t.id);
@@ -173,10 +179,12 @@ function changed(gameId) {
 // ---------------------------------------------------------------- posizioni
 
 // Una posizione nuova di una coppia: ingressi e uscite dalle zone attive.
-function onPosition(team, pos, now = Date.now()) {
-  if (team.kind !== 'couple') return;
+function onPosition(team, pos, now = Date.now(), player = null) {
   const g = G.getGame(team.gameId);
   if (!C.ACTIVE.includes(g.status)) return;
+  // Eletti: per loro conta solo la NO PLAY, telefono per telefono.
+  if (team.kind === 'elect') { if (player) noplayCheck(g, team, player, (poly) => edgeDepth(pos, poly), pos, now); return; }
+  if (team.kind !== 'couple') return;
   let any = false;
   // Tutti i telefoni della coppia sentiti negli ultimi 2 minuti (la coppia è dentro se almeno uno lo è).
   // Conta il GPS del telefono con l'app aperta (istantaneo); Traccar («trk-…») solo se l'app non manda da 1 minuto.
@@ -185,6 +193,7 @@ function onPosition(team, pos, now = Date.now()) {
   const devs = fromApp.length ? fromApp : recent;
   if (!devs.length) devs.push(pos);
   for (const z of zonesOf(g.id)) {
+    if (z.kind === 'noplay') continue;
     const poly = pointsOf(z);
     const depth = Math.max(...devs.map((d) => edgeDepth(d, poly)));
     const pr = q.get('SELECT * FROM zone_presence WHERE zoneId = ? AND teamId = ?', z.id, team.id);
@@ -205,6 +214,63 @@ function onPosition(team, pos, now = Date.now()) {
     }
   }
   if (any) { rt.toTeams(g.id, 'state', {}, team.id); rt.toStaff(g.id, 'zones'); }
+  noplayCheck(g, team, null, (poly) => Math.max(...devs.map((d) => edgeDepth(d, poly))), pos, now);
+}
+
+// ---------------------------------------------------------------- NO PLAY
+
+const noplayZones = (gameId) => zonesOf(gameId).filter((z) => z.kind === 'noplay');
+const openHit = (zoneId, team, player) => (player
+  ? q.get('SELECT * FROM noplay_hits WHERE zoneId = ? AND playerId = ? AND leftAt IS NULL', zoneId, player.id)
+  : q.get('SELECT * FROM noplay_hits WHERE zoneId = ? AND teamId = ? AND playerId IS NULL AND leftAt IS NULL', zoneId, team.id));
+const electLabel = (player) => {
+  const sq = player.squadId ? q.get('SELECT name FROM elect_squads WHERE id = ?', player.squadId) : null;
+  return `${player.nickname || player.name}${sq ? ` (squadra ${sq.name})` : ' (Eletti)'}`;
+};
+const coupleLabel = (teamId) => { const t = q.get('SELECT s.roman, s.name FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', teamId); return t ? `${t.roman} · Settore ${t.name}` : 'Coppia'; };
+const hitWho = (h) => (h.playerId ? electLabel(q.get('SELECT * FROM players WHERE id = ?', h.playerId) || { name: 'Eletto' }) : coupleLabel(h.teamId));
+function noplayCheck(g, team, player, depthOf, pos, now) {
+  let any = false;
+  for (const z of noplayZones(g.id)) {
+    const d = depthOf(pointsOf(z));
+    const hit = openHit(z.id, team, player);
+    if (!hit && d >= -NOPLAY_NEAR_M) {
+      q.run('INSERT INTO noplay_hits (gameId, zoneId, teamId, playerId, enteredAt, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)', g.id, z.id, team.id, player?.id ?? null, now, pos.lat, pos.lng);
+      G.log(g.id, player ? `giocatore:${player.id}` : `coppia:${team.id}`, 'noplay_enter', { teamId: team.id, who: player ? electLabel(player) : coupleLabel(team.id), zone: z.name, lat: pos.lat, lng: pos.lng });
+      any = true;
+    } else if (hit && d < -NOPLAY_CLEAR_M) {
+      q.run('UPDATE noplay_hits SET leftAt = ? WHERE id = ?', now, hit.id);
+      G.log(g.id, player ? `giocatore:${player.id}` : `coppia:${team.id}`, 'noplay_exit', { teamId: team.id, who: hitWho(hit), zone: z.name, alerted: !!hit.alertedAt });
+      if (hit.alertedAt) rt.pushMasters({ title: `⛔ Uscita dalla NO PLAY`, body: `${hitWho(hit)} è uscita da «${z.name}»`, tag: `noplay-${hit.id}`, url: '/regia#mappa' });
+      any = true;
+    } else if (hit && d >= -NOPLAY_NEAR_M) q.run('UPDATE noplay_hits SET lat = ?, lng = ? WHERE id = ?', pos.lat, pos.lng, hit.id);
+  }
+  if (any) { rt.toTeams(g.id, 'state', {}, team.id); rt.toStaff(g.id, 'zones'); }
+}
+
+// Dopo 30 secondi ancora dentro: avviso alla regia (una volta). Zona spenta o tolta: la violazione si chiude.
+function noplayTick(gameId, now) {
+  for (const h of q.all(`SELECT h.*, z.name AS zoneName, z.active, z.enabled, z.kind FROM noplay_hits h JOIN map_zones z ON z.id = h.zoneId
+                         WHERE h.gameId = ? AND h.leftAt IS NULL`, gameId)) {
+    if (!h.active || !h.enabled || h.kind !== 'noplay') {
+      q.run('UPDATE noplay_hits SET leftAt = ? WHERE id = ?', now, h.id);
+      rt.toTeams(gameId, 'state', {}, h.teamId);
+      continue;
+    }
+    if (h.alertedAt || h.enteredAt + NOPLAY_GRACE_MS > now) continue;
+    q.run('UPDATE noplay_hits SET alertedAt = ? WHERE id = ?', now, h.id);
+    G.log(gameId, 'sistema', 'noplay_alert', { teamId: h.teamId, who: hitWho(h), zone: h.zoneName, lat: h.lat, lng: h.lng });
+    rt.pushMasters({ title: '⛔ NO PLAY violata', body: `${hitWho(h)} è dentro «${h.zoneName}» da oltre 30 secondi`, tag: `noplay-${h.id}`, url: '/regia#mappa', requireInteraction: true });
+    rt.toStaff(gameId, 'zones');
+    rt.toTeams(gameId, 'state', {}, h.teamId);
+  }
+}
+// Per il telefono: la violazione aperta (della coppia, o di questo Eletto).
+function noplayOf(t, player) {
+  const h = t.kind === 'elect'
+    ? (player ? q.get('SELECT h.*, z.name AS zoneName FROM noplay_hits h JOIN map_zones z ON z.id = h.zoneId WHERE h.playerId = ? AND h.leftAt IS NULL ORDER BY h.id DESC LIMIT 1', player.id) : null)
+    : q.get('SELECT h.*, z.name AS zoneName FROM noplay_hits h JOIN map_zones z ON z.id = h.zoneId WHERE h.teamId = ? AND h.playerId IS NULL AND h.leftAt IS NULL ORDER BY h.id DESC LIMIT 1', t.id);
+  return h ? { zoneId: h.zoneId, name: h.zoneName, enteredAt: h.enteredAt, deadline: h.enteredAt + NOPLAY_GRACE_MS, alertedAt: h.alertedAt } : null;
 }
 
 // Zone che agiscono su una coppia adesso (dentro e non immune), dalla priorità più bassa alla più alta.
@@ -230,6 +296,7 @@ function tickAll(now = Date.now()) {
   lastTick = now;
   const games = q.all(`SELECT id FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(',')})`, ...C.ACTIVE);
   for (const { id: gameId } of games) {
+    noplayTick(gameId, now);
     // Accesa da un Beacon a tempo: allo scadere si spegne da sola.
     for (const z of q.all('SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND activeUntil IS NOT NULL AND activeUntil <= ?', gameId, now)) {
       updateZone(z.id, { active: false }, 'sistema');
@@ -265,7 +332,7 @@ function conquer(z, teamId, now) {
 // ---------------------------------------------------------------- Beacon degli Eletti
 
 // Le zone spente in cui cade un punto (la più alta per strato per prima).
-const offZonesAt = (gameId, pos) => q.all('SELECT * FROM map_zones WHERE gameId = ? AND active = 0 AND enabled = 1 ORDER BY layer DESC, id DESC', gameId).filter((z) => inside(pos, pointsOf(z)));
+const offZonesAt = (gameId, pos) => q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 0 AND enabled = 1 AND kind != 'noplay' ORDER BY layer DESC, id DESC", gameId).filter((z) => inside(pos, pointsOf(z)));
 const readPos = (body) => {
   const lat = Number(body?.lat); const lng = Number(body?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw err(400, 'Posizione non disponibile: attiva il GPS');
@@ -361,7 +428,7 @@ const beaconOut = (z) => ({ id: z.id, name: z.name, kind: z.kind, label: KINDS[z
 function electBeacon(team, player) {
   if (!team || team.kind !== 'elect') return null;
   const g = G.getGame(team.gameId);
-  const off = q.all('SELECT * FROM map_zones WHERE gameId = ? AND active = 0 AND enabled = 1 ORDER BY name', team.gameId);
+  const off = q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 0 AND enabled = 1 AND kind != 'noplay' ORDER BY name", team.gameId);
   const mine = player ? off.find((z) => z.beaconPlayerId === player.id && z.beaconEndsAt && z.beaconEndsAt > Date.now() - 60000) : null;
   const radius = Number(g.altarRadiusM) > 0 ? Number(g.altarRadiusM) : 30;
   const tasks = player?.squadId ? q.all("SELECT id, text, targetRef FROM squad_tasks WHERE squadId = ? AND kind = 'beacon' AND doneAt IS NULL AND cancelledAt IS NULL", player.squadId) : [];
@@ -395,16 +462,18 @@ function zoneOut(z) {
 
 function masterZones(gameId) {
   return { kinds: KINDS, list: zonesOf(gameId, false).map((z) => ({ ...zoneOut(z),
-    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id) })) };
+    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id),
+    violations: z.kind === 'noplay' ? q.all('SELECT * FROM noplay_hits WHERE zoneId = ? AND (leftAt IS NULL OR leftAt > ?) ORDER BY id DESC LIMIT 20', z.id, Date.now() - 3 * 3600000)
+      .map((h) => ({ id: h.id, who: hitWho(h), teamId: h.teamId, playerId: h.playerId, enteredAt: h.enteredAt, alertedAt: h.alertedAt, leftAt: h.leftAt, lat: h.lat, lng: h.lng })) : [] })) };
 }
 
 // Per la coppia: tutte le zone attive (con l'effetto), quelle in cui è adesso e l'avanzamento della Conquista.
-function teamZones(t) {
+function teamZones(t, player = null) {
   if (!t || !['couple', 'elect'].includes(t.kind)) return null;
   // Eletti: vedono le zone abilitate (accese e spente: dove lanciare il Beacon), senza effetti su di loro.
   if (t.kind === 'elect') {
     return { list: q.all('SELECT * FROM map_zones WHERE gameId = ? AND enabled = 1 ORDER BY layer, id', t.gameId).map(zoneOut), here: [], visibility: null, emp: false, won: [], recharge: 1,
-      countdown: !!G.getGame(t.gameId).zoneCountdown };
+      countdown: !!G.getGame(t.gameId).zoneCountdown, noplay: noplayOf(t, player) };
   }
   // Prima del Cerchio le coppie non vedono le zone (come gli altri luoghi del gioco).
   if (['created', 'draft', 'ready'].includes(G.getGame(t.gameId).status)) return null;
@@ -420,6 +489,7 @@ function teamZones(t) {
     visibility: visibilityOf(t.id),
     // La regia sceglie se mostrare sulla mappa quanto manca allo spegnimento delle zone a tempo.
     countdown: !!g.zoneCountdown,
+    noplay: noplayOf(t, null),
     // Zone in cui la coppia era già dentro quando sono nate: il telefono non ne mostra l'effetto finché non esce e rientra.
     immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),
@@ -429,4 +499,4 @@ function teamZones(t) {
   };
 }
 
-module.exports = { KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
+module.exports = { NOPLAY_GRACE_MS, KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };

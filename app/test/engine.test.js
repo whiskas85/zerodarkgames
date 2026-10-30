@@ -1469,6 +1469,9 @@ test('Skill con gli Eletti (fase 3): Maestro della caccia, Ombra che interrompe 
   assert.equal(meet.squadId, sqId);
   // Anche l'Alleanza sporca va accettata dalla squadra: prima la coppia non la vede arrivare.
   assert.ok(!S.sightingsFor(Cc).some((x) => x.kind === 'elect'));
+  // Vicini ma non ancora presa in consegna: l'alleanza non parte.
+  S.tickAll(Date.now());
+  assert.ok(!q.get('SELECT startedAt FROM squad_tasks WHERE id = ?', meet.id).startedAt);
   F.acceptTask(meet.id, 'test', g.id, sqId);
   assert.ok(S.sightingsFor(Cc).some((x) => x.kind === 'elect'));
   S.tickAll(Date.now());
@@ -2581,6 +2584,67 @@ test('zone: accesa da un Beacon resta accesa i minuti impostati e poi si spegne;
   assert.equal(fire().zone.activeUntil, null);
 });
 
+test('NO PLAY: a 5 m dal bordo parte il conto alla rovescia, dopo 30 secondi la regia è avvisata; vale anche per gli Eletti', () => {
+  const Z = require('../src/zones');
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const elect = G.ensureElect(g.id);
+  const ep = q.get('SELECT * FROM players WHERE id = ?', Number(q.run("INSERT INTO players (gameId, teamId, name, status, createdAt) VALUES (?, ?, 'Eletto Np', 'accepted', ?)", g.id, elect.id, Date.now()).lastInsertRowid));
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const sq = [[44.999, 8.999], [44.999, 9.001], [45.001, 9.001], [45.001, 8.999]];
+  const z = Z.createZone(g.id, { kind: 'noplay', points: sq, active: false }, 'test');
+  assert.equal(z.active, true); // la NO PLAY nasce sempre accesa e non si accende con il Beacon
+  const pl = q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  // Lontano: niente. A 3 m fuori dal bordo: parte.
+  F.recordPosition(A, pl, { deviceId: `noplay-dev-${A.id}`, lat: 45.002, lng: 9, acc: 5 });
+  assert.equal(Z.teamZones(A).noplay, null);
+  F.recordPosition(A, pl, { deviceId: `noplay-dev-${A.id}`, lat: 45.00103, lng: 9, acc: 5 });
+  const np = Z.teamZones(A).noplay;
+  assert.equal(np.zoneId, z.id);
+  assert.equal(np.deadline - np.enteredAt, 30000);
+  assert.deepEqual(Z.teamZones(A).here, []);
+  // Dopo 30 secondi: avvisata la regia (una volta).
+  Z.tickAll(np.enteredAt + 31000);
+  assert.ok(Z.teamZones(A).noplay.alertedAt);
+  assert.ok(q.get("SELECT 1 FROM event_log WHERE gameId = ? AND type = 'noplay_alert'", g.id));
+  assert.equal(Z.masterZones(g.id).list.find((x) => x.id === z.id).violations[0].alertedAt > 0, true);
+  // A 10 m fuori resta (margine), oltre 15 m è finita.
+  F.recordPosition(A, pl, { deviceId: `noplay-dev-${A.id}`, lat: 45.00109, lng: 9, acc: 5 });
+  assert.ok(Z.teamZones(A).noplay);
+  F.recordPosition(A, pl, { deviceId: `noplay-dev-${A.id}`, lat: 45.0012, lng: 9, acc: 5 });
+  assert.equal(Z.teamZones(A).noplay, null);
+  // Eletto: telefono per telefono.
+  F.recordPosition(elect, ep, { deviceId: `noplay-elect-${ep.id}`, lat: 45, lng: 9, acc: 5 });
+  assert.equal(Z.teamZones(elect, ep).noplay.zoneId, z.id);
+  assert.match(Z.masterZones(g.id).list.find((x) => x.id === z.id).violations[0].who, /Eletto Np/);
+  // Spenta dalla regia: la violazione si chiude.
+  Z.updateZone(z.id, { active: false }, 'test');
+  Z.tickAll(Date.now());
+  assert.equal(Z.teamZones(elect, ep).noplay, null);
+  // Niente Beacon sulla NO PLAY.
+  assert.ok(!Z.electBeacon(elect, ep).targets.some((t) => t.ref === `zone:${z.id}`));
+});
+
+test('Taglia su sé stessi: tracciamento a intermittenza, 5 minuti sì e 5 no, gli ultimi 5 sempre', () => {
+  const EV = require('../src/events');
+  const M = 60000;
+  const T0 = 1_800_000_000_000;
+  const ev = { mode: 'bounty', status: 'running', startedAt: T0, durationMin: 30 };
+  const at = (min) => { const r = EV.bountyPhase(ev, T0 + min * M); return r && { ...r, since: r.since - T0, until: r.until - T0 }; };
+  assert.deepEqual([at(1).on, at(6).on, at(11).on, at(16).on, at(21).on, at(26).on], [true, false, true, false, true, true]);
+  assert.equal(at(6).since, 5 * M); // ferma all'ultima posizione di quando il tracciamento si è spento
+  assert.equal(at(6).until, 10 * M);
+  assert.equal(at(21).until, 30 * M); // il tracciamento delle 20 prosegue fino alla fine
+  assert.ok(at(26).last);
+  // 22 minuti: 15-20 spenta finisce dove iniziano gli ultimi 5 (17).
+  const ev2 = { ...ev, durationMin: 22 };
+  assert.equal(EV.bountyPhase(ev2, T0 + 16 * M).until, T0 + 17 * M);
+  assert.equal(EV.bountyPhase(ev2, T0 + 18 * M).on, true);
+  assert.equal(EV.bountyPhase({ ...ev, mode: 'manual' }, T0 + M), null);
+});
+
 test('Santuario: moltiplicatore della ricarica scelto dalla regia', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);
@@ -2746,6 +2810,17 @@ test('evento «taglia su sé stessi»: le squadre vedono le iscritte, allo scade
   EV.startEvent(ev.id, { master: true, actor: 'test' });
   assert.ok(F.electVisibleTeams(g.id, sq).some((x) => x.teamId === A.id && x.why.includes('Taglia')));
   assert.ok(EV.teamEvents(elect, pE).some((x) => x.id === ev.id));
+  // Taglia lunga: dopo 5 minuti B resta ferma all'ultima posizione (grigia), poi torna tracciata.
+  const now0 = Date.now();
+  q.run('UPDATE game_events SET startedAt = ?, durationMin = 30 WHERE id = ?', now0 - 6 * 60000, ev.id);
+  q.run('INSERT INTO position_track (gameId, teamId, playerId, deviceId, lat, lng, acc, at) VALUES (?, ?, NULL, ?, 45.1, 9.1, 5, ?)', g.id, B.id, 'trk-b', now0 - 5.5 * 60000);
+  q.run('INSERT INTO positions (deviceId, gameId, teamId, playerId, lat, lng, at) VALUES (?, ?, ?, NULL, 45.2, 9.2, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = 45.2, at = excluded.at', 'pos-b', g.id, B.id, now0);
+  const frozen = F.electVisiblePositions(g.id, sq).find((x) => x.teamId === B.id);
+  assert.equal(frozen.lat, 45.1);
+  assert.ok(frozen.stale && frozen.frozen);
+  q.run('UPDATE game_events SET startedAt = ? WHERE id = ?', now0 - 11 * 60000, ev.id);
+  assert.equal(F.electVisiblePositions(g.id, sq).find((x) => x.teamId === B.id).lat, 45.2);
+  q.run('UPDATE game_events SET startedAt = ?, durationMin = 10 WHERE id = ?', now0, ev.id);
   // Gli Eletti ingaggiano A (anche se perdono, conta l'ingaggio).
   K.respondElectFight(A, K.reportElectFight(elect, pE, { teamId: A.id, result: 'lost' }).id, true);
   // Allo scadere: chiusura automatica, A ha perso e B ha vinto.

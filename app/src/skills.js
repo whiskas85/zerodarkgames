@@ -455,7 +455,7 @@ function applyGift(g, me, type, p) {
       const squad = nearestSquad(g.id, me);
       if (squad) F.assignTask(task.id, squad.id, 'sistema');
       else rt.pushMasters({ title: 'Alleanze sporche', body: `Il Settore ${team(me.id).sectorName} chiama gli Eletti: assegna una squadra.`, url: '/regia#squadre' });
-      return { message: squad ? `La squadra ${squad.name} vi raggiunge: la vedete sulla mappa.` : 'Il Consiglio sta scegliendo la squadra di Eletti che vi raggiungerà.' };
+      return { message: squad ? `Chiamata la squadra ${squad.name}: appena prende in consegna l'incarico la vedete sulla mappa; quando siete vicini parte l'alleanza.` : 'Il Consiglio sta scegliendo la squadra di Eletti che vi raggiungerà.' };
     }
     case 'reliquia':
       startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
@@ -839,7 +839,7 @@ function skillsState(me, now = Date.now()) {
     indicators: indicatorsFor(me, now),
     dirty: (() => {
       const t = q.get("SELECT t.*, s.name AS squadName FROM squad_tasks t LEFT JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id);
-      return t ? { squadName: t.squadName, startedAt: t.startedAt, endsAt: t.endsAt } : null;
+      return t ? { squadName: t.squadName, acceptedAt: t.acceptedAt, startedAt: t.startedAt, endsAt: t.endsAt } : null;
     })(),
     giftHints: giftHints(me, now),
     supply: C.ACTIVE.includes(g.status) ? supplyFor(me, g, now) : null,
@@ -938,11 +938,12 @@ function privilegeNotices(g, now) {
   }
 }
 
-// Alleanze sporche: l'alleanza parte quando un Eletto della squadra arriva entro 40 m dalla coppia e dura 30 minuti;
+// Alleanze sporche: la squadra prende in consegna l'incarico (lo accetta) e da lì vede la coppia sulla mappa;
+// l'alleanza parte quando un Eletto della squadra arriva entro 40 m dalla coppia e dura 30 minuti;
 // allo scadere gli Eletti se ne vanno, anche in mezzo a uno scontro.
 function meetings(g, now) {
   const F = require('./field');
-  for (const t of q.all("SELECT t.*, s.name AS squadName FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.gameId = ? AND t.kind = 'meet' AND t.doneAt IS NULL AND t.cancelledAt IS NULL", g.id)) {
+  for (const t of q.all("SELECT t.*, s.name AS squadName FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.gameId = ? AND t.kind = 'meet' AND t.acceptedAt IS NOT NULL AND t.doneAt IS NULL AND t.cancelledAt IS NULL", g.id)) {
     if (t.endsAt && t.endsAt <= now) {
       F.setTaskDone(t.id, true, 'sistema');
       rt.pushTeams(g.id, { title: 'Alleanza sporca finita', body: `La squadra ${t.squadName} lascia l'alleanza e si allontana.`, tag: `meet-${t.id}`, url: '/#/home' }, t.targetTeamId);

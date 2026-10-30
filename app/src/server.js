@@ -388,7 +388,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.skills = S.skillsState(req.team);
   st.serverTimers = req.team.kind === 'couple' ? K.serverTimers(req.team.id) : [];
   st.events = EV.teamEvents(req.team, req.player);
-  st.zones = Z.teamZones(req.team);
+  st.zones = Z.teamZones(req.team, req.player);
   st.offlineMap = TL.teamOffline(req.team.gameId);
   st.beacon = Z.electBeacon(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
