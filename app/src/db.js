@@ -504,6 +504,11 @@ addColumn('squad_tasks', 'endsAt', 'INTEGER');
 addColumn('squad_tasks', 'notifiedAt', 'INTEGER');
 // Incarico Beacon: il bersaglio da azionare («zone:ID» da accendere, «point:ID» Altare da disattivare).
 addColumn('squad_tasks', 'targetRef', 'TEXT');
+// Incarico a tempo: timeMin minuti da quando la squadra lo accetta (acceptedAt); allo scadere si chiude (expiredAt).
+addColumn('squad_tasks', 'timeMin', 'INTEGER');
+addColumn('squad_tasks', 'acceptedAt', 'INTEGER');
+addColumn('squad_tasks', 'acceptedBy', 'TEXT');
+addColumn('squad_tasks', 'expiredAt', 'INTEGER');
 
 // Emergenze reali (OFF GAME): dal pulsante dell'app o dall'SOS di Traccar, con la posizione di chi chiama.
 db.exec(`

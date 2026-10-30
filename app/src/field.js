@@ -229,6 +229,7 @@ function expireGift(g) {
 
 // Comparsa programmata (minuti dal via, pause escluse).
 function tickAll() {
+  expireTasks();
   const games = q.all(`SELECT * FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(',')})`, ...C.ACTIVE);
   for (const game of games) {
     const e = G.clockOf(game).elapsedMs / 60000;
@@ -699,9 +700,11 @@ function createTask(gameId, data, actor, extra = {}) {
       : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
   if (!text) throw err(400, 'Scrivi l\'incarico');
   const now = Date.now();
-  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, targetRef, source, sourceTeamId, assignedAt)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null, kind === 'beacon' ? target.targetRef : null,
+  // Tempo per svolgerlo (minuti da quando la squadra lo accetta); vuoto = senza limite.
+  const timeMin = Number(data.timeMin) > 0 ? Math.min(600, Math.round(Number(data.timeMin))) : null;
+  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, targetRef, timeMin, source, sourceTeamId, assignedAt)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null, kind === 'beacon' ? target.targetRef : null, timeMin,
   extra.source || 'regia', extra.sourceTeamId ?? null, s ? now : null).lastInsertRowid);
   G.log(Number(gameId), actor, 'squad_task', { squad: s?.name || null, text });
   if (s) notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });
@@ -715,7 +718,8 @@ function assignTask(taskId, squadId, actor) {
   const s = getSquad(squadId);
   if (s.gameId !== t.gameId) throw err(400, 'Squadra di un\'altra partita');
   const prev = t.squadId;
-  q.run('UPDATE squad_tasks SET squadId = ?, assignedAt = ? WHERE id = ?', s.id, Date.now(), t.id);
+  // Passato a un'altra squadra: il tempo riparte quando la nuova squadra lo accetta.
+  q.run('UPDATE squad_tasks SET squadId = ?, assignedAt = ?, acceptedAt = CASE WHEN squadId = ? THEN acceptedAt ELSE NULL END, acceptedBy = CASE WHEN squadId = ? THEN acceptedBy ELSE NULL END WHERE id = ?', s.id, Date.now(), s.id, s.id, t.id);
   G.log(t.gameId, actor, 'squad_task_assigned', { squad: s.name, text: t.text });
   if (prev && prev !== s.id) notifySquad(prev, { title: 'Incarico tolto', body: t.text, tag: `task-${t.id}` });
   notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: t.text, tag: `task-${t.id}` });
@@ -736,6 +740,30 @@ function cancelTask(taskId, actor, why = null) {
   if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
   return true;
+}
+
+// La squadra accetta un incarico a tempo: da adesso parte il conto alla rovescia.
+function acceptTask(taskId, who, gameId = null, squadId = null) {
+  const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
+  if (!t || (gameId && t.gameId !== Number(gameId))) throw err(404, 'Incarico non trovato');
+  if (t.doneAt || t.cancelledAt) throw err(409, 'Incarico già chiuso');
+  if (!t.squadId) throw err(409, 'Incarico non ancora affidato a una squadra');
+  if (squadId && t.squadId !== Number(squadId)) throw err(403, 'Non è un incarico della vostra squadra');
+  if (t.acceptedAt) return { ok: true, acceptedAt: t.acceptedAt };
+  const now = Date.now();
+  q.run('UPDATE squad_tasks SET acceptedAt = ?, acceptedBy = ? WHERE id = ?', now, who, t.id);
+  G.log(t.gameId, who, 'squad_task_accepted', { text: t.text, minutes: t.timeMin });
+  notifySquad(t.squadId, t.timeMin ? { title: 'Incarico accettato', body: `${t.text} · avete ${t.timeMin} minuti`, tag: `task-${t.id}` } : null);
+  rt.toStaff(t.gameId, 'field');
+  return { ok: true, acceptedAt: now };
+}
+
+// Incarichi a tempo scaduti (accettati e non fatti): si chiudono.
+function expireTasks(now = Date.now()) {
+  for (const t of q.all('SELECT * FROM squad_tasks WHERE timeMin IS NOT NULL AND acceptedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL AND acceptedAt + timeMin * 60000 <= ?', now)) {
+    q.run('UPDATE squad_tasks SET expiredAt = ? WHERE id = ?', now, t.id);
+    cancelTask(t.id, 'sistema', `Tempo scaduto: ${t.text}`);
+  }
 }
 
 function setTaskDone(taskId, done, who, gameId = null) {
@@ -1083,7 +1111,7 @@ function useGift(team, giftId, params = {}) {
 }
 
 module.exports = {
-  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, electVisiblePositions, electVisibleTeams, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
+  recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, electVisiblePositions, electVisibleTeams, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, acceptTask, expireTasks, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
   giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, resetAllGifts, revealGift, tickAll,
   createPoi, updatePoi, deletePoi, createGuide, updateGuide, deleteGuide, teamGuide, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

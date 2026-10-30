@@ -938,7 +938,7 @@ const EVENT_LABELS = {
   engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
   point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
-  squad_task_assigned: 'Incarico assegnato', squad_task_cancelled: 'Incarico annullato', dirty_alliance: 'Alleanza sporca', alliance_poisoned: 'Velenoso',
+  squad_task_assigned: 'Incarico assegnato', squad_task_cancelled: 'Incarico annullato', squad_task_accepted: 'Incarico accettato', dirty_alliance: 'Alleanza sporca', alliance_poisoned: 'Velenoso',
   skill_chosen: 'Skill scelta', skill_removed: 'Skill tolta', skill_used: 'Skill usata', skill_auto: 'Skill automatica',
   altar_scanned: 'Altare inquadrato', zone_created: 'Zona creata', zone_updated: 'Zona modificata', zone_deleted: 'Zona eliminata', zone_enter: 'Entrata in zona', zone_exit: 'Uscita dalla zona', zone_conquered: 'Zona conquistata', zone_beacon: 'Beacon lanciato', zone_beacon_done: 'Zona accesa dal Beacon', zone_beacon_failed: 'Beacon interrotto', zone_beacon_expired: 'Zona spenta: finito il tempo del Beacon', exfiltration: 'Esfiltrazione', exit_denied: 'Uscita negata', alliance_broken_distance: 'Alleanza rotta per distanza',
   sector_created: 'Settore creato', sector_updated: 'Settore modificato', sector_deleted: 'Settore eliminato', sector_archived: 'Settore archiviato', sector_restored: 'Settore ripristinato',
@@ -2527,8 +2527,12 @@ function taskLine(t, { assign = false } = {}) {
     // Da assegnare: quando è stato chiesto (e da chi), così si vede da quanto aspetta.
     assign ? h('span', { class: 'tiny task-asked' }, `Chiesto alle ${fmtTime(t.createdAt)}${t.sourceTeamId ? ` dal Settore ${R.ms?.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'}` : ''} · `,
       h('span', { 'data-ago': t.createdAt }, agoText(t.createdAt))) : null,
+    // Incarico a tempo: da accettare, oppure quanto manca (in tempo reale) da quando la squadra l'ha accettato.
+    t.timeMin && !closed ? h('span', { class: 'tiny task-timer' }, t.acceptedAt
+      ? ['⏱ accettato alle ', fmtTime(t.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${t.acceptedAt + t.timeMin * 60000}` }, '—')]
+      : `⏱ ${t.timeMin}′ da quando la squadra lo accetta`) : null,
     h('span', { class: 'tiny muted' }, [t.source !== 'regia' ? TASK_SOURCE[t.source] : null, t.kind === 'meet' && t.endsAt ? `alleanza fino alle ${fmtTime(t.endsAt)}` : null,
-      t.cancelledAt ? `annullato ${fmtTime(t.cancelledAt)}` : t.doneAt ? `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}` : null].filter(Boolean).join(' · ')),
+      t.expiredAt ? `tempo scaduto ${fmtTime(t.expiredAt)}` : t.cancelledAt ? `annullato ${fmtTime(t.cancelledAt)}` : t.doneAt ? `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}` : null].filter(Boolean).join(' · ')),
     sel, assign ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => { if (!Number(sel.value)) return toast('Scegli la squadra', 'error'); squadCall('POST', `/api/m/tasks/${t.id}/assign`, { squadId: Number(sel.value) }, 'Incarico assegnato'); } }, 'Assegna') : null,
     !closed ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => squadCall('POST', `/api/m/tasks/${t.id}/cancel`, {}, 'Incarico annullato') }, 'Annulla') : null,
     h('button', { class: 'btn btn-sm btn-ghost', 'aria-label': 'Elimina incarico', onclick: () => squadCall('DELETE', `/api/m/tasks/${t.id}`, undefined, 'Incarico eliminato') }, '✕'));
@@ -2687,7 +2691,11 @@ function viewTaskBoard(d) {
     ondragstart: (e) => { dragTask = it; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.key); e.currentTarget.classList.add('dragging'); },
     ondragend: (e) => { e.currentTarget.classList.remove('dragging'); dragTask = null; } },
     h('span', { class: 'task-ico', 'aria-hidden': 'true' }, it.icon || '•'),
-    h('div', { class: 'grow' }, h('strong', null, it.title), h('div', { class: 'tiny muted' }, it.what, it.point ? ' · punto indicato' : '')),
+    h('div', { class: 'grow' }, h('strong', null, it.title), h('div', { class: 'tiny muted' }, it.what, it.point ? ' · punto indicato' : ''),
+      // Incarico a tempo: da accettare, oppure quanto manca da quando la squadra l'ha accettato.
+      it.kind === 'task' && it.x.timeMin ? h('div', { class: 'tiny task-timer' }, it.x.acceptedAt
+        ? ['⏱ accettato alle ', fmtTime(it.x.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${it.x.acceptedAt + it.x.timeMin * 60000}` }, '—')]
+        : `⏱ ${it.x.timeMin}′ da quando la squadra lo accetta`) : null),
     h('div', { class: 'task-actions' },
       it.kind === 'task' || it.kind === 'event' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
       it.kind === 'event' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#eventi' }, 'Apri') : null,
@@ -2726,17 +2734,20 @@ async function newTaskDialog() {
   const beacon = h('input', { type: 'checkbox' });
   // Squadra: di base nessuna (l'incarico resta «Da affidare»); si sceglie cercando la squadra o un suo Eletto.
   const squad = squadSelect(null);
+  // Tempo per svolgerlo: parte quando la squadra lo accetta nella sua app; vuoto = senza limite.
+  const minutes = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza limite' });
   await modal({
     title: 'Nuovo incarico', okLabel: 'Crea',
     body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
       h('label', { class: 'check' }, beacon, ' 📡 Incarico Beacon: accendere la zona o disattivare l\'Altare scelto (si chiude da solo quando ci riescono)'),
-      h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad),
+      h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad),
+        h('label', { class: 'field' }, h('span', null, 'Tempo (minuti da quando lo accettano)'), minutes)),
       h('p', { class: 'tiny muted' }, 'Senza squadra compare tra quelli «Da affidare»: lo trascini sulla squadra che deve svolgerlo.')),
     onOk: async () => {
       if (!text.value.trim() && !target.value) throw new Error('Scrivi l\'incarico');
       const v = target.value || '';
       if (beacon.checked && !/^(zone|point):/.test(v)) throw new Error('Per un incarico Beacon scegli come bersaglio una zona o un Altare');
-      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: Number(squad.value) || null, text: text.value, target: v || null, kind: beacon.checked || v.startsWith('zone:') ? 'beacon' : undefined });
+      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: Number(squad.value) || null, timeMin: Number(minutes.value) > 0 ? Number(minutes.value) : null, text: text.value, target: v || null, kind: beacon.checked || v.startsWith('zone:') ? 'beacon' : undefined });
       toast(Number(squad.value) ? 'Incarico creato e affidato alla squadra' : 'Incarico creato', 'ok');
       await Promise.all([load(), loadField(false)]);
       return true;

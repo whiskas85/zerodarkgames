@@ -582,6 +582,7 @@ app.delete('/api/field/guide/:id', needField, wrap((req) => { F.deleteGuide(req.
 app.get('/api/field/positions', needField, wrap((req) => (fieldStaff(req) ? F.positionsOf(fieldGame(req), 'master')
   // Il proprio telefono no: sulla mappa c'è già il puntino blu «tu».
   : [...F.positionsOf(fieldGame(req), 'elect').filter((x) => !req.player || x.playerId !== req.player.id), ...F.electVisiblePositions(fieldGame(req), req.player?.squadId || null)])));
+app.post('/api/field/tasks/:tid/accept', needField, wrap((req) => F.acceptTask(req.params.tid, fieldWho(req), fieldGame(req), fieldStaff(req) ? null : req.player?.squadId || null)));
 app.post('/api/field/tasks/:tid/done', needField, wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, fieldWho(req), fieldGame(req)); return { ok: true }; }));
 app.get('/api/field/resolve', needField, wrap((req) => F.resolveToken(fieldGame(req), req.query.text, fieldStaff(req))));
 // La regia può piazzare dalla mappa senza foto; dal telefono degli Eletti la foto di Altari e Doni resta obbligatoria.

@@ -1971,7 +1971,7 @@ function createDemo(teamsCount, actor) {
 const GAME_TIMES = {
   revelations: ['firedAt'], supply_drops: ['firedAt', 'scheduledAt', 'closesAt', 'closedAt'], announcements: ['createdAt'],
   messages: ['createdAt'], validations: ['at'], gifts: ['revealedAt', 'claimedAt', 'usedAt', 'expiredAt', 'revealAt', 'publicAt'],
-  squad_tasks: ['doneAt', 'assignedAt', 'cancelledAt', 'startedAt', 'endsAt', 'notifiedAt'],
+  squad_tasks: ['doneAt', 'assignedAt', 'cancelledAt', 'startedAt', 'endsAt', 'notifiedAt', 'acceptedAt', 'expiredAt'],
   // Skill: effetti in corso e avvisi ritardati seguono il tempo di gioco.
   skill_effects: ['startedAt', 'endsAt', 'endedAt', 'notifyAt', 'notifiedAt'], alliances: ['createdAt', 'endedAt'], alliance_requests: ['createdAt', 'respondedAt'],
   engagements: ['createdAt', 'resolvedAt'], notices: ['createdAt'], teams: ['wonAt'],

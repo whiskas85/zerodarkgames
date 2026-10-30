@@ -2634,3 +2634,30 @@ test('Beacon: incarico Beacon su una zona o un Altare, in cima nella pagina e ch
   Z.completeBeacon(elect, pl, z.id, { lat: 45, lng: 9 });
   assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', tz.id).doneAt);
 });
+
+test('incarico a tempo: il conto alla rovescia parte quando la squadra lo accetta, poi scade', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const sq = F.createSquad(g.id, { name: 'Volpi' }, 'test');
+  const other = F.createSquad(g.id, { name: 'Gufi' }, 'test');
+  const { id } = F.createTask(g.id, { squadId: sq.id, text: 'Presidiate il ponte', timeMin: 10 }, 'test');
+  let t = q.get('SELECT * FROM squad_tasks WHERE id = ?', id);
+  assert.equal(t.timeMin, 10);
+  assert.equal(t.acceptedAt, null);
+  F.expireTasks(Date.now() + 60 * 60000);
+  assert.equal(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', id).cancelledAt, null, 'senza accettazione non scade');
+  assert.throws(() => F.acceptTask(id, 'eletti:x', g.id, other.id), /vostra squadra/);
+  F.acceptTask(id, 'eletti:x', g.id, sq.id);
+  t = q.get('SELECT * FROM squad_tasks WHERE id = ?', id);
+  assert.ok(t.acceptedAt);
+  F.expireTasks(t.acceptedAt + 9 * 60000);
+  assert.equal(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', id).cancelledAt, null);
+  // Passato a un'altra squadra: il tempo riparte da capo.
+  F.assignTask(id, other.id, 'test');
+  assert.equal(q.get('SELECT acceptedAt FROM squad_tasks WHERE id = ?', id).acceptedAt, null);
+  F.acceptTask(id, 'eletti:y', g.id, other.id);
+  const acc = q.get('SELECT acceptedAt FROM squad_tasks WHERE id = ?', id).acceptedAt;
+  F.expireTasks(acc + 10 * 60000 + 1);
+  t = q.get('SELECT * FROM squad_tasks WHERE id = ?', id);
+  assert.ok(t.expiredAt && t.cancelledAt);
+});
