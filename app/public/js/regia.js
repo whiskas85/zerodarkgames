@@ -2375,6 +2375,10 @@ function zonesPanel() {
           const v = await dialog({ title: `Ricarica nel Santuario · ${z.name}`, text: 'Moltiplicatore della ricarica delle Skill per chi è dentro: 2 = il doppio della velocità, 1,5 = una volta e mezza (da 1,1 a 10).', input: { type: 'text', value: String(z.rate || 2).replace('.', ','), placeholder: 'es. 2 oppure 1,5' }, okLabel: 'Salva' });
           if (v != null && v !== false && String(v).trim()) patch(z, { rate: String(v).replace(',', '.') }, 'Moltiplicatore della ricarica salvato');
         } }, `Ricarica ×${String(z.rate || 2).replace('.', ',')}`) : null,
+        h('button', { class: 'btn btn-sm', title: 'Cambia il nome che vedono regia, coppie ed Eletti', onclick: async () => {
+          const v = await dialog({ title: 'Rinomina la zona', text: `Nome attuale: «${z.name}». Lascia vuoto per tornare a «${z.label}».`, input: { value: z.name, placeholder: z.label }, okLabel: 'Rinomina' });
+          if (v != null && v !== false && String(v).trim() !== z.name) patch(z, { name: String(v).trim() }, 'Zona rinominata');
+        } }, 'Rinomina'),
         h('button', { class: 'btn btn-sm', title: 'Sposta, aggiungi o togli i punti del poligono', onclick: () => { R.zoneDraw = null; R.zoneEdit = { id: z.id, name: z.name, color: z.color, pts: z.points.map((p) => [...p]) }; render(); setTimeout(() => fieldMap.map?.fitBounds(z.points, { padding: [40, 40] }), 80); } }, 'Modifica punti'),
         h('button', { class: 'btn btn-sm', onclick: () => { R.zoneEdit = null; R.zoneDraw = { id: z.id, kind: z.kind, name: z.name, pts: [] }; render(); } }, 'Ridisegna'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la zona?', `«${z.name}» sparisce dalle mappe delle coppie.`, 'DELETE', `/api/m/zones/${z.id}`, undefined, 'Zona eliminata', true) }, 'Elimina'))))) : h('p', { class: 'tiny muted' }, 'Nessuna zona: disegnane una con «Nuova zona».'),
