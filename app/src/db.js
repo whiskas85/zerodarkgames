@@ -703,6 +703,9 @@ CREATE TABLE IF NOT EXISTS chrono_types (
 // vince chi non viene ingaggiato dagli Eletti entro la fine).
 addColumn('game_events', 'mode', "TEXT NOT NULL DEFAULT 'manual'");
 
+// Emergenze archiviate dalla regia (solo chiuse): spariscono dalla vista, restano nel registro.
+addColumn('emergencies', 'archivedAt', 'INTEGER');
+
 // Zone NO PLAY: chi ci entra (coppia, o singolo Eletto) ha 30 secondi per uscire, poi la regia viene avvisata.
 db.exec(`
 CREATE TABLE IF NOT EXISTS noplay_hits (

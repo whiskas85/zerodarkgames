@@ -799,6 +799,8 @@ m.post('/games/:id/tasks', wrap((req) => F.createTask(gameId(req), req.body || {
 m.get('/games/:id/emergencies', wrap((req) => EM.list(gameId(req))));
 m.post('/emergencies/:eid/ack', wrap((req) => { EM.ack(req.params.eid, actor(req)); return { ok: true }; }));
 m.post('/emergencies/:eid/close', wrap((req) => { EM.close(req.params.eid, actor(req), req.body?.note); return { ok: true }; }));
+m.post('/emergencies/:eid/archive', wrap((req) => { EM.archive(req.params.eid, actor(req), req.body?.archived !== false); return { ok: true }; }));
+m.post('/games/:id/emergencies/archive', wrap((req) => ({ ok: true, count: EM.archiveClosed(gameId(req), actor(req)) })));
 m.post('/tasks/:tid/assign', wrap((req) => { F.assignTask(req.params.tid, req.body.squadId, actor(req)); return { ok: true }; }));
 m.post('/tasks/:tid/cancel', wrap((req) => { F.cancelTask(req.params.tid, actor(req)); return { ok: true }; }));
 m.post('/tasks/:tid/done', wrap((req) => { F.setTaskDone(req.params.tid, req.body.done !== false, actor(req)); return { ok: true }; }));

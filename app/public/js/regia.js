@@ -338,7 +338,7 @@ function emergencyBanner() {
 
 const sosMap = createMapView({ className: 'regia-map sos-map' });
 function emergencyItems() {
-  return (R.ms?.emergencies || []).flatMap((e) => {
+  return (R.ms?.emergencies || []).filter((e) => !e.archivedAt || R.sosArchive).flatMap((e) => {
     const open = !e.closedAt;
     const label = `<strong>🚨 ${escHtml(e.who)}</strong><br>${fmtTime(e.createdAt)} · ${e.source === 'traccar' ? 'SOS da Traccar' : 'pulsante dell\'app'}${e.phone ? `<br>☎ <a href="tel:${escHtml(e.phone.replace(/\s/g, ''))}">${escHtml(e.phone)}</a> · <a href="${escHtml(waUrl(e.phone))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}`;
     const out = [];
@@ -349,7 +349,11 @@ function emergencyItems() {
 }
 
 function viewEmergencies() {
-  const list = R.ms.emergencies || [];
+  const all = R.ms.emergencies || [];
+  const archived = all.filter((e) => e.archivedAt);
+  const closedLive = all.filter((e) => e.closedAt && !e.archivedAt);
+  // Le archiviate spariscono dalla vista (e dalla mappa); si rivedono con «Mostra archiviate».
+  const list = R.sosArchive ? all : all.filter((e) => !e.archivedAt);
   if (!fieldData) loadField(false);
   startPositions();
   sosMap.setItems([...(fieldData ? fieldMapItems(fieldData) : []), ...emergencyItems()]);
@@ -358,12 +362,13 @@ function viewEmergencies() {
   const focus = open.filter((e) => e.lat != null || e.live).map((e) => (e.live ? `sosl${e.id}` : `sos${e.id}`));
   if (focus.length && R.sosFocused !== focus.join()) { R.sosFocused = focus.join(); setTimeout(() => sosMap.focus?.(focus), 200); }
   const gmaps = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  const card = (e) => h('div', { class: `sos-card ${e.closedAt ? 'closed' : e.ackAt ? 'ack' : 'new'}` },
+  const card = (e) => h('div', { class: `sos-card ${e.closedAt ? 'closed' : e.ackAt ? 'ack' : 'new'} ${e.archivedAt ? 'archived' : ''}` },
     h('div', { class: 'sos-card-head' },
       h('strong', null, `🚨 ${e.who}`),
       h('span', { class: 'chip' }, e.source === 'traccar' ? 'SOS Traccar' : 'pulsante app'),
       e.severity ? h('span', { class: `chip sev-${e.severity}` }, { lieve: 'Lieve', seria: 'Seria', grave: 'GRAVE · pericolo di vita' }[e.severity]) : null,
-      h('span', { class: `chip ${e.closedAt ? '' : e.ackAt ? 'chip-warn' : 'chip-blood'}` }, e.closedAt ? `chiusa ${fmtTime(e.closedAt)}` : e.ackAt ? `in carico (${e.ackBy})` : 'DA PRENDERE IN CARICO')),
+      h('span', { class: `chip ${e.closedAt ? '' : e.ackAt ? 'chip-warn' : 'chip-blood'}` }, e.closedAt ? `chiusa ${fmtTime(e.closedAt)}` : e.ackAt ? `in carico (${e.ackBy})` : 'DA PRENDERE IN CARICO'),
+      e.archivedAt ? h('span', { class: 'chip' }, 'archiviata') : null),
     h('div', { class: 'small' }, `Chiamata alle ${fmtTime(e.createdAt)}`, e.phone ? [' · ', phoneLinks(e.phone, { cls: '' })] : null),
     e.comment ? h('div', { class: 'sos-comment-r' }, h('span', { class: 'muted small' }, 'Cosa succede: '), h('strong', null, e.comment)) : null,
     e.lat != null ? h('div', { class: 'small mono' }, `Posizione: ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${e.acc ? ` (±${e.acc} m)` : ''} · `, h('a', { href: gmaps(e.lat, e.lng), target: '_blank', rel: 'noopener' }, 'Apri in Google Maps'))
@@ -378,7 +383,10 @@ function viewEmergencies() {
       : h('div', { class: 'tiny muted' }, 'Nessun dato ICE nel profilo di chi ha chiamato.'),
     e.live && !e.closedAt ? h('div', { class: 'small mono' }, `Ultima posizione ${fmtTime(e.live.at)}: ${e.live.lat.toFixed(5)}, ${e.live.lng.toFixed(5)} · `, h('a', { href: gmaps(e.live.lat, e.live.lng), target: '_blank', rel: 'noopener' }, 'Maps')) : null,
     e.note ? h('div', { class: 'small' }, `Nota: ${e.note}`) : null,
-    e.closedAt ? null : h('div', { class: 'row-actions' },
+    e.closedAt ? h('div', { class: 'row-actions' }, e.archivedAt
+      ? h('button', { class: 'btn btn-sm', onclick: () => call('POST', `/api/m/emergencies/${e.id}/archive`, { archived: false }, 'Emergenza tolta dall\'archivio') }, 'Togli dall\'archivio')
+      : h('button', { class: 'btn btn-sm', onclick: () => call('POST', `/api/m/emergencies/${e.id}/archive`, {}, 'Emergenza archiviata') }, '🗄 Archivia'))
+    : h('div', { class: 'row-actions' },
       e.ackAt ? null : h('button', { class: 'btn btn-primary', onclick: () => call('POST', `/api/m/emergencies/${e.id}/ack`, {}, 'Presa in carico: chi ha chiamato è stato avvisato') }, 'Prendo in carico'),
       h('button', { class: 'btn', onclick: async () => {
         const note = await dialog({ title: 'Chiudere l\'emergenza?', text: `${e.who}: scrivi com'è finita (facoltativo).`, input: { placeholder: 'es. raggiunto, tutto a posto' }, okLabel: 'Chiudi emergenza' });
@@ -388,7 +396,10 @@ function viewEmergencies() {
   return h('div', { class: 'stack' },
     section(`Emergenze (${open.length} aperte)`,
       h('p', { class: 'muted tiny' }, 'Emergenze reali (OFF GAME), non di gioco: arrivano dal pulsante EMERGENZA dell\'app o dal pulsante SOS di Traccar Client, con la posizione di chi chiama. Quando ne arriva una la regia salta qui con un allarme sonoro. Il segnaposto rosso è dove ha chiamato, quello arancione la sua ultima posizione.'),
-      list.length ? h('div', { class: 'stack-sm' }, list.map(card)) : h('p', { class: 'empty' }, 'Nessuna emergenza.')),
+      closedLive.length || archived.length ? h('div', { class: 'row-actions' },
+        closedLive.length ? h('button', { class: 'btn btn-sm', onclick: () => call('POST', G('/emergencies/archive'), {}, `${closedLive.length === 1 ? 'Archiviata 1 emergenza chiusa' : `Archiviate ${closedLive.length} emergenze chiuse`}`) }, `🗄 Archivia le chiuse (${closedLive.length})`) : null,
+        archived.length ? h('button', { class: `btn btn-sm ${R.sosArchive ? 'btn-primary' : 'btn-ghost'}`, onclick: () => { R.sosArchive = !R.sosArchive; render(); } }, R.sosArchive ? 'Nascondi archiviate' : `Mostra archiviate (${archived.length})`) : null) : null,
+      list.length ? h('div', { class: 'stack-sm' }, list.map(card)) : h('p', { class: 'empty' }, archived.length ? 'Nessuna emergenza da mostrare: le altre sono in archivio.' : 'Nessuna emergenza.')),
     section('Mappa', sosMap.el));
 }
 

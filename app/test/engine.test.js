@@ -1608,6 +1608,12 @@ test('emergenze reali: pulsante dell\'app e SOS di Traccar arrivano alla regia c
   EM.ack(r.id, 'master');
   EM.close(r.id, 'master', 'tutto a posto');
   assert.ok(EM.list(g.id)[0].closedAt);
+  // Archivio: solo le chiuse; si può riprendere.
+  EM.archive(r.id, 'master');
+  assert.ok(EM.list(g.id).find((e) => e.id === r.id).archivedAt);
+  EM.archive(r.id, 'master', false);
+  assert.equal(EM.list(g.id).find((e) => e.id === r.id).archivedAt, null);
+  assert.equal(EM.archiveClosed(g.id, 'master'), 1);
   // SOS di Traccar (alarm=sos).
   const info = F.trackingInfo(p);
   F.recordTraccar({ id: info.deviceId, lat: '45.3', lon: '9.3', alarm: 'sos' }, {});

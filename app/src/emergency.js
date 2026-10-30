@@ -122,4 +122,20 @@ function close(id, actor, note) {
   if (e.teamId) rt.toTeams(e.gameId, 'state', {}, e.teamId);
 }
 
-module.exports = { fromApp, fromTraccar, list, ack, close, raise };
+// Archiviata (solo se chiusa): sparisce dalla vista della regia; si può riprendere dall'archivio.
+function archive(id, actor, on = true) {
+  const e = q.get('SELECT * FROM emergencies WHERE id = ?', Number(id));
+  if (!e) throw err(404, 'Emergenza non trovata');
+  if (on && !e.closedAt) throw err(409, 'Chiudi l\'emergenza prima di archiviarla');
+  q.run('UPDATE emergencies SET archivedAt = ? WHERE id = ?', on ? Date.now() : null, e.id);
+  G.log(e.gameId, actor, on ? 'emergency_archived' : 'emergency_unarchived', { id: e.id, who: e.who });
+  rt.toStaff(e.gameId, 'emergency');
+}
+// Tutte le chiuse di una partita in archivio.
+function archiveClosed(gameId, actor) {
+  const n = Number(q.run('UPDATE emergencies SET archivedAt = ? WHERE gameId = ? AND closedAt IS NOT NULL AND archivedAt IS NULL', Date.now(), Number(gameId)).changes);
+  if (n) { G.log(Number(gameId), actor, 'emergency_archived', { count: n }); rt.toStaff(Number(gameId), 'emergency'); }
+  return n;
+}
+
+module.exports = { fromApp, fromTraccar, list, ack, close, raise, archive, archiveClosed };
