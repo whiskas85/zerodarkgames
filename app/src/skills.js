@@ -1000,6 +1000,6 @@ function resetGame(gameId) {
 module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
-  onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden,
+  onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden, hiddenSince: (t, now = Date.now()) => effectOn(t.gameId, t.id, 'ombra', now)?.startedAt ?? null,
   editableCatalog, editCatalog, giftForGame, distM, grantVirtualGift, availableGift: available,
 };

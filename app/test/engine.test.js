@@ -2826,6 +2826,15 @@ test('evento «taglia su sé stessi»: le squadre vedono le iscritte, allo scade
   assert.ok(frozen.stale && frozen.frozen);
   q.run('UPDATE game_events SET startedAt = ? WHERE id = ?', now0 - 11 * 60000, ev.id);
   assert.equal(F.electVisiblePositions(g.id, sq).find((x) => x.teamId === B.id).lat, 45.2);
+  // Nei minuti visibili, ma nascosta dall'Ombra: grigia dov'era prima di nascondersi, «non può essere mostrata».
+  const ombraStart = now0 - 3 * 60000;
+  q.run("INSERT INTO skill_effects (gameId, teamId, kind, code, startedAt, endsAt) VALUES (?, ?, 'skill', 'ombra', ?, ?)", g.id, B.id, ombraStart, now0 + 10 * 60000);
+  q.run('INSERT INTO position_track (gameId, teamId, playerId, deviceId, lat, lng, acc, at) VALUES (?, ?, NULL, ?, 45.15, 9.15, 5, ?)', g.id, B.id, 'trk-b', ombraStart - 30000);
+  const hid = F.electVisiblePositions(g.id, sq).find((x) => x.teamId === B.id);
+  assert.equal(hid.lat, 45.15);
+  assert.ok(hid.blocked && hid.stale);
+  assert.match(hid.who, /non può essere mostrata/);
+  q.run("DELETE FROM skill_effects WHERE teamId = ? AND code = 'ombra'", B.id);
   q.run('UPDATE game_events SET startedAt = ?, durationMin = 10 WHERE id = ?', now0, ev.id);
   // Gli Eletti ingaggiano A (anche se perdono, conta l'ingaggio).
   K.respondElectFight(A, K.reportElectFight(elect, pE, { teamId: A.id, result: 'lost' }).id, true);

@@ -1004,7 +1004,16 @@ function electVisibleTeams(gameId, squadId) {
   const add = (teamId, why, extra = {}) => {
     if (out.has(teamId) && (extra.frozenAt || !out.get(teamId).frozenAt)) return;
     const team = q.get("SELECT t.id, t.gameId, s.name, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ? AND t.kind = 'couple'", teamId);
-    if (!team || S.hiddenTeam(team) || Z.visibilityOf(team.id) === 'hidden') return;
+    if (!team) return;
+    if (S.hiddenTeam(team) || Z.visibilityOf(team.id) === 'hidden') {
+      // Taglia: chi si nasconde (Cono d'Ombra, Skill Ombra) resta in grigio dov'era prima di nascondersi, con la scritta
+      // «non può essere mostrata», così gli Eletti capiscono che è un effetto di gioco e non un errore.
+      if (!extra.bounty) return;
+      const since = hiddenSince(team);
+      extra = { ...extra, frozenAt: Math.min(extra.frozenAt || Infinity, since), blocked: true };
+      why = `${extra.bountyName} · non può essere mostrata: un effetto la nasconde`;
+      if (out.has(teamId)) return;
+    }
     out.set(teamId, { teamId: team.id, roman: team.roman, sectorName: team.name, color: team.color, why, ...extra });
   };
   if (squadId) {
@@ -1022,11 +1031,21 @@ function electVisibleTeams(gameId, squadId) {
       const ph = EV.bountyPhase(e);
       if (!ph) continue;
       add(e.teamId, ph.on ? `🎯 Taglia · «${e.name}» · tracciata fino alle ${hhmm(ph.until)}` : `🎯 Taglia · «${e.name}» · ultima posizione nota (${hhmm(ph.since)}) · di nuovo tracciata alle ${hhmm(ph.until)}`,
-        { eventId: e.id, ...(ph.on ? {} : { frozenAt: ph.since }), trackUntil: ph.until });
+        { eventId: e.id, ...(ph.on ? {} : { frozenAt: ph.since }), trackUntil: ph.until, trackOn: ph.on, bounty: true, bountyName: `🎯 Taglia · «${e.name}»` });
     }
   }
   for (const t of q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple'", Number(gameId))) if (Z.visibilityOf(t.id) === 'shown') add(t.id, '☀️ Nel Campo di Luce');
   return [...out.values()];
+}
+
+// Da quando la coppia è nascosta: Skill Ombra in corso o Cono d'Ombra in cui è entrata (il più vecchio).
+function hiddenSince(team, now = Date.now()) {
+  const S = require('./skills');
+  const Z = require('./zones');
+  const list = [S.hiddenSince(team, now)];
+  if (Z.visibilityOf(team.id) === 'hidden') list.push(...Z.appliedZones(team.id).filter((z) => z.kind === 'ombra').map((z) => z.enteredAt));
+  const ok = list.filter((x) => Number(x) > 0);
+  return ok.length ? Math.min(...ok) : now;
 }
 
 // Le stesse coppie come segnaposto della mappa degli Eletti (con l'ultima posizione nota).
@@ -1038,7 +1057,7 @@ function electVisiblePositions(gameId, squadId) {
       ? q.get('SELECT lat, lng, at FROM position_track WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
         || q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
       : q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, now - POSITION_MAX_AGE);
-    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: !!x.frozenAt || now - p.at > POSITION_STALE, frozen: !!x.frozenAt,
+    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: !!x.frozenAt || now - p.at > POSITION_STALE, frozen: !!x.frozenAt, blocked: !!x.blocked,
       label: `${x.roman} · Settore ${x.sectorName}`, who: x.why, roman: x.roman, color: x.color } : null;
   }).filter(Boolean);
 }

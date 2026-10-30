@@ -1176,3 +1176,4 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 @media (prefers-reduced-motion: reduce) { .noplay-screen .np-ico { animation: none; } }
 .ev-track { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(140, 140, 140, .15); border: 1px solid rgba(140, 140, 140, .4); }
 .ev-track.on { background: rgba(229, 72, 77, .15); border-color: rgba(229, 72, 77, .6); }
+.bounty-strip { display: grid; gap: 6px; margin-bottom: 8px; } .bounty-strip .ev-track { margin-top: 0; }

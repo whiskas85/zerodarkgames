@@ -1810,9 +1810,7 @@ function eventCard(e) {
     e.mode === 'bounty' ? h('div', { class: 'note ev-bounty' }, isElect()
       ? `🎯 Taglia: le coppie iscritte compaiono sulla vostra mappa e negli Scontri, a intermittenza: 5 minuti tracciate, 5 minuti solo l'ultima posizione nota (in grigio); gli ultimi 5 minuti sempre tracciate. Ingaggiatele entro ${e.durationMin} minuti: chi ingaggiate perde il premio.`
       : `🎯 Taglia su di voi: per ${e.durationMin} minuti gli Eletti vi cacciano. Vi vedono a intermittenza: 5 minuti tracciati, 5 minuti solo la vostra ultima posizione; gli ultimi 5 minuti sempre tracciati. Se nessuno vi ingaggia entro la fine, vincete il premio; se vi ingaggiano, perdete.`,
-    e.tracking ? h('div', { class: `ev-track ${e.tracking.on ? 'on' : ''}` }, e.tracking.on
-      ? [h('strong', null, '📡 Tracciati adesso'), e.tracking.last ? ' · fino alla fine: ' : ' · ancora ', h('span', { class: 'mono', 'data-abs': e.tracking.until }, '—')]
-      : [h('strong', null, '🌫 Vedono solo l\'ultima posizione'), ' · tracciati di nuovo tra ', h('span', { class: 'mono', 'data-abs': e.tracking.until }, '—')]) : null) : null,
+    e.tracking ? bountyTrack(e) : null) : null,
     h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
     eventWhen(e),
     e.location ? h('div', { class: 'ev-place' }, h('span', null, mdi('mapMarker', 18), ' ', h('strong', null, e.location.label)),
@@ -2407,6 +2405,7 @@ function viewMap(focus = null) {
   if (focus !== 'presagio') S.focusedHint = null;
   // La mappa prende quasi tutto lo schermo: niente titolo, legenda né note (il cerchio blu dice già dove siete).
   return h('div', { class: 'stack map-page' },
+    bountyStrip(),
     sightingsNote(),
     canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,
     focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera e, senza alleati, leggete il codice di uscita appeso lì.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
@@ -2855,10 +2854,30 @@ function viewZonesInfo() {
     isElect() ? h('p', { class: 'mono small', id: 'gps-now' }, field.gpsText()) : null);
 }
 
+// Taglia a intermittenza: quando le coppie iscritte si vedono dal vivo e quando no, chiaro per tutti.
+// Chi si nasconde con un effetto (Cono d'Ombra, Ombra) resta in grigio con «non può essere mostrata» anche nei momenti visibili.
+function bountyTrack(e) {
+  const t = e.tracking;
+  const left = h('span', { class: 'mono', 'data-abs': t.until }, '—');
+  if (isElect()) {
+    return h('div', { class: `ev-track ${t.on ? 'on' : ''}` }, t.on
+      ? [h('strong', null, `📡 «${e.name}»: coppie visibili adesso`), t.last ? ' · fino alla fine: ' : ' · ancora ', left, h('div', { class: 'tiny' }, 'Se una coppia è in un Cono d\'Ombra o usa un effetto che la nasconde, resta grigia: «non può essere mostrata».')]
+      : [h('strong', null, `🌫 «${e.name}»: solo l'ultima posizione`), ' · di nuovo visibili tra ', left]);
+  }
+  return h('div', { class: `ev-track ${t.on ? 'on' : ''}` }, t.on
+    ? [h('strong', null, '📡 Gli Eletti vi vedono adesso'), t.last ? ' · fino alla fine: ' : ' · ancora ', left, h('div', { class: 'tiny' }, 'Un Cono d\'Ombra o un effetto che vi nasconde funziona anche contro gli Eletti.')]
+    : [h('strong', null, '🌫 Vedono solo la vostra ultima posizione'), ' · tracciati di nuovo tra ', left]);
+}
+function bountyStrip() {
+  const list = (S.state?.events || []).filter((e) => e.mode === 'bounty' && e.tracking && (isElect() || e.mine?.status === 'accepted'));
+  return list.length ? h('div', { class: 'bounty-strip' }, list.map(bountyTrack)) : null;
+}
+
 function viewElectMap() {
   queueMicrotask(() => field.mapView.setPolygons(zonePolygons(S.state?.zones)));
   return h('div', { class: 'campo' },
     trackingNote(S.state),
+    bountyStrip(),
     offlinePrompt(),
     field.viewMap({ full: true, bare: true }));
 }

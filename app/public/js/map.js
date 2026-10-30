@@ -57,7 +57,9 @@ export function pinHtml(item) {
   if (item.kind === 'team' || item.kind === 'elect') {
     const c = esc(item.color || (item.kind === 'team' ? PERSON_TEAM : PERSON_ELECT));
     const label = item.text ? `<span class="who-label">${esc(item.text)}</span>` : '';
-    return `<span class="who-pin who-${item.kind} ${item.stale ? 'pin-stale' : ''}" style="--c:${c}">${label}<span class="who-mark"></span></span>`;
+    // Sotto il segno: perché la posizione è ferma (taglia a intermittenza, o nascosta da un effetto).
+    const note = item.note ? `<span class="who-note">${esc(item.note)}</span>` : '';
+    return `<span class="who-pin who-${item.kind} ${item.stale ? 'pin-stale' : ''} ${item.blocked ? 'pin-blocked' : ''}" style="--c:${c}">${label}<span class="who-mark"></span>${note}</span>`;
   }
   return '<span class="pin pin-me"></span>';
 }
@@ -444,7 +446,8 @@ export function groupPositions(list) {
 export function positionItem(p) {
   const ago = Math.max(0, Math.round((Date.now() - p.at) / 60000));
   return {
-    key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color,
+    key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color, blocked: p.blocked,
+    note: p.blocked ? 'non può essere mostrata' : p.frozen ? 'ultima posizione' : null,
     text: p.kind === 'team' ? p.roman || '?' : p.label || '?', title: p.label,
     // Popup: chi è, le persone della coppia (o della squadra di Eletti) e da quando è ferma la posizione.
     popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}${p.together ? '<br><small>insieme (entro 30 m)</small>' : ''}${p.members?.length ? `<div class="pop-members"><small>${p.kind === 'team' ? 'Coppia' : 'Squadra'}:</small> ${p.members.map(esc).join(', ')}</div>` : ''}<small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,

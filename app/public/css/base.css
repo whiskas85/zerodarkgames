@@ -319,3 +319,9 @@ body.no-scroll { overflow: hidden; }
 .who-pin.pin-stale { opacity: .5; }
 .pop-members { margin: 3px 0; }
 .legend-who { width: 20px; height: 20px; display: inline-grid; vertical-align: middle; }
+/* Taglia: posizione ferma (ultima nota) o coppia nascosta da un effetto: la scritta sotto il segno. */
+.who-note { position: absolute; top: calc(50% + 10px); left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 1px 5px; border-radius: 4px;
+  font: 600 10px/1.3 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; background: rgba(60, 60, 60, .9); }
+.who-pin.pin-stale:has(.who-note) { opacity: .85; }
+.who-pin.pin-stale .who-mark { filter: grayscale(1); }
+.pin-blocked .who-note { background: rgba(70, 40, 110, .95); }
