@@ -1005,6 +1005,9 @@ function electVisibleTeams(gameId, squadId) {
     }
     for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
                            WHERE ev.gameId = ? AND ev.squadId = ? AND ev.status IN ('open', 'running', 'closing', 'truce')`, Number(gameId), squadId)) add(e.teamId, `🏁 Iscritta a «${e.name}»`, { eventId: e.id });
+    // Taglia su sé stessi in corso: le coppie iscritte le vedono (e le cacciano) tutte le squadre.
+    for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
+                           WHERE ev.gameId = ? AND ev.mode = 'bounty' AND ev.status = 'running' AND en.status = 'accepted'`, Number(gameId))) add(e.teamId, `🎯 Taglia · «${e.name}»`, { eventId: e.id });
   }
   for (const t of q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple'", Number(gameId))) if (Z.visibilityOf(t.id) === 'shown') add(t.id, '☀️ Nel Campo di Luce');
   return [...out.values()];

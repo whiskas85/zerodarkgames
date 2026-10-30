@@ -55,10 +55,12 @@ function createEvent(gameId, data, actor) {
   const num = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : def; };
   const now = Date.now();
   // launch: proposto subito alle coppie; altrimenti resta «da lanciare», visibile solo in regia.
-  const id = Number(q.run(`INSERT INTO game_events (gameId, name, description, squadId, slots, rewardKind, rewardGiftType, windowMin, confirmMin, truceMin, status, createdAt, author)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+  const mode = data.mode === 'bounty' ? 'bounty' : 'manual';
+  if (mode === 'bounty' && !(Number(data.durationMin) > 0)) throw err(400, 'Per la taglia su sé stessi serve la durata dell\'evento');
+  const id = Number(q.run(`INSERT INTO game_events (gameId, name, description, squadId, slots, rewardKind, rewardGiftType, windowMin, confirmMin, truceMin, mode, status, createdAt, author)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
   g.id, name, String(data.description || '').trim().slice(0, 2000) || null, squadId, slots, rewardKind, rewardGiftType,
-  windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), now, actor || null).lastInsertRowid);
+  windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), mode, now, actor || null).lastInsertRowid);
   if (data.location) writeLocation(id, data.location);
   writeSchedule(id, data);
   G.log(g.id, actor, 'event_created', { name, slots, launch: !!data.launch });
@@ -93,8 +95,11 @@ function updateEvent(id, data, actor) {
   q.run('UPDATE game_events SET name = ?, description = ?, slots = ?, rewardKind = ?, rewardGiftType = ?, windowMin = ?, confirmMin = ?, truceMin = ? WHERE id = ?',
     name, description, slots, rewardKind, rewardGiftType, windowMin,
     data.confirmMin !== undefined ? num(data.confirmMin, ev.confirmMin, 1, 60) : ev.confirmMin, data.truceMin !== undefined ? num(data.truceMin, ev.truceMin, 0, 60) : ev.truceMin, ev.id);
+  if (data.mode !== undefined && ['draft', 'open'].includes(ev.status)) q.run('UPDATE game_events SET mode = ? WHERE id = ?', data.mode === 'bounty' ? 'bounty' : 'manual', ev.id);
   if (data.location !== undefined) writeLocation(ev.id, data.location);
   if (data.startAt !== undefined || data.durationMin !== undefined) writeSchedule(ev.id, data);
+  const nx = getEvent(ev.id);
+  if (nx.mode === 'bounty' && !nx.durationMin) throw err(400, 'Per la taglia su sé stessi serve la durata dell\'evento');
   G.log(ev.gameId, actor, 'event_updated', { name });
   if (data.squadId !== undefined && (Number(data.squadId) || null) !== (ev.squadId || null)) return setSquad(ev.id, data.squadId, actor);
   changed(ev);
@@ -210,7 +215,11 @@ function startEvent(id, who) {
     if (!list.length) throw err(409, 'Nessuna coppia ha accettato la sfida');
     q.run("UPDATE game_events SET status = 'running', startedAt = ? WHERE id = ?", Date.now(), ev.id);
     G.log(ev.gameId, who.actor, 'event_started', { name: ev.name, teams: list.length });
-    pushTeamsOf(ev, list.map((e) => e.teamId), { title: `Evento iniziato · ${ev.name}`, body: `Al termine dell'evento scatterà una tregua obbligatoria di ${ev.truceMin} minuti tra i partecipanti.` });
+    pushTeamsOf(ev, list.map((e) => e.teamId), ev.mode === 'bounty'
+      ? { title: `🎯 Taglia su di voi · ${ev.name}`, body: `Da adesso gli Eletti vi vedono e vi cacciano per ${ev.durationMin} minuti: se nessuno vi ingaggia, avete vinto.` }
+      : { title: `Evento iniziato · ${ev.name}`, body: `Al termine dell'evento scatterà una tregua obbligatoria di ${ev.truceMin} minuti tra i partecipanti.` });
+    // Taglia su sé stessi: tutte le squadre di Eletti vengono avvisate (le coppie compaiono sulla loro mappa).
+    if (ev.mode === 'bounty') for (const sq of q.all('SELECT id FROM elect_squads WHERE gameId = ?', ev.gameId)) pushSquad({ ...ev, squadId: sq.id }, { title: `🎯 Taglia aperta · ${ev.name}`, body: `${list.length} ${list.length === 1 ? 'coppia' : 'coppie'} da ingaggiare per ${ev.durationMin} minuti: le vedete in mappa e negli Scontri.` });
     changed(ev);
     return { ok: true };
   });
@@ -379,6 +388,18 @@ function tickAll(now = Date.now()) {
     if (!q.get("SELECT 1 FROM event_entries WHERE eventId = ? AND status = 'accepted'", ev.id)) continue;
     try { startEvent(ev.id, { master: true, actor: 'orario' }); } catch (e) { /* già partito */ }
   }
+  // Taglia su sé stessi: allo scadere si chiude da solo. Chi è stato ingaggiato dagli Eletti durante l'evento
+  // (scontro dichiarato e non annullato, qualsiasi esito) ha perso; gli altri hanno vinto.
+  for (const ev of q.all("SELECT * FROM game_events WHERE status = 'running' AND mode = 'bounty' AND durationMin IS NOT NULL")) {
+    const end = endsAtOf(ev);
+    if (!end || end > now) continue;
+    const outcomes = {};
+    for (const e of accepted(ev.id)) {
+      outcomes[e.teamId] = q.get("SELECT 1 FROM elect_fights WHERE teamId = ? AND status != 'cancelled' AND createdAt >= ? AND createdAt <= ?", e.teamId, ev.startedAt || 0, end) ? 'lost' : 'won';
+    }
+    try { closeEvent(ev.id, { master: true, actor: 'sistema' }, outcomes); } catch (e2) { console.error('bounty close', e2.message); }
+    G.log(ev.gameId, 'sistema', 'event_bounty_closed', { name: ev.name, won: Object.values(outcomes).filter((x) => x === 'won').length, lost: Object.values(outcomes).filter((x) => x === 'lost').length });
+  }
   // Durata finita: regia ed Eletti custodi chiudono l'evento indicando chi ha vinto.
   for (const ev of q.all("SELECT * FROM game_events WHERE status = 'running' AND durationMin IS NOT NULL AND endNotifiedAt IS NULL")) {
     const end = endsAtOf(ev);
@@ -424,7 +445,7 @@ function baseOut(ev) {
   return {
     id: ev.id, name: ev.name, description: ev.description, status: ev.status, slots: ev.slots,
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
-    rewardKind: ev.rewardKind, rewardGiftType: ev.rewardGiftType || null, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
+    mode: ev.mode || 'manual', rewardKind: ev.rewardKind, rewardGiftType: ev.rewardGiftType || null, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
     openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt,
     location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null,
     startAt: ev.startAt, durationMin: ev.durationMin, endsAt: endsAtOf(ev), timeUp: !!ev.endNotifiedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
@@ -490,8 +511,9 @@ function teamEvents(t, player = null) {
   if (t.kind === 'elect') {
     const squadId = player?.squadId || null;
     // Anche gli eventi preparati e non ancora lanciati (o programmati per un orario): la squadra sa cosa l'aspetta.
-    return all.filter((ev) => squadId && ev.squadId === squadId && (ev.status === 'draft' || recent(ev)))
-      .map((ev) => ({ ...baseOut(ev), custodian: true, chatOpen: chatOpen(ev),
+    // Più le taglie su sé stessi in corso: le cacciano tutte le squadre.
+    return all.filter((ev) => squadId && ((ev.squadId === squadId && (ev.status === 'draft' || recent(ev))) || (ev.mode === 'bounty' && ev.status === 'running')))
+      .map((ev) => ({ ...baseOut(ev), custodian: ev.squadId === squadId, chatOpen: chatOpen(ev),
         entries: entriesOf(ev.id).map((e) => ({ ...entryOut(e), chat: chatOf(ev.id, e.teamId) })) }));
   }
   if (t.kind !== 'couple') return [];

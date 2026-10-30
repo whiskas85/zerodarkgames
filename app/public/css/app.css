@@ -1154,3 +1154,9 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost { display: none !important; 
 .task-op.op-goto { border-color: var(--brass, #d1ad62); }
 .task-op.op-bounty { border-color: #f59e0b; color: #fbbf24; }
 .task-op.op-beacon { border-color: #22c3e6; color: #67e8f9; }
+/* Zona di Disturbo: guida per uscire (confine, voi, freccia e metri). */
+.emp-guide { display: grid; justify-items: center; gap: 8px; margin-top: 10px; }
+.emp-mini { background: rgba(0, 0, 0, .55); border: 1px solid rgba(34, 195, 230, .5); border-radius: 10px; padding: 4px; }
+.emp-out { display: grid; justify-items: center; gap: 2px; }
+.emp-out strong { font-size: 22px; color: #fff; }
+.emp-arrow { display: inline-block; font-size: 34px; line-height: 1; color: #fff; text-shadow: 0 0 8px #22c3e6; }

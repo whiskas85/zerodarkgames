@@ -4113,6 +4113,12 @@ async function gameEventDialog(ev = null) {
   const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore', value: ev?.name || '' });
   const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie' }, ev?.description || '');
   const slots = num(ev?.slots ?? 3, 1, 20);
+  // Tipo: normale (lo chiude la regia o la squadra custode) o taglia su sé stessi (automatico allo scadere).
+  const modeLocked = ev && !['draft', 'open'].includes(ev.status);
+  const mode = h('select', { class: 'input', disabled: modeLocked, onchange: () => { modeHint.hidden = mode.value !== 'bounty'; } },
+    h('option', { value: 'manual', selected: ev?.mode !== 'bounty' }, 'Normale: lo chiudi tu (o la squadra custode)'),
+    h('option', { value: 'bounty', selected: ev?.mode === 'bounty' }, '🎯 Taglia su sé stessi (automatico)'));
+  const modeHint = h('p', { class: 'small note', hidden: ev?.mode !== 'bounty' }, '🎯 Le coppie iscritte si mettono una taglia addosso: all\'avvio tutte le squadre di Eletti le vedono in mappa e negli Scontri. Allo scadere della durata l\'evento si chiude da solo: chi non è stato ingaggiato dagli Eletti vince il premio, chi è stato ingaggiato (qualsiasi esito) perde. La durata è obbligatoria.');
   const squad = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id, selected: q.id === ev?.squadId }, `Squadra ${q.name}`)));
   // Quale Dono: si sceglie in una finestra con le schede dei Doni (icona, nome e cosa fa), non da un menu.
   let giftId = ev?.rewardGiftType || '';
@@ -4138,6 +4144,7 @@ async function gameEventDialog(ev = null) {
   const locBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(location); if (r !== undefined) { location = r; locBtn.textContent = location ? `📍 ${location.label}` : '📍 Scegli il luogo…'; } } }, location ? `📍 ${location.label}` : '📍 Scegli il luogo…');
   const ok = await modal({ title: ev ? `Modifica «${ev.name}»` : 'Nuovo evento', wide: true, tall: true, okLabel: ev ? 'Salva le modifiche' : 'Salva, lo lancio dopo',
     body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Tipo di evento'), mode), modeHint,
       h('label', { class: 'field' }, h('span', null, 'Nome'), name),
       h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
       h('div', { class: 'form-grid' },
@@ -4157,17 +4164,18 @@ async function gameEventDialog(ev = null) {
       ev ? null : h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-danger', onclick: (e) => { launch = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, '⚡ Lancia subito alle coppie'))),
     onOk: () => {
       if (!name.value.trim()) { launch = false; toast('Dai un nome all\'evento', 'error'); return false; }
+      if (mode.value === 'bounty' && !(Number(durationMin.value) > 0)) { launch = false; toast('Per la taglia su sé stessi serve la durata', 'error'); return false; }
       return true;
     } });
   if (!ok) return;
   if (ev) {
-    await call('PATCH', `/api/m/events/${ev.id}`, { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null,
+    await call('PATCH', `/api/m/events/${ev.id}`, { ...(modeLocked ? {} : { mode: mode.value }), name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null,
       ...(rewardLocked ? {} : { rewardKind: reward.value, rewardGiftType: giftId || null }),
       windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, startAt: startAt.get(), durationMin: durationMin.value || null }, 'Evento aggiornato');
     return;
   }
   if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) launch = false;
-  await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null,
+  await call('POST', G('/events'), { mode: mode.value, name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null,
     windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, launch,
     startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
 }
@@ -4181,16 +4189,22 @@ function viewEvents() {
       h('div', { class: 'grow' },
         h('div', { class: 'notice-head' }, h('strong', null, ev.name), h('span', { class: `chip ${cls}` }, label), h('span', { class: 'chip' }, `${ev.joined}/${ev.slots} coppie`),
           ev.squadName ? h('span', { class: 'chip' }, `Custode: ${ev.squadName}`) : null, h('span', { class: 'mono tiny muted' }, fmtTime(ev.createdAt))),
-        ev.description ? h('p', { class: 'small' }, ev.description) : null,
-        h('div', { class: 'small ev-loc' }, ev.startAt ? `🕒 Inizio ${fmtWhen(ev.startAt)}` : h('span', { class: 'muted' }, 'Avvio a mano'),
-          ev.durationMin ? ` · durata ${ev.durationMin}′` : '',
-          ev.status === 'running' && ev.endsAt ? [' · finisce tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.endsAt}` }, '—')] : null,
-          ev.timeUp && ev.status === 'running' ? h('span', { class: 'chip chip-blood' }, 'tempo scaduto: chiudi') : null,
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => eventScheduleDialog(ev) }, 'Orario…')),
-        h('div', { class: 'small ev-loc' }, ev.location ? `📍 ${ev.location.label}` : h('span', { class: 'muted' }, 'Nessun luogo indicato'),
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { const r = await eventLocationDialog(ev.location); if (r !== undefined) call('PATCH', `/api/m/events/${ev.id}/location`, { location: r }, r ? 'Luogo aggiornato' : 'Luogo tolto'); } }, ev.location ? 'Cambia luogo' : 'Indica il luogo')),
+        ev.mode === 'bounty' ? h('div', { class: 'ev-mode' }, '🎯 Taglia su sé stessi · si chiude da solo: vince chi non viene ingaggiato dagli Eletti') : null,
+        // Le quattro cose che contano, in evidenza: luogo, orario, durata e premio (un tocco per cambiarle).
+        h('div', { class: 'ev-facts' },
+          h('button', { type: 'button', class: `ev-fact ${ev.location ? '' : 'missing'}`, title: 'Cambia il luogo', onclick: async () => { const r = await eventLocationDialog(ev.location); if (r !== undefined) call('PATCH', `/api/m/events/${ev.id}/location`, { location: r }, r ? 'Luogo aggiornato' : 'Luogo tolto'); } },
+            h('span', { class: 'eyebrow' }, '📍 Luogo'), h('strong', null, ev.location ? ev.location.label : 'da indicare')),
+          h('button', { type: 'button', class: `ev-fact ${ev.startAt ? '' : 'missing'}`, title: 'Cambia l\'orario', onclick: () => eventScheduleDialog(ev) },
+            h('span', { class: 'eyebrow' }, '🕒 Inizio'), h('strong', null, ev.startAt ? fmtWhen(ev.startAt) : 'a mano'),
+            ev.status === 'running' && ev.endsAt ? h('span', { class: 'tiny' }, 'finisce tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.endsAt}` }, '—')) : null,
+            ev.timeUp && ev.status === 'running' && ev.mode !== 'bounty' ? h('span', { class: 'chip chip-blood' }, 'tempo scaduto: chiudi') : null),
+          h('button', { type: 'button', class: `ev-fact ${ev.durationMin ? '' : 'missing'}`, title: 'Cambia la durata', onclick: () => eventScheduleDialog(ev) },
+            h('span', { class: 'eyebrow' }, '⏱ Durata'), h('strong', null, ev.durationMin ? `${ev.durationMin} minuti` : 'senza limite')),
+          h('button', { type: 'button', class: 'ev-fact', title: 'Cambia il premio', onclick: () => gameEventDialog(ev) },
+            h('span', { class: 'eyebrow' }, '🎁 Premio'), h('strong', null, ev.rewardKind === 'gift' && ev.rewardGiftType ? (() => { const x = E.giftTypes.find((y) => y.id === ev.rewardGiftType); return x ? `${x.icon} ${x.name}` : ev.rewardLabel; })() : ev.rewardKind === 'gift' ? '✦ Un Dono a caso' : ev.rewardLabel))),
+        ev.description ? h('p', { class: 'small ev-desc' }, ev.description) : null,
         ev.location ? locationPreview(`ev${ev.id}`, ev.location) : null,
-        h('div', { class: 'tiny muted' }, `Premio: ${ev.rewardLabel} · conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
+        h('div', { class: 'tiny muted' }, `Conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,
           ev.status === 'draft' ? ` · candidature ${ev.windowMin ? `per ${ev.windowMin}′ dal lancio` : 'fino all\'avvio'} · le coppie non lo vedono ancora` : null,
           ev.status === 'open' && ev.openUntil ? [' · candidature ', ev.open ? ['chiudono tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.openUntil}` }, '—')] : 'chiuse'] : null,
           ev.status === 'closing' ? [' · conferme entro ', h('span', { class: 'mono', 'data-clock': `abs:${ev.closeDeadline}` }, '—')] : null,

@@ -1206,3 +1206,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .gift-pick-card .tiny { color: var(--muted); }
 .gp-ico { font-size: 22px; }
 .gp-on { position: absolute; top: 8px; right: 8px; }
+
+/* Scheda evento: luogo, inizio, durata e premio in evidenza. */
+.ev-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.ev-fact { display: grid; gap: 2px; align-content: start; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
+.ev-fact strong { font-size: 15px; }
+.ev-fact:hover { border-color: var(--brass, #d1ad62); }
+.ev-fact.missing strong { color: var(--muted); font-weight: 500; }
+.ev-mode { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #e5484d; background: rgba(229, 72, 77, .08); font-size: 13px; }
+.ev-desc { color: var(--muted); }

@@ -699,4 +699,8 @@ CREATE TABLE IF NOT EXISTS chrono_types (
 );
 `);
 
+// Tipo di evento: 'manual' (chiude la regia o la squadra custode) o 'bounty' (taglia su sé stessi: si chiude da solo,
+// vince chi non viene ingaggiato dagli Eletti entro la fine).
+addColumn('game_events', 'mode', "TEXT NOT NULL DEFAULT 'manual'");
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

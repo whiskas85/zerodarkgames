@@ -1806,6 +1806,10 @@ function eventCard(e) {
   const head = [h('div', { class: 'eyebrow' }, `${EV_STATUS[e.status]}${e.squadName ? ` · custodi: squadra ${e.squadName}` : ''}`),
     h('h3', { class: 'ev-title' }, e.name),
     e.description ? h('div', { class: 'md' }, md(e.description)) : null,
+    // Taglia su sé stessi: la regola, chiara, per chi si iscrive (e per gli Eletti che cacciano).
+    e.mode === 'bounty' ? h('div', { class: 'note ev-bounty' }, isElect()
+      ? `🎯 Taglia: le coppie iscritte compaiono sulla vostra mappa e negli Scontri. Ingaggiatele entro ${e.durationMin} minuti: chi ingaggiate perde il premio.`
+      : `🎯 Taglia su di voi: all'avvio gli Eletti vi vedono sulla mappa per ${e.durationMin} minuti. Se nessuno vi ingaggia entro la fine, vincete il premio; se vi ingaggiano, perdete.`) : null,
     h('div', { class: 'ev-meta' }, h('span', { class: 'chip' }, `${e.joined}/${e.slots} coppie`), h('span', { class: 'chip chip-brass' }, `Premio: ${e.rewardLabel}`)),
     eventWhen(e),
     e.location ? h('div', { class: 'ev-place' }, h('span', null, mdi('mapMarker', 18), ' ', h('strong', null, e.location.label)),
@@ -2407,7 +2411,8 @@ function viewMap(focus = null) {
     h('div', { class: 'map-wrap' },
       teamMapView.el,
       offlinePrompt(),
-      zones?.emp && !sosMode() ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.')) : null,
+      // Disturbo: dal server o dal GPS del telefono (subito, senza aspettare il server).
+      (zones?.emp || hereZones().some((z) => z.kind === 'emp')) && !sosMode() ? h('div', { class: 'map-emp', role: 'status' }, h('strong', null, '⚡ Zona di Disturbo'), h('span', null, 'Mappa oscurata e Skill attive ferme finché restate dentro.'), empGuide()) : null,
       h('div', { class: 'map-tools' },
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
         h('button', { class: 'btn btn-sm', title: 'Dove siamo', 'aria-label': 'Dove siamo', onclick: () => teamMapView.centerMe() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '◎'), h('span', { class: 'mt-label' }, 'Dove siamo')),
@@ -2486,6 +2491,7 @@ let localFixAt = 0;
 let beaconPaintAt = 0;
 function onPhonePos(p) {
   myPos = p;
+  paintEmpGuide();
   // Pagina Beacon: le distanze seguono il GPS (al più ogni 2 secondi).
   if (route().view === 'beacon' && Date.now() - beaconPaintAt > 2000) { beaconPaintAt = Date.now(); beaconTick(); }
   teamMapView.setMe(p);
@@ -2498,6 +2504,63 @@ function onPhonePos(p) {
 // Zone dal GPS del telefono, con lo stesso margine sul bordo del server: si entra a 3 m dentro, si esce oltre 12 m
 // fuori o dopo 45 secondi appena fuori. Gli effetti a schermo e l'avviso partono subito, senza aspettare il server.
 const LZ = new Map(); // id zona -> { outSince }
+// Zona di Disturbo: la mappa è oscurata, ma si vede il confine della zona con la vostra posizione e una freccia
+// (nord in alto) verso l'uscita più vicina, con i metri da fare (12 m oltre il bordo, come il margine d'uscita).
+const EMP_EXIT_M = 12;
+const DIRS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ovest', 'ovest', 'nord-ovest'];
+function empZone() {
+  const zs = S.state?.zones;
+  if (!zs || !myPos) return null;
+  const here = hereZones().filter((z) => z.kind === 'emp' && z.points);
+  return here.find((z) => edgeDepthM(myPos, z.points) >= -EMP_EXIT_M) || here[0]
+    || (zs.list || []).find((z) => z.kind === 'emp' && z.active && z.points && edgeDepthM(myPos, z.points) > 0) || null;
+}
+function empGuide() {
+  const box = h('div', { class: 'emp-guide', id: 'emp-guide' });
+  paintEmpGuide(box);
+  return box;
+}
+function paintEmpGuide(box = document.getElementById('emp-guide')) {
+  if (!box) return;
+  const z = empZone();
+  if (!z || !myPos) { box.replaceChildren(h('span', { class: 'small' }, myPos ? '' : 'In attesa del GPS per indicarvi l\'uscita…')); return; }
+  // Coordinate locali in metri (x a est, y a nord) attorno a voi.
+  const M = 111320;
+  const c = Math.cos((myPos.lat * Math.PI) / 180);
+  const xy = ([la, ln]) => [(ln - myPos.lng) * M * c, (la - myPos.lat) * M];
+  const pts = z.points.map(xy);
+  let best = null;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [ax, ay] = pts[j]; const [bx, by] = pts[i];
+    const dx = bx - ax; const dy = by - ay;
+    const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+    const px = ax + t * dx; const py = ay + t * dy;
+    const d = Math.hypot(px, py);
+    if (!best || d < best.d) best = { x: px, y: py, d };
+  }
+  const depth = edgeDepthM(myPos, z.points);
+  const toGo = Math.max(0, Math.round(depth + EMP_EXIT_M));
+  const ang = (Math.atan2(best.x, best.y) * 180) / Math.PI; // 0 = nord, in senso orario
+  const dir = DIRS[Math.round(((ang + 360) % 360) / 45) % 8];
+  // Mini mappa del confine: la zona e voi, in scala, nord in alto.
+  const span = Math.max(30, ...pts.map(([x, y]) => Math.max(Math.abs(x), Math.abs(y)))) * 1.1;
+  const sc = 70 / span;
+  const P = ([x, y]) => `${(80 + x * sc).toFixed(1)},${(80 - y * sc).toFixed(1)}`;
+  const ex = 80 + best.x * sc; const ey = 80 - best.y * sc;
+  const svg = `<svg viewBox="0 0 160 160" width="160" height="160" aria-hidden="true">
+    <polygon points="${pts.map(P).join(' ')}" fill="rgba(34,195,230,.12)" stroke="#22c3e6" stroke-width="2" stroke-dasharray="5 4"/>
+    <line x1="80" y1="80" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#fff" stroke-width="2.5" marker-end="url(#emp-arr)"/>
+    <defs><marker id="emp-arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fff"/></marker></defs>
+    <circle cx="80" cy="80" r="6" fill="#3b82f6" stroke="#fff" stroke-width="2"/>
+    <text x="80" y="12" text-anchor="middle" fill="#bff3ff" font-size="11" font-family="monospace">N</text></svg>`;
+  const mini = h('div', { class: 'emp-mini' });
+  mini.innerHTML = svg;
+  box.replaceChildren(mini,
+    depth < 0 ? h('div', { class: 'emp-out' }, h('strong', null, `Ancora ${toGo} m`), h('span', { class: 'small' }, `verso ${dir}: appena fuori il disturbo finisce`))
+      : h('div', { class: 'emp-out' }, h('span', { class: 'emp-arrow', style: { transform: `rotate(${ang.toFixed(0)}deg)` }, 'aria-hidden': 'true' }, '⬆'),
+        h('strong', null, `${toGo} m per uscire`), h('span', { class: 'small' }, `verso ${dir} (nord in alto) · GPS ±${Math.round(myPos.acc || 0)} m`)));
+}
+
 function edgeDepthM(pt, poly) {
   const M = 111320;
   const c = Math.cos((pt.lat * Math.PI) / 180);
@@ -2537,8 +2600,8 @@ function localZoneCheck(p) {
   if (changed) {
     for (const z of entered) if (!(zs.immune || []).includes(z.id)) showZoneEnter(z);
     applyZoneFx();
-    // L'anello della Conquista compare e sparisce subito.
-    if (zs.list.some((z) => z.kind === 'conquista')) render();
+    // L'anello della Conquista e la mappa oscurata del Disturbo compaiono e spariscono subito.
+    if (zs.list.some((z) => z.kind === 'conquista' || z.kind === 'emp')) render();
   }
   return changed;
 }

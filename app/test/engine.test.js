@@ -2723,3 +2723,35 @@ test('eventi: si modificano finché non sono conclusi (posti non sotto le iscrit
   assert.throws(() => EV.updateEvent(ev.id, { name: '' }, 'test'), /nome/);
   assert.throws(() => EV.updateEvent(ev.id, { slots: 0 }, 'test'), /Capienza/);
 });
+
+test('evento «taglia su sé stessi»: le squadre vedono le iscritte, allo scadere vince chi non è stato ingaggiato', () => {
+  const EV = require('../src/events');
+  const F = require('../src/field');
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Segugio' }, 'test');
+  const sq = F.createSquad(g.id, { name: 'Lupi' }, 'test').id;
+  F.setMemberSquad(eid, sq, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const pE = q.get('SELECT * FROM players WHERE id = ?', eid);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  assert.throws(() => EV.createEvent(g.id, { name: 'Senza durata', slots: 3, mode: 'bounty' }, 'test'), /durata/);
+  const ev = EV.createEvent(g.id, { name: 'Taglia', slots: 3, mode: 'bounty', durationMin: 10, launch: true }, 'test');
+  EV.joinEvent(A, null, ev.id, {});
+  EV.joinEvent(B, null, ev.id, {});
+  // Prima dell'avvio le squadre non le vedono.
+  assert.ok(!F.electVisibleTeams(g.id, sq).some((x) => x.teamId === A.id));
+  EV.startEvent(ev.id, { master: true, actor: 'test' });
+  assert.ok(F.electVisibleTeams(g.id, sq).some((x) => x.teamId === A.id && x.why.includes('Taglia')));
+  assert.ok(EV.teamEvents(elect, pE).some((x) => x.id === ev.id));
+  // Gli Eletti ingaggiano A (anche se perdono, conta l'ingaggio).
+  K.respondElectFight(A, K.reportElectFight(elect, pE, { teamId: A.id, result: 'lost' }).id, true);
+  // Allo scadere: chiusura automatica, A ha perso e B ha vinto.
+  const started = q.get('SELECT startedAt FROM game_events WHERE id = ?', ev.id).startedAt;
+  EV.tickAll(started + 10 * 60000 + 1000);
+  assert.notEqual(q.get('SELECT status FROM game_events WHERE id = ?', ev.id).status, 'running');
+  assert.equal(q.get('SELECT outcome FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, A.id).outcome, 'lost');
+  assert.equal(q.get('SELECT outcome FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, B.id).outcome, 'won');
+});
