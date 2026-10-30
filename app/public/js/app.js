@@ -176,6 +176,14 @@ function setState(st, offset) {
     if (steal) setTimeout(() => showSteal(steal), 300);
     else setTimeout(() => showVictory(victories.flatMap((x) => x.seals).filter((n, i, all) => all.findIndex((y) => y.sectorId === n.sectorId) === i), v.against, v.skill === 'maestria' && v.skillBy?.teamId === st.team.id), 300);
   }
+  // Eletti: incarico della squadra appena compiuto o fallito, una schermata per incarico (anche riaprendo l'app).
+  for (const t of st.field?.closed || []) {
+    const k = `task${t.id}:${t.doneAt ? 'ok' : 'ko'}`;
+    if (seenVictories.has(k)) continue;
+    seenVictories.add(k);
+    store.set('zdg_seen_victories2', [...seenVictories].slice(-50));
+    setTimeout(() => showTaskOutcome(t), 400);
+  }
   // Vittoria contro gli Eletti: schermata di vittoria, una volta per scontro.
   for (const f of st.combat?.electWins || []) {
     if (seenVictories.has(`f${f.id}`)) continue;
@@ -2036,6 +2044,25 @@ function viewElectCombat(c) {
 }
 
 // Vittoria contro una squadra di Eletti.
+// Incarico compiuto (vittoria) o fallito (tempo scaduto, scontro perso, annullato): schermata a tutto schermo.
+const TASK_WHAT = { bounty: 'Taglia', beacon: 'Incarico Beacon', hunt: 'Caccia', goto: 'Incarico', meet: 'Alleanza sporca', text: 'Incarico' };
+function showTaskOutcome(t) {
+  const ok = !!t.doneAt;
+  vibrate(ok ? [120, 60, 120, 60, 400] : [400, 120, 400]);
+  if (ok) beep();
+  const by = String(t.doneBy || '');
+  const why = ok ? (by.startsWith('eletti:') ? `Chiuso da ${by.slice(7)} alle ${fmtTime(t.doneAt)}.` : by.startsWith('coppia:') || by.startsWith('giocatore:') ? `Riuscito alle ${fmtTime(t.doneAt)}.` : `Segnato compiuto dalla regia alle ${fmtTime(t.doneAt)}.`)
+    : t.expiredAt ? `Il tempo è scaduto alle ${fmtTime(t.expiredAt)}.`
+      : t.cancelReason ? String(t.cancelReason).replace(/^Tempo scaduto: .*/, 'Il tempo è scaduto.') : `Annullato dalla regia alle ${fmtTime(t.cancelledAt)}.`;
+  const el = battleOverlay(ok ? 'victory' : 'defeat',
+    ok ? h('div', { class: 'battle-burst', 'aria-hidden': 'true' }) : null,
+    h('div', { class: 'eyebrow' }, TASK_WHAT[t.kind] || 'Incarico'),
+    h('h2', { class: 'battle-title' }, ok ? 'Incarico compiuto' : 'Incarico fallito'),
+    h('p', null, h('strong', null, t.text)),
+    h('p', { class: 'small' }, why),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => el.remove() }, 'Chiudi'));
+}
+
 function showElectWin(f) {
   vibrate([120, 60, 120, 60, 400]);
   beep();

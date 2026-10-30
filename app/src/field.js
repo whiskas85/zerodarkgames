@@ -737,7 +737,7 @@ function assignTask(taskId, squadId, actor) {
 function cancelTask(taskId, actor, why = null) {
   const t = q.get('SELECT * FROM squad_tasks WHERE id = ?', Number(taskId));
   if (!t || t.doneAt || t.cancelledAt) return false;
-  q.run('UPDATE squad_tasks SET cancelledAt = ? WHERE id = ?', Date.now(), t.id);
+  q.run('UPDATE squad_tasks SET cancelledAt = ?, cancelReason = ? WHERE id = ?', Date.now(), why, t.id);
   G.log(t.gameId, actor, 'squad_task_cancelled', { text: t.text, why });
   if (t.squadId) notifySquad(t.squadId, { title: why ? 'Abortite l\'incarico' : 'Incarico annullato', body: why || t.text, tag: `task-${t.id}` });
   if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
@@ -1033,7 +1033,10 @@ function electSummary(team, player) {
   ];
   // Incarichi a tempo ancora aperti: in home con «Accetta» o con il conto alla rovescia.
   const timed = q.all(`SELECT id, text, timeMin, acceptedAt FROM squad_tasks WHERE squadId = ? AND timeMin IS NOT NULL AND ${openTaskSql} ORDER BY acceptedAt IS NULL, acceptedAt + timeMin * 60000, id`, squad.id);
-  return { squad, todo, items, timed, targets: taskTargets(squad.id) };
+  // Incarichi appena chiusi (ultimi 10 minuti): l'app mostra una volta la schermata «compiuto» o «fallito».
+  const since = Date.now() - 10 * 60000;
+  const closed = q.all('SELECT id, text, kind, doneAt, doneBy, cancelledAt, expiredAt, cancelReason FROM squad_tasks WHERE squadId = ? AND (doneAt > ? OR cancelledAt > ?) ORDER BY id', squad.id, since, since);
+  return { squad, todo, items, timed, closed, targets: taskTargets(squad.id) };
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.
