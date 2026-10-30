@@ -4128,11 +4128,11 @@ async function gameEventDialog(ev = null) {
   } });
   const paintGift = () => { const x = E.giftTypes.find((y) => y.id === giftId); giftSel.textContent = x ? `${x.icon} ${x.name}` : '✦ A caso (uno per coppia)'; };
   paintGift();
-  const giftWrap = h('div', { class: 'field', hidden: true }, h('span', null, 'Quale Dono'), giftSel);
+  // Il premio è sempre un Dono (anche il frammento della Parola o un Sigillo a caso sono Doni).
+  const giftWrap = h('div', { class: 'field' }, h('span', null, 'Premio per ogni coppia vincente: il Dono'), giftSel);
   // Premio bloccato a prove chiuse (le coppie l'hanno già visto vinto o perso).
   const rewardLocked = ev && ['closing', 'truce'].includes(ev.status);
-  const reward = h('select', { class: 'input', disabled: rewardLocked, onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k, selected: k === ev?.rewardKind }, l)));
-  giftWrap.hidden = reward.value !== 'gift';
+  const reward = { value: 'gift' };
   if (rewardLocked) giftSel.disabled = true;
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', value: ev?.windowMin || '' });
   const confirmMin = num(ev?.confirmMin ?? 3, 1, 60);
@@ -4150,7 +4150,6 @@ async function gameEventDialog(ev = null) {
       h('div', { class: 'form-grid' },
         h('label', { class: 'field' }, h('span', null, 'Coppie al massimo'), slots),
         h('label', { class: 'field' }, h('span', null, 'Squadra di Eletti custode'), squad),
-        h('label', { class: 'field' }, h('span', null, 'Premio per ogni coppia'), reward),
         giftWrap,
         h('label', { class: 'field' }, h('span', null, 'Candidature aperte per (min)'), windowMin),
         h('label', { class: 'field' }, h('span', null, 'Minuti per confermare la chiusura'), confirmMin),
