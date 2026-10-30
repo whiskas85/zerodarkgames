@@ -659,7 +659,7 @@ function assignToSquad(kind, id, squadId, actor, opts = {}) {
 // da Maestro della caccia), meet (incontro con una coppia per Alleanze sporche), beacon (accendere una zona o
 // disattivare un Altare con il Beacon: si chiude da solo quando la squadra ci riesce), bounty (taglia su una coppia:
 // riuscita a scontro confermato, vinto o qualsiasi secondo successMode). Senza squadra = da assegnare.
-const TASK_KINDS = ['text', 'goto', 'hunt', 'meet', 'beacon', 'bounty'];
+const TASK_KINDS = ['text', 'goto', 'guard', 'hunt', 'meet', 'beacon', 'bounty'];
 
 // Bersaglio: "team:ID", "point:ID", "landmark:ID", "poi:ID", "gift:ID", "zone:ID" oppure { lat, lng }.
 function taskTarget(gameId, data) {
@@ -700,7 +700,8 @@ function createTask(gameId, data, actor, extra = {}) {
   if (kind === 'text' && (target.targetTeamId || target.targetLat != null)) kind = 'goto';
   const text = String(data.text || '').trim().slice(0, 300)
     || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'bounty' ? `Taglia: ${target.targetLabel}` : kind === 'beacon' ? `Beacon: ${target.targetRef.startsWith('zone:') ? 'accendete' : 'disattivate'} ${target.targetLabel}`
-      : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
+      : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : kind === 'guard' && target.targetLabel ? `Presidiate ${target.targetLabel}` : '');
+  if (kind === 'guard' && !target.targetTeamId && target.targetLat == null) throw err(400, 'Scegli il punto da presidiare');
   if (!text) throw err(400, 'Scrivi l\'incarico');
   const now = Date.now();
   // Tempo per svolgerlo (minuti da quando la squadra lo accetta); vuoto = senza limite.

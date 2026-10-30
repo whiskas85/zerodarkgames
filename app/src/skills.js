@@ -212,7 +212,7 @@ function applySkill(g, me, s, p) {
       startEffect(me, 'skill', s.id, { durationMin: s.durationMin });
       // Gli Eletti che vi davano la caccia (o vi raggiungevano) perdono le vostre tracce: devono abortire.
       const F = require('./field');
-      for (const t of q.all("SELECT id FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto') AND doneAt IS NULL AND cancelledAt IS NULL", me.id)) {
+      for (const t of q.all("SELECT id FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND doneAt IS NULL AND cancelledAt IS NULL", me.id)) {
         F.cancelTask(t.id, 'sistema', `Abortite la caccia: il Settore ${team(me.id).sectorName} è sparito nell'Ombra.`);
       }
       return { message: 'Siete nell\'Ombra per 15 minuti.' };
@@ -597,7 +597,7 @@ function indicatorsFor(me, now = Date.now()) {
     if (OWN[e.code] && e.teamId === me.id) out.push({ code: e.code, ...OWN[e.code], until: e.endsAt });
   }
   // Eletti che vi vedono (caccia o incarico verso di voi): anche questo si sa 1 minuto dopo.
-  if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto') AND squadId IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
+  if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
     AND notifiedAt IS NOT NULL`, me.id)) out.push({ code: 'caccia', ...ELECT_WATCH, until: null });
   const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
   if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', desc: 'Siete alleati con una squadra di Eletti: non vi attaccano e potete muovervi insieme finché dura.', until: dirty.endsAt });
@@ -889,7 +889,7 @@ function tickAll(now = Date.now()) {
       rt.toStaff(g.id, 'skills');
     }
     // Chi viene rivelato lo sa sempre 1 minuto dopo: anche quando una squadra di Eletti lo vede (caccia, incarico).
-    for (const t of q.all(`SELECT * FROM squad_tasks WHERE gameId = ? AND targetTeamId IS NOT NULL AND kind IN ('hunt', 'goto') AND squadId IS NOT NULL
+    for (const t of q.all(`SELECT * FROM squad_tasks WHERE gameId = ? AND targetTeamId IS NOT NULL AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL
                            AND notifiedAt IS NULL AND doneAt IS NULL AND cancelledAt IS NULL AND assignedAt <= ?`, g.id, now - MIN)) {
       q.run('UPDATE squad_tasks SET notifiedAt = ? WHERE id = ?', now, t.id);
       if (hidden({ gameId: g.id, id: t.targetTeamId }, now)) continue;

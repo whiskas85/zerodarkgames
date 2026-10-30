@@ -67,7 +67,9 @@ export function createField(F, { rerender }) {
   }
   setInterval(() => { if (mapOn) loadPositions(); }, 15000);
 
-  const TASK_ICON = { hunt: '🎯 ', goto: '⌖ ', meet: '🤝 ', beacon: '📡 ', bounty: '💰 ' };
+  const TASK_ICON = { hunt: '🎯 ', goto: '⌖ ', guard: '🛡 ', meet: '🤝 ', beacon: '📡 ', bounty: '💰 ' };
+  // Operazione dell'incarico, scritta sopra il testo: si capisce subito se raggiungere, presidiare, la taglia…
+  const TASK_OP = { goto: 'Raggiungi', guard: 'Presidia', hunt: 'Caccia', meet: 'Alleanza sporca', beacon: 'Beacon', bounty: 'Taglia' };
   const mySquad = () => (F.data?.squads || []).find((x) => x.id === F.squadId) || null;
 
   // ------------------------------------------------------------ incarichi della squadra
@@ -122,7 +124,8 @@ export function createField(F, { rerender }) {
         const target = t.targetLat != null ? { lat: t.targetLat, lng: t.targetLng } : null;
         return h('li', { class: `campo-item task-item ${t.doneAt || t.cancelledAt ? 'done' : ''}` },
           h('div', { class: 'campo-info' },
-            h('strong', null, `${TASK_ICON[t.kind] || ''}${t.text}`),
+            TASK_OP[t.kind] ? h('span', { class: `chip task-op op-${t.kind}` }, `${TASK_ICON[t.kind] || ''}${TASK_OP[t.kind]}${t.targetLabel && !t.text.includes(t.targetLabel) ? ` · ${t.targetLabel}` : ''}`) : null,
+            h('strong', null, t.text),
             t.targetTeamId && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small ok-text' }, 'La coppia compare sulla vostra mappa finché l\'incarico è aperto') : null,
             target && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small ok-text' }, `⌖ ${t.targetLabel || 'Punto indicato'}`, F.me ? ` · a ${fmtDist(meters(F.me, target))}` : '') : null,
             t.kind === 'meet' && t.endsAt ? h('div', { class: 'small' }, `Alleanza attiva fino alle ${fmtTime(t.endsAt)}`) : null,

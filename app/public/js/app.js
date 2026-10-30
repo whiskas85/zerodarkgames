@@ -2045,7 +2045,7 @@ function viewElectCombat(c) {
 
 // Vittoria contro una squadra di Eletti.
 // Incarico compiuto (vittoria) o fallito (tempo scaduto, scontro perso, annullato): schermata a tutto schermo.
-const TASK_WHAT = { bounty: 'Taglia', beacon: 'Incarico Beacon', hunt: 'Caccia', goto: 'Incarico', meet: 'Alleanza sporca', text: 'Incarico' };
+const TASK_WHAT = { bounty: 'Taglia', beacon: 'Incarico Beacon', hunt: 'Caccia', goto: 'Raggiungi', guard: 'Presidio', meet: 'Alleanza sporca', text: 'Incarico' };
 function showTaskOutcome(t) {
   const ok = !!t.doneAt;
   vibrate(ok ? [120, 60, 120, 60, 400] : [400, 120, 400]);

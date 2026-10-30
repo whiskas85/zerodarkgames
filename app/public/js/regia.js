@@ -2518,7 +2518,9 @@ function squadSelect(initial = null, placeholder = 'Squadra: nessuna (da affidar
   return btn;
 }
 
-const TASK_KIND = { text: '', goto: '⌖ ', hunt: '🎯 ', meet: '🤝 ', beacon: '📡 ', bounty: '💰 ' };
+const TASK_KIND = { text: '', goto: '⌖ ', guard: '🛡 ', hunt: '🎯 ', meet: '🤝 ', beacon: '📡 ', bounty: '💰 ' };
+// Operazione dell'incarico, scritta sulla scheda (es. «Presidia», «Raggiungi»).
+const TASK_OP = { goto: 'Raggiungi', guard: 'Presidia', hunt: 'Caccia', meet: 'Alleanza sporca', beacon: 'Beacon', bounty: 'Taglia' };
 const TASK_SOURCE = { skill: 'da una Skill', gift: 'da un Dono', regia: 'dalla regia' };
 
 function taskLine(t, { assign = false } = {}) {
@@ -2673,7 +2675,7 @@ function viewTaskBoard(d) {
   }));
   const allTasks = [...(d.openTasks || []), ...d.squads.flatMap((sq) => sq.tasks.map((t) => ({ ...t, squadId: sq.id })))]
     .filter((t) => !t.doneAt && !t.cancelledAt)
-    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', hunt: '🎯', meet: '🤝', beacon: '📡', bounty: '💰' }[t.kind] || '☰', title: t.text, what: t.source === 'skill' ? 'Da una Skill' : t.source === 'gift' ? 'Da un Dono' : 'Incarico' }));
+    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', guard: '🛡', hunt: '🎯', meet: '🤝', beacon: '📡', bounty: '💰' }[t.kind] || '☰', title: t.text, what: [TASK_OP[t.kind] || 'Incarico', t.source === 'skill' ? 'da una Skill' : t.source === 'gift' ? 'da un Dono' : null].filter(Boolean).join(' · ') }));
   // Eventi non conclusi: senza squadra li segue la regia (stanno in «Da affidare»), si affidano come gli altri.
   const evs = (R.ms?.gameEvents?.list || []).filter((ev) => ev.status !== 'done').map((ev) => ({ key: `event${ev.id}`, kind: 'event', x: ev, squadId: ev.squadId || null, icon: '🏁', title: ev.name,
     what: `Evento · ${(EVENT_STATUS[ev.status] || [ev.status])[0]}${ev.startAt ? ` · ${fmtWhen(ev.startAt)}` : ''}${ev.squadId ? '' : ' · lo segue la regia'}` }));
@@ -2732,7 +2734,8 @@ function viewTaskBoard(d) {
 // poi testo, bersaglio, squadra e tempo.
 const TASK_OPS = [
   { k: 'text', icon: '☰', label: 'Libero', hint: 'Solo il testo: «presidiate il Cuore dalle 10». Si chiude a mano con «Fatto».', groups: null },
-  { k: 'goto', icon: '⌖', label: 'Raggiungi / presidia', hint: 'Un punto (Altare, luogo, punto di interesse) o una coppia da raggiungere o presidiare: la squadra lo vede in mappa. Si chiude a mano con «Fatto».', groups: ['coppie', 'luoghi', 'altari', 'poi'], need: 'Scegli dove devono andare' },
+  { k: 'goto', icon: '⌖', label: 'Raggiungi', hint: 'Un punto (Altare, luogo, punto di interesse) o una coppia da raggiungere: la squadra lo vede in mappa. Si chiude a mano con «Fatto».', groups: ['coppie', 'luoghi', 'altari', 'poi'], need: 'Scegli dove devono andare' },
+  { k: 'guard', icon: '🛡', label: 'Presidia', hint: 'Un punto (Altare, luogo, punto di interesse) da presidiare: la squadra lo vede in mappa e ci resta. Si chiude a mano con «Fatto» (con un tempo, scade da solo).', groups: ['luoghi', 'altari', 'poi'], need: 'Scegli il punto da presidiare' },
   { k: 'bounty', icon: '💰', label: 'Taglia', hint: 'Una coppia da ingaggiare: la squadra la vede in mappa e la trova negli Scontri. Si chiude da sola quando lo scontro è confermato.', groups: ['coppie'], need: 'Scegli la coppia della taglia' },
   { k: 'beacon', icon: '📡', label: 'Beacon', hint: 'Accendere una zona o disattivare un Altare con il Beacon. Si chiude da sola quando ci riescono.', groups: ['zone', 'altari'], need: 'Scegli la zona o l\'Altare' },
 ];
