@@ -1198,3 +1198,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .op-card { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .op-card.on { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 1px var(--brass, #d1ad62) inset; background: rgba(209, 173, 98, .08); }
 .op-ico { font-size: 20px; width: 24px; text-align: center; }
+
+/* Scelta del Dono premio: schede con icona, nome ed effetto. */
+.gift-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.gift-pick-card { position: relative; display: grid; gap: 4px; align-content: start; text-align: left; padding: 10px 12px; border: 1.5px solid var(--line); border-left: 4px solid var(--c); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
+.gift-pick-card.on { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 1px var(--brass, #d1ad62) inset; background: rgba(209, 173, 98, .08); }
+.gift-pick-card .tiny { color: var(--muted); }
+.gp-ico { font-size: 22px; }
+.gp-on { position: absolute; top: 8px; right: 8px; }

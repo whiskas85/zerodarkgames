@@ -4084,6 +4084,25 @@ function eventChatBox(ev, x) {
       input, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia')) : null);
 }
 
+// Scelta del Dono premio: schede con icona, nome e cosa fa, con ricerca. '' = a caso; undefined se si annulla.
+async function pickGiftTypeDialog(types, current = '') {
+  let chosen = current || '';
+  let q = '';
+  const grid = h('div', { class: 'gift-pick' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca un Dono (nome o effetto)…', oninput: () => { q = search.value.trim().toLowerCase(); draw(); } });
+  const card = (x) => h('button', { type: 'button', class: `gift-pick-card ${chosen === x.id ? 'on' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' }, onclick: () => { chosen = x.id; draw(); } },
+    h('span', { class: 'gp-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.name), h('span', { class: 'tiny' }, x.description), chosen === x.id ? h('span', { class: 'chip chip-brass gp-on' }, 'scelto') : null);
+  const draw = () => {
+    const list = types.filter((x) => !q || `${x.name} ${x.description}`.toLowerCase().includes(q));
+    grid.replaceChildren(
+      ...(q ? [] : [card({ id: '', icon: '🎲', name: 'A caso', description: 'Ogni coppia vincente riceve un Dono diverso, estratto a caso.' })]),
+      ...(list.length ? list.map(card) : [h('p', { class: 'tiny muted' }, 'Nessun Dono con questo nome.')]));
+  };
+  draw();
+  const ok = await modal({ title: 'Dono premio', wide: true, tall: true, okLabel: 'Usa questo', body: h('div', { class: 'stack-sm' }, search, grid) });
+  return ok ? chosen : undefined;
+}
+
 // Nuovo evento in una finestra: salvarlo per lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
 async function newEventDialog() {
   const ms = R.ms;
@@ -4093,8 +4112,15 @@ async function newEventDialog() {
   const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie' });
   const slots = num(3, 1, 20);
   const squad = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id }, `Squadra ${q.name}`)));
-  const giftSel = h('select', { class: 'input' }, h('option', { value: '' }, 'A caso (uno per coppia)'), E.giftTypes.map((x) => h('option', { value: x.id }, `${x.icon} ${x.name}`)));
-  const giftWrap = h('label', { class: 'field', hidden: true }, h('span', null, 'Quale Dono'), giftSel);
+  // Quale Dono: si sceglie in una finestra con le schede dei Doni (icona, nome e cosa fa), non da un menu.
+  let giftId = '';
+  const giftSel = h('button', { type: 'button', class: 'btn target-pick', onclick: async () => {
+    const r = await pickGiftTypeDialog(E.giftTypes, giftId);
+    if (r !== undefined) { giftId = r; paintGift(); }
+  } });
+  const paintGift = () => { const x = E.giftTypes.find((y) => y.id === giftId); giftSel.textContent = x ? `${x.icon} ${x.name}` : '✦ A caso (uno per coppia)'; };
+  paintGift();
+  const giftWrap = h('div', { class: 'field', hidden: true }, h('span', null, 'Quale Dono'), giftSel);
   const reward = h('select', { class: 'input', onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k }, l)));
   giftWrap.hidden = reward.value !== 'gift';
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio' });
@@ -4129,7 +4155,7 @@ async function newEventDialog() {
     } });
   if (!ok) return;
   if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) launch = false;
-  await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftSel.value || null,
+  await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null,
     windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, launch,
     startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
 }

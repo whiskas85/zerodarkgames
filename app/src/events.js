@@ -407,7 +407,8 @@ function masterEvent(ev) {
 
 function masterEvents(gameId) {
   return { list: q.all('SELECT * FROM game_events WHERE gameId = ? ORDER BY id DESC', gameId).map(masterEvent), rewards: REWARDS,
-    giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon })) };
+    giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon, color: x.color || null,
+      description: String(x.description || '').replace('{durata}', x.durationMin || '').replace('{raggio}', x.radiusM || '') })) };
 }
 
 // ---------------------------------------------------------------- chat dell'evento
