@@ -2709,3 +2709,17 @@ test('taglia su una coppia: riuscita a scontro vinto (perso resta aperta) o a qu
   t = q.get('SELECT * FROM squad_tasks WHERE id = ?', ta);
   assert.ok(t.doneAt && !t.cancelledAt);
 });
+
+test('eventi: si modificano finché non sono conclusi (posti non sotto le iscritte)', () => {
+  const EV = require('../src/events');
+  const g = setupGame(2);
+  const ev = EV.createEvent(g.id, { name: 'Assalto', slots: 3, rewardKind: 'gift' }, 'test');
+  const up = EV.updateEvent(ev.id, { name: 'Assalto alla cassa', description: 'Nuova descrizione', slots: 5, rewardKind: 'gift', rewardGiftType: 'frammento', truceMin: 8, durationMin: 20 }, 'test');
+  assert.equal(up.name, 'Assalto alla cassa');
+  assert.equal(up.slots, 5);
+  assert.equal(up.rewardGiftType, 'frammento');
+  assert.equal(up.truceMin, 8);
+  assert.equal(up.durationMin, 20);
+  assert.throws(() => EV.updateEvent(ev.id, { name: '' }, 'test'), /nome/);
+  assert.throws(() => EV.updateEvent(ev.id, { slots: 0 }, 'test'), /Capienza/);
+});

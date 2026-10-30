@@ -67,6 +67,40 @@ function createEvent(gameId, data, actor) {
   return masterEvent(getEvent(id));
 }
 
+// Modifica di un evento (dalla regia) finché non è concluso: nome, descrizione, posti, premio, tempi, squadra, orario e luogo.
+// I posti non scendono sotto le coppie già iscritte; il premio non cambia più dopo la chiusura delle prove.
+function updateEvent(id, data, actor) {
+  const ev = getEvent(id);
+  if (!ev) throw err(404, 'Evento non trovato');
+  if (ev.status === 'done') throw err(409, 'Evento concluso: non si modifica più');
+  const name = data.name !== undefined ? String(data.name || '').trim().slice(0, 80) : ev.name;
+  if (!name) throw err(400, 'Dai un nome all\'evento');
+  const description = data.description !== undefined ? String(data.description || '').trim().slice(0, 2000) || null : ev.description;
+  let slots = ev.slots;
+  if (data.slots !== undefined) {
+    slots = Math.round(Number(data.slots));
+    if (!(slots >= 1 && slots <= 20)) throw err(400, 'Capienza: da 1 a 20 coppie');
+    if (slots < used(ev.id)) throw err(409, `Ci sono già ${used(ev.id)} coppie iscritte: non puoi scendere sotto`);
+  }
+  let { rewardKind, rewardGiftType } = ev;
+  if (data.rewardKind !== undefined || data.rewardGiftType !== undefined) {
+    if (['closing', 'truce'].includes(ev.status)) throw err(409, 'Le prove sono chiuse: il premio non si cambia più');
+    rewardKind = REWARDS[data.rewardKind] ? data.rewardKind : rewardKind;
+    rewardGiftType = rewardKind === 'gift' && data.rewardGiftType && SK().giftById(data.rewardGiftType) ? data.rewardGiftType : null;
+  }
+  const num = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : def; };
+  const windowMin = data.windowMin !== undefined ? (Number(data.windowMin) > 0 ? Math.round(Number(data.windowMin)) : null) : ev.windowMin;
+  q.run('UPDATE game_events SET name = ?, description = ?, slots = ?, rewardKind = ?, rewardGiftType = ?, windowMin = ?, confirmMin = ?, truceMin = ? WHERE id = ?',
+    name, description, slots, rewardKind, rewardGiftType, windowMin,
+    data.confirmMin !== undefined ? num(data.confirmMin, ev.confirmMin, 1, 60) : ev.confirmMin, data.truceMin !== undefined ? num(data.truceMin, ev.truceMin, 0, 60) : ev.truceMin, ev.id);
+  if (data.location !== undefined) writeLocation(ev.id, data.location);
+  if (data.startAt !== undefined || data.durationMin !== undefined) writeSchedule(ev.id, data);
+  G.log(ev.gameId, actor, 'event_updated', { name });
+  if (data.squadId !== undefined && (Number(data.squadId) || null) !== (ev.squadId || null)) return setSquad(ev.id, data.squadId, actor);
+  changed(ev);
+  return masterEvent(getEvent(ev.id));
+}
+
 // Orario: startAt (istante in ms o data leggibile; vuoto = parte a mano) e durationMin (vuoto = senza durata).
 function readSchedule(data, ev = {}) {
   let startAt = ev.startAt ?? null;
@@ -390,7 +424,7 @@ function baseOut(ev) {
   return {
     id: ev.id, name: ev.name, description: ev.description, status: ev.status, slots: ev.slots,
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
-    rewardKind: ev.rewardKind, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
+    rewardKind: ev.rewardKind, rewardGiftType: ev.rewardGiftType || null, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
     openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt,
     location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null,
     startAt: ev.startAt, durationMin: ev.durationMin, endsAt: endsAtOf(ev), timeUp: !!ev.endNotifiedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
@@ -481,4 +515,4 @@ function teamEvents(t, player = null) {
   }).filter(Boolean);
 }
 
-module.exports = { setSquad, sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };
+module.exports = { updateEvent, setSquad, sendChat, chatOf, REWARDS, createEvent, launchEvent, setLocation, setSchedule, deleteEvent, startEvent, closeEvent, joinEvent, leaveEvent, confirmClose, tickAll, truceBetween, masterEvents, teamEvents, getEvent };

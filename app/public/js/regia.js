@@ -934,7 +934,7 @@ const EVENT_LABELS = {
   registration_accepted: 'Iscrizione accettata', registration_rejected: 'Iscrizione rifiutata', elect_added: 'Eletti', elect_removed: 'Tolto dagli Eletti',
   notice: 'Avviso', notice_deleted: 'Avviso eliminato',
   alliance_proposed: 'Proposta di alleanza', alliance_formed: 'Alleanza stretta', alliance_rejected: 'Alleanza rifiutata', alliance_break_proposed: 'Proposta di rottura',
-  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', event_created: 'Evento creato', event_launched: 'Evento lanciato', event_deleted: 'Evento eliminato', event_started: 'Evento avviato', event_closing: 'Evento chiuso', event_joined: 'Sfida accettata', event_confirmed: 'Chiusura evento confermata', event_truce: 'Tregua dopo l\'evento', engagement_confirmed: 'Scontro registrato',
+  alliance_broken: 'Alleanza rotta', alliance_break_rejected: 'Rottura rifiutata', engagement_reported: 'Scontro dichiarato', event_created: 'Evento creato', event_updated: 'Evento modificato', event_launched: 'Evento lanciato', event_deleted: 'Evento eliminato', event_started: 'Evento avviato', event_closing: 'Evento chiuso', event_joined: 'Sfida accettata', event_confirmed: 'Chiusura evento confermata', event_truce: 'Tregua dopo l\'evento', engagement_confirmed: 'Scontro registrato',
   engagement_contested: 'Scontro contestato', engagement_cancelled: 'Scontro annullato', unlock_scan_expired: 'Scansione scaduta',
   point_placed: 'Altare piazzato', gift_placed: 'Dono piazzato', gift_revealed: 'Dono comparso', gift_claimed: 'Dono preso', gift_used: 'Dono usato', gift_expired: 'Dono svanito',
   gifts_created: 'Doni creati', gift_deleted: 'Dono eliminato', gift_reset: 'Dono da ripiazzare',
@@ -4104,16 +4104,18 @@ async function pickGiftTypeDialog(types, current = '') {
 }
 
 // Nuovo evento in una finestra: salvarlo per lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.
-async function newEventDialog() {
+// Con ev: la stessa finestra, già compilata, per modificare un evento esistente (finché non è concluso).
+const newEventDialog = () => gameEventDialog(null);
+async function gameEventDialog(ev = null) {
   const ms = R.ms;
   const E = ms.gameEvents || { list: [], rewards: {}, giftTypes: [] };
   const num = (value, min, max) => h('input', { class: 'input', type: 'number', min, max, step: 1, value });
-  const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore' });
-  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie' });
-  const slots = num(3, 1, 20);
-  const squad = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id }, `Squadra ${q.name}`)));
+  const name = h('input', { class: 'input', maxlength: 80, placeholder: 'es. L\'Assalto alla Cassa del Cuore', value: ev?.name || '' });
+  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 2000, placeholder: 'Cosa devono fare le coppie' }, ev?.description || '');
+  const slots = num(ev?.slots ?? 3, 1, 20);
+  const squad = h('select', { class: 'input' }, h('option', { value: '' }, 'Nessuna (la segue la regia)'), (ms.squads || []).map((q) => h('option', { value: q.id, selected: q.id === ev?.squadId }, `Squadra ${q.name}`)));
   // Quale Dono: si sceglie in una finestra con le schede dei Doni (icona, nome e cosa fa), non da un menu.
-  let giftId = '';
+  let giftId = ev?.rewardGiftType || '';
   const giftSel = h('button', { type: 'button', class: 'btn target-pick', onclick: async () => {
     const r = await pickGiftTypeDialog(E.giftTypes, giftId);
     if (r !== undefined) { giftId = r; paintGift(); }
@@ -4121,17 +4123,20 @@ async function newEventDialog() {
   const paintGift = () => { const x = E.giftTypes.find((y) => y.id === giftId); giftSel.textContent = x ? `${x.icon} ${x.name}` : '✦ A caso (uno per coppia)'; };
   paintGift();
   const giftWrap = h('div', { class: 'field', hidden: true }, h('span', null, 'Quale Dono'), giftSel);
-  const reward = h('select', { class: 'input', onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k }, l)));
+  // Premio bloccato a prove chiuse (le coppie l'hanno già visto vinto o perso).
+  const rewardLocked = ev && ['closing', 'truce'].includes(ev.status);
+  const reward = h('select', { class: 'input', disabled: rewardLocked, onchange: () => { giftWrap.hidden = reward.value !== 'gift'; } }, Object.entries(E.rewards).map(([k, l]) => h('option', { value: k, selected: k === ev?.rewardKind }, l)));
   giftWrap.hidden = reward.value !== 'gift';
-  const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio' });
-  const confirmMin = num(3, 1, 60);
-  const truceMin = num(5, 0, 60);
-  const startAt = dateTimeInputs({});
-  const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata' });
-  let location = null;
+  if (rewardLocked) giftSel.disabled = true;
+  const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', value: ev?.windowMin || '' });
+  const confirmMin = num(ev?.confirmMin ?? 3, 1, 60);
+  const truceMin = num(ev?.truceMin ?? 5, 0, 60);
+  const startAt = dateTimeInputs(ev?.startAt ? { value: ev.startAt } : {});
+  const durationMin = h('input', { class: 'input', type: 'number', min: 1, max: 600, step: 1, placeholder: 'senza durata', value: ev?.durationMin || '' });
+  let location = ev?.location || null;
   let launch = false;
-  const locBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(location); if (r !== undefined) { location = r; locBtn.textContent = location ? `📍 ${location.label}` : '📍 Scegli il luogo…'; } } }, '📍 Scegli il luogo…');
-  const ok = await modal({ title: 'Nuovo evento', wide: true, tall: true, okLabel: 'Salva, lo lancio dopo',
+  const locBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(location); if (r !== undefined) { location = r; locBtn.textContent = location ? `📍 ${location.label}` : '📍 Scegli il luogo…'; } } }, location ? `📍 ${location.label}` : '📍 Scegli il luogo…');
+  const ok = await modal({ title: ev ? `Modifica «${ev.name}»` : 'Nuovo evento', wide: true, tall: true, okLabel: ev ? 'Salva le modifiche' : 'Salva, lo lancio dopo',
     body: h('div', { class: 'stack-sm' },
       h('label', { class: 'field' }, h('span', null, 'Nome'), name),
       h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
@@ -4148,12 +4153,19 @@ async function newEventDialog() {
         h('div', { class: 'field' }, h('span', null, 'Luogo'), locBtn)),
       h('details', { class: 'tiny muted' }, h('summary', null, 'Come funziona'),
         h('p', null, 'Le coppie rispondono «Accetto la sfida» (una coppia = un posto) o candidano tutta l\'alleanza: ogni coppia alleata deve confermare, e un\'alleanza che supera i posti rimasti non entra. A fine prove la regia o la squadra custode chiude l\'evento indicando per ogni coppia se ha vinto o perso: a ogni coppia compare una schermata (vittoria o sconfitta) che blocca l\'app finché non conferma; chi ha vinto prende subito il premio, chi ha perso no. Quando hanno confermato tutte, o allo scadere dei minuti, parte la tregua tra i partecipanti.')),
-      h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-danger', onclick: (e) => { launch = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, '⚡ Lancia subito alle coppie'))),
+      ev && ev.taken ? h('p', { class: 'tiny muted' }, `Già iscritte ${ev.taken} coppie: i posti non possono scendere sotto.${rewardLocked ? ' Le prove sono chiuse: il premio non si cambia più.' : ''}`) : null,
+      ev ? null : h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-danger', onclick: (e) => { launch = true; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, '⚡ Lancia subito alle coppie'))),
     onOk: () => {
       if (!name.value.trim()) { launch = false; toast('Dai un nome all\'evento', 'error'); return false; }
       return true;
     } });
   if (!ok) return;
+  if (ev) {
+    await call('PATCH', `/api/m/events/${ev.id}`, { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null,
+      ...(rewardLocked ? {} : { rewardKind: reward.value, rewardGiftType: giftId || null }),
+      windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, startAt: startAt.get(), durationMin: durationMin.value || null }, 'Evento aggiornato');
+    return;
+  }
   if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) launch = false;
   await call('POST', G('/events'), { name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null,
     windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, launch,
@@ -4191,6 +4203,7 @@ function viewEvents() {
           x.confirmedAt ? h('span', { class: 'chip' }, `${x.reward?.auto ? 'chiuso d\'ufficio' : 'confermato'}${x.reward ? ` · ${rewardText(x.reward)}` : x.outcome === 'lost' ? ' · niente premio' : ''}`) : null,
           ev.squadId ? eventChatBox(ev, x) : null))) : h('p', { class: 'tiny muted' }, 'Nessuna coppia ha ancora accettato.')),
       h('div', { class: 'row-actions' },
+        ev.status !== 'done' ? h('button', { class: 'btn btn-sm', onclick: () => gameEventDialog(ev) }, 'Modifica') : null,
         ev.status === 'draft' ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Lanciare l\'evento?', `«${ev.name}» arriva adesso a tutte le coppie con una notifica${ev.windowMin ? `; candidature aperte per ${ev.windowMin} minuti` : ''}.`, 'POST', `/api/m/events/${ev.id}/launch`, {}, 'Evento lanciato alle coppie') }, 'Lancia') : null,
         ev.status === 'open' ? h('button', { class: 'btn btn-sm btn-primary', disabled: !ev.joined, onclick: () => confirmCall('Avviare l\'evento?', `Le coppie iscritte (${ev.joined}) ricevono l'avviso della tregua finale; le alleanze non confermate da tutti decadono.`, 'POST', `/api/m/events/${ev.id}/start`, {}, 'Evento avviato') }, 'Avvia') : null,
         ['open', 'running'].includes(ev.status) && ev.joined ? h('button', { class: 'btn btn-sm', onclick: async () => { const o = await eventOutcomeDialog(ev); if (o) call('POST', `/api/m/events/${ev.id}/close`, { outcomes: o }, 'Evento chiuso: in attesa delle conferme'); } }, 'Chiudi l\'evento') : null,

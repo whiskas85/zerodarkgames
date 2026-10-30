@@ -687,6 +687,7 @@ m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(
 m.delete('/print-logo', wrap(() => { print.resetLogo(); return { ok: true }; }));
 m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));
 m.post('/games/:id/events', wrap((req) => EV.createEvent(gameId(req), req.body || {}, actor(req))));
+m.patch('/events/:eid', wrap((req) => EV.updateEvent(Number(req.params.eid), req.body || {}, actor(req))));
 m.patch('/events/:eid/squad', wrap((req) => EV.setSquad(Number(req.params.eid), req.body?.squadId || null, actor(req))));
 m.patch('/events/:eid/schedule', wrap((req) => EV.setSchedule(Number(req.params.eid), req.body || {}, actor(req))));
 m.patch('/events/:eid/location', wrap((req) => EV.setLocation(Number(req.params.eid), req.body?.location || null, actor(req))));
