@@ -517,7 +517,7 @@ function sightingsFor(me, now = Date.now()) {
   }
   const list = [];
   // Alleanze sporche: la squadra di Eletti in arrivo (o alleata) compare sulla mappa della coppia.
-  for (const task of q.all("SELECT t.*, s.name AS squadName, s.color AS squadColor FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id)) {
+  for (const task of q.all("SELECT t.*, s.name AS squadName, s.color AS squadColor FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.acceptedAt IS NOT NULL AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id)) {
     squadPositions(task.squadId, now).forEach((p, i) => list.push({ kind: 'elect', teamId: null, key: `e${task.id}-${i}`, sectorName: task.squadName, roman: (p.nickname || p.name || 'E').slice(0, 2).toUpperCase(),
       displayName: p.nickname || p.name, color: task.squadColor, source: task.startedAt ? 'Alleanza sporca' : 'In arrivo', until: task.endsAt, at: p.at, lat: p.lat, lng: p.lng, radius: null }));
   }
@@ -597,7 +597,7 @@ function indicatorsFor(me, now = Date.now()) {
     if (OWN[e.code] && e.teamId === me.id) out.push({ code: e.code, ...OWN[e.code], until: e.endsAt });
   }
   // Eletti che vi vedono (caccia o incarico verso di voi): anche questo si sa 1 minuto dopo.
-  if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
+  if (!hidden(me, now) && q.get(`SELECT 1 FROM squad_tasks WHERE targetTeamId = ? AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL AND acceptedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL
     AND notifiedAt IS NOT NULL`, me.id)) out.push({ code: 'caccia', ...ELECT_WATCH, until: null });
   const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
   if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', desc: 'Siete alleati con una squadra di Eletti: non vi attaccano e potete muovervi insieme finché dura.', until: dirty.endsAt });
@@ -888,9 +888,9 @@ function tickAll(now = Date.now()) {
       else for (const id of new Set(ended.map((e) => e.teamId))) rt.toTeams(g.id, 'state', {}, id);
       rt.toStaff(g.id, 'skills');
     }
-    // Chi viene rivelato lo sa sempre 1 minuto dopo: anche quando una squadra di Eletti lo vede (caccia, incarico).
-    for (const t of q.all(`SELECT * FROM squad_tasks WHERE gameId = ? AND targetTeamId IS NOT NULL AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL
-                           AND notifiedAt IS NULL AND doneAt IS NULL AND cancelledAt IS NULL AND assignedAt <= ?`, g.id, now - MIN)) {
+    // Chi viene rivelato lo sa sempre 1 minuto dopo: anche quando una squadra di Eletti lo vede (caccia, incarico), dal momento in cui la squadra accetta.
+    for (const t of q.all(`SELECT * FROM squad_tasks WHERE gameId = ? AND targetTeamId IS NOT NULL AND kind IN ('hunt', 'goto', 'guard', 'bounty') AND squadId IS NOT NULL AND acceptedAt IS NOT NULL
+                           AND notifiedAt IS NULL AND doneAt IS NULL AND cancelledAt IS NULL AND acceptedAt <= ?`, g.id, now - MIN)) {
       q.run('UPDATE squad_tasks SET notifiedAt = ? WHERE id = ?', now, t.id);
       if (hidden({ gameId: g.id, id: t.targetTeamId }, now)) continue;
       rt.pushTeams(g.id, { title: 'Gli Eletti vi vedono', body: 'Una squadra di Eletti segue la vostra posizione sulla mappa.', tag: `elect-watch-${t.id}`, url: '/#/home' }, t.targetTeamId);

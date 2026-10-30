@@ -2638,16 +2638,16 @@ function electTimedTasks(st) {
     try {
       await api('POST', `/api/field/tasks/${t.id}/accept?gameId=${st.game.id}`, { gameId: st.game.id });
       vibrate([60, 40, 60]);
-      toast(`Incarico accettato: avete ${t.timeMin} minuti`, 'ok');
+      toast(t.timeMin ? `Incarico accettato: avete ${t.timeMin} minuti` : 'Incarico accettato', 'ok');
       await refresh();
     } catch (e) { toast(e.message, 'error', 6000); }
   };
   return h('section', { class: 'card stack-sm timed-tasks' },
-    h('div', { class: 'eyebrow' }, '⏱ Incarichi a tempo'),
+    h('div', { class: 'eyebrow' }, list.some((t) => !t.acceptedAt) ? 'Incarichi da accettare' : '⏱ Incarichi a tempo'),
     h('ul', { class: 'timed-list' }, list.map((t) => h('li', { class: t.acceptedAt ? 'running' : 'waiting' },
       h('div', { class: 'grow' }, h('strong', null, t.text),
         t.acceptedAt ? h('div', { class: 'small' }, 'Scade tra ', h('strong', { class: 'mono', 'data-abs': t.acceptedAt + t.timeMin * 60000 }, '—'), ` · alle ${fmtTime(t.acceptedAt + t.timeMin * 60000)}`)
-          : h('div', { class: 'small warn-text' }, `${t.timeMin} minuti da quando lo accettate`)),
+          : h('div', { class: 'small warn-text' }, t.timeMin ? `Da accettare · ${t.timeMin} minuti da quando lo accettate` : 'Da accettare: la squadra comincia quando lo accettate')),
       t.acceptedAt ? h('a', { class: 'btn btn-sm', href: '#/incarichi' }, 'Apri') : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => accept(t) }, 'Accetta')))));
 }
 

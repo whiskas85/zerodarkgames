@@ -2532,9 +2532,9 @@ function taskLine(t, { assign = false } = {}) {
     assign ? h('span', { class: 'tiny task-asked' }, `Chiesto alle ${fmtTime(t.createdAt)}${t.sourceTeamId ? ` dal Settore ${R.ms?.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'}` : ''} · `,
       h('span', { 'data-ago': t.createdAt }, agoText(t.createdAt))) : null,
     // Incarico a tempo: da accettare, oppure quanto manca (in tempo reale) da quando la squadra l'ha accettato.
-    t.timeMin && !closed ? h('span', { class: 'tiny task-timer' }, t.acceptedAt
-      ? ['⏱ accettato alle ', fmtTime(t.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${t.acceptedAt + t.timeMin * 60000}` }, '—')]
-      : `⏱ ${t.timeMin}′ da quando la squadra lo accetta`) : null,
+    !closed && t.squadId ? h('span', { class: 'tiny task-timer' }, t.acceptedAt
+      ? (t.timeMin ? ['⏱ accettato alle ', fmtTime(t.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${t.acceptedAt + t.timeMin * 60000}` }, '—')] : `✓ accettato alle ${fmtTime(t.acceptedAt)}`)
+      : `⏳ da accettare${t.timeMin ? ` · ${t.timeMin}′ da quando lo accetta` : ''}`) : null,
     h('span', { class: 'tiny muted' }, [t.source !== 'regia' ? TASK_SOURCE[t.source] : null, t.kind === 'meet' && t.endsAt ? `alleanza fino alle ${fmtTime(t.endsAt)}` : null,
       t.expiredAt ? `tempo scaduto ${fmtTime(t.expiredAt)}` : t.cancelledAt ? `annullato ${fmtTime(t.cancelledAt)}` : t.doneAt ? `${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}` : null].filter(Boolean).join(' · ')),
     sel, assign ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => { if (!Number(sel.value)) return toast('Scegli la squadra', 'error'); squadCall('POST', `/api/m/tasks/${t.id}/assign`, { squadId: Number(sel.value) }, 'Incarico assegnato'); } }, 'Assegna') : null,
@@ -2697,9 +2697,10 @@ function viewTaskBoard(d) {
     h('span', { class: 'task-ico', 'aria-hidden': 'true' }, it.icon || '•'),
     h('div', { class: 'grow' }, h('strong', null, it.title), h('div', { class: 'tiny muted' }, it.what, it.point ? ' · punto indicato' : ''),
       // Incarico a tempo: da accettare, oppure quanto manca da quando la squadra l'ha accettato.
-      it.kind === 'task' && it.x.timeMin ? h('div', { class: 'tiny task-timer' }, it.x.acceptedAt
-        ? ['⏱ accettato alle ', fmtTime(it.x.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${it.x.acceptedAt + it.x.timeMin * 60000}` }, '—')]
-        : `⏱ ${it.x.timeMin}′ da quando la squadra lo accetta`) : null),
+      // Ogni incarico va accettato dalla squadra: da accettare, accettato, o (se a tempo) quanto manca.
+      it.kind === 'task' && it.squadId ? h('div', { class: 'tiny task-timer' }, it.x.acceptedAt
+        ? (it.x.timeMin ? ['⏱ accettato alle ', fmtTime(it.x.acceptedAt), ' · scade tra ', h('strong', { class: 'mono', 'data-clock': `abs:${it.x.acceptedAt + it.x.timeMin * 60000}` }, '—')] : `✓ accettato alle ${fmtTime(it.x.acceptedAt)}`)
+        : h('span', { class: 'warn-text' }, `⏳ da accettare${it.x.timeMin ? ` · ${it.x.timeMin}′ da quando lo accetta` : ''}`)) : it.kind === 'task' && it.x.timeMin ? h('div', { class: 'tiny task-timer' }, `⏱ ${it.x.timeMin}′ da quando la squadra lo accetta`) : null),
     h('div', { class: 'task-actions' },
       it.kind === 'task' || it.kind === 'event' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
       it.kind === 'event' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#eventi' }, 'Apri') : null,

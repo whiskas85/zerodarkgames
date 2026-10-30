@@ -1445,19 +1445,25 @@ test('Skill con gli Eletti (fase 3): Maestro della caccia, Ombra che interrompe 
   assert.equal(hunt.squadId, null);
   assert.equal(F.taskTargetPositions(sqId).length, 0);
   F.assignTask(hunt.id, sqId, 'test');
+  // Finché la squadra non accetta, la coppia bersaglio non compare.
+  assert.equal(F.taskTargetPositions(sqId).length, 0);
+  F.acceptTask(hunt.id, 'test', g.id, sqId);
   assert.equal(F.taskTargetPositions(sqId)[0].teamId, B.id);
   // Ombra: la caccia si interrompe e il bersaglio sparisce.
   S.useSkill(B, 'ombra');
   assert.ok(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', hunt.id).cancelledAt);
   assert.equal(F.taskTargetPositions(sqId).length, 0);
   // Incarico della regia con bersaglio una coppia: la squadra la vede.
-  F.createTask(g.id, { squadId: sqId, target: `team:${Cc.id}` }, 'test');
+  F.acceptTask(F.createTask(g.id, { squadId: sqId, target: `team:${Cc.id}` }, 'test').id, 'test', g.id, sqId);
   assert.equal(F.taskTargetPositions(sqId)[0].teamId, Cc.id);
   // Alleanze sporche: la squadra più vicina parte subito, la coppia la vede; vicini → alleati per 30 minuti.
   const gid = Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, 'sporche', 'Alleanze sporche', 'Dono', 'toksp', 'claimed', ?, ?, ?)", g.id, Cc.id, now, now).lastInsertRowid);
   F.useGift(Cc, gid);
   const meet = q.get("SELECT * FROM squad_tasks WHERE gameId = ? AND kind = 'meet'", g.id);
   assert.equal(meet.squadId, sqId);
+  // Anche l'Alleanza sporca va accettata dalla squadra: prima la coppia non la vede arrivare.
+  assert.ok(!S.sightingsFor(Cc).some((x) => x.kind === 'elect'));
+  F.acceptTask(meet.id, 'test', g.id, sqId);
   assert.ok(S.sightingsFor(Cc).some((x) => x.kind === 'elect'));
   S.tickAll(Date.now());
   const started = q.get('SELECT * FROM squad_tasks WHERE id = ?', meet.id);
@@ -1522,7 +1528,8 @@ test('caccia degli Eletti: il bersaglio lo sa 1 minuto dopo l\'assegnazione', ()
   G.control(g.id, 'ready', 'test');
   G.control(g.id, 'circle', 'test');
   G.control(g.id, 'start', 'test');
-  F.createTask(g.id, { squadId: sq, kind: 'hunt', target: `team:${B.id}` }, 'test');
+  const ht = F.createTask(g.id, { squadId: sq, kind: 'hunt', target: `team:${B.id}` }, 'test').id;
+  F.acceptTask(ht, 'test', g.id, sq);
   const codes = (t) => S.skillsState(t).indicators.map((x) => x.code);
   assert.deepEqual(codes(B), []);
   S.tickAll(Date.now() + 61000);
@@ -2384,6 +2391,7 @@ test('scontri degli Eletti: con qualsiasi coppia (prima quelle legate alla squad
   assert.throws(() => K.reportElectFight(elect, pE, { teamId: elect.id, result: 'won' }), /non valida/);
   // Caccia lanciata da B contro A, affidata alla squadra Alfa.
   const task = F.createTask(g.id, { kind: 'hunt', target: `team:${A.id}`, squadId: alfa }, 'test', { source: 'skill', sourceTeamId: B.id });
+  F.acceptTask(task.id, 'test', g.id, alfa);
   assert.deepEqual(K.combatState(elect, pE).targets.filter((t) => t.linked).map((t) => t.teamId), [A.id]);
   assert.equal(K.combatState(elect, pE).targets[0].teamId, A.id);
   const f1 = K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' });
@@ -2397,12 +2405,14 @@ test('scontri degli Eletti: con qualsiasi coppia (prima quelle legate alla squad
   assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', task.id ?? task).doneAt);
   // Nuova caccia contro C: vince la coppia, la caccia si chiude e C vede la vittoria.
   const t2 = F.createTask(g.id, { kind: 'hunt', target: `team:${Cc.id}`, squadId: alfa }, 'test', { source: 'skill', sourceTeamId: B.id });
+  F.acceptTask(t2.id, 'test', g.id, alfa);
   const f2 = K.reportElectFight(elect, pE, { teamId: Cc.id, result: 'lost' });
   K.respondElectFight(Cc, f2.id, true);
   assert.ok(q.get('SELECT cancelledAt FROM squad_tasks WHERE id = ?', t2.id ?? t2).cancelledAt);
   assert.equal(K.combatState(Cc).electWins.length, 1);
   // Contestato: decide la regia.
   const t3 = F.createTask(g.id, { kind: 'goto', target: `team:${Cc.id}`, squadId: alfa }, 'test');
+  F.acceptTask(t3.id, 'test', g.id, alfa);
   const f3 = K.reportElectFight(elect, pE, { teamId: Cc.id, result: 'won' });
   K.respondElectFight(Cc, f3.id, false);
   assert.equal(K.masterCombat(g.id).electFights.find((x) => x.id === f3.id).status, 'contested');
@@ -2677,6 +2687,9 @@ test('taglia su una coppia: riuscita a scontro vinto (perso resta aperta) o a qu
   assert.throws(() => F.createTask(g.id, { kind: 'bounty', squadId: sq }, 'test'), /la coppia/);
   const tw = F.createTask(g.id, { kind: 'bounty', target: `team:${A.id}`, squadId: sq, successMode: 'win' }, 'test').id;
   const ta = F.createTask(g.id, { kind: 'bounty', target: `team:${B.id}`, squadId: sq, successMode: 'any' }, 'test').id;
+  // La taglia non accettata: la coppia non è ancora legata alla squadra.
+  assert.ok(!K.combatState(elect, pE).targets.find((t) => t.teamId === A.id).linked);
+  F.acceptTask(tw, 'test', g.id, sq); F.acceptTask(ta, 'test', g.id, sq);
   assert.match(q.get('SELECT text FROM squad_tasks WHERE id = ?', tw).text, /^Taglia:/);
   assert.ok(K.combatState(elect, pE).targets.find((t) => t.teamId === A.id).why.includes('Taglia'));
   // Taglia «vinta»: scontro perso, resta aperta; vinto, riuscita.

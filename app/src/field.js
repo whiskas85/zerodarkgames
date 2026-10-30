@@ -757,7 +757,9 @@ function acceptTask(taskId, who, gameId = null, squadId = null) {
   const now = Date.now();
   q.run('UPDATE squad_tasks SET acceptedAt = ?, acceptedBy = ? WHERE id = ?', now, who, t.id);
   G.log(t.gameId, who, 'squad_task_accepted', { text: t.text, minutes: t.timeMin });
-  notifySquad(t.squadId, t.timeMin ? { title: 'Incarico accettato', body: `${t.text} · avete ${t.timeMin} minuti`, tag: `task-${t.id}` } : null);
+  notifySquad(t.squadId, { title: 'Incarico accettato', body: t.timeMin ? `${t.text} · avete ${t.timeMin} minuti` : t.text, tag: `task-${t.id}` });
+  // Da adesso la coppia bersaglio (taglia, caccia, da raggiungere) compare alla squadra: si aggiornano anche le coppie.
+  if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
   return { ok: true, acceptedAt: now };
 }
@@ -791,6 +793,7 @@ function deleteTask(taskId, actor) {
 
 // Incarichi aperti con una coppia da seguire: gli Eletti della squadra ne vedono la posizione finché l'incarico è aperto.
 const openTaskSql = 'doneAt IS NULL AND cancelledAt IS NULL';
+// Ogni incarico va accettato dalla squadra: solo da quel momento la squadra vede la coppia bersaglio (mappa e Scontri).
 
 // ---------------------------------------------------------------- posizioni GPS
 
@@ -965,7 +968,7 @@ function positionsOf(gameId, viewer = 'master') {
 // Posizioni delle coppie bersaglio degli incarichi aperti della squadra (mai chi è nell'Ombra).
 function taskTargets(squadId) {
   const S = require('./skills');
-  return q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql}`, squadId).map((t) => {
+  return q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql} AND acceptedAt IS NOT NULL`, squadId).map((t) => {
     const team = q.get('SELECT t.id, t.gameId, s.name, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', t.targetTeamId);
     if (!team || S.hiddenTeam(team)) return null;
     const p = q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', team.id, Date.now() - POSITION_MAX_AGE);
@@ -978,7 +981,7 @@ function taskTargetPositions(squadId) {
   const now = Date.now();
   return taskTargets(squadId).map((x) => ({
     deviceId: `task-${x.taskId}`, teamId: x.teamId, kind: 'team', lat: x.lat, lng: x.lng, acc: null, at: x.at, stale: now - x.at > POSITION_STALE,
-    label: `${x.roman} · Settore ${x.sectorName}`, who: x.kind === 'hunt' ? '🎯 Bersaglio della caccia' : x.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere',
+    label: `${x.roman} · Settore ${x.sectorName}`, who: x.kind === 'hunt' ? '🎯 Bersaglio della caccia' : x.kind === 'bounty' ? '💰 Taglia' : x.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere',
     roman: x.roman, color: x.color,
   }));
 }
@@ -997,7 +1000,7 @@ function electVisibleTeams(gameId, squadId) {
     out.set(teamId, { teamId: team.id, roman: team.roman, sectorName: team.name, color: team.color, why, ...extra });
   };
   if (squadId) {
-    for (const t of q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql}`, squadId)) {
+    for (const t of q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql} AND acceptedAt IS NOT NULL`, squadId)) {
       add(t.targetTeamId, t.kind === 'hunt' ? '🎯 Bersaglio della caccia' : t.kind === 'bounty' ? '💰 Taglia' : t.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere', { taskId: t.id, taskKind: t.kind });
     }
     for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
@@ -1033,7 +1036,9 @@ function electSummary(team, player) {
     ...q.all(`SELECT id, text FROM squad_tasks WHERE squadId = ? AND ${openTaskSql}`, squad.id).map((x) => ({ key: `t${x.id}`, label: x.text })),
   ];
   // Incarichi a tempo ancora aperti: in home con «Accetta» o con il conto alla rovescia.
-  const timed = q.all(`SELECT id, text, timeMin, acceptedAt FROM squad_tasks WHERE squadId = ? AND timeMin IS NOT NULL AND ${openTaskSql} ORDER BY acceptedAt IS NULL, acceptedAt + timeMin * 60000, id`, squad.id);
+  // Home: incarichi da accettare e quelli a tempo già partiti (con il conto alla rovescia).
+  const timed = q.all(`SELECT id, text, kind, timeMin, acceptedAt FROM squad_tasks WHERE squadId = ? AND ${openTaskSql} AND (acceptedAt IS NULL OR timeMin IS NOT NULL)
+                       ORDER BY acceptedAt IS NULL DESC, acceptedAt + timeMin * 60000, id`, squad.id);
   // Incarichi appena chiusi (ultimi 10 minuti): l'app mostra una volta la schermata «compiuto» o «fallito».
   const since = Date.now() - 10 * 60000;
   const closed = q.all('SELECT id, text, kind, doneAt, doneBy, cancelledAt, expiredAt, cancelReason FROM squad_tasks WHERE squadId = ? AND (doneAt > ? OR cancelledAt > ?) ORDER BY id', squad.id, since, since);

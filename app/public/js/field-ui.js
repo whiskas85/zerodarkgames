@@ -93,7 +93,7 @@ export function createField(F, { rerender }) {
       try {
         await api('POST', `/api/field/tasks/${t.id}/accept?gameId=${F.gameId}`, { gameId: F.gameId });
         vibrate([60, 40, 60]);
-        toast(`Incarico accettato: avete ${t.timeMin} minuti`, 'ok');
+        toast(t.timeMin ? `Incarico accettato: avete ${t.timeMin} minuti` : 'Incarico accettato', 'ok');
         load();
       } catch (e) { toast(e.message, 'error'); }
     };
@@ -130,14 +130,14 @@ export function createField(F, { rerender }) {
             target && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small ok-text' }, `⌖ ${t.targetLabel || 'Punto indicato'}`, F.me ? ` · a ${fmtDist(meters(F.me, target))}` : '') : null,
             t.kind === 'meet' && t.endsAt ? h('div', { class: 'small' }, `Alleanza attiva fino alle ${fmtTime(t.endsAt)}`) : null,
             // Incarico a tempo: il conto alla rovescia parte quando la squadra lo accetta.
-            t.timeMin && !t.doneAt && !t.cancelledAt ? (t.acceptedAt
-              ? h('div', { class: 'small task-timer' }, '⏱ Scade tra ', h('strong', { class: 'mono', 'data-abs': t.acceptedAt + t.timeMin * 60000 }, '—'), ` (alle ${fmtTime(t.acceptedAt + t.timeMin * 60000)})`)
-              : h('div', { class: 'small warn-text' }, `⏱ ${t.timeMin} minuti da quando lo accettate`)) : null,
+            // Ogni incarico si accetta prima di cominciare (la coppia bersaglio compare solo dopo); se a tempo, parte il conto alla rovescia.
+            !t.doneAt && !t.cancelledAt && !t.acceptedAt ? h('div', { class: 'small warn-text' }, t.timeMin ? `Da accettare · ⏱ ${t.timeMin} minuti da quando lo accettate` : 'Da accettare: accettatelo per cominciare') : null,
+            t.timeMin && t.acceptedAt && !t.doneAt && !t.cancelledAt ? h('div', { class: 'small task-timer' }, '⏱ Scade tra ', h('strong', { class: 'mono', 'data-abs': t.acceptedAt + t.timeMin * 60000 }, '—'), ` (alle ${fmtTime(t.acceptedAt + t.timeMin * 60000)})`) : null,
             t.expiredAt ? h('span', { class: 'chip chip-blood' }, `Tempo scaduto alle ${fmtTime(t.expiredAt)}`)
               : t.cancelledAt ? h('span', { class: 'chip chip-blood' }, `Annullato ${fmtTime(t.cancelledAt)}: abortite`) : t.doneAt ? h('span', { class: 'tiny muted' }, `Fatto ${fmtTime(t.doneAt)} · ${(t.doneBy || '').replace('eletti:', '')}`) : null),
           h('div', { class: 'stack-sm' },
-            t.timeMin && !t.acceptedAt && !t.doneAt && !t.cancelledAt ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => accept(t) }, 'Accetta') : null,
-            t.cancelledAt ? null : h('button', { class: `btn btn-sm ${t.doneAt || (t.timeMin && !t.acceptedAt) ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto'),
+            !t.acceptedAt && !t.doneAt && !t.cancelledAt ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => accept(t) }, 'Accetta') : null,
+            t.cancelledAt || (!t.acceptedAt && !t.doneAt) ? null : h('button', { class: `btn btn-sm ${t.doneAt ? '' : 'btn-primary'}`, onclick: () => toggle(t) }, t.doneAt ? 'Riapri' : 'Fatto'),
             target && !t.doneAt && !t.cancelledAt ? h('button', { class: 'btn btn-sm', onclick: () => showOnMap(target) }, 'Mappa') : null));
       })) : h('p', { class: 'muted small' }, 'Nessun incarico libero.'),
       done.length ? h('p', { class: 'small ok-text' }, `Già piazzati: ${done.join(', ')}`) : null);
