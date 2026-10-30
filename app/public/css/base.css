@@ -105,6 +105,13 @@ label.field > span, div.field > span { font-family: var(--f-mono); font-size: 12
 .dlg h3 { font-size: 26px; }
 .dlg p { margin: 0; color: var(--muted); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+/* Finestre a misura fissa: titolo e pulsanti fermi, il contenuto scorre dentro. */
+.dlg.dlg-fixed { max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+.dlg.dlg-fixed[open] { display: flex; }
+.dlg.dlg-fixed form { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.dlg-fixed .dlg-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; padding-right: 2px; }
+.dlg-fixed h3, .dlg-fixed .dlg-actions { flex: 0 0 auto; }
+.dlg.dlg-tall { height: min(86vh, 700px); }
 
 /* Emblema del Consiglio */
 .emblem { width: 64px; height: 64px; border-radius: 50%; border: 5px solid var(--ink); display: grid; place-items: center; position: relative; flex: none; }

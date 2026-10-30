@@ -2201,7 +2201,7 @@ async function zoneDialog() {
   const cards = h('div', { class: 'zone-kinds' }, Object.entries(K).map(([k, z]) => h('button', { type: 'button', class: `zone-kind ${k === kind ? 'on' : ''}`, style: { '--c': z.color },
     onclick: (e) => { kind = k; for (const c of cards.children) c.classList.toggle('on', c === e.currentTarget); holdWrap.hidden = k !== 'conquista'; rateWrap.hidden = k !== 'santuario'; } },
   h('span', { class: 'zk-ico', 'aria-hidden': 'true' }, z.icon), h('strong', null, z.label), h('span', { class: 'tiny' }, z.effect.replace('{min}', 'X').replace('{rate}', 'X')))));
-  const r = await modal({ title: 'Nuova zona', wide: true, okLabel: 'Disegna sulla mappa',
+  const r = await modal({ title: 'Nuova zona', wide: true, tall: true, okLabel: 'Disegna sulla mappa',
     body: h('div', { class: 'stack-sm' }, cards,
       h('div', { class: 'form-grid' }, h('label', { class: 'field' }, h('span', null, 'Nome'), name), holdWrap, rateWrap,
         h('label', { class: 'field' }, h('span', null, 'Durata del Beacon (min)'), beacon),
@@ -2462,7 +2462,7 @@ async function pickTargetDialog(current = '', only = null) {
       x.value === chosen ? h('span', { class: 'chip chip-brass' }, 'scelto') : null))) : [h('li', { class: 'tiny muted loc-empty' }, q ? 'Nessun risultato.' : 'Niente in questa scheda.')]));
   };
   draw();
-  const ok = await modal({ title: 'Bersaglio dell\'incarico', okLabel: 'Usa questo', cancelLabel: 'Annulla',
+  const ok = await modal({ title: 'Bersaglio dell\'incarico', tall: true, okLabel: 'Usa questo', cancelLabel: 'Annulla',
     body: h('div', { class: 'stack-sm' }, groups.length ? [tabsEl, search, hintEl, listEl] : h('p', { class: 'empty' }, 'Nessun bersaglio disponibile.'),
       h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { chosen = ''; draw(); } }, 'Nessun bersaglio (incarico libero)')) });
   return ok ? chosen : undefined;
@@ -2503,7 +2503,7 @@ async function pickSquadDialog(current = null, { noneLabel = 'Nessuna squadra (d
         chosen === sq.id ? h('span', { class: 'chip chip-brass' }, 'scelta') : null))) : [h('li', { class: 'tiny muted loc-empty' }, 'Nessuna squadra o Eletto con questo nome.')]));
   };
   draw();
-  const ok = await modal({ title: 'Squadra dell\'incarico', okLabel: 'Usa questa', cancelLabel: 'Annulla',
+  const ok = await modal({ title: 'Squadra dell\'incarico', tall: true, okLabel: 'Usa questa', cancelLabel: 'Annulla',
     body: h('div', { class: 'stack-sm' }, (R.ms.squads || []).length ? [search, listEl] : h('p', { class: 'empty' }, 'Nessuna squadra di Eletti: creale in Squadre Eletti.')) });
   return ok ? chosen : undefined;
 }
@@ -2769,7 +2769,7 @@ async function newTaskDialog() {
   // Tempo per svolgerlo: parte quando la squadra lo accetta nella sua app; vuoto = senza limite.
   const minutes = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza limite' });
   await modal({
-    title: 'Nuovo incarico', okLabel: 'Crea', wide: true,
+    title: 'Nuovo incarico', okLabel: 'Crea', wide: true, tall: true,
     body: h('div', { class: 'stack-sm' },
       h('div', { class: 'field' }, h('span', null, 'Operazione'), cards), hint,
       targetWrap, bountyWrap,
@@ -3361,7 +3361,7 @@ async function createGiftDialog() {
     h('span', { class: 'tiny' }, t.description));
     return card;
   }));
-  return modal({ title: 'Crea dono', wide: true, okLabel: 'Crea',
+  return modal({ title: 'Crea dono', wide: true, tall: true, okLabel: 'Crea',
     body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), cards, chosen, opts),
     onOk: async () => {
       if (!type) { toast('Scegli prima il dono', 'error'); return false; }
@@ -3987,7 +3987,7 @@ async function eventLocationDialog(current = null) {
   drawList();
   let result;
   let remove = false;
-  const ok = await modal({ title: 'Luogo dell\'evento', wide: true, okLabel: 'Usa questo luogo',
+  const ok = await modal({ title: 'Luogo dell\'evento', wide: true, tall: true, okLabel: 'Usa questo luogo',
     body: h('div', { class: 'stack-sm' },
       h('div', { class: 'loc-pick' },
         flat.length ? h('div', { class: 'loc-side' }, tabsEl, search, listEl) : h('p', { class: 'tiny muted' }, 'Nessun luogo esistente: tocca la mappa.'),
@@ -4101,7 +4101,7 @@ async function newEventDialog() {
   let location = null;
   let launch = false;
   const locBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { const r = await eventLocationDialog(location); if (r !== undefined) { location = r; locBtn.textContent = location ? `📍 ${location.label}` : '📍 Scegli il luogo…'; } } }, '📍 Scegli il luogo…');
-  const ok = await modal({ title: 'Nuovo evento', wide: true, okLabel: 'Salva, lo lancio dopo',
+  const ok = await modal({ title: 'Nuovo evento', wide: true, tall: true, okLabel: 'Salva, lo lancio dopo',
     body: h('div', { class: 'stack-sm' },
       h('label', { class: 'field' }, h('span', null, 'Nome'), name),
       h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),

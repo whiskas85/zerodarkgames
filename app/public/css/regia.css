@@ -294,7 +294,7 @@ tr.gift-row-claimed td { opacity: .6; }
 
 /* Incarichi di piazzamento, luoghi, modali */
 .dlg.dlg-wide { width: min(96vw, 820px); max-height: 92vh; }
-.dlg.dlg-wide form { max-height: 88vh; overflow: auto; }
+.dlg.dlg-wide:not(.dlg-fixed) form { max-height: 88vh; overflow: auto; }
 .place-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .squad-chip { border-color: var(--c); color: var(--ink); border-left-width: 6px; }
 .altar-card.is-placed, .place-card.is-placed { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }

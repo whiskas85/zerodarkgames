@@ -174,11 +174,14 @@ export function dialog({ title, text, okLabel = 'Conferma', cancelLabel = 'Annul
 }
 
 // Finestra modale con contenuto libero. onOk() restituisce false per restare aperta (es. dati mancanti).
-export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annulla', onOk, wide = false, onOpen }) {
+// La finestra non cambia misura mentre è aperta: titolo e pulsanti restano fermi e il contenuto scorre all'interno.
+// tall: finestra già alta il giusto dall'inizio (schede, ricerche, tipi diversi con contenuti di altezza diversa);
+// le altre prendono l'altezza che hanno all'apertura e la tengono.
+export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annulla', onOk, wide = false, tall = false, onOpen }) {
   return new Promise((resolve) => {
     const close = (val) => { dlg.close(); dlg.remove(); resolve(val); };
     const ok = h('button', { type: 'submit', class: 'btn btn-primary' }, okLabel);
-    const dlg = h('dialog', { class: `dlg ${wide ? 'dlg-wide' : ''}` },
+    const dlg = h('dialog', { class: `dlg dlg-fixed ${wide ? 'dlg-wide' : ''} ${tall ? 'dlg-tall' : ''}` },
       h('form', { method: 'dialog', onsubmit: async (e) => {
         e.preventDefault();
         ok.disabled = true;
@@ -189,7 +192,7 @@ export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annull
         ok.disabled = false;
       } },
       title && h('h3', null, title),
-      body,
+      h('div', { class: 'dlg-body' }, body),
       h('div', { class: 'dlg-actions' },
         cancelLabel ? h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close(null) }, cancelLabel) : null,
         ok)));
@@ -197,6 +200,8 @@ export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annull
     document.body.append(dlg);
     dlg.showModal();
     onOpen?.(dlg);
+    // Altezza bloccata a quella dell'apertura (al massimo quella dello schermo): da qui in poi scorre il contenuto.
+    if (!tall) requestAnimationFrame(() => { if (dlg.isConnected) dlg.style.height = `${Math.ceil(dlg.getBoundingClientRect().height)}px`; });
   });
 }
 
