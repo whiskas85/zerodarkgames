@@ -539,6 +539,9 @@ function applyElectFight(f, by) {
     if (f.winner === 'elect') {
       startTimer(t.id, 'veglia', `Sconfitta contro gli Eletti (squadra ${sq?.name || '?'})`);
       if (task && !task.doneAt && !task.cancelledAt) F().setTaskDone(task.id, true, by, f.gameId);
+    } else if (task?.kind === 'bounty' && task.successMode === 'any' && !task.doneAt && !task.cancelledAt) {
+      // Taglia «basta un ingaggio»: riuscita anche se la coppia ha vinto.
+      F().setTaskDone(task.id, true, by, f.gameId);
     }
   });
   G.log(f.gameId, by, 'elect_fight_confirmed', { squad: sq?.name, couple: t?.sectorName, winner: f.winner });
@@ -549,7 +552,9 @@ function applyElectFight(f, by) {
     }
     notify([t.id], f.gameId, { title: 'Scontro perso', body: `Gli Eletti vi hanno sconfitto: Veglia di ${presetMin(f.gameId, 'veglia') || 2} minuti, poi tornate in gioco.`, tag: `ef-${f.id}`, url: '/#/timer' });
   } else {
-    if (task && !task.doneAt && !task.cancelledAt) F().cancelTask(task.id, 'sistema', `Il Settore ${t.sectorName} vi ha battuto: ${task.kind === 'hunt' ? 'la caccia è fallita' : 'l\'incarico si chiude'}.`);
+    // Taglia «solo se vinciamo»: lo scontro perso non la chiude, la squadra può riprovare.
+    if (task?.kind === 'bounty') { if (task.successMode !== 'any') F().notifySquadPublic(task.squadId, { title: 'Taglia ancora aperta', body: `Il Settore ${t.sectorName} vi ha battuto: la taglia resta da riscuotere.`, tag: `task-${task.id}` }); }
+    else if (task && !task.doneAt && !task.cancelledAt) F().cancelTask(task.id, 'sistema', `Il Settore ${t.sectorName} vi ha battuto: ${task.kind === 'hunt' ? 'la caccia è fallita' : 'l\'incarico si chiude'}.`);
     notify([t.id], f.gameId, { title: 'Scontro vinto', body: `Avete battuto gli Eletti (squadra ${sq?.name || '?'}).`, tag: `ef-${f.id}` });
   }
   electRefresh(f.gameId);

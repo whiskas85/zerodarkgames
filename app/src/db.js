@@ -509,6 +509,8 @@ addColumn('squad_tasks', 'timeMin', 'INTEGER');
 addColumn('squad_tasks', 'acceptedAt', 'INTEGER');
 addColumn('squad_tasks', 'acceptedBy', 'TEXT');
 addColumn('squad_tasks', 'expiredAt', 'INTEGER');
+// Taglia: quando è riuscita ('win' = scontro vinto dagli Eletti, 'any' = basta un ingaggio confermato).
+addColumn('squad_tasks', 'successMode', 'TEXT');
 
 // Emergenze reali (OFF GAME): dal pulsante dell'app o dall'SOS di Traccar, con la posizione di chi chiama.
 db.exec(`

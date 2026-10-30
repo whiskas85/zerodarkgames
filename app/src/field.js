@@ -657,8 +657,9 @@ function assignToSquad(kind, id, squadId, actor, opts = {}) {
 
 // Incarichi degli Eletti. kind: text (libero), goto (raggiungere un punto o una coppia), hunt (caccia a una coppia,
 // da Maestro della caccia), meet (incontro con una coppia per Alleanze sporche), beacon (accendere una zona o
-// disattivare un Altare con il Beacon: si chiude da solo quando la squadra ci riesce). Senza squadra = da assegnare.
-const TASK_KINDS = ['text', 'goto', 'hunt', 'meet', 'beacon'];
+// disattivare un Altare con il Beacon: si chiude da solo quando la squadra ci riesce), bounty (taglia su una coppia:
+// riuscita a scontro confermato, vinto o qualsiasi secondo successMode). Senza squadra = da assegnare.
+const TASK_KINDS = ['text', 'goto', 'hunt', 'meet', 'beacon', 'bounty'];
 
 // Bersaglio: "team:ID", "point:ID", "landmark:ID", "poi:ID", "gift:ID", "zone:ID" oppure { lat, lng }.
 function taskTarget(gameId, data) {
@@ -694,17 +695,19 @@ function createTask(gameId, data, actor, extra = {}) {
   // Una zona si può solo accendere con il Beacon.
   if (target.targetRef?.startsWith('zone:')) kind = 'beacon';
   if (kind === 'beacon' && !target.targetRef) throw err(400, 'Per un incarico Beacon scegli una zona o un Altare');
+  if (kind === 'bounty' && !target.targetTeamId) throw err(400, 'Per una taglia scegli la coppia');
+  const successMode = kind === 'bounty' ? (data.successMode === 'any' ? 'any' : 'win') : null;
   if (kind === 'text' && (target.targetTeamId || target.targetLat != null)) kind = 'goto';
   const text = String(data.text || '').trim().slice(0, 300)
-    || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'beacon' ? `Beacon: ${target.targetRef.startsWith('zone:') ? 'accendete' : 'disattivate'} ${target.targetLabel}`
+    || (kind === 'hunt' ? `Caccia: ${target.targetLabel}` : kind === 'bounty' ? `Taglia: ${target.targetLabel}` : kind === 'beacon' ? `Beacon: ${target.targetRef.startsWith('zone:') ? 'accendete' : 'disattivate'} ${target.targetLabel}`
       : kind === 'goto' && target.targetLabel ? `Raggiungete ${target.targetLabel}` : '');
   if (!text) throw err(400, 'Scrivi l\'incarico');
   const now = Date.now();
   // Tempo per svolgerlo (minuti da quando la squadra lo accetta); vuoto = senza limite.
   const timeMin = Number(data.timeMin) > 0 ? Math.min(600, Math.round(Number(data.timeMin))) : null;
-  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, targetRef, timeMin, source, sourceTeamId, assignedAt)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null, kind === 'beacon' ? target.targetRef : null, timeMin,
+  const id = Number(q.run(`INSERT INTO squad_tasks (gameId, squadId, text, createdAt, kind, targetTeamId, targetLat, targetLng, targetLabel, targetRef, timeMin, successMode, source, sourceTeamId, assignedAt)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  Number(gameId), s?.id ?? null, text, now, kind, target.targetTeamId ?? null, target.targetLat ?? null, target.targetLng ?? null, target.targetLabel ?? null, kind === 'beacon' ? target.targetRef : null, timeMin, successMode,
   extra.source || 'regia', extra.sourceTeamId ?? null, s ? now : null).lastInsertRowid);
   G.log(Number(gameId), actor, 'squad_task', { squad: s?.name || null, text });
   if (s) notifySquad(s.id, { title: `Incarico per la squadra ${s.name}`, body: text, tag: `task-${id}` });
@@ -994,7 +997,7 @@ function electVisibleTeams(gameId, squadId) {
   };
   if (squadId) {
     for (const t of q.all(`SELECT * FROM squad_tasks WHERE squadId = ? AND targetTeamId IS NOT NULL AND ${openTaskSql}`, squadId)) {
-      add(t.targetTeamId, t.kind === 'hunt' ? '🎯 Bersaglio della caccia' : t.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere', { taskId: t.id, taskKind: t.kind });
+      add(t.targetTeamId, t.kind === 'hunt' ? '🎯 Bersaglio della caccia' : t.kind === 'bounty' ? '💰 Taglia' : t.kind === 'meet' ? '🤝 Coppia da raggiungere (Alleanze sporche)' : '⌖ Coppia da raggiungere', { taskId: t.id, taskKind: t.kind });
     }
     for (const e of q.all(`SELECT en.teamId, ev.id, ev.name FROM event_entries en JOIN game_events ev ON ev.id = en.eventId
                            WHERE ev.gameId = ? AND ev.squadId = ? AND ev.status IN ('open', 'running', 'closing', 'truce')`, Number(gameId), squadId)) add(e.teamId, `🏁 Iscritta a «${e.name}»`, { eventId: e.id });

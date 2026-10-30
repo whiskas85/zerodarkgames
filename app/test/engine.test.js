@@ -2661,3 +2661,32 @@ test('incarico a tempo: il conto alla rovescia parte quando la squadra lo accett
   t = q.get('SELECT * FROM squad_tasks WHERE id = ?', id);
   assert.ok(t.expiredAt && t.cancelledAt);
 });
+
+test('taglia su una coppia: riuscita a scontro vinto (perso resta aperta) o a qualsiasi ingaggio', () => {
+  const F = require('../src/field');
+  const K = require('../src/combat');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Cacciatore' }, 'test');
+  const sq = F.createSquad(g.id, { name: 'Taglie' }, 'test').id;
+  F.setMemberSquad(eid, sq, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const pE = q.get('SELECT * FROM players WHERE id = ?', eid);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  assert.throws(() => F.createTask(g.id, { kind: 'bounty', squadId: sq }, 'test'), /la coppia/);
+  const tw = F.createTask(g.id, { kind: 'bounty', target: `team:${A.id}`, squadId: sq, successMode: 'win' }, 'test').id;
+  const ta = F.createTask(g.id, { kind: 'bounty', target: `team:${B.id}`, squadId: sq, successMode: 'any' }, 'test').id;
+  assert.match(q.get('SELECT text FROM squad_tasks WHERE id = ?', tw).text, /^Taglia:/);
+  assert.ok(K.combatState(elect, pE).targets.find((t) => t.teamId === A.id).why.includes('Taglia'));
+  // Taglia «vinta»: scontro perso, resta aperta; vinto, riuscita.
+  K.respondElectFight(A, K.reportElectFight(elect, pE, { teamId: A.id, result: 'lost' }).id, true);
+  let t = q.get('SELECT * FROM squad_tasks WHERE id = ?', tw);
+  assert.ok(!t.doneAt && !t.cancelledAt);
+  K.respondElectFight(A, K.reportElectFight(elect, pE, { teamId: A.id, result: 'won' }).id, true);
+  assert.ok(q.get('SELECT doneAt FROM squad_tasks WHERE id = ?', tw).doneAt);
+  // Taglia «qualsiasi ingaggio»: riuscita anche se la coppia vince.
+  K.respondElectFight(B, K.reportElectFight(elect, pE, { teamId: B.id, result: 'lost' }).id, true);
+  t = q.get('SELECT * FROM squad_tasks WHERE id = ?', ta);
+  assert.ok(t.doneAt && !t.cancelledAt);
+});

@@ -1192,3 +1192,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .leaflet-tooltip.zone-badge::before { display: none; }
 .leaflet-tooltip.zone-badge b { font-family: var(--f-mono, monospace); }
 .zl-countdown { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; }
+
+/* Nuovo incarico: tipo di operazione. */
+.op-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.op-card { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.op-card.on { border-color: var(--brass, #d1ad62); box-shadow: 0 0 0 1px var(--brass, #d1ad62) inset; background: rgba(209, 173, 98, .08); }
+.op-ico { font-size: 20px; width: 24px; text-align: center; }

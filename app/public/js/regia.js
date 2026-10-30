@@ -2427,7 +2427,7 @@ const squadOptions = (value, none = '— nessuna —') => [h('option', { value: 
 // Il pulsante mostra la scelta; .value è il riferimento («team:3», «point:5»… o '' per un incarico libero) e resta
 // anche se la pagina si ridisegna (si ricorda per chiave).
 const TARGET_SEL = {};
-function targetOptions() {
+function targetOptions(only = null) {
   const d = fieldData || {};
   const placed = (list) => (list || []).filter((x) => x.lat != null);
   return [
@@ -2438,12 +2438,12 @@ function targetOptions() {
     { key: 'poi', title: 'Punti di interesse', items: placed(d.pois).map((x) => ({ value: `poi:${x.id}`, label: x.label, icon: '◆', cls: 'poi', sub: x.description || null })) },
     { key: 'zone', title: 'Zone (Beacon)', hint: 'Una zona: l\'incarico è accenderla con il Beacon (si chiude da solo quando la squadra ci riesce).',
       items: (R.ms.mapZones?.list || []).filter((z) => z.enabled).map((z) => ({ value: `zone:${z.id}`, label: z.name, icon: z.icon, cls: 'zone', sub: `${z.label}${z.active ? ' · ora accesa' : ' · spenta'}` })) },
-  ].filter((g) => g.items.length);
+  ].filter((g) => g.items.length && (!only || only.includes(g.key)));
 }
 const targetLabel = (value) => targetOptions().flatMap((g) => g.items).find((x) => x.value === value)?.label || null;
 
-async function pickTargetDialog(current = '') {
-  const groups = targetOptions();
+async function pickTargetDialog(current = '', only = null) {
+  const groups = targetOptions(only);
   let tabKey = groups.find((g) => g.items.some((x) => x.value === current))?.key || groups[0]?.key;
   let q = '';
   let chosen = current || '';
@@ -2468,11 +2468,13 @@ async function pickTargetDialog(current = '') {
   return ok ? chosen : undefined;
 }
 
-function targetSelect(keep) {
+// only: funzione che dice quali schede di bersagli mostrare (es. solo le coppie per una taglia); empty: testo senza scelta.
+function targetSelect(keep, only = null, empty = '⌖ Bersaglio: nessuno (libero)') {
   const btn = h('button', { type: 'button', class: 'btn btn-sm target-pick' });
-  const paint = () => { const v = TARGET_SEL[keep] || ''; btn.textContent = v ? `⌖ ${targetLabel(v) || v}` : '⌖ Bersaglio: nessuno (libero)'; btn.classList.toggle('on', !!v); };
-  btn.addEventListener('click', async () => { const r = await pickTargetDialog(TARGET_SEL[keep] || ''); if (r !== undefined) { TARGET_SEL[keep] = r; paint(); } });
+  const paint = () => { const v = TARGET_SEL[keep] || ''; btn.textContent = v ? `⌖ ${targetLabel(v) || v}` : (typeof empty === 'function' ? empty() : empty); btn.classList.toggle('on', !!v); };
+  btn.addEventListener('click', async () => { const r = await pickTargetDialog(TARGET_SEL[keep] || '', only?.() || null); if (r !== undefined) { TARGET_SEL[keep] = r; paint(); } });
   Object.defineProperty(btn, 'value', { get: () => TARGET_SEL[keep] || '', set: (v) => { TARGET_SEL[keep] = v || ''; paint(); } });
+  btn.repaint = paint;
   paint();
   return btn;
 }
@@ -2516,7 +2518,7 @@ function squadSelect(initial = null, placeholder = 'Squadra: nessuna (da affidar
   return btn;
 }
 
-const TASK_KIND = { text: '', goto: '⌖ ', hunt: '🎯 ', meet: '🤝 ', beacon: '📡 ' };
+const TASK_KIND = { text: '', goto: '⌖ ', hunt: '🎯 ', meet: '🤝 ', beacon: '📡 ', bounty: '💰 ' };
 const TASK_SOURCE = { skill: 'da una Skill', gift: 'da un Dono', regia: 'dalla regia' };
 
 function taskLine(t, { assign = false } = {}) {
@@ -2671,7 +2673,7 @@ function viewTaskBoard(d) {
   }));
   const allTasks = [...(d.openTasks || []), ...d.squads.flatMap((sq) => sq.tasks.map((t) => ({ ...t, squadId: sq.id })))]
     .filter((t) => !t.doneAt && !t.cancelledAt)
-    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', hunt: '🎯', meet: '🤝', beacon: '📡' }[t.kind] || '☰', title: t.text, what: t.source === 'skill' ? 'Da una Skill' : t.source === 'gift' ? 'Da un Dono' : 'Incarico' }));
+    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', hunt: '🎯', meet: '🤝', beacon: '📡', bounty: '💰' }[t.kind] || '☰', title: t.text, what: t.source === 'skill' ? 'Da una Skill' : t.source === 'gift' ? 'Da un Dono' : 'Incarico' }));
   // Eventi non conclusi: senza squadra li segue la regia (stanno in «Da affidare»), si affidano come gli altri.
   const evs = (R.ms?.gameEvents?.list || []).filter((ev) => ev.status !== 'done').map((ev) => ({ key: `event${ev.id}`, kind: 'event', x: ev, squadId: ev.squadId || null, icon: '🏁', title: ev.name,
     what: `Evento · ${(EVENT_STATUS[ev.status] || [ev.status])[0]}${ev.startAt ? ` · ${fmtWhen(ev.startAt)}` : ''}${ev.squadId ? '' : ' · lo segue la regia'}` }));
@@ -2726,28 +2728,61 @@ function viewTaskBoard(d) {
 }
 
 // Nuovo incarico libero (senza squadra): poi si trascina sulla squadra che deve svolgerlo.
+// Nuovo incarico: prima il tipo di operazione (decide quali bersagli si possono scegliere e quando l'incarico è riuscito),
+// poi testo, bersaglio, squadra e tempo.
+const TASK_OPS = [
+  { k: 'text', icon: '☰', label: 'Libero', hint: 'Solo il testo: «presidiate il Cuore dalle 10». Si chiude a mano con «Fatto».', groups: null },
+  { k: 'goto', icon: '⌖', label: 'Raggiungi / presidia', hint: 'Un punto (Altare, luogo, punto di interesse) o una coppia da raggiungere o presidiare: la squadra lo vede in mappa. Si chiude a mano con «Fatto».', groups: ['coppie', 'luoghi', 'altari', 'poi'], need: 'Scegli dove devono andare' },
+  { k: 'bounty', icon: '💰', label: 'Taglia', hint: 'Una coppia da ingaggiare: la squadra la vede in mappa e la trova negli Scontri. Si chiude da sola quando lo scontro è confermato.', groups: ['coppie'], need: 'Scegli la coppia della taglia' },
+  { k: 'beacon', icon: '📡', label: 'Beacon', hint: 'Accendere una zona o disattivare un Altare con il Beacon. Si chiude da sola quando ci riescono.', groups: ['zone', 'altari'], need: 'Scegli la zona o l\'Altare' },
+];
 async function newTaskDialog() {
+  let op = TASK_OPS[0];
   const text = h('input', { class: 'input', placeholder: 'es. Presidiate il Cuore dalle 10', maxlength: 300 });
-  const target = targetSelect('new-task-target');
+  const target = targetSelect('new-task-target', () => op.groups, () => (op.need ? `⌖ ${op.need}…` : '⌖ Bersaglio: nessuno'));
   target.value = '';
-  // Con un Altare come bersaglio si può chiedere di disattivarlo col Beacon (con una zona è sempre Beacon).
-  const beacon = h('input', { type: 'checkbox' });
+  const targetWrap = h('div', { class: 'field', hidden: true }, h('span', null, 'Bersaglio'), target);
+  // Taglia: quando è riuscita.
+  const win = h('input', { type: 'radio', name: 'bounty-mode', value: 'win', checked: true });
+  const any = h('input', { type: 'radio', name: 'bounty-mode', value: 'any' });
+  const bountyWrap = h('div', { class: 'field', hidden: true }, h('span', null, 'La taglia è riuscita quando…'),
+    h('label', { class: 'check' }, win, ' lo scontro con la coppia è vinto dagli Eletti (perso: resta aperta, possono riprovare)'),
+    h('label', { class: 'check' }, any, ' c\'è un ingaggio con la coppia, qualsiasi esito'));
+  const hint = h('p', { class: 'tiny muted' }, op.hint);
+  const cards = h('div', { class: 'op-cards' });
+  const paintOps = () => {
+    cards.replaceChildren(...TASK_OPS.map((o) => h('button', { type: 'button', class: `op-card ${o.k === op.k ? 'on' : ''}`, onclick: () => {
+      op = o;
+      // Il bersaglio scelto resta solo se va bene anche per la nuova operazione.
+      if (target.value && !(o.groups && targetOptions(o.groups).some((g) => g.items.some((x) => x.value === target.value)))) target.value = '';
+      paintOps();
+    } }, h('span', { class: 'op-ico', 'aria-hidden': 'true' }, o.icon), h('strong', null, o.label))));
+    targetWrap.hidden = !op.groups;
+    bountyWrap.hidden = op.k !== 'bounty';
+    hint.textContent = op.hint;
+    text.placeholder = op.k === 'text' ? 'es. Presidiate il Cuore dalle 10' : 'Facoltativo: se vuoto si scrive da solo dal bersaglio';
+    target.repaint();
+  };
+  paintOps();
   // Squadra: di base nessuna (l'incarico resta «Da affidare»); si sceglie cercando la squadra o un suo Eletto.
   const squad = squadSelect(null);
   // Tempo per svolgerlo: parte quando la squadra lo accetta nella sua app; vuoto = senza limite.
   const minutes = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza limite' });
   await modal({
-    title: 'Nuovo incarico', okLabel: 'Crea',
-    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
-      h('label', { class: 'check' }, beacon, ' 📡 Incarico Beacon: accendere la zona o disattivare l\'Altare scelto (si chiude da solo quando ci riescono)'),
+    title: 'Nuovo incarico', okLabel: 'Crea', wide: true,
+    body: h('div', { class: 'stack-sm' },
+      h('div', { class: 'field' }, h('span', null, 'Operazione'), cards), hint,
+      targetWrap, bountyWrap,
+      h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text),
       h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad),
         h('label', { class: 'field' }, h('span', null, 'Tempo (minuti da quando lo accettano)'), minutes)),
       h('p', { class: 'tiny muted' }, 'Senza squadra compare tra quelli «Da affidare»: lo trascini sulla squadra che deve svolgerlo.')),
     onOk: async () => {
-      if (!text.value.trim() && !target.value) throw new Error('Scrivi l\'incarico');
       const v = target.value || '';
-      if (beacon.checked && !/^(zone|point):/.test(v)) throw new Error('Per un incarico Beacon scegli come bersaglio una zona o un Altare');
-      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: Number(squad.value) || null, timeMin: Number(minutes.value) > 0 ? Number(minutes.value) : null, text: text.value, target: v || null, kind: beacon.checked || v.startsWith('zone:') ? 'beacon' : undefined });
+      if (op.groups && !v) throw new Error(op.need);
+      if (op.k === 'text' && !text.value.trim()) throw new Error('Scrivi l\'incarico');
+      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: Number(squad.value) || null, timeMin: Number(minutes.value) > 0 ? Number(minutes.value) : null,
+        text: text.value, target: v || null, kind: op.k === 'text' ? 'text' : op.k, successMode: op.k === 'bounty' ? (any.checked ? 'any' : 'win') : undefined });
       toast(Number(squad.value) ? 'Incarico creato e affidato alla squadra' : 'Incarico creato', 'ok');
       await Promise.all([load(), loadField(false)]);
       return true;
