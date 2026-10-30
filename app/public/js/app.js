@@ -1329,6 +1329,7 @@ function viewElectHome(st) {
     st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
       h('span', { class: st.field.todo ? 'bad-text small' : 'ok-text small' }, st.field.todo ? `${st.field.todo} incarichi da fare` : 'Nessun incarico in sospeso')) : null,
+    electTimedTasks(st),
     pushInvite(),
     latestNotice(st),
     st.standings ? h('div', { class: 'card final' }, h('div', { class: 'eyebrow' }, 'Classifica finale'),
@@ -2600,6 +2601,27 @@ function electFieldHead() {
     h('div', { class: 'mono small', id: 'gps-now' }, field.gpsText()),
     h('button', { class: 'btn btn-primary btn-block btn-xl', onclick: () => field.scanSign() }, '⌖ Scansiona un cartello'),
     cameraSupported() ? null : h('p', { class: 'muted small' }, 'Scanner e GPS richiedono l\'indirizzo https: scegli dall\'elenco e indica il punto toccando la mappa.'));
+}
+
+// Home degli Eletti: gli incarichi a tempo della squadra, da accettare o con quanto manca alla scadenza.
+function electTimedTasks(st) {
+  const list = st.field?.timed || [];
+  if (!list.length) return null;
+  const accept = async (t) => {
+    try {
+      await api('POST', `/api/field/tasks/${t.id}/accept?gameId=${st.game.id}`, { gameId: st.game.id });
+      vibrate([60, 40, 60]);
+      toast(`Incarico accettato: avete ${t.timeMin} minuti`, 'ok');
+      await refresh();
+    } catch (e) { toast(e.message, 'error', 6000); }
+  };
+  return h('section', { class: 'card stack-sm timed-tasks' },
+    h('div', { class: 'eyebrow' }, '⏱ Incarichi a tempo'),
+    h('ul', { class: 'timed-list' }, list.map((t) => h('li', { class: t.acceptedAt ? 'running' : 'waiting' },
+      h('div', { class: 'grow' }, h('strong', null, t.text),
+        t.acceptedAt ? h('div', { class: 'small' }, 'Scade tra ', h('strong', { class: 'mono', 'data-abs': t.acceptedAt + t.timeMin * 60000 }, '—'), ` · alle ${fmtTime(t.acceptedAt + t.timeMin * 60000)}`)
+          : h('div', { class: 'small warn-text' }, `${t.timeMin} minuti da quando lo accettate`)),
+      t.acceptedAt ? h('a', { class: 'btn btn-sm', href: '#/incarichi' }, 'Apri') : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => accept(t) }, 'Accetta')))));
 }
 
 function viewElectTasks() {

@@ -1028,7 +1028,9 @@ function electSummary(team, player) {
     ...q.all("SELECT id, label, name, moveRequestedAt FROM gifts WHERE squadId = ? AND status NOT IN ('claimed', 'expired') AND (status = 'draft' OR moveRequestedAt IS NOT NULL)", squad.id).map((x) => ({ key: `g${x.id}:${x.moveRequestedAt || 0}`, label: `${x.moveRequestedAt ? 'Spostate' : 'Piazzate'}: ${x.label} (${x.name})` })),
     ...q.all(`SELECT id, text FROM squad_tasks WHERE squadId = ? AND ${openTaskSql}`, squad.id).map((x) => ({ key: `t${x.id}`, label: x.text })),
   ];
-  return { squad, todo, items, targets: taskTargets(squad.id) };
+  // Incarichi a tempo ancora aperti: in home con «Accetta» o con il conto alla rovescia.
+  const timed = q.all(`SELECT id, text, timeMin, acceptedAt FROM squad_tasks WHERE squadId = ? AND timeMin IS NOT NULL AND ${openTaskSql} ORDER BY acceptedAt IS NULL, acceptedAt + timeMin * 60000, id`, squad.id);
+  return { squad, todo, items, timed, targets: taskTargets(squad.id) };
 }
 
 // Per le coppie: Altari piazzati e doni comparsi (non ancora presi). Il tipo del dono resta una sorpresa.
