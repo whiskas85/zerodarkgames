@@ -316,7 +316,7 @@ app.post('/api/auth/logout', wrap((req, res) => {
   }
   return { ok: true, home: '/' };
 }));
-app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null, team: req.team ? { id: req.team.id } : null }));
+app.get('/api/auth/me', (req, res) => res.json({ user: req.user ? { ...req.user, home: St.homeOf(req.user.role) } : null, team: req.team ? { id: req.team.id } : null }));
 
 // ---- iscrizione pubblica
 app.get('/api/public/games', (_req, res) => res.json(openGames()));

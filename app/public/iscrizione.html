@@ -160,7 +160,7 @@
         try {
           const r = await api('POST', '/api/auth/register', fd);
           if (r.inviteError) toast(r.inviteError, 'error', 8000);
-          if (r.home) { location.href = r.home; return; }
+          if (r.home) { location.replace(r.home); return; }
           toast('Account creato', 'ok');
           await loadAccount();
           location.hash = 'scelta';
@@ -182,7 +182,7 @@
         const fd = Object.fromEntries(new FormData(login).entries());
         try {
           const r = await api('POST', '/api/auth/login', fd);
-          if (r.role !== 'player') { location.href = r.home; return; }
+          if (r.role !== 'player') { location.replace(r.home); return; }
           await loadAccount();
           location.hash = 'scelta';
           render();

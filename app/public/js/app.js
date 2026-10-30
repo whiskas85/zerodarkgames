@@ -126,6 +126,14 @@ async function refresh() {
     }
   } catch (e) {
     if (e.status === 401) {
+      // Regia o Consiglio già entrati (es. «indietro» dall'app installata): niente login, si torna alla loro pagina.
+      const me = await api('GET', '/api/auth/me').catch(() => null);
+      if (me?.user?.home && !sessionStorage.getItem('zdg_home_hop')) {
+        sessionStorage.setItem('zdg_home_hop', '1');
+        setTimeout(() => sessionStorage.removeItem('zdg_home_hop'), 5000);
+        location.replace(me.user.home);
+        return;
+      }
       S.auth = 'none';
       S.state = null;
       store.del('zdg_state');
@@ -1028,7 +1036,8 @@ function viewLogin() {
       const r = await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
       vibrate(80);
       if (r.inviteError) toast(r.inviteError, 'error', 8000);
-      if (r.role !== 'player') { location.href = r.home; return; }
+      // replace: tornando indietro non si rivede il login (si esce solo con «Esci»).
+      if (r.role !== 'player') { location.replace(r.home); return; }
       await refresh();
     } catch (err) { toast(err.offline ? 'Serve la rete per accedere' : err.message, 'error'); }
   };
