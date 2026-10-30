@@ -2477,12 +2477,51 @@ function targetSelect(keep) {
   return btn;
 }
 
+// Scelta della squadra di Eletti in una finestra con ricerca per nome della squadra o di chi ne fa parte.
+// Restituisce l'id scelto, null per «nessuna squadra», undefined se si annulla.
+async function pickSquadDialog(current = null, { noneLabel = 'Nessuna squadra (da affidare dopo)' } = {}) {
+  let q = '';
+  let chosen = current ?? null;
+  const listEl = h('ul', { class: 'loc-list' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca una squadra o un Eletto (nome o soprannome)…', oninput: () => { q = search.value.trim().toLowerCase(); draw(); } });
+  const who = (m) => [m.nickname, m.name].filter(Boolean).join(' · ');
+  const draw = () => {
+    const rows = (R.ms.squads || []).map((sq) => {
+      const hits = q ? sq.members.filter((m) => who(m).toLowerCase().includes(q)) : [];
+      return { sq, hits, show: !q || sq.name.toLowerCase().includes(q) || hits.length };
+    }).filter((r) => r.show);
+    listEl.replaceChildren(
+      ...(q ? [] : [h('li', null, h('button', { type: 'button', class: `loc-item ${chosen == null ? 'on' : ''}`, onclick: () => { chosen = null; draw(); } },
+        h('span', { class: 'side-ico' }, '—'), h('span', { class: 'grow' }, h('strong', null, noneLabel)), chosen == null ? h('span', { class: 'chip chip-brass' }, 'scelto') : null))]),
+      ...(rows.length ? rows.map(({ sq, hits }) => h('li', null, h('button', { type: 'button', class: `loc-item ${chosen === sq.id ? 'on' : ''}`, onclick: () => { chosen = chosen === sq.id ? null : sq.id; draw(); } },
+        h('span', { class: 'side-ico', style: { borderColor: sq.color || 'var(--brass)', color: sq.color || 'var(--brass)' } }, '⛨'),
+        h('span', { class: 'grow' }, h('strong', null, `Squadra ${sq.name}`),
+          h('span', { class: 'tiny muted' }, sq.members.length ? sq.members.map((m) => m.nickname || m.name).join(', ') : 'nessun Eletto'),
+          hits.length ? h('span', { class: 'tiny ok-text' }, `trovato: ${hits.map(who).join(', ')}`) : null),
+        chosen === sq.id ? h('span', { class: 'chip chip-brass' }, 'scelta') : null))) : [h('li', { class: 'tiny muted loc-empty' }, 'Nessuna squadra o Eletto con questo nome.')]));
+  };
+  draw();
+  const ok = await modal({ title: 'Squadra dell\'incarico', okLabel: 'Usa questa', cancelLabel: 'Annulla',
+    body: h('div', { class: 'stack-sm' }, (R.ms.squads || []).length ? [search, listEl] : h('p', { class: 'empty' }, 'Nessuna squadra di Eletti: creale in Squadre Eletti.')) });
+  return ok ? chosen : undefined;
+}
+// Pulsante che apre la scelta della squadra; .value è l'id (o '' per nessuna).
+function squadSelect(initial = null, placeholder = 'Squadra: nessuna (da affidare)') {
+  let v = initial ?? null;
+  const btn = h('button', { type: 'button', class: 'btn btn-sm target-pick' });
+  const paint = () => { const sq = (R.ms.squads || []).find((x) => x.id === v); btn.textContent = sq ? `⛨ Squadra ${sq.name}` : `⛨ ${placeholder}`; btn.classList.toggle('on', !!sq); };
+  btn.addEventListener('click', async () => { const r = await pickSquadDialog(v); if (r !== undefined) { v = r; paint(); } });
+  Object.defineProperty(btn, 'value', { get: () => (v == null ? '' : String(v)), set: (x) => { v = Number(x) || null; paint(); } });
+  paint();
+  return btn;
+}
+
 const TASK_KIND = { text: '', goto: '⌖ ', hunt: '🎯 ', meet: '🤝 ', beacon: '📡 ' };
 const TASK_SOURCE = { skill: 'da una Skill', gift: 'da un Dono', regia: 'dalla regia' };
 
 function taskLine(t, { assign = false } = {}) {
   const closed = t.doneAt || t.cancelledAt;
-  const sel = assign ? h('select', { class: 'input input-sm', 'aria-label': 'Squadra' }, squadOptions(t.squadId, 'Scegli la squadra…')) : null;
+  const sel = assign ? squadSelect(t.squadId, 'Scegli la squadra…') : null;
   return h('li', { class: closed ? 'done' : '' },
     assign ? h('span', null, `${TASK_KIND[t.kind] || ''}${t.text}`) : h('label', null, h('input', { type: 'checkbox', checked: !!t.doneAt, disabled: !!t.cancelledAt, onchange: (e) => squadCall('POST', `/api/m/tasks/${t.id}/done`, { done: e.target.checked }) }), h('span', null, `${TASK_KIND[t.kind] || ''}${t.text}`)),
     // Da assegnare: quando è stato chiesto (e da chi), così si vede da quanto aspetta.
@@ -2652,8 +2691,11 @@ function viewTaskBoard(d) {
     h('div', { class: 'task-actions' },
       it.kind === 'task' || it.kind === 'event' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
       it.kind === 'event' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#eventi' }, 'Apri') : null,
-      h('select', { class: 'input input-sm', 'aria-label': 'Affida a una squadra', onchange: (e) => assign(it, Number(e.target.value) || null) },
-        h('option', { value: '' }, it.squadId ? (it.kind === 'event' ? '— alla regia —' : '— togli —') : '→ squadra'), d.squads.map((q) => h('option', { value: q.id, selected: q.id === it.squadId }, q.name)))));
+      // Affida a una squadra: finestra con ricerca per squadra o per Eletto (dal telefono, al posto del trascinamento).
+      h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': 'Affida a una squadra', onclick: async () => {
+        const r = await pickSquadDialog(it.squadId || null, { noneLabel: it.squadId ? (it.kind === 'event' ? 'Alla regia' : 'Togli dalla squadra') : 'Nessuna squadra' });
+        if (r !== undefined && (r || null) !== (it.squadId || null)) assign(it, r);
+      } }, it.squadId ? '⛨ Cambia squadra' : '⛨ → squadra')));
   const zone = (squadId, head, list, extra = {}) => h('div', { class: `task-zone ${extra.cls || ''}`, style: extra.color ? { '--c': extra.color } : null,
     ondragover: (e) => { if (dragTask && (dragTask.squadId || null) !== squadId && !(dragTask.kind === 'task' && !squadId)) { e.preventDefault(); e.currentTarget.classList.add('drop'); } },
     ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drop'); },
@@ -2682,17 +2724,20 @@ async function newTaskDialog() {
   target.value = '';
   // Con un Altare come bersaglio si può chiedere di disattivarlo col Beacon (con una zona è sempre Beacon).
   const beacon = h('input', { type: 'checkbox' });
+  // Squadra: di base nessuna (l'incarico resta «Da affidare»); si sceglie cercando la squadra o un suo Eletto.
+  const squad = squadSelect(null);
   await modal({
     title: 'Nuovo incarico', okLabel: 'Crea',
     body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text), h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo)'), target),
       h('label', { class: 'check' }, beacon, ' 📡 Incarico Beacon: accendere la zona o disattivare l\'Altare scelto (si chiude da solo quando ci riescono)'),
-      h('p', { class: 'tiny muted' }, 'Compare tra quelli «Da affidare»: trascinalo sulla squadra che deve svolgerlo.')),
+      h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad),
+      h('p', { class: 'tiny muted' }, 'Senza squadra compare tra quelli «Da affidare»: lo trascini sulla squadra che deve svolgerlo.')),
     onOk: async () => {
       if (!text.value.trim() && !target.value) throw new Error('Scrivi l\'incarico');
       const v = target.value || '';
       if (beacon.checked && !/^(zone|point):/.test(v)) throw new Error('Per un incarico Beacon scegli come bersaglio una zona o un Altare');
-      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: null, text: text.value, target: v || null, kind: beacon.checked || v.startsWith('zone:') ? 'beacon' : undefined });
-      toast('Incarico creato', 'ok');
+      await api('POST', `/api/m/games/${R.gameId}/tasks`, { squadId: Number(squad.value) || null, text: text.value, target: v || null, kind: beacon.checked || v.startsWith('zone:') ? 'beacon' : undefined });
+      toast(Number(squad.value) ? 'Incarico creato e affidato alla squadra' : 'Incarico creato', 'ok');
       await Promise.all([load(), loadField(false)]);
       return true;
     },
