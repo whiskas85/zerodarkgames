@@ -50,6 +50,7 @@ const GIFTS = [
   { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde. Nessuno viene avvisato.' },
   { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per {durata} minuti. Se ne accorge dopo 1 minuto.' },
   { id: 'archivio', name: 'Archivio Proibito', icon: '📚', color: '#9b6cf0', target: null, description: 'Ricevete un Sigillo che non conoscete ancora.' },
+  { id: 'frammento', name: 'Frammento Perduto', icon: '🧩', color: '#c9a3ff', target: null, description: 'Ricevete un frammento della Parola che non avete ancora, come se aveste aperto il suo Altare.' },
   { id: 'scudo', name: 'Immunità', icon: '🛡️', color: '#6fbf73', target: null, durationMin: 15, description: 'Per {durata} minuti nessuna Skill o Dono avversario vi colpisce (tracciamenti, taglie, furti, scansioni).' },
   { id: 'seconda', name: 'Seconda Possibilità', icon: '🔄', color: '#4fc1c1', target: 'cooldownSkill', description: 'Ricaricate subito una Skill in ricarica.' },
   { id: 'sovraccarico', name: 'Sovraccarico', icon: '⚡', color: '#facc15', target: null, description: 'Ricaricate subito tutte le vostre Skill.' },
@@ -424,6 +425,16 @@ function applyGift(g, me, type, p) {
       });
       const sec = G.sectorById(sid);
       return { targetName: t.sectorName, notifyTeams: [t.id], stolen: { sectorId: sid, sectorName: sec.name, roman: sec.roman, code: sc.code }, message: `Rubato il Sigillo del Settore ${sec.name}.` };
+    }
+    case 'frammento': {
+      // Un frammento a caso tra quelli che la coppia non ha ancora (vale come l'apertura del suo Altare).
+      const pool = q.all(`SELECT f.*, p.label AS pointLabel, p.id AS pid FROM fragments f JOIN points p ON p.id = f.pointId
+                          WHERE f.gameId = ? AND f.id NOT IN (SELECT fragmentId FROM team_fragments WHERE teamId = ?)`, g.id, me.id);
+      if (!pool.length) throw err(409, 'Avete già tutti i frammenti della Parola');
+      const f = shuffle(pool)[0];
+      q.run("INSERT INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'gift', ?)", me.id, f.id, now);
+      onAltarUnlocked(me, { label: f.pointLabel });
+      return { fragment: { position: f.position, text: f.text, pointLabel: f.pointLabel }, message: `Nuovo frammento: «${f.text}» (${f.pointLabel}).` };
     }
     case 'archivio': {
       const mine = K.knownSectors(me);

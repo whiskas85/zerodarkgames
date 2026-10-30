@@ -1323,6 +1323,12 @@ test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizion
   // Archivio Proibito e Grande Furto: Sigilli nel taccuino.
   const arc = F.useGift(B, gift(B, 'archivio'));
   assert.ok(G.teamState(B).notebook.find((n) => n.sectorId === arc.stolen.sectorId).code);
+  // Frammento Perduto: un frammento che la coppia non ha, ogni volta diverso.
+  const before = q.get('SELECT COUNT(*) AS n FROM team_fragments WHERE teamId = ?', B.id).n;
+  const fr1 = F.useGift(B, gift(B, 'frammento'));
+  const fr2 = F.useGift(B, gift(B, 'frammento'));
+  assert.ok(fr1.fragment.text && fr2.fragment.text && fr1.fragment.position !== fr2.fragment.position);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM team_fragments WHERE teamId = ?', B.id).n, before + 2);
   const furto = F.useGift(D, gift(D, 'furto'), { teamId: B.id });
   assert.ok([B.sectorId, arc.stolen.sectorId].includes(furto.stolen.sectorId));
   // Sovraccarico: tutte le Skill di A di nuovo pronte. Maestro: una Skill in più.
