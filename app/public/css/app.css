@@ -1178,3 +1178,6 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .ev-track.on { background: rgba(229, 72, 77, .15); border-color: rgba(229, 72, 77, .6); }
 .bounty-strip { display: grid; gap: 6px; margin-bottom: 8px; } .bounty-strip .ev-track { margin-top: 0; }
 .elect-rules { border-color: var(--brass); display: grid; gap: 6px; }
+.banner-phone { display: grid; gap: 6px; background: color-mix(in srgb, var(--brass) 18%, var(--bg)); border-bottom-color: var(--brass); color: var(--ink); }
+.banner-phone .phone-row { display: flex; gap: 8px; }
+.banner-phone .phone-row .input { flex: 1; min-width: 0; }

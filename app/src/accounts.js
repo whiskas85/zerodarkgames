@@ -9,6 +9,15 @@ const { hashPassword, verifyPassword, randomCode, HttpError } = require('./util'
 const err = (status, msg) => new HttpError(status, msg);
 const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
 const normUser = (u) => String(u || '').trim().toLowerCase();
+// Telefono (obbligatorio: serve all'organizzazione, anche per il gruppo WhatsApp della partita).
+// Si tiene com'è scritto (spazi compresi), ma deve avere almeno 8 cifre ed essere fatto solo di cifre, spazi, + . - / ( ).
+function cleanPhone(v) {
+  const s = String(v ?? '').trim().slice(0, 30);
+  if (!s) return null;
+  if (!/^\+?[\d\s./()-]+$/.test(s) || s.replace(/\D/g, '').length < 8) throw err(400, 'Numero di telefono non valido: scrivilo con il prefisso, es. +39 333 1234567');
+  return s;
+}
+const needPhone = (v) => { const p = cleanPhone(v); if (!p) throw err(400, 'Il numero di telefono è obbligatorio: serve all\'organizzazione (anche per il gruppo WhatsApp della partita)'); return p; };
 
 function publicAccount(a) {
   if (!a) return null;
@@ -17,7 +26,7 @@ function publicAccount(a) {
   // staff: ruolo nell'organizzazione ottenuto con un invito del Consiglio (master o validatore).
   const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id)?.role || null;
   // ice: solo alla persona stessa (il suo profilo); alla regia arriva soltanto dentro un'emergenza chiamata da lei.
-  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, hasPassword: !!a.passHash, ops, staff,
+  return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, needsPhone: !a.phone, hasPassword: !!a.passHash, ops, staff,
     // Avatar nell'app: la foto del gestionale, se c'è (altrimenti le iniziali).
     picture: ops.find((o) => o.picture)?.picture || null,
     ice: { blood: a.iceBlood || '', conditions: a.iceConditions || '', contactName: a.iceContactName || '', contactPhone: a.iceContactPhone || '' } };
@@ -32,11 +41,12 @@ function register(data) {
   if (!name) throw err(400, 'Nome e cognome sono obbligatori');
   const softairTeam = String(data.softairTeam || '').trim().slice(0, 60);
   if (!softairTeam) throw err(400, 'Indica il team di softair di appartenenza (o "nessuno")');
+  const phone = needPhone(data.phone);
   // Lo username non deve confondersi con quello di un account della regia.
   if (q.get('SELECT 1 FROM accounts WHERE username = ?', username) || q.get('SELECT 1 FROM users WHERE lower(username) = ?', username)) throw err(409, 'Username già in uso: scegline un altro');
   const id = Number(q.run('INSERT INTO accounts (username, passHash, name, nickname, softairTeam, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
     username, hashPassword(password), name, String(data.nickname || '').trim().slice(0, 40) || null, softairTeam,
-    String(data.phone || '').trim().slice(0, 30) || null, Date.now()).lastInsertRowid);
+    phone, Date.now()).lastInsertRowid);
   G.log(null, username, 'account_created');
   return q.get('SELECT * FROM accounts WHERE id = ?', id);
 }
@@ -52,7 +62,7 @@ function updateProfile(account, data) {
   const softairTeam = data.softairTeam !== undefined ? String(data.softairTeam).trim().slice(0, 60) : account.softairTeam;
   if (!softairTeam) throw err(400, 'Indica il team di softair di appartenenza (o "nessuno")');
   const nickname = data.nickname !== undefined ? String(data.nickname).trim().slice(0, 40) || null : account.nickname;
-  const phone = data.phone !== undefined ? String(data.phone).trim().slice(0, 30) || null : account.phone;
+  const phone = data.phone !== undefined ? needPhone(data.phone) : account.phone;
   q.run('UPDATE accounts SET name = ?, nickname = ?, softairTeam = ?, phone = ? WHERE id = ?', name, nickname, softairTeam, phone, account.id);
   // ICE (facoltativo): si salva solo se il modulo lo manda.
   if (data.iceBlood !== undefined || data.iceConditions !== undefined || data.iceContactName !== undefined || data.iceContactPhone !== undefined) {
@@ -104,6 +114,8 @@ function enroll(account, data) {
   const g = G.getGame(Number(data.gameId));
   if (!g.registrationOpen || g.status !== 'draft') throw err(409, 'Le iscrizioni a questa partita sono chiuse');
   if (q.get('SELECT 1 FROM players WHERE gameId = ? AND accountId = ?', g.id, account.id)) throw err(409, 'Sei già iscritto a questa partita');
+  // Il telefono serve all'organizzazione (anche per il gruppo WhatsApp della partita): niente iscrizione senza.
+  if (!account.phone) throw err(409, 'Prima inserisci il tuo numero di telefono nel profilo: è obbligatorio per iscriversi');
   const mode = ['pair', 'single', 'elect'].includes(data.mode) ? data.mode : null;
   if (!mode) throw err(400, 'Scegli come partecipare');
   let group = null;
@@ -184,4 +196,4 @@ function deleteOrphanAccounts(actor) {
 }
 
 module.exports = {
-  listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, publicAccount };
+  cleanPhone, listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, publicAccount };

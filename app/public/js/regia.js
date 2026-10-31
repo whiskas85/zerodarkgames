@@ -1431,6 +1431,29 @@ function peopleRows() {
   }
   return rows;
 }
+// Gruppo WhatsApp: i contatti delle persone mostrate (scheda e ricerca attuali) da importare in rubrica (.vcf) o da copiare.
+function contactsBar(list) {
+  const withPhone = list.filter((r) => String(r.phone || '').replace(/\D/g, '').length >= 8);
+  const missing = list.length - withPhone.length;
+  // WhatsApp vuole il prefisso internazionale: senza, si dà per italiano (+39); 00… diventa +….
+  const clean = (p) => { const d = String(p).replace(/[^\d+]/g, ''); return d.startsWith('+') ? d : d.startsWith('00') ? `+${d.slice(2)}` : `+39${d}`; };
+  const label = (r) => `ZDG ${r.name}${r.nickname ? ` «${r.nickname}»` : ''}`;
+  const vcf = () => {
+    const esc = (t) => String(t).replace(/[\\;,]/g, (c) => `\\${c}`);
+    const body = withPhone.map((r) => ['BEGIN:VCARD', 'VERSION:3.0', `FN:${esc(label(r))}`, `N:${esc(r.name)};;;ZDG;`, `TEL;TYPE=CELL:${clean(r.phone)}`,
+      r.softairTeam && r.softairTeam !== 'nessuno' ? `ORG:${esc(r.softairTeam)}` : null, 'NOTE:I Giochi del Buio', 'END:VCARD'].filter(Boolean).join('\r\n')).join('\r\n');
+    const a = h('a', { href: URL.createObjectURL(new Blob([body], { type: 'text/vcard' })), download: `contatti-giochi-del-buio-${peopleTab}.vcf` });
+    document.body.append(a); a.click(); a.remove();
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(withPhone.map((r) => `${clean(r.phone)} ${label(r)}`).join('\n')); toast(`${withPhone.length} numeri copiati`, 'ok'); } catch { toast('Copia non riuscita', 'error'); }
+  };
+  return h('div', { class: 'contacts-bar' },
+    h('span', { class: 'small' }, '📱 Gruppo WhatsApp: ', h('strong', null, `${withPhone.length} con telefono`), missing ? h('span', { class: 'warn-text' }, ` · ${missing} senza`) : null),
+    h('button', { class: 'btn btn-sm', type: 'button', disabled: !withPhone.length, title: 'Scarica i contatti (scheda e ricerca attuali): importali in rubrica, poi aggiungili al gruppo WhatsApp', onclick: vcf }, '⇩ Contatti per la rubrica (.vcf)'),
+    h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: !withPhone.length, onclick: copy }, 'Copia i numeri'));
+}
+
 function viewPeople() {
   if (!accountsCache) loadAccounts();
   const rows = peopleRows();
@@ -1457,6 +1480,7 @@ function viewPeople() {
         ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('drop'); const r = dragPerson; dragPerson = null; if (r) dropPerson(r, k); } },
         h('span', null, label), h('strong', { class: 'mono' }, String(count(k)))))),
       h('p', { class: 'people-info' }, PEOPLE_INFO[peopleTab], ' ', h('span', { class: 'tiny muted' }, 'Puoi anche trascinare una persona su una scheda qui sopra.')),
+      contactsBar(shown),
       h('div', { class: 'row-actions' },
         h('input', { class: 'input input-sm grow', type: 'search', placeholder: 'Cerca per nome, soprannome, username, team, telefono…', value: peopleQ, 'data-keep': 'people-q', oninput: (e) => { peopleQ = e.target.value; render(); } }),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => loadAccounts() }, '↻ Aggiorna'),

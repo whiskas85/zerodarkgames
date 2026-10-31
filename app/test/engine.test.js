@@ -884,7 +884,7 @@ test('posti per l\'iscrizione: Settori da aprire, coppie e temerari', () => {
   const g = G.createGame({ name: 'Posti' }, 'test');
   G.updateGame(g.id, { registrationOpen: 1, maxCouples: 9 }, 'test');
   let n = 0;
-  const acc = () => A.register({ username: `posti${++n}`, password: 'password1', name: `P${n}`, softairTeam: 'nessuno' });
+  const acc = () => A.register({ username: `posti${++n}`, password: 'password1', name: `P${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
   const pair = () => { const r = A.enroll(acc(), { gameId: g.id, mode: 'pair' }); A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: r.pairCode }); };
   // 9 Settori = 18 posti. 3 coppie e 1 temerario in attesa → 6 Settori per le coppie, 18 − 6 − 1 = 11 temerari.
   pair(); pair(); pair();
@@ -1116,24 +1116,31 @@ test('messaggi: tutti gli Eletti o una sola squadra', () => {
 test('account: registrazione, accesso, iscrizione come Legati con codice coppia, Temerario o Eletto', () => {
   const A = require('../src/accounts');
   const g = G.createGame({ name: 'Account', registrationOpen: true }, 'test');
-  assert.throws(() => A.register({ username: 'x', password: 'lunga-abbastanza', name: 'X', softairTeam: 'ZDT' }), /Username/);
-  assert.throws(() => A.register({ username: 'mario', password: 'corta', name: 'Mario', softairTeam: 'ZDT' }), /8 caratteri/);
+  assert.throws(() => A.register({ username: 'x', password: 'lunga-abbastanza', name: 'X', softairTeam: 'ZDT', phone: '+39 333 1234567' }), /Username/);
+  assert.throws(() => A.register({ username: 'mario', password: 'corta', name: 'Mario', softairTeam: 'ZDT', phone: '+39 333 1234567' }), /8 caratteri/);
   assert.throws(() => A.register({ username: 'mario', password: 'password1', name: 'Mario' }), /softair/);
-  assert.throws(() => A.register({ username: 'VAL', password: 'password1', name: 'Finto', softairTeam: 'ZDT' }), /già in uso/); // come un account della regia
-  const mario = A.register({ username: 'Mario.Rossi', password: 'password1', name: 'Mario Rossi', softairTeam: 'Lupi', nickname: 'Orso' });
+  assert.throws(() => A.register({ username: 'mario', password: 'password1', name: 'Mario', softairTeam: 'ZDT' }), /telefono è obbligatorio/);
+  assert.throws(() => A.register({ username: 'mario', password: 'password1', name: 'Mario', softairTeam: 'ZDT', phone: '123' }), /non valido/);
+  assert.throws(() => A.register({ username: 'VAL', password: 'password1', name: 'Finto', softairTeam: 'ZDT', phone: '+39 333 1234567' }), /già in uso/); // come un account della regia
+  const mario = A.register({ username: 'Mario.Rossi', password: 'password1', name: 'Mario Rossi', softairTeam: 'Lupi', phone: '+39 333 1234567', nickname: 'Orso' });
   assert.equal(mario.username, 'mario.rossi');
   assert.equal(A.authenticate('MARIO.ROSSI', 'password1').id, mario.id);
   assert.equal(A.authenticate('mario.rossi', 'sbagliata'), null);
   assert.equal(A.currentPlayer(mario), undefined);
+  // Senza telefono (es. account nato dal gestionale) non ci si iscrive.
+  q.run('UPDATE accounts SET phone = NULL WHERE id = ?', mario.id);
+  assert.throws(() => A.enroll(q.get('SELECT * FROM accounts WHERE id = ?', mario.id), { gameId: g.id, mode: 'pair', teamName: 'Ombre' }), /telefono/);
+  assert.throws(() => A.updateProfile(mario, { phone: '' }), /obbligatorio/);
+  A.updateProfile(mario, { phone: '+39 333 1234567' });
   // Coppia: il primo riceve il codice, il secondo si unisce con il codice.
   const r1 = A.enroll(mario, { gameId: g.id, mode: 'pair', teamName: 'Ombre' });
   assert.ok(r1.pairCode);
   assert.throws(() => A.enroll(mario, { gameId: g.id, mode: 'single' }), /già iscritto/);
-  const luca = A.register({ username: 'luca', password: 'password2', name: 'Luca Bianchi', softairTeam: 'Lupi' });
+  const luca = A.register({ username: 'luca', password: 'password2', name: 'Luca Bianchi', softairTeam: 'Lupi', phone: '+39 333 1234567' });
   assert.throws(() => A.enroll(luca, { gameId: g.id, mode: 'pair', pairCode: 'NOPE99' }), /non trovato/);
   const r2 = A.enroll(luca, { gameId: g.id, mode: 'pair', pairCode: r1.pairCode.toLowerCase() });
   assert.equal(r2.partner, 'Mario Rossi');
-  const anna = A.register({ username: 'anna', password: 'password3', name: 'Anna', softairTeam: 'nessuno' });
+  const anna = A.register({ username: 'anna', password: 'password3', name: 'Anna', softairTeam: 'nessuno', phone: '+39 333 1234567' });
   assert.throws(() => A.enroll(anna, { gameId: g.id, mode: 'pair', pairCode: r1.pairCode }), /completa/);
   A.enroll(anna, { gameId: g.id, mode: 'elect', note: 'radio' });
   const pm = A.currentPlayer(mario);
@@ -1155,7 +1162,7 @@ test('account: registrazione, accesso, iscrizione come Legati con codice coppia,
   assert.ok(A.authenticate('luca', 'resettata1'));
   // Iscrizioni chiuse.
   G.updateGame(g.id, { registrationOpen: false }, 'test');
-  const zoe = A.register({ username: 'zoe', password: 'password4', name: 'Zoe', softairTeam: 'ZDT' });
+  const zoe = A.register({ username: 'zoe', password: 'password4', name: 'Zoe', softairTeam: 'ZDT', phone: '+39 333 1234567' });
   assert.throws(() => A.enroll(zoe, { gameId: g.id, mode: 'single' }), /chiuse/);
 });
 
@@ -1187,9 +1194,9 @@ test('notifiche: stesso telefono per regia ed Eletto, avviso degli incarichi del
 test('account: restano dopo aver eliminato la partita; la regia li elimina uno a uno o tutti quelli senza iscrizioni', () => {
   const A = require('../src/accounts');
   const g = G.createGame({ name: 'Da eliminare', registrationOpen: true }, 'test');
-  const a1 = A.register({ username: 'orfano1', password: 'password1', name: 'Orfano Uno', softairTeam: 'ZDT' });
-  const a2 = A.register({ username: 'orfano2', password: 'password2', name: 'Orfano Due', softairTeam: 'ZDT' });
-  const a3 = A.register({ username: 'attivo3', password: 'password3', name: 'Attivo Tre', softairTeam: 'ZDT' });
+  const a1 = A.register({ username: 'orfano1', password: 'password1', name: 'Orfano Uno', softairTeam: 'ZDT', phone: '+39 333 1234567' });
+  const a2 = A.register({ username: 'orfano2', password: 'password2', name: 'Orfano Due', softairTeam: 'ZDT', phone: '+39 333 1234567' });
+  const a3 = A.register({ username: 'attivo3', password: 'password3', name: 'Attivo Tre', softairTeam: 'ZDT', phone: '+39 333 1234567' });
   A.enroll(a1, { gameId: g.id, mode: 'single' });
   A.enroll(a2, { gameId: g.id, mode: 'single' });
   const g2 = G.createGame({ name: 'Resta', registrationOpen: true }, 'test');
@@ -1817,7 +1824,7 @@ test('ICE: dati facoltativi del profilo, alla regia solo dentro l\'emergenza chi
   const A = require('../src/accounts');
   const EM = require('../src/emergency');
   const g = setupGame(3);
-  const acc = A.register({ username: `ice${g.id}`, password: 'password1', name: 'Mario Rossi', softairTeam: 'nessuno' });
+  const acc = A.register({ username: `ice${g.id}`, password: 'password1', name: 'Mario Rossi', softairTeam: 'nessuno', phone: '+39 333 1234567' });
   A.updateProfile(acc, { iceBlood: '0 Rh+', iceConditions: 'asma', iceContactName: 'Laura', iceContactPhone: '333 1234567' });
   assert.equal(A.publicAccount(q.get('SELECT * FROM accounts WHERE id = ?', acc.id)).ice.blood, '0 Rh+');
   assert.ok(!JSON.stringify(A.listAccounts()).includes('asma'));
@@ -2018,7 +2025,7 @@ test('test armi: più letture salvano media e massimo; la persona si chiude e si
 test('pagina Persone: da iscrivere e in attesa vanno subito al loro posto (coppia, Eletti, squadra)', () => {
   const A = require('../src/accounts');
   const g = G.createGame({ name: 'Persone' }, 'test');
-  const acc = (n) => A.register({ username: `pers${n}${g.id}`, password: 'password1', name: `Persona ${n}`, softairTeam: 'nessuno' });
+  const acc = (n) => A.register({ username: `pers${n}${g.id}`, password: 'password1', name: `Persona ${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
   // Da iscrivere → Eletti, in una squadra nuova.
   const e = G.assignPerson(g.id, { accountId: acc(1).id, mode: 'elect', newSquad: 'Corvi' }, 'test');
   const ep = q.get('SELECT * FROM players WHERE id = ?', e.playerId);

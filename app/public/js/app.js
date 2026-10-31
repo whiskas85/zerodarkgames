@@ -697,6 +697,17 @@ function openAvatarMenu(anchor) {
   document.body.append(menu);
 }
 
+function phoneBanner() {
+  const input = h('input', { class: 'input', type: 'tel', required: true, autocomplete: 'tel', placeholder: '+39 333 1234567', minlength: 8, 'data-keep': 'phone-banner' });
+  return h('form', { class: 'banner banner-phone', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await api('PATCH', '/api/account', { phone: input.value }); toast('Numero salvato', 'ok'); await refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per salvarlo' : err.message, 'error', 6000); }
+  } },
+  h('strong', null, '📱 Manca il vostro numero di telefono'),
+  h('span', null, 'È obbligatorio: serve all\'organizzazione per gli avvisi e per il gruppo WhatsApp della partita.'),
+  h('span', { class: 'phone-row' }, input, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva')));
+}
+
 function banners() {
   const st = S.state;
   if (!st) return null;
@@ -708,6 +719,8 @@ function banners() {
     h('span', null, `Effetti di gioco sospesi finché la Direzione non chiude l'emergenza. Restate dove siete${st.game.emergencyRadioChannel ? ` · radio ${st.game.emergencyRadioChannel}` : ''}.`)));
   if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + st.game.emergencyRadioChannel : ''}`)));
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
+  // Account senza telefono (obbligatorio): si chiede qui, senza bloccare il gioco.
+  if (st.account?.needsPhone) out.push(phoneBanner());
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
   // Il server è stato aggiornato mentre l'app era aperta: questa versione può non capire le novità.
   if (S.bootVersion && st.appVersion && st.appVersion !== S.bootVersion) out.push(h('button', { type: 'button', class: 'banner banner-action banner-update', onclick: () => location.reload() },

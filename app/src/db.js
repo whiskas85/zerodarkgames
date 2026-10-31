@@ -354,6 +354,8 @@ db.exec(`UPDATE players SET weapons = replace(replace(replace(weapons, 'Arma pri
          WHERE weapons LIKE '%Arma %'`);
 addColumn('players', 'chronoPass', 'TEXT');
 addColumn('account_identities', 'picture', 'TEXT');
+// Telefono dal gestionale (claim phone_number o simili): riempie quello dell'account se manca.
+addColumn('account_identities', 'phone', 'TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS council_requests (
   accountId INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL
 )`);

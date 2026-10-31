@@ -1275,3 +1275,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .topbar .top-clock .clock-big { line-height: 1; }
 }
 .offline-banner { padding: 8px 16px; background: #3a3f47; color: #fff; font-size: 14px; border-bottom: 2px solid #5b6270; }
+.contacts-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 6px; margin-bottom: 8px; }

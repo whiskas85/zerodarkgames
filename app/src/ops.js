@@ -12,6 +12,9 @@ const { randomToken, randomCode, HttpError } = require('./util');
 
 const err = (status, msg) => new HttpError(status, msg);
 const SCOPE = 'openid profile squadra';
+// Il telefono si chiede (scope «phone») solo se il gestionale dichiara di saperlo dare: uno scope sconosciuto
+// potrebbe far fallire l'accesso.
+const scopeFor = (cfg) => (Array.isArray(cfg.scopes_supported) && cfg.scopes_supported.includes('phone') ? `${SCOPE} phone` : SCOPE);
 const FLOW_TTL = 10 * 60000;
 const CACHE_TTL = 3600000;
 const CLOCK_SKEW = 120;
@@ -205,7 +208,7 @@ async function start(id, { mode, accountId, redirectUri, back }) {
   flows.set(state, { at: Date.now(), providerId: p.id, issuer: p.issuer, nonce, verifier, mode, accountId: accountId || null, redirectUri, back });
   const url = new URL(cfg.authorization_endpoint);
   url.search = new URLSearchParams({
-    response_type: 'code', client_id: p.clientId, redirect_uri: redirectUri, scope: SCOPE, state, nonce,
+    response_type: 'code', client_id: p.clientId, redirect_uri: redirectUri, scope: scopeFor(cfg), state, nonce,
     code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
   }).toString();
   return { url: url.toString(), state };
@@ -249,15 +252,30 @@ async function finish(state, cookieState, query) {
 
 // ---- account collegati
 
-function profileOf(c) {
+function profileOf(c, issuer = null) {
   const name = String(c.name || [c.given_name, c.family_name].filter(Boolean).join(' ') || c.preferred_username || '').trim().slice(0, 80);
   const callsign = String(c.preferred_username || '').trim().slice(0, 40);
   return {
     name: name || 'Operatore', nickname: callsign && callsign !== name ? callsign : null,
     squadra: String(c.squadra?.nome || '').trim().slice(0, 60) || null,
-    // Foto del profilo (claim standard «picture»): solo indirizzi https, per l'avatar nell'app.
-    picture: /^https:\/\/[^\s"'<>]+$/.test(String(c.picture || '')) && String(c.picture).length <= 500 ? String(c.picture) : null,
+    picture: pictureOf(c, issuer),
+    phone: phoneOf(c),
   };
+}
+// Foto del profilo per l'avatar: il claim standard «picture» o un nome simile; un indirizzo relativo vale sul
+// gestionale. Solo https.
+function pictureOf(c, issuer) {
+  let v = [c.picture, c.avatar, c.avatar_url, c.foto, c.immagine, c.image, c.photo].find((x) => typeof x === 'string' && x.trim());
+  if (!v) return null;
+  v = v.trim();
+  if (v.startsWith('/') && issuer) { try { v = new URL(v, issuer).toString(); } catch { return null; } }
+  return /^https:\/\/[^\s"'<>]+$/.test(v) && v.length <= 500 ? v : null;
+}
+// Telefono: il claim standard «phone_number» o un nome simile (anche dentro squadra/contatti); niente se non è un numero.
+function phoneOf(c) {
+  const v = [c.phone_number, c.phone, c.telefono, c.cellulare, c.mobile, c.contatti?.telefono, c.contatti?.cellulare].find((x) => typeof x === 'string' || typeof x === 'number');
+  const s = String(v ?? '').trim().slice(0, 30);
+  return /^\+?[\d\s./()-]+$/.test(s) && s.replace(/\D/g, '').length >= 8 ? s : null;
 }
 
 function uniqueUsername(c) {
@@ -275,8 +293,9 @@ function identityRow(p, claims) {
 }
 
 function touch(id, p, claims) {
-  const pr = profileOf(claims);
-  q.run('UPDATE account_identities SET providerName = ?, opsName = ?, squadra = ?, picture = ?, lastLoginAt = ? WHERE id = ?', p.name, pr.name, pr.squadra, pr.picture, Date.now(), id);
+  const pr = profileOf(claims, p.issuer);
+  q.run('UPDATE account_identities SET providerName = ?, opsName = ?, squadra = ?, picture = ?, phone = ?, lastLoginAt = ? WHERE id = ?', p.name, pr.name, pr.squadra, pr.picture, pr.phone, Date.now(), id);
+  fillPhone(q.get('SELECT accountId FROM account_identities WHERE id = ?', id)?.accountId, pr.phone);
 }
 
 /**
@@ -304,10 +323,10 @@ function resolveAccount({ flow, provider: p, claims }, currentAccountId) {
       touch(known.id, p, claims);
       return { account: q.get('SELECT * FROM accounts WHERE id = ?', known.accountId) };
     }
-    const pr = profileOf(claims);
+    const pr = profileOf(claims, p.issuer);
     const username = uniqueUsername(claims);
     const id = Number(q.run('INSERT INTO accounts (username, passHash, name, nickname, softairTeam, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      username, '', pr.name, pr.nickname, pr.squadra || 'nessuno', null, Date.now()).lastInsertRowid);
+      username, '', pr.name, pr.nickname, pr.squadra || 'nessuno', pr.phone, Date.now()).lastInsertRowid);
     addIdentity(id, p, claims);
     G.log(null, username, 'account_created', { gestionale: p.name });
     return { account: q.get('SELECT * FROM accounts WHERE id = ?', id), created: true };
@@ -315,10 +334,17 @@ function resolveAccount({ flow, provider: p, claims }, currentAccountId) {
 }
 
 function addIdentity(accountId, p, claims) {
-  const pr = profileOf(claims);
+  const pr = profileOf(claims, p.issuer);
   const now = Date.now();
-  q.run('INSERT INTO account_identities (accountId, iss, sub, providerName, opsName, squadra, picture, createdAt, lastLoginAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    accountId, p.issuer, String(claims.sub), p.name, pr.name, pr.squadra, pr.picture, now, now);
+  q.run('INSERT INTO account_identities (accountId, iss, sub, providerName, opsName, squadra, picture, phone, createdAt, lastLoginAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    accountId, p.issuer, String(claims.sub), p.name, pr.name, pr.squadra, pr.picture, pr.phone, now, now);
+  fillPhone(accountId, pr.phone);
+}
+// Il telefono del gestionale riempie quello dell'account (e delle iscrizioni aperte) solo se manca: quello scritto a mano vince.
+function fillPhone(accountId, phone) {
+  if (!accountId || !phone) return;
+  if (!q.run("UPDATE accounts SET phone = ? WHERE id = ? AND (phone IS NULL OR phone = '')", phone, accountId).changes) return;
+  q.run(`UPDATE players SET phone = ? WHERE accountId = ? AND (phone IS NULL OR phone = '') AND gameId IN (SELECT id FROM games WHERE status != 'ended')`, phone, accountId);
 }
 
 const identitiesOf = (accountId) => q.all('SELECT id, iss, providerName, opsName, squadra, createdAt, lastLoginAt FROM account_identities WHERE accountId = ? ORDER BY id', accountId);

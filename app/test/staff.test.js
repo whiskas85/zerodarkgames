@@ -11,8 +11,8 @@ const { q } = require('../src/db');
 const A = require('../src/accounts');
 const St = require('../src/staff');
 
-const mario = A.register({ username: 'mario', password: 'password1', name: 'Mario Rossi', softairTeam: 'Zero Dark Team' });
-const luca = A.register({ username: 'luca', password: 'password1', name: 'Luca Bianchi', softairTeam: 'nessuno' });
+const mario = A.register({ username: 'mario', password: 'password1', name: 'Mario Rossi', softairTeam: 'Zero Dark Team', phone: '+39 333 1234567' });
+const luca = A.register({ username: 'luca', password: 'password1', name: 'Luca Bianchi', softairTeam: 'nessuno', phone: '+39 333 1234567' });
 
 test('l\'invito da master fa di un account un master, una volta sola', () => {
   const inv = St.createInvite('master', 'master');
@@ -57,7 +57,7 @@ test('gli account dell\'organizzazione non si cancellano per sbaglio', () => {
 });
 
 test('Consiglio Zero: chi entra con Zero Dark Ops chiede, il master sceglie le azioni', () => {
-  const anna = A.register({ username: 'anna', password: 'password1', name: 'Anna Verdi', softairTeam: 'Zero Dark Team' });
+  const anna = A.register({ username: 'anna', password: 'password1', name: 'Anna Verdi', softairTeam: 'Zero Dark Team', phone: '+39 333 1234567' });
   // Senza gestionale collegato la richiesta non si fa.
   assert.equal(St.councilStatus(anna).canRequest, false);
   assert.throws(() => St.requestCouncil(anna), /Zero Dark Ops/);
@@ -90,7 +90,7 @@ test('i validatori di prima restano con Soglia, Accettazione e Test armi', () =>
 
 test('chi è in attesa in una partita può entrare nel Consiglio: lascia l\'iscrizione da giocatore', () => {
   const gid = Number(q.run("INSERT INTO games (name, status, createdAt) VALUES ('Attesa', 'draft', ?)", Date.now()).lastInsertRowid);
-  const luca = A.register({ username: 'lucaattesa', password: 'password1', name: 'Luca Neri', softairTeam: 'nessuno' });
+  const luca = A.register({ username: 'lucaattesa', password: 'password1', name: 'Luca Neri', softairTeam: 'nessuno', phone: '+39 333 1234567' });
   const pid = Number(q.run("INSERT INTO players (gameId, name, accountId, status, createdAt) VALUES (?, 'Luca Neri', ?, 'pending', ?)", gid, luca.id, Date.now()).lastInsertRowid);
   const u = St.acceptCouncil(luca.id, ['armi'], 'master', pid);
   assert.equal(u.role, 'validator');

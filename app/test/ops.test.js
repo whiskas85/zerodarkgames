@@ -52,7 +52,7 @@ const server = http.createServer((req, res) => {
       if (auth !== 'giochi:segreto') return json(401, { error: 'invalid_client' });
       if (!c || crypto.createHash('sha256').update(p.get('code_verifier') || '').digest('base64url') !== c.challenge || p.get('redirect_uri') !== c.redirectUri) return json(400, { error: 'invalid_grant' });
       const now = Math.floor(Date.now() / 1000);
-      const claims = { iss: issuer, aud: 'giochi', sub: person.sub, nonce: c.nonce, iat: now, exp: now + 300, name: person.name, preferred_username: person.preferred_username, squadra: person.squadra };
+      const claims = { iss: issuer, aud: 'giochi', sub: person.sub, nonce: c.nonce, iat: now, exp: now + 300, name: person.name, preferred_username: person.preferred_username, squadra: person.squadra, ...(person.extra || {}) };
       json(200, { access_token: 'at', token_type: 'Bearer', id_token: tamper ? tamper(claims) : sign(claims) });
     });
     return;
@@ -120,7 +120,7 @@ test('senza password non si scollega l\'ultimo gestionale; con la password sì',
 });
 
 test('collegamento a un account esistente, poi si entra da lì', async () => {
-  const mine = A.register({ username: 'luca', password: 'password1', name: 'Luca Bianchi', softairTeam: 'nessuno' });
+  const mine = A.register({ username: 'luca', password: 'password1', name: 'Luca Bianchi', softairTeam: 'nessuno', phone: '+39 333 1234567' });
   person = { sub: 'ckx-2', name: 'Luca Bianchi', preferred_username: 'Orso', squadra: { nome: 'Zero Dark Team' } };
   // Il collegamento vale solo se l'account aperto al ritorno è lo stesso che l'ha chiesto.
   await assert.rejects(login('link', null), /Accedi di nuovo/);
@@ -130,7 +130,7 @@ test('collegamento a un account esistente, poi si entra da lì', async () => {
   const again = await login();
   assert.equal(again.account.id, mine.id);
   // Lo stesso account del gestionale non si collega a un secondo account dei Giochi.
-  const other = A.register({ username: 'altro', password: 'password1', name: 'Altro', softairTeam: 'nessuno' });
+  const other = A.register({ username: 'altro', password: 'password1', name: 'Altro', softairTeam: 'nessuno', phone: '+39 333 1234567' });
   await assert.rejects(login('link', other.id), /già collegato/);
 });
 
@@ -139,6 +139,19 @@ test('username già preso: si aggiunge un numero', async () => {
   const r = await login();
   assert.equal(r.account.username, 'luca2');
   assert.equal(r.account.softairTeam, 'nessuno');
+});
+
+test('telefono e avatar dal gestionale: riempiono l\'account (il telefono solo se manca)', async () => {
+  person = { sub: 'ckx-9', name: 'Sara Neri', preferred_username: 'Volpe', extra: { phone_number: '+39 347 111 2233', picture: 'https://ops.example/foto/sara.jpg' } };
+  const r = await login();
+  assert.equal(r.account.phone, '+39 347 111 2233');
+  assert.equal(A.publicAccount(r.account).picture, 'https://ops.example/foto/sara.jpg');
+  // Numero scritto a mano: il gestionale non lo sovrascrive; avatar con altro nome del claim.
+  q.run('UPDATE accounts SET phone = ? WHERE id = ?', '+39 333 0000000', r.account.id);
+  person = { ...person, extra: { telefono: '347 999 8877', avatar: 'https://ops.example/foto/sara2.jpg' } };
+  const again = await login();
+  assert.equal(again.account.phone, '+39 333 0000000');
+  assert.equal(A.publicAccount(again.account).picture, 'https://ops.example/foto/sara2.jpg');
 });
 
 test('id_token non valido o state sbagliato: niente accesso', async () => {

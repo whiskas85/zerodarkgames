@@ -170,7 +170,7 @@
         field('Nome e cognome', { name: 'name', required: true, autocomplete: 'name' }),
         field('Nome di battaglia (facoltativo)', { name: 'nickname' }),
         field('Team di softair di appartenenza', { name: 'softairTeam', required: true, maxlength: 60, placeholder: 'es. Zero Dark Team — oppure "nessuno"', autocomplete: 'organization' }),
-        field('Telefono (facoltativo, solo per l\'organizzazione)', { name: 'phone', type: 'tel', autocomplete: 'tel' })),
+        field('Telefono (obbligatorio: avvisi dell\'organizzazione e gruppo WhatsApp della partita)', { name: 'phone', type: 'tel', required: true, autocomplete: 'tel', placeholder: '+39 333 1234567', minlength: 8 })),
       h('fieldset', null, h('legend', null, 'Il tuo accesso'),
         field('Username', { name: 'username', required: true, minlength: 3, maxlength: 30, pattern: '[A-Za-z0-9._\\-]{3,30}', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', title: 'Lettere, numeri, punto, trattino; da 3 a 30 caratteri' }),
         field('Password (almeno 8 caratteri)', { name: 'password', type: 'password', required: true, minlength: 8, autocomplete: 'new-password' }),
@@ -211,6 +211,18 @@
     const spotsText = (mode, n) => (n === 0 ? 'Posti esauriti'
       : mode === 'pair' ? `${n} ${n === 1 ? 'Settore libero' : 'Settori liberi'} per le coppie` : `${n} ${n === 1 ? 'posto libero' : 'posti liberi'} per i temerari`);
 
+    function phoneCard() {
+      const input = h('input', { class: 'input', type: 'tel', name: 'phone', required: true, autocomplete: 'tel', placeholder: '+39 333 1234567', minlength: 8 });
+      return h('form', { class: 'card phone-card', onsubmit: async (e) => {
+        e.preventDefault();
+        try { await api('PATCH', '/api/account', { phone: input.value }); toast('Numero salvato', 'ok'); await loadAccount(); render(); } catch (err) { toast(err.message, 'error', 6000); }
+      } },
+      h('strong', null, '📱 Il tuo numero di telefono'),
+      h('p', { class: 'small' }, 'È obbligatorio per iscriversi: lo usa l\'organizzazione per gli avvisi e per il gruppo WhatsApp della partita. Scrivilo con il prefisso.'),
+      h('label', { class: 'field' }, h('span', null, 'Telefono'), input),
+      h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Salva e scegli la sfida'));
+    }
+
     // ---- passo 2: scelta della sfida
     function pageChoose() {
       const game = S.games.find((g) => g.id === S.gameId);
@@ -225,7 +237,9 @@
         !mine && game?.spots ? h('div', { class: 'spots-sum', 'aria-label': 'Posti disponibili' },
           h('span', { class: `spots ${game.spots.couples === 0 ? 'spots-full' : game.spots.couples <= 2 ? 'spots-low' : ''}` }, spotsText('pair', game.spots.couples)),
           h('span', { class: `spots ${game.spots.singles === 0 ? 'spots-full' : game.spots.singles <= 2 ? 'spots-low' : ''}` }, spotsText('single', game.spots.singles))) : null,
-        mine ? enrolledCard(mine) : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => {
+        // Account senza telefono (es. entrato con Zero Dark Ops che non lo fornisce): prima il numero, poi la sfida.
+        !mine && S.account.needsPhone ? phoneCard() : null,
+        mine ? enrolledCard(mine) : S.account.needsPhone ? null : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => {
           const left = spotsLeft(game, c.mode);
           const full = left === 0;
           return h(full ? 'div' : 'a', { class: `path ${full ? 'path-full' : ''}`, href: full ? null : `#${key}`, 'aria-disabled': full ? 'true' : null },
@@ -358,7 +372,7 @@
         field('Nome e cognome', { name: 'name', required: true, value: a.name }),
         field('Nome di battaglia', { name: 'nickname', value: a.nickname || '' }),
         field('Team di softair di appartenenza', { name: 'softairTeam', required: true, value: a.softairTeam || '' }),
-        field('Telefono', { name: 'phone', type: 'tel', value: a.phone || '' })),
+        field('Telefono (obbligatorio)', { name: 'phone', type: 'tel', required: true, autocomplete: 'tel', placeholder: '+39 333 1234567', minlength: 8, value: a.phone || '' })),
       h('fieldset', null, h('legend', null, a.hasPassword ? 'Cambia password (facoltativo)' : 'Imposta una password (facoltativo)'),
         a.hasPassword ? field('Password attuale', { name: 'currentPassword', type: 'password', autocomplete: 'current-password' })
           : h('p', { class: 'muted small' }, `Entri con il gestionale. Con una password potrai entrare anche come @${a.username}.`),
