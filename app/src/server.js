@@ -960,8 +960,8 @@ app.get('/iscrizione', sendPage('iscrizione.html'));
 app.get('/tabellone', sendPage('tabellone.html'));
 // Regolamento degli Eletti: riservato, lo leggono solo gli Eletti (accesso personale o della squadra) e il Consiglio.
 app.get('/regolamento-eletti', (req, res) => {
-  // Chi gioca in una coppia non lo vede, anche se fa parte del Consiglio.
-  if (req.team?.kind === 'elect' || (req.user && req.team?.kind !== 'couple')) return res.sendFile(path.join(__dirname, 'pages', 'regolamento-eletti.html'), { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex' } });
+  // La regia sempre (anche se sullo stesso browser c'è l'accesso di una coppia); gli altri del Consiglio no se giocano in una coppia.
+  if (req.user?.role === 'master' || req.team?.kind === 'elect' || (req.user && req.team?.kind !== 'couple')) return res.sendFile(path.join(__dirname, 'pages', 'regolamento-eletti.html'), { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex' } });
   res.status(403).type('html').send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Riservato</title><body style="font-family:system-ui;background:#121613;color:#dad7cc;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div><h1>Riservato agli Eletti</h1><p>Questo regolamento lo leggono solo gli Eletti del Consiglio. Entrate nell\'app con il vostro accesso.</p><p><a style="color:#d65a43" href="/">Torna all\'app</a></p></div></body>');
 });
 app.use(express.static(PUBLIC_DIR, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
