@@ -316,7 +316,12 @@ app.post('/api/auth/logout', wrap((req, res) => {
   }
   return { ok: true, home: '/' };
 }));
-app.get('/api/auth/me', (req, res) => res.json({ user: req.user ? { ...req.user, home: St.homeOf(req.user.role) } : null, team: req.team ? { id: req.team.id } : null }));
+// Foto dell'avatar (dal gestionale) per la regia e il Consiglio: quella dell'account collegato all'utente.
+const userPicture = (req) => {
+  const accountId = req.account?.id || (req.user && q.get('SELECT accountId FROM users WHERE id = ?', req.user.id)?.accountId);
+  return accountId ? q.get("SELECT picture FROM account_identities WHERE accountId = ? AND picture IS NOT NULL AND picture != '' ORDER BY lastLoginAt DESC LIMIT 1", accountId)?.picture || null : null;
+};
+app.get('/api/auth/me', (req, res) => res.json({ user: req.user ? { ...req.user, home: St.homeOf(req.user.role), picture: userPicture(req) } : null, team: req.team ? { id: req.team.id } : null }));
 
 // ---- iscrizione pubblica
 app.get('/api/public/games', (_req, res) => res.json(openGames()));

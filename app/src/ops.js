@@ -54,7 +54,9 @@ function normIssuer(raw) {
 // Elenco per i pulsanti di accesso (senza dati riservati).
 const publicList = () => providers().map((p) => ({ id: p.id, name: p.name, issuer: p.issuer }));
 // Elenco per la regia: il segreto non torna mai indietro.
-const adminList = () => providers().map(({ clientSecret, ...p }) => ({ ...p, hasSecret: !!clientSecret }));
+const adminList = () => providers().map(({ clientSecret, ...p }) => ({ ...p, hasSecret: !!clientSecret, lastClaims: lastClaims(p.issuer) }));
+// Diagnostica per la regia: cosa ha mandato il gestionale all'ultimo accesso (nomi dei dati, foto, se c'è il telefono).
+const lastClaims = (issuer) => { try { return JSON.parse(getSetting(`opsLastClaims:${issuer}`) || 'null'); } catch { return null; } };
 
 function saveProvider(data, actor) {
   const list = savedProviders();
@@ -247,7 +249,12 @@ async function finish(state, cookieState, query) {
     const u = await getJson(cfg.userinfo_endpoint, { headers: { Authorization: `Bearer ${data.access_token}`, Accept: 'application/json' } }).catch(() => null);
     if (u?.res.ok && u.data?.sub === claims.sub) info = u.data;
   }
-  return { flow: f, provider: p, claims: { ...info, ...claims } };
+  const all = { ...info, ...claims };
+  const pr = profileOf(all, p.issuer);
+  setSetting(`opsLastClaims:${p.issuer}`, JSON.stringify({ at: Date.now(), scope: scopeFor(cfg), phoneScope: scopeFor(cfg).includes('phone'), userinfo: !!Object.keys(info).length,
+    keys: Object.keys(all).filter((k) => !['iss', 'aud', 'exp', 'iat', 'nonce', 'auth_time', 'at_hash', 'azp', 'sid', 'jti'].includes(k)).sort(),
+    picture: typeof all.picture === 'string' ? all.picture.slice(0, 200) : null, pictureOk: !!pr.picture, phone: !!pr.phone }));
+  return { flow: f, provider: p, claims: all };
 }
 
 // ---- account collegati

@@ -4766,7 +4766,12 @@ function opsSection() {
       h('strong', null, p.name), h('span', { class: 'mono tiny' }, p.issuer),
       h('span', { class: 'chip' }, p.hasSecret ? 'con segreto' : 'solo PKCE'),
       p.fromEnv ? h('span', { class: 'chip', title: 'OPS_ISSUER, OPS_CLIENT_ID, OPS_CLIENT_SECRET' }, 'dal file .env')
-        : [h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { opsEdit = p.id; render(); } }, 'Modifica'), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(p) }, 'Togli')]))) : h('p', { class: 'empty' }, 'Nessun gestionale collegato: si entra solo con username e password.'),
+        : [h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { opsEdit = p.id; render(); } }, 'Modifica'), h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(p) }, 'Togli')],
+      // Cosa ha mandato il gestionale all'ultimo accesso: serve a capire se arrivano foto e telefono.
+      p.lastClaims ? h('div', { class: 'ops-diag tiny' },
+        h('div', null, `Ultimo accesso ${fmtTime(p.lastClaims.at)} · dati ricevuti: `, h('span', { class: 'mono' }, p.lastClaims.keys.join(', ') || '—')),
+        h('div', null, p.lastClaims.pictureOk ? '✓ Foto ricevuta' : p.lastClaims.picture ? `✗ Foto non valida (serve un indirizzo https pubblico): ${p.lastClaims.picture}` : '✗ Nessuna foto (claim «picture»)', ' · ',
+          p.lastClaims.phone ? '✓ Telefono ricevuto' : p.lastClaims.phoneScope ? '✗ Telefono non ricevuto (claim «phone_number»)' : '✗ Telefono non chiesto: il gestionale non dichiara lo scope «phone» in scopes_supported')) : h('div', { class: 'tiny muted' }, 'Nessun accesso registrato da questo aggiornamento.')))) : h('p', { class: 'empty' }, 'Nessun gestionale collegato: si entra solo con username e password.'),
     form || h('button', { class: 'btn', onclick: () => { opsEdit = 'new'; render(); } }, '+ Aggiungi gestionale'),
     h('p', { class: 'muted tiny' }, 'Più squadre con il loro gestionale? Aggiungine uno per ciascuna: ognuno ha il suo pulsante.'));
 }

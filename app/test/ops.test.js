@@ -146,6 +146,10 @@ test('telefono e avatar dal gestionale: riempiono l\'account (il telefono solo s
   const r = await login();
   assert.equal(r.account.phone, '+39 347 111 2233');
   assert.equal(A.publicAccount(r.account).picture, 'https://ops.example/foto/sara.jpg');
+  // Diagnostica per la regia: cosa è arrivato all'ultimo accesso.
+  const diag = O.adminList()[0].lastClaims;
+  assert.ok(diag.pictureOk && diag.phone);
+  assert.ok(diag.keys.includes('phone_number') && diag.keys.includes('picture'));
   // Numero scritto a mano: il gestionale non lo sovrascrive; avatar con altro nome del claim.
   q.run('UPDATE accounts SET phone = ? WHERE id = ?', '+39 333 0000000', r.account.id);
   person = { ...person, extra: { telefono: '347 999 8877', avatar: 'https://ops.example/foto/sara2.jpg' } };
