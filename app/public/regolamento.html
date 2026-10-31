@@ -198,6 +198,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
       <li><b>Avete perso:</b> mostrate il codice, cappellino almeno 2 minuti. Tornate in gioco quando lo togliete.</li>
       <li><b>Alleanza:</b> braccio alzato che saluta per proporla, braccia incrociate per rifiutarla.</li>
       <li><b>Alla Soglia si arriva come coppia singola:</b> un'alleanza va sciolta prima.</li>
+      <li><b>Zone sulla mappa:</b> entrando subite il loro effetto (Ombra, Luce, Disturbo…). Nelle zone <b>NO PLAY</b> non si entra mai.</li>
     </ol>
   </div>
 </section>
@@ -213,6 +214,11 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
       <li><b>Doni che restano:</b> alcuni Doni restano attivi dopo la lettura e ogni coppia li può prendere una volta. Il cartello dice se va rimosso o lasciato. Un Dono già letto, riletto, risulta scaduto (regola 13).</li>
       <li><b>Chi vi guarda:</b> quando una Skill o un Dono rivela la vostra posizione, lo sapete 1 minuto dopo. Le icone accanto all'orologio dicono chi vi osserva: toccatele per la spiegazione (regola 13).</li>
       <li><b>Emergenza reale:</b> il pulsante EMERGENZA nell'app (e l'SOS di Traccar Client) avvisa subito la Direzione, con la vostra posizione. È un evento OFF GAME (regola 12).</li>
+      <li><b>Zone sulla mappa:</b> Cono d'Ombra, Campo di Luce, Zona di Disturbo, Santuario e Zona di Conquista cambiano il gioco a chi ci entra; alcune si accendono e si spengono durante la partita (regola 15).</li>
+      <li><b>Zone NO PLAY:</b> aree dove non si gioca. Avvicinandovi compare una schermata rossa: avete 30 secondi per allontanarvi, poi la Direzione viene avvisata (regole 12 e 15).</li>
+      <li><b>Eventi:</b> sfide lanciate dal Consiglio con un Dono in premio, a cui vi candidate dall'app. Nella <b>Taglia su voi stessi</b> vincete se gli Eletti non vi ingaggiano in tempo (regola 16).</li>
+      <li><b>Gli Eletti in campo:</b> squadre del Consiglio che possono scontrarsi con voi, cacciarvi su incarico, accendere zone e disattivare Altari con il Beacon (regola 14).</li>
+      <li><b>App anche senza rete:</b> aperta almeno una volta con il segnale, l'app riparte anche offline con gli ultimi dati; la mappa del campo si può scaricare sul telefono.</li>
     </ul>
   </div>
 </section>
@@ -221,7 +227,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
   <div class="sec-head"><span class="eyebrow">Regolamento</span><h2>Le leggi del bosco</h2></div>
   <p>Questo è il regolamento completo. Non ci sono arbitri: il gioco funziona solo se ognuno rispetta le regole da solo.</p>
   <ul class="toc">
-    <li><a href="#novita">Novità</a></li><li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li><li><a href="#r13">13 Doni e Skill</a></li><li><a href="#r14">14 Gli Eletti</a></li>
+    <li><a href="#novita">Novità</a></li><li><a href="#r1">1 Obiettivo</a></li><li><a href="#r2">2 La coppia</a></li><li><a href="#r3">3 Il codice</a></li><li><a href="#r4">4 Partenza</a></li><li><a href="#r5">5 Ingaggio</a></li><li><a href="#r6">6 Dopo l'ingaggio</a></li><li><a href="#r7">7 Codici</a></li><li><a href="#r8">8 Altari</a></li><li><a href="#r9">9 Alleanze</a></li><li><a href="#r10">10 Rifornimento</a></li><li><a href="#r11">11 Vittoria</a></li><li><a href="#r12">12 Sicurezza</a></li><li><a href="#r13">13 Doni e Skill</a></li><li><a href="#r14">14 Gli Eletti</a></li><li><a href="#r15">15 Le zone</a></li><li><a href="#r16">16 Eventi</a></li>
   </ul>
 
   <article class="rule" id="r1">
@@ -365,6 +371,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li>Agli Altari non c'è zona franca: si ingaggia e si viene ingaggiati.</li>
         <li>Vietato sostare sotto il cartello. Chi aspetta resta ad almeno 20 metri. Appostarsi più lontano è permesso.</li>
         <li>Il codice si inserisce dove c'è rete, non per forza all'Altare.</li>
+        <li>Un Altare può essere <b>disattivato dal Beacon</b> degli Eletti: per qualche minuto non si apre per nessuno. L'app vi dice quando torna attivo; sulla mappa è segnato come spento.</li>
       </ul>
       <div class="callout"><p><b>Pensateci prima di passare un link o un frammento.</b> Potete farlo, ma state regalando un vantaggio a un avversario. Vince una sola coppia.</p></div>
     </div>
@@ -482,6 +489,7 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
         <li><b>Ritiro:</b> se un operatore si ritira, la coppia esce dalla classifica. I codici già ceduti restano validi.</li>
         <li><b>Contestazioni:</b> non ci sono arbitri. Un ingaggio contestato vale come pareggio e si segnala a fine gioco.</li>
         <li><b>Tempi:</b> fermi, stalli e blocchi si cronometrano da soli, con l'app o con l'orologio.</li>
+        <li><b>Zone NO PLAY:</b> sono aree escluse dal gioco (proprietà private, strade, pericoli). Non si entra mai, nemmeno inseguendo qualcuno. Se vi avvicinate l'app mostra una schermata rossa con la direzione per uscire: avete 30 secondi, poi la Direzione viene avvisata.</li>
       </ul>
     </div>
   </article>
@@ -525,11 +533,74 @@ footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
     <div class="rule-body">
       <p>Gli Eletti non cercano la Parola: la custodiscono. Tengono in piedi i Giochi per conto del Consiglio e ne difendono i luoghi dalle coppie troppo audaci.</p>
       <ul>
-        <li>Sono divisi in squadre. Ogni squadra riceve i suoi incarichi dal Consiglio, nell'app: piazzare gli Altari e i Doni, presidiare i luoghi del gioco, sorvegliare il bosco.</li>
+        <li>Sono divisi in squadre. Ogni squadra riceve i suoi incarichi dal Consiglio: piazzare Altari e Doni, presidiare i luoghi del gioco, cacciare una coppia, accendere zone.</li>
         <li>Non hanno un Sigillo, non aprono gli Altari e non entrano in classifica: non hanno nulla da cedere e nulla da vincere.</li>
-        <li>Ricevono annunci e avvisi come tutti e parlano con il Consiglio dalla loro app.</li>
+        <li>Non vedono tutte le coppie: solo quelle che il Consiglio affida loro (caccia, taglia, Alleanze sporche, eventi che custodiscono) e chi è in un Campo di Luce.</li>
         <li>Si entra tra gli Eletti candidandosi all'iscrizione; è il Consiglio a scegliere chi accettare e in quale squadra.</li>
         <li>Valgono per loro le stesse leggi di sicurezza e fair play di tutti.</li>
+      </ul>
+      <h4>Scontri con gli Eletti</h4>
+      <ul>
+        <li>Gli Eletti possono ingaggiarvi e voi potete ingaggiare loro, con le regole d'ingaggio di sempre (regola 5).</li>
+        <li>Finito lo scontro, gli Eletti dichiarano l'esito nell'app; voi lo confermate o lo contestate dalla pagina Scontri. Se contestate, decide il Consiglio.</li>
+        <li><b>Se vincono gli Eletti:</b> è una sconfitta come le altre: mostrate il Sigillo e fate la Veglia. In una caccia del Maestro della caccia il vostro Sigillo va alla coppia che l'ha lanciata.</li>
+        <li><b>Se vincete voi:</b> è una vittoria, e la caccia o l'incarico su di voi si chiude.</li>
+      </ul>
+      <h4>Cacce e Alleanze sporche</h4>
+      <ul>
+        <li>Con Maestro della caccia o una Taglia il Consiglio manda una squadra contro una coppia: la squadra la vede sulla mappa finché dura l'incarico, e la coppia lo scopre 1 minuto dopo.</li>
+        <li>Il Cono d'Ombra e la Skill Ombra vi nascondono anche agli Eletti: per loro restate un segno grigio dov'eravate, con la scritta «non può essere mostrata».</li>
+        <li><b>Alleanze sporche:</b> il Consiglio vi manda la squadra più vicina. La vedete sulla mappa appena prende in consegna l'incarico; quando arriva entro 40 metri siete alleati per 30 minuti. Allo scadere gli Eletti se ne vanno, qualunque cosa stia succedendo.</li>
+      </ul>
+      <h4>Il Beacon</h4>
+      <ul>
+        <li>Gli Eletti possono accendere una zona spenta restando dentro per qualche minuto, o disattivare un Altare per un tempo stabilito dal Consiglio.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="r15">
+    <div class="rule-head"><span class="num">15</span><h3>Le zone<small>il bosco cambia</small></h3></div>
+    <div class="rule-body">
+      <p>Sulla mappa dell'app il Consiglio disegna delle zone. Ognuna ha un colore, un'icona e un effetto, scritto anche nella pagina Zone dell'app. Entrando in una zona compare il suo nome e il telefono vibra.</p>
+      <ul>
+        <li><b>🌑 Cono d'Ombra:</b> finché restate dentro nessuna coppia vi vede sulla mappa, e nemmeno gli Eletti, qualunque Skill o Dono usino.</li>
+        <li><b>☀️ Campo di Luce:</b> finché restate dentro vi vedono tutte le coppie e gli Eletti.</li>
+        <li><b>⚡ Zona di Disturbo:</b> dentro non funzionano le Skill attive e la mappa è oscurata. Resta solo il confine della zona, con una freccia e i metri per uscire.</li>
+        <li><b>🏛️ Santuario:</b> dentro le Skill in ricarica si ricaricano più in fretta (quanto, lo dice la zona).</li>
+        <li><b>👑 Zona di Conquista:</b> la prima coppia che resta dentro per i minuti indicati, di fila, vince un Dono a caso. Uscendo il tempo si azzera.</li>
+        <li><b>⛔ Zona NO PLAY:</b> lì non si gioca e non si entra mai (regola 12).</li>
+      </ul>
+      <h4>Zone accese e spente</h4>
+      <ul>
+        <li>Una zona colorata è accesa e il suo effetto vale. Una zona in grigio è spenta: si vede, ma per ora non fa nulla.</li>
+        <li>Le zone si accendono e si spengono durante la partita, per decisione del Consiglio o con il Beacon degli Eletti. Alcune restano accese solo per un tempo: in quel caso sul bordo della zona può comparire il conto alla rovescia.</li>
+        <li>L'effetto vale entrando. Se una zona nasce, o viene abilitata, mentre siete già dentro, non la subite finché non uscite e rientrate. Se invece era già sulla mappa in grigio e si accende con voi dentro, la subite subito: sapevate che poteva accendersi.</li>
+        <li>Il GPS ha qualche metro di incertezza: per l'app entrate qualche metro dentro il bordo e uscite qualche metro fuori.</li>
+        <li>Quando le zone si sovrappongono vince quella più in alto, decisa dal Consiglio: per esempio un Cono d'Ombra sopra un Campo di Luce vi tiene nascosti.</li>
+      </ul>
+      <div class="callout"><p><b>Le zone seguono la vostra posizione.</b> Tenete il GPS acceso (e Traccar attivo) e l'app aperta quando potete: senza posizione il gioco non sa in che zona siete.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="r16">
+    <div class="rule-head"><span class="num">16</span><h3>Eventi<small>le sfide del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <p>Durante la partita il Consiglio può lanciare degli eventi: sfide con un luogo, un orario, una durata e un Dono in premio. Li trovate nella pagina Eventi dell'app, con una notifica.</p>
+      <ul>
+        <li><b>Candidatura:</b> «Accetto la sfida» vale per la vostra coppia (un posto). Un'alleanza si può candidare intera: ogni coppia alleata conferma. I posti sono limitati e le candidature possono chiudersi a un orario.</li>
+        <li><b>Svolgimento:</b> la sfida la regola il Consiglio o la squadra di Eletti che la custodisce, che la chiude a fine prove.</li>
+        <li><b>Chiusura:</b> ogni coppia conferma la chiusura nell'app e prende subito il premio, se l'ha vinto.</li>
+        <li><b>Tregua:</b> dopo la chiusura, per qualche minuto, i partecipanti non possono ingaggiarsi tra loro.</li>
+      </ul>
+      <h4>Taglia su voi stessi</h4>
+      <ul>
+        <li>Iscrivendovi vi mettete una taglia sulla testa: per la durata dell'evento tutte le squadre di Eletti vi cacciano.</li>
+        <li><b>Vincete</b> il premio se nessuna squadra di Eletti vi ingaggia entro la fine. <b>Perdete</b> se vi ingaggiano, anche se poi vincete lo scontro.</li>
+        <li>Gli Eletti vi vedono a intermittenza: 5 minuti tracciati, 5 minuti solo la vostra ultima posizione. Gli ultimi 5 minuti dell'evento siete sempre tracciati.</li>
+        <li>In cima alla mappa e nella pagina dell'evento l'app vi dice se adesso vi vedono e quanto manca al cambio.</li>
+        <li>Un Cono d'Ombra o un effetto che vi nasconde funziona anche contro gli Eletti: per loro restate un segno grigio dov'eravate prima di nascondervi.</li>
+        <li>L'evento si chiude da solo allo scadere del tempo.</li>
       </ul>
     </div>
   </article>

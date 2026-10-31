@@ -4226,7 +4226,8 @@ function viewRules() {
       h('li', null, h('b', null, 'Colpito: '), 'dichiaratelo, cappellino, fermi e zitti.'),
       h('li', null, h('b', null, 'Sconfitta: '), 'mostrate il Sigillo, cappellino almeno 2 minuti (timer Veglia).'),
       h('li', null, h('b', null, 'Alleanza: '), 'braccio alzato per proporla, braccia incrociate per rifiutarla.'),
-      h('li', null, 'Alla Soglia si arriva come coppia singola: l\'alleanza va sciolta prima.')),
+      h('li', null, 'Alla Soglia si arriva come coppia singola: l\'alleanza va sciolta prima.'),
+      h('li', null, h('b', null, 'Zone: '), 'entrando ne subite l\'effetto (Ombra, Luce, Disturbo…). Nelle zone NO PLAY non si entra mai.')),
     h('a', { class: 'btn btn-primary btn-block', href: st?.game.bookUrl || '/regolamento.html', target: '_blank', rel: 'noopener' }, 'Leggi il regolamento completo'),
     // Scaricabile: in PDF dalla pagina del regolamento (pulsante «PDF», stampa → Salva come PDF) o come pagina HTML.
     h('div', { class: 'row-2' },
