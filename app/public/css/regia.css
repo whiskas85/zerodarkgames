@@ -977,7 +977,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ck-tr.ck-done td:first-child { border-left-color: #46c46a; }
 .ck-tr.ck-over td { background: rgba(209, 173, 98, .16); }
 .ck-slot { padding: 10px; border: 2px dashed var(--line); border-radius: 6px; text-align: center; }
-.ck-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
+.ck-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 6px; }
 @media (max-width: 760px) {
   .ck-table, .ck-table tbody, .ck-table tr, .ck-table td { display: block; width: auto !important; }
   .ck-table thead { display: none; }
@@ -1216,3 +1216,16 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ev-mode { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #e5484d; background: rgba(229, 72, 77, .08); font-size: 13px; }
 .ev-desc { color: var(--muted); }
 .sos-card.archived { opacity: .5; border-style: dashed; }
+/* Accettazione sul telefono: niente colonna delle etichette a sinistra (schiacciava i nomi): l'etichetta sta sopra,
+   la persona prende tutta la larghezza e lo stato («da accettare», checklist) va sotto il nome. */
+@media (max-width: 600px) {
+  .content .table-wrap .ck-table tr { padding: 0; border: 0; background: none; }
+  .content .table-wrap .ck-table td { display: block; padding: 8px 10px; min-height: 0; }
+  .content .table-wrap .ck-table td::before { position: static; display: block; width: auto; margin-bottom: 6px; }
+  .content .table-wrap .ck-table td[data-label=""]::before { display: none; }
+  .ck-person { flex-wrap: wrap; padding: 8px; }
+  .ck-person .grow { flex: 1 1 calc(100% - 40px); }
+  .ck-person .grow strong { overflow-wrap: anywhere; }
+  .ck-person .ck-side { flex: 1 1 100%; justify-items: start; text-align: left; padding-left: 38px; grid-auto-flow: column; justify-content: start; align-items: center; gap: 8px; }
+  .ck-grip { width: 28px; font-size: 18px; }
+}
