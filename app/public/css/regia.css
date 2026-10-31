@@ -1241,7 +1241,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .side-extra .top-actions .btn { flex: 1 1 auto; }
 }
 @media (max-width: 600px) {
-  .topbar .brand-t { display: none; }
+  .topbar .brand-t { font-size: 17px; }
+  .topbar .brand-z { display: none; }
   .topbar .top-clock { min-width: 0; gap: 6px; }
   .topbar .clock-big { font-size: 20px; }
   .topbar .chip { white-space: nowrap; }
@@ -1263,4 +1264,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .am-out { color: var(--danger, #e5484d); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; }
 .am-out .am-ico { color: inherit; }
 @media (max-width: 600px) { .topbar .avatar { width: 34px; height: 34px; font-size: 14px; } }
-@media (max-width: 420px) { .topbar .top-clock > .chip { display: none; } }
+/* Telefono: numero degli avvisi sopra l'hamburger, stato della partita sotto l'ora (meno spazio in larghezza). */
+@media (max-width: 1199px) {
+  .nav-toggle { position: relative; }
+  .nav-toggle .badge { position: absolute; top: -7px; right: -8px; min-width: 18px; padding: 1px 5px; text-align: center; line-height: 14px; box-shadow: 0 0 0 2px var(--bg); }
+}
+@media (max-width: 860px) {
+  .topbar .top-clock { flex-direction: column; align-items: flex-end; gap: 2px; }
+  .topbar .top-clock > .chip { order: 2; font-size: 9px; padding: 1px 6px; line-height: 1.3; }
+  .topbar .top-clock .clock-big { line-height: 1; }
+}

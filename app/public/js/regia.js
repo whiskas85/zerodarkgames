@@ -411,7 +411,7 @@ function topbar() {
     // Telefono: il menu delle sezioni si apre con l'hamburger.
     h('button', { class: 'nav-toggle', type: 'button', 'aria-label': 'Menu', onclick: () => document.body.classList.toggle('nav-open') }, '☰',
       alerts ? h('span', { class: 'badge badge-alert' }, alerts) : null),
-    h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Consiglio Zero'), h('div', { class: 'eyebrow' }, 'Regia · Zero Dark Games'))),
+    h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Consiglio', h('span', { class: 'brand-z' }, ' Zero')), h('div', { class: 'eyebrow' }, 'Regia · Zero Dark Games'))),
     gameSelect(),
     ms ? h('div', { class: 'top-clock' },
       h('span', { class: `chip status-${st}` }, STATUS_LABELS[st]),
