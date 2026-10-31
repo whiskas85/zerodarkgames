@@ -418,9 +418,46 @@ function topbar() {
       // Prima del Cerchio il tempo di gara non serve: conto alla rovescia all'evento (data e ora previste).
       preCircle() ? h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'event' }, '—'), h('div', { class: 'mono muted tiny' }, eventAtLabel()))
         : h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, '—'), h('div', { class: 'mono muted tiny' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')))) : null,
-    topActions());
+    topActions(),
+    avatarButton());
 }
-// Scelta della partita e azioni (installa, notifiche, esci): in alto sul computer, nel menu ☰ sul telefono
+// Avatar in alto a destra (come nelle app): il menu con chi sei, le notifiche e «Esci».
+function meInfo() {
+  const me = R.me || {};
+  const name = me.displayName || me.name || me.username || 'Regia';
+  const words = String(name).trim().split(/\s+/).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+  return { name, initials, username: me.username, role: me.role, picture: me.picture || null };
+}
+function avatarFace(me, cls = '') {
+  return h('span', { class: `avatar ${cls}`, 'aria-hidden': 'true' },
+    me.picture ? h('img', { src: me.picture, alt: '', referrerpolicy: 'no-referrer', onerror: (e) => { e.target.replaceWith(document.createTextNode(me.initials)); } }) : me.initials);
+}
+function avatarButton() {
+  const me = meInfo();
+  return h('button', { type: 'button', class: 'avatar-btn', 'aria-label': `Menu di ${me.name}`, 'aria-haspopup': 'menu', onclick: (e) => { e.stopPropagation(); openAvatarMenu(e.currentTarget); } }, avatarFace(me));
+}
+function openAvatarMenu(anchor) {
+  const old = document.querySelector('.avatar-menu');
+  if (old) { old.remove(); return; }
+  const me = meInfo();
+  const item = (href, icon, label, attrs = {}) => h(href ? 'a' : 'button', { class: 'am-item', role: 'menuitem', ...(href ? { href } : { type: 'button' }), ...attrs },
+    h('span', { class: 'am-ico', 'aria-hidden': 'true' }, icon), h('span', null, label));
+  const menu = h('div', { class: 'avatar-menu', role: 'menu' },
+    h('div', { class: 'am-head' }, avatarFace(me, 'lg'), h('div', null, h('strong', null, me.name), h('div', { class: 'tiny muted' }, [me.username ? `@${me.username}` : null, me.role === 'master' ? 'Regia' : me.role].filter(Boolean).join(' · ')))),
+    item(null, '🔔', R.push === 'on' ? 'Notifiche attive' : 'Notifiche', { onclick: pushDialog }),
+    item('#regolamento', '📜', 'Regolamento'),
+    item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.replace('/'); } }));
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  menu.style.maxHeight = `${Math.max(160, Math.round(window.innerHeight - r.bottom - 14))}px`;
+  // Un tocco fuori (o su una voce) chiude; il tocco sull'avatar lo gestisce il suo pulsante.
+  const close = (ev) => { if (ev && ((menu.contains(ev.target) && !ev.target.closest('a, button')) || ev.target.closest?.('.avatar-btn'))) return; menu.remove(); document.removeEventListener('click', close, true); window.removeEventListener('hashchange', close); };
+  setTimeout(() => { document.addEventListener('click', close, true); window.addEventListener('hashchange', close); }, 0);
+  document.body.append(menu);
+}
+// Scelta della partita e azioni (installa, notifiche; «Esci» sta nel menu dell'avatar): in alto sul computer, nel menu ☰ sul telefono
 // (così la barra in alto resta bassa e fissa come nelle app).
 function gameSelect() {
   return h('select', { class: 'input game-select', 'aria-label': 'Partita', onchange: (e) => { if (e.target.value === 'new') { location.hash = 'impostazioni'; R.gameId = null; render(); return; } R.gameId = Number(e.target.value); store.set('zdg_regia_game', R.gameId); R.ms = null; R.seenRevealed = null; document.body.classList.remove('nav-open'); load(); } },
@@ -431,8 +468,7 @@ function topActions() {
   return h('div', { class: 'top-actions' },
     // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
     R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
-    R.push && R.push !== 'on' ? pushButton() : null,
-    h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'));
+    R.push && R.push !== 'on' ? pushButton() : null);
 }
 
 // Avvisi da guardare (messaggi, emergenze, iscrizioni, incarichi): il numero sull'hamburger.

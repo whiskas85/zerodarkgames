@@ -1246,3 +1246,21 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .topbar .clock-big { font-size: 20px; }
   .topbar .chip { white-space: nowrap; }
 }
+
+/* Avatar in alto a destra con il suo menu (come nelle app di coppie ed Eletti). */
+.avatar-btn { flex: none; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+@media (max-width: 860px) { .topbar .avatar-btn { order: 3; } }
+.avatar { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: var(--blood); color: #fff; border: 2px solid var(--brass);
+  font-family: var(--f-display); font-weight: 900; font-size: 16px; letter-spacing: .02em; line-height: 1; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.lg { width: 48px; height: 48px; font-size: 19px; }
+.avatar-menu { position: fixed; z-index: 3100; overflow-y: auto; min-width: 240px; max-width: calc(100vw - 16px); display: grid; padding: 6px; background: var(--paper); border: 2px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+.am-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.am-head strong { display: block; font-size: 16px; }
+.am-item { display: flex; align-items: center; gap: 10px; padding: 11px 10px; color: var(--ink); text-decoration: none; background: none; border: 0; border-radius: 6px; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.am-item:hover, .am-item:focus-visible { background: var(--paper-2, rgba(255,255,255,.06)); }
+.am-ico { width: 22px; text-align: center; color: var(--brass); }
+.am-out { color: var(--danger, #e5484d); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; }
+.am-out .am-ico { color: inherit; }
+@media (max-width: 600px) { .topbar .avatar { width: 34px; height: 34px; font-size: 14px; } }
+@media (max-width: 420px) { .topbar .top-clock > .chip { display: none; } }
