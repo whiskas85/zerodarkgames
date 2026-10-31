@@ -412,19 +412,27 @@ function topbar() {
     h('button', { class: 'nav-toggle', type: 'button', 'aria-label': 'Menu', onclick: () => document.body.classList.toggle('nav-open') }, '☰',
       alerts ? h('span', { class: 'badge badge-alert' }, alerts) : null),
     h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Consiglio Zero'), h('div', { class: 'eyebrow' }, 'Regia · Zero Dark Games'))),
-    h('select', { class: 'input game-select', 'aria-label': 'Partita', onchange: (e) => { if (e.target.value === 'new') { location.hash = 'impostazioni'; R.gameId = null; render(); return; } R.gameId = Number(e.target.value); store.set('zdg_regia_game', R.gameId); R.ms = null; R.seenRevealed = null; load(); } },
-      R.games.map((g) => h('option', { value: g.id, selected: g.id === R.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`)),
-      h('option', { value: 'new' }, '+ Nuova partita')),
+    gameSelect(),
     ms ? h('div', { class: 'top-clock' },
       h('span', { class: `chip status-${st}` }, STATUS_LABELS[st]),
       // Prima del Cerchio il tempo di gara non serve: conto alla rovescia all'evento (data e ora previste).
       preCircle() ? h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'event' }, '—'), h('div', { class: 'mono muted tiny' }, eventAtLabel()))
         : h('div', null, h('div', { class: 'mono clock-big', 'data-clock': 'remaining' }, '—'), h('div', { class: 'mono muted tiny' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')))) : null,
-    h('div', { class: 'top-actions' },
-      // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
-      R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
-      R.push && R.push !== 'on' ? pushButton() : null,
-      h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci')));
+    topActions());
+}
+// Scelta della partita e azioni (installa, notifiche, esci): in alto sul computer, nel menu ☰ sul telefono
+// (così la barra in alto resta bassa e fissa come nelle app).
+function gameSelect() {
+  return h('select', { class: 'input game-select', 'aria-label': 'Partita', onchange: (e) => { if (e.target.value === 'new') { location.hash = 'impostazioni'; R.gameId = null; render(); return; } R.gameId = Number(e.target.value); store.set('zdg_regia_game', R.gameId); R.ms = null; R.seenRevealed = null; document.body.classList.remove('nav-open'); load(); } },
+    R.games.map((g) => h('option', { value: g.id, selected: g.id === R.gameId }, `${g.name} · ${STATUS_LABELS[g.status]}`)),
+    h('option', { value: 'new' }, '+ Nuova partita'));
+}
+function topActions() {
+  return h('div', { class: 'top-actions' },
+    // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
+    R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
+    R.push && R.push !== 'on' ? pushButton() : null,
+    h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; } }, 'Esci'));
 }
 
 // Avvisi da guardare (messaggi, emergenze, iscrizioni, incarichi): il numero sull'hamburger.
@@ -447,7 +455,7 @@ function sidebar() {
   const noGame = !R.gameId;
   const always = ['regolamento', 'consiglio', 'impostazioni'];
   return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
-    h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, TABS.map(([id, label]) => (noGame && !always.includes(id)
+    h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, h('div', { class: 'side-extra' }, gameSelect(), topActions()), TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
     : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
