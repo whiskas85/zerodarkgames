@@ -1,5 +1,5 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v315';
+const VERSION = 'zdg-v316';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
   '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
@@ -88,12 +88,24 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/login/') || url.pathname.startsWith('/auth/') || url.pathname.startsWith('/regia/stampa')) return;
 
   // Navigazione: rete prima, poi la shell in cache (anche per /a/<token> inquadrato senza rete).
+  // Ogni pagina (app, regia, campo…) resta in cache, così riparte anche senza rete. Con segnale debole (la rete
+  // non risponde) dopo 4 secondi si apre quella in cache e la si aggiorna appena arriva la risposta.
   if (req.mode === 'navigate') {
-    const page = PAGES[url.pathname] || '/index.html';
-    e.respondWith(fetch(req).then((res) => {
-      if (res.ok && page === '/index.html') caches.open(VERSION).then((c) => c.put('/index.html', res.clone()));
+    const page = PAGES[url.pathname] || (url.pathname === '/' || /^\/[adu]\//.test(url.pathname) ? '/index.html' : null);
+    const net = fetch(req).then((res) => {
+      if (res.ok && page) caches.open(VERSION).then((c) => c.put(page, res.clone()));
       return res;
-    }).catch(async () => (await caches.match(page)) || (await caches.match('/index.html'))));
+    });
+    const cached = () => caches.match(page || '/index.html').then((r) => r || caches.match('/index.html'));
+    e.respondWith((async () => {
+      if (!page) return net.catch(cached);
+      const slow = new Promise((resolve) => setTimeout(resolve, 4000));
+      try {
+        const res = await Promise.race([net, slow]);
+        if (res) return res;
+        return (await caches.match(page)) || net;
+      } catch { return (await cached()) || Response.error(); }
+    })());
     return;
   }
 

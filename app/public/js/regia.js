@@ -69,7 +69,13 @@ window.addEventListener('appinstalled', () => { R.install = null; toast('Regia i
   try {
     const me = await api('GET', '/api/auth/me');
     R.me = me.user;
-  } catch { /* offline */ }
+    if (R.me) store.set('zdg_regia_me', R.me); else store.del('zdg_regia_me');
+  } catch (e) {
+    // Senza rete la regia riparte con l'ultimo accesso e gli ultimi dati salvati su questo dispositivo.
+    if (e.offline) { R.me = store.get('zdg_regia_me', null); R.offline = true; }
+  }
+  window.addEventListener('online', () => { if (R.me) { loadGames().then(load).catch(() => {}); } });
+  window.addEventListener('offline', () => { R.offline = true; render(); });
   if (R.me?.role === 'master') await start();
   else render();
 })();
@@ -157,7 +163,14 @@ const pushButton = (cls = 'btn btn-sm') => h('button', { class: `${cls} ${R.push
   R.push === 'on' ? '🔔 Notifiche attive' : R.push === 'off' ? '🔔 Attiva notifiche' : '🔕 Notifiche');
 
 async function loadGames() {
-  R.games = await api('GET', '/api/m/games');
+  try {
+    R.games = await api('GET', '/api/m/games');
+    store.set('zdg_regia_games', R.games);
+  } catch (e) {
+    if (!e.offline) throw e;
+    R.games = store.get('zdg_regia_games', []);
+    R.offline = true;
+  }
   if (!R.games.some((g) => g.id === R.gameId)) R.gameId = R.games[0]?.id || null;
   store.set('zdg_regia_game', R.gameId);
 }
@@ -170,14 +183,23 @@ async function load() {
   try {
     const ms = await api('GET', `/api/m/games/${R.gameId}/state`);
     R.ms = ms;
+    R.offline = false;
+    R.savedAt = Date.now();
+    // Ultimo stato salvato sul dispositivo: senza rete la regia riparte da qui (se lo spazio basta).
+    try { localStorage.setItem('zdg_regia_ms', JSON.stringify({ gameId: R.gameId, at: R.savedAt, ms })); } catch { /* spazio pieno */ }
     if (FIELD_TABS.includes(tab())) await loadField(false);
     clock.set(ms.clock);
     const g = R.games.find((x) => x.id === R.gameId);
     if (g) g.status = ms.game.status;
   } catch (e) {
-    if (e.status === 401) { R.me = null; }
+    if (e.status === 401) { R.me = null; store.del('zdg_regia_me'); }
     else if (e.status === 404) { await loadGames(); }
-    else toast(e.message, 'error');
+    else if (e.offline) {
+      R.offline = true;
+      if (!R.ms) {
+        try { const saved = JSON.parse(localStorage.getItem('zdg_regia_ms') || 'null'); if (saved?.gameId === R.gameId) { R.ms = saved.ms; R.savedAt = saved.at; clock.set(saved.ms.clock); } } catch { /* niente */ }
+      }
+    } else toast(e.message, 'error');
   }
   const again = loading.again;
   loading = null;
@@ -271,7 +293,7 @@ function render() {
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
-    mount($root, topbar(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    mount($root, topbar(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
   labelTables($root);
   fitShell();
@@ -471,6 +493,13 @@ function topActions() {
     // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
     R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
     R.push && R.push !== 'on' ? pushButton() : null);
+}
+
+// Senza rete: la regia mostra gli ultimi dati salvati, le modifiche non partono finché non torna il segnale.
+function offlineBanner() {
+  if (!R.offline && navigator.onLine !== false) return null;
+  return h('div', { class: 'offline-banner', role: 'status' }, h('strong', null, '📡 Senza rete'),
+    ` · dati dell'ultimo aggiornamento${R.savedAt ? ` (${fmtTime(R.savedAt)})` : ''}: le modifiche partono quando torna il segnale.`);
 }
 
 // Avvisi da guardare (messaggi, emergenze, iscrizioni, incarichi): il numero sull'hamburger.
