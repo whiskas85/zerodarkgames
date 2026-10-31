@@ -42,6 +42,7 @@ const TABS = [
   ['registro', 'Registro'],
   ['rewind', 'Rewind'],
   ['regolamento', 'Regolamento'],
+  ['regolamento-eletti', 'Regolamento Eletti'],
   ['impostazioni', 'Impostazioni'],
 ];
 // Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
@@ -262,10 +263,11 @@ function render() {
   // Regolamento già aperto: non si ridisegna (l'iframe ripartirebbe dall'inizio).
   const frame = document.querySelector('.rules-frame');
   if (tab() === 'regolamento' && frame && frame.getAttribute('src') === (R.ms?.game?.bookUrl || '/regolamento.html')) return tick();
+  if (tab() === 'regolamento-eletti' && frame && frame.getAttribute('src') === ELECT_RULES) return tick();
   preserve(() => {
     const ms = R.ms;
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
-    const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
+    const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
@@ -489,7 +491,7 @@ function sidebar() {
   const errors = R.ms?.readiness.issues.filter((i) => i.level === 'error').length || 0;
   // Senza partite le sezioni della partita non hanno contenuto: le mostriamo spente.
   const noGame = !R.gameId;
-  const always = ['regolamento', 'consiglio', 'impostazioni'];
+  const always = ['regolamento', 'regolamento-eletti', 'consiglio', 'impostazioni'];
   return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
     h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, h('div', { class: 'side-extra' }, gameSelect(), topActions()), TABS.map(([id, label]) => (noGame && !always.includes(id)
     ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
@@ -4819,17 +4821,20 @@ function orgSection() {
 }
 
 // Il regolamento della partita (il link impostato nella partita, altrimenti il book dei Giochi) dentro la regia.
-function viewRules() {
-  const url = R.ms?.game?.bookUrl || '/regolamento.html';
+// Regolamento riservato agli Eletti (lo servono solo a Eletti e Consiglio).
+const ELECT_RULES = '/regolamento-eletti';
+function viewRules(only = null) {
+  const url = only || R.ms?.game?.bookUrl || '/regolamento.html';
   const local = url.startsWith('/');
   return h('div', { class: 'stack rules-view' },
-    sectionActions('Regolamento', [
+    sectionActions(only ? 'Regolamento degli Eletti' : 'Regolamento', [
       // Stampa del solo regolamento: dalla finestra di stampa si sceglie «Salva come PDF».
       local ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => { try { document.querySelector('.rules-frame').contentWindow.print(); } catch { window.open(url, '_blank'); } } }, 'Stampa o salva PDF') : null,
-      local ? h('a', { class: 'btn btn-sm', href: url, download: 'regolamento-giochi-del-buio.html' }, 'Scarica') : null,
+      local ? h('a', { class: 'btn btn-sm', href: url, download: only ? 'regolamento-eletti-giochi-del-buio.html' : 'regolamento-giochi-del-buio.html' }, 'Scarica') : null,
       h('a', { class: 'btn btn-sm btn-ghost', href: url, target: '_blank', rel: 'noopener' }, 'Apri in una nuova scheda')],
       local ? null : h('p', { class: 'muted tiny' }, `Regolamento esterno (${url}): se qui sotto non si vede, aprilo in una nuova scheda.`),
-      h('iframe', { class: 'rules-frame', src: url, title: 'Regolamento' })));
+      only ? h('p', { class: 'muted tiny' }, 'Riservato: lo vedono solo gli Eletti (nella loro app, accanto al Regolamento) e il Consiglio. Le coppie non possono aprirlo.') : null,
+      h('iframe', { class: 'rules-frame', src: url, title: only ? 'Regolamento degli Eletti' : 'Regolamento' })));
 }
 
 function viewNewGame(first) {

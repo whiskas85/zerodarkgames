@@ -682,6 +682,8 @@ function openAvatarMenu(anchor) {
     item('#/impostazioni', '⚙', 'Impostazioni'),
 
     item('#/regolamento', mdi('fileDocument', 18), 'Regolamento'),
+    // Riservato agli Eletti: le coppie non lo vedono (e il server non lo serve loro).
+    isElect() ? item('/regolamento-eletti', '◈', 'Regolamento Eletti', { target: '_blank', rel: 'noopener' }) : null,
     S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
     acc?.staff === 'master' ? item('/regia', '◉', 'Regia') : null,
     item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: () => logout() }));
@@ -4206,6 +4208,13 @@ async function sendVoice() {
 function viewRules() {
   const st = S.state;
   return h('div', { class: 'stack rules' },
+    isElect() ? h('div', { class: 'card elect-rules' },
+      h('div', { class: 'eyebrow' }, 'Riservato agli Eletti'),
+      h('strong', null, 'Regolamento degli Eletti'),
+      h('p', { class: 'small muted' }, 'Incarichi, scontri con le coppie, taglie, Beacon, zone e condotta: le leggi che valgono solo per voi. Non mostratelo alle coppie.'),
+      h('div', { class: 'row-2' },
+        h('a', { class: 'btn btn-primary btn-block', href: '/regolamento-eletti', target: '_blank', rel: 'noopener' }, 'Leggi il regolamento degli Eletti'),
+        h('a', { class: 'btn btn-block', href: '/regolamento-eletti?pdf=1', target: '_blank', rel: 'noopener' }, '⇩ Scarica PDF'))) : null,
     h('h2', null, 'Il gioco in un minuto'),
     h('ol', { class: 'quick' },
       h('li', null, h('b', null, 'Obiettivo: '), 'raccogliete tutti i frammenti della Parola e fateli validare per primi alla Soglia.'),

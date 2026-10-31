@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121613">
+<title>Regolamento degli Eletti · I Giochi del Buio</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@500;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: un decreto del Consiglio Zero consegnato ai Legati — colonna di lettura stretta, regolamento numerato come articoli di legge */
+:root{
+  --bg:#E3E1D8; --paper:#ECEAE2; --ink:#1C211E; --muted:#5B615A; --line:#B9B7AC;
+  --blood:#8E2A1F; --brass:#7D6226; --stamp-bg:#D8D5C9;
+  --f-display:"Big Shoulders Stencil Display","Impact","Arial Narrow",sans-serif;
+  --f-body:"Source Serif 4","Georgia",serif;
+  --f-mono:"IBM Plex Mono","Consolas",monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121613; --paper:#1A1F1B; --ink:#DAD7CC; --muted:#959A90; --line:#333A34;
+  --blood:#D65A43; --brass:#C9A55E; --stamp-bg:#202621; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121613; --paper:#1A1F1B; --ink:#DAD7CC; --muted:#959A90; --line:#333A34;
+  --blood:#D65A43; --brass:#C9A55E; --stamp-bg:#202621; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:18px;line-height:1.65;padding-inline:20px;padding-block:0 64px}
+.wrap{max-width:760px;margin:0 auto}
+a{color:var(--blood)}
+:focus-visible{outline:2px solid var(--blood);outline-offset:3px}
+
+/* Hero */
+.hero{padding-block:56px 40px;border-bottom:3px solid var(--ink);display:grid;gap:28px}
+.emblem{width:96px;height:96px;border-radius:50%;border:6px solid var(--ink);display:grid;place-items:center;position:relative}
+.emblem::before{content:"";position:absolute;inset:10px;border-radius:50%;border:2px solid var(--blood)}
+.emblem span{font-family:var(--f-display);font-weight:900;font-size:52px;line-height:1;color:var(--ink)}
+.eyebrow{font-family:var(--f-mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(64px,15vw,132px);line-height:.86;margin:0;text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
+h1 em{font-style:normal;color:var(--blood)}
+.hero p.lede{font-size:21px;max-width:56ch;margin:0}
+.decree{display:flex;flex-wrap:wrap;gap:8px 24px;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.decree b{color:var(--ink);font-weight:600}
+
+/* Sections */
+section{padding-block:48px 8px}
+.sec-head{display:grid;gap:4px;margin-bottom:20px}
+h2{font-family:var(--f-display);font-weight:800;font-size:clamp(36px,7vw,52px);line-height:1;margin:0;text-transform:uppercase;text-wrap:balance}
+.sec-head .eyebrow{color:var(--blood)}
+p{margin:0 0 1em;max-width:65ch}
+.prologue p:first-of-type::first-letter{font-family:var(--f-display);font-weight:900;float:left;font-size:4.4em;line-height:.8;padding:6px 10px 0 0;color:var(--blood)}
+.motto{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:uppercase;color:var(--blood);margin-top:12px;letter-spacing:.02em}
+
+/* Places */
+.places{display:grid;gap:0}
+.place{display:grid;grid-template-columns:150px 1fr;gap:16px;padding-block:14px;border-top:1px solid var(--line)}
+.place h3{font-family:var(--f-display);font-weight:800;font-size:24px;text-transform:uppercase;margin:0;line-height:1.1}
+.place h3 small{display:block;font-family:var(--f-mono);font-weight:400;font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:none;margin-top:4px}
+.place p{margin:0}
+@media (max-width:520px){.place{grid-template-columns:1fr;gap:4px}}
+
+/* Settori stamps */
+.sectors{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:24px}
+.stamp{background:var(--stamp-bg);border:2px solid var(--ink);padding:14px 14px 12px;display:grid;gap:4px;min-width:0}
+.stamp .n{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.1em}
+.stamp .name{font-family:var(--f-display);font-weight:900;font-size:30px;text-transform:uppercase;line-height:1}
+.stamp .el{font-size:14px;color:var(--muted)}
+.stamp .m{font-style:italic;font-size:15px;border-top:1px dashed var(--line);padding-top:6px;margin-top:4px}
+
+/* Quick rules */
+.quick{border:3px solid var(--ink);background:var(--paper);padding:24px 22px}
+.quick ol{margin:0;padding-left:1.4em;display:grid;gap:8px}
+.quick li{padding-left:4px}
+.quick li::marker{font-family:var(--f-mono);font-weight:600;color:var(--blood)}
+.quick b{font-weight:600}
+.quick.news{border-color:var(--blood)}
+.quick.news ul{margin:0;padding-left:1.2em;display:grid;gap:8px}
+
+/* TOC */
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:0;list-style:none}
+.toc a{display:inline-block;font-family:var(--f-mono);font-size:13px;text-decoration:none;color:var(--ink);border:1px solid var(--line);padding:5px 10px;background:var(--paper)}
+.toc a:hover{border-color:var(--ink)}
+
+/* Rules */
+.rule{padding-block:28px 4px;border-top:2px solid var(--ink);scroll-margin-top:16px}
+.rule + .rule{margin-top:24px}
+.rule-head{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:baseline;margin-bottom:12px}
+.rule-head .num{font-family:var(--f-display);font-weight:900;font-size:40px;line-height:1;color:var(--blood)}
+.rule-head h3{font-family:var(--f-display);font-weight:800;font-size:30px;line-height:1.05;text-transform:uppercase;margin:0;text-wrap:balance}
+.rule-head h3 small{display:block;font-family:var(--f-mono);font-weight:400;font-size:12px;letter-spacing:.1em;color:var(--muted);margin-top:6px}
+.rule-body{padding-left:68px}
+@media (max-width:520px){.rule-head{grid-template-columns:44px 1fr}.rule-head .num{font-size:32px}.rule-body{padding-left:0}}
+.rule h4{font-family:var(--f-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--blood);margin:18px 0 6px;font-weight:600}
+.rule ul,.rule ol{margin:0 0 1em;padding-left:1.2em;display:grid;gap:6px;max-width:65ch}
+.rule li::marker{color:var(--muted)}
+.callout{border-left:4px solid var(--blood);background:var(--paper);padding:12px 16px;margin:8px 0 16px;max-width:65ch}
+.callout p{margin:0}
+.callout b{color:var(--blood)}
+.ex{font-size:16px;color:var(--muted);font-style:italic}
+
+footer{margin-top:56px;padding-top:20px;border-top:3px solid var(--ink);display:grid;gap:8px}
+footer .motto{margin:0}
+footer span{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.emblem::before{animation:pulse 4s ease-in-out infinite}}
+@keyframes pulse{50%{inset:16px;opacity:.5}}
+/* Scarica: PDF (stampa del browser → «Salva come PDF») o la pagina HTML. Non compare nella stampa. */
+.dl-bar{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dl-bar a,.dl-bar button{font:600 15px/1 var(--f-ui,system-ui,sans-serif);padding:12px 16px;border-radius:8px;border:2px solid var(--ink);background:var(--paper,#fff);color:var(--ink);text-decoration:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.dl-bar .pdf{background:var(--blood,#8e2a1f);border-color:var(--blood,#8e2a1f);color:#fff}
+@media print{
+  .dl-bar{display:none}
+  body{background:#fff}
+  .rule,.place,.stamp,.callout,.quick{break-inside:avoid}
+  .sec-head{break-after:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="dl-bar">
+  <button type="button" class="pdf" onclick="window.print()" title="Si apre la stampa: scegliete «Salva come PDF»">⇩ PDF</button>
+  <a href="/regolamento-eletti" download="Regolamento degli Eletti - I Giochi del Buio.html" title="Scarica la pagina, si legge anche senza rete">⇩ HTML</a>
+</div>
+
+<div class="wrap">
+<header class="hero">
+  <div class="emblem" aria-hidden="true"><span>0</span></div>
+  <div class="eyebrow">Consiglio Zero · Decreto riservato agli Eletti · Zero Dark Games</div>
+  <h1>La mano<br>del <em>Consiglio</em></h1>
+  <p class="lede">Voi non cercate la Parola: la custodite. Questo decreto lo leggono solo gli Eletti e il Consiglio. Non mostratelo alle coppie e non raccontatelo: il buio funziona finché loro non sanno come vi muovete.</p>
+  <div class="decree"><span><b>Riservato</b> solo Eletti e Consiglio</span><span><b>Squadre</b> agli ordini del Consiglio</span><span><b>Vincete</b> quando i Giochi restano in piedi</span></div>
+</header>
+
+<section id="in-breve">
+  <div class="sec-head"><span class="eyebrow">In breve</span><h2>Il vostro servizio in un minuto</h2></div>
+  <div class="quick"><ol>
+    <li><b>Squadra:</b> vi muovete sempre con la vostra squadra di Eletti, mai da soli.</li>
+    <li><b>Incarichi:</b> arrivano nell'app. Vanno <b>accettati</b>: solo da quel momento vedete il bersaglio e, se è a tempo, parte il conto alla rovescia.</li>
+    <li><b>Vedete solo chi vi è dato da vedere:</b> le coppie dei vostri incarichi, degli eventi che custodite, delle taglie e chi è in un Campo di Luce.</li>
+    <li><b>Scontro con una coppia:</b> si combatte come un ingaggio; alla fine dichiarate l'esito nell'app, la coppia conferma.</li>
+    <li><b>Beacon:</b> dentro un'area spenta la accendete restando dentro per tutta la sequenza; vicino a un Altare lo disattivate.</li>
+    <li><b>Zona NO PLAY:</b> non si entra, nemmeno per un incarico. Avete 30 secondi per uscire, poi il Consiglio viene avvisato.</li>
+    <li><b>Colpiti e sicurezza:</b> stesse leggi delle coppie. Emergenza vera: pulsante EMERGENZA, sempre.</li>
+  </ol></div>
+</section>
+
+<section id="regolamento">
+  <div class="sec-head"><span class="eyebrow">Regolamento</span><h2>Le leggi degli Eletti</h2></div>
+  <p>Gli Eletti sono gli occhi e le mani del Consiglio nel bosco. Non hanno un Sigillo, non aprono Altari, non entrano in classifica: non hanno nulla da cedere e nulla da vincere, se non la riuscita dei loro incarichi.</p>
+  <ul class="toc">
+    <li><a href="#e1">1 Chi siete</a></li><li><a href="#e2">2 La squadra</a></li><li><a href="#e3">3 Incarichi</a></li><li><a href="#e4">4 Cosa vedete</a></li><li><a href="#e5">5 Scontri</a></li><li><a href="#e6">6 Taglie ed eventi</a></li><li><a href="#e7">7 Alleanze sporche</a></li><li><a href="#e8">8 Beacon</a></li><li><a href="#e9">9 Zone</a></li><li><a href="#e10">10 Piazzare i luoghi</a></li><li><a href="#e11">11 Condotta</a></li><li><a href="#e12">12 Sicurezza</a></li>
+  </ul>
+
+  <article class="rule" id="e1">
+    <div class="rule-head"><span class="num">1</span><h3>Chi siete<small>la mano del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <p>Tenete in piedi i Giochi per conto del Consiglio: piazzate e presidiate i luoghi, cacciate chi vi viene indicato, accendete le zone, fate rispettare il campo.</p>
+      <ul>
+        <li>Non cercate frammenti, non leggete gli Altari, non avete un Sigillo da mostrare.</li>
+        <li>Non vi alleate con le coppie, salvo quando è il Consiglio a mandarvi (Alleanze sporche, articolo 7).</li>
+        <li>Non passate informazioni alle coppie: né posizioni, né codici, né quello che vedete nell'app.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e2">
+    <div class="rule-head"><span class="num">2</span><h3>La squadra<small>mai da soli</small></h3></div>
+    <div class="rule-body">
+      <div class="callout"><p><b>La squadra si muove unita.</b> Gli Eletti della stessa squadra restano a vista o a portata di voce, come una coppia di Legati.</p></div>
+      <ul>
+        <li>È il Consiglio a decidere chi sta in quale squadra; all'accettazione al campo la squadra si conferma.</li>
+        <li>Ogni Eletto entra nell'app con il proprio accesso personale: serve per gli incarichi, il Beacon e gli scontri.</li>
+        <li>Telefono carico, con powerbank, e GPS acceso per tutta la partita: il Consiglio vi vede sulla mappa.</li>
+        <li>Con il Consiglio parlate dalla chat dell'app; in emergenza, alla radio sul canale indicato.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e3">
+    <div class="rule-head"><span class="num">3</span><h3>Incarichi<small>gli ordini del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <p>Gli incarichi arrivano nell'app (pagina Incarichi e home) con una notifica. Ognuno dice cosa fare e, se c'è, dove: un punto da raggiungere o da presidiare, una coppia, una zona, un Altare.</p>
+      <ul>
+        <li><b>Ogni incarico va accettato.</b> Prima di accettarlo non vedete il bersaglio; accettandolo la squadra se ne fa carico.</li>
+        <li><b>A tempo:</b> alcuni incarichi hanno dei minuti per essere svolti, che partono da quando lo accettate. Allo scadere l'incarico è fallito e si chiude da solo.</li>
+        <li><b>Raggiungere / Presidiare:</b> andate al punto indicato e restateci finché il Consiglio non vi richiama.</li>
+        <li><b>Caccia e Taglia:</b> vedete la coppia indicata e la dovete ingaggiare. Una taglia può chiedere uno scontro vinto, oppure basta uno scontro qualsiasi.</li>
+        <li><b>Beacon:</b> accendere una zona o disattivare un Altare (articolo 8); si chiude da solo quando ci riuscite.</li>
+        <li>Alla fine compare la schermata di <b>incarico compiuto</b> o <b>fallito</b>. Il Consiglio può annullare un incarico in ogni momento: smettete subito.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e4">
+    <div class="rule-head"><span class="num">4</span><h3>Cosa vedete<small>gli occhi del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <p>Sulla mappa non vedete tutte le coppie: vedete solo quelle che il Consiglio vi affida.</p>
+      <ul>
+        <li>Le coppie bersaglio dei vostri incarichi accettati, finché l'incarico è aperto.</li>
+        <li>Le coppie iscritte agli eventi che la vostra squadra custodisce.</li>
+        <li>Le coppie di una taglia in corso, a intermittenza (articolo 6).</li>
+        <li>Chi si trova in un Campo di Luce.</li>
+      </ul>
+      <div class="callout"><p><b>Il buio protegge anche dalle vostre armi.</b> Una coppia dentro un Cono d'Ombra o con la Skill Ombra non si vede: resta in grigio dov'era prima di nascondersi, con la scritta «non può essere mostrata». Non è un errore dell'app.</p></div>
+      <ul>
+        <li>Un segnaposto grigio è una posizione vecchia o ferma: la coppia può essersi spostata.</li>
+        <li>La coppia che cacciate lo scopre circa un minuto dopo che avete accettato: muovetevi in fretta.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e5">
+    <div class="rule-head"><span class="num">5</span><h3>Scontri con le coppie<small>l'ingaggio degli Eletti</small></h3></div>
+    <div class="rule-body">
+      <p>Contro una coppia si combatte con le stesse regole d'ingaggio dei Legati: senza colpiti si può scappare, dal primo colpito si va fino all'eliminazione di una delle due parti.</p>
+      <ul>
+        <li>Potete scontrarvi con qualsiasi coppia in gioco, anche incontrata per caso; se è un vostro bersaglio, lo scontro vale per l'incarico.</li>
+        <li>Finito lo scontro, un Eletto dichiara l'esito nella pagina <b>Scontri</b>: vinto o perso. La coppia lo conferma dalla sua app; se lo contesta, decide il Consiglio.</li>
+        <li><b>Se vincete:</b> la coppia subisce la sconfitta (mostra il Sigillo e fa la Veglia). In una caccia del Maestro della caccia il suo Sigillo va alla coppia che vi ha mandato.</li>
+        <li><b>Se perdete:</b> la coppia vince lo scontro e la caccia o l'incarico su di lei si chiude.</li>
+        <li>Dichiarate sempre il vero. Un esito falso è la peggiore colpa di un Eletto.</li>
+        <li>Mai entrare in uno scontro tra coppie, neanche per finire chi è rimasto.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e6">
+    <div class="rule-head"><span class="num">6</span><h3>Taglie ed eventi<small>la caccia aperta</small></h3></div>
+    <div class="rule-body">
+      <p>Il Consiglio può lanciare eventi; la squadra custode ne vede le coppie iscritte e ne decide l'esito con il Consiglio.</p>
+      <h4>Taglia su sé stessi</h4>
+      <ul>
+        <li>Le coppie iscritte si mettono una taglia sulla testa per la durata dell'evento: vincono se nessuna squadra di Eletti le ingaggia in tempo.</li>
+        <li>Tutte le squadre possono cacciarle e tutte le vedono, ma <b>a intermittenza</b>: 5 minuti dal vivo, 5 minuti solo l'ultima posizione nota (in grigio). Gli ultimi 5 minuti dell'evento sono sempre dal vivo.</li>
+        <li>In cima alla mappa e nella pagina dell'evento c'è scritto se adesso le vedete dal vivo e quanto manca al cambio.</li>
+        <li>Basta lo scontro, anche perso: chi viene ingaggiato perde la taglia.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e7">
+    <div class="rule-head"><span class="num">7</span><h3>Alleanze sporche<small>quando il Consiglio vi presta</small></h3></div>
+    <div class="rule-body">
+      <p>Una coppia può chiamare gli Eletti con il Dono «Alleanze sporche». Il Consiglio manda la squadra più vicina.</p>
+      <ul>
+        <li>Accettate l'incarico: da quel momento voi vedete la coppia e lei vede voi.</li>
+        <li>L'alleanza parte quando un Eletto arriva entro 40 metri dalla coppia e dura 30 minuti.</li>
+        <li>Finché dura non vi attaccate a vicenda e potete muovervi insieme.</li>
+        <li>Allo scadere ve ne andate, anche in mezzo a uno scontro.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e8">
+    <div class="rule-head"><span class="num">8</span><h3>Il Beacon<small>accendere e spegnere</small></h3></div>
+    <div class="rule-body">
+      <p>Dalla pagina Beacon dell'app vedete le zone spente e gli Altari, con la distanza; quelli dei vostri incarichi sono in cima.</p>
+      <ul>
+        <li><b>Accendere una zona spenta:</b> entrate nell'area e lanciate il Beacon. Parte una sequenza di qualche minuto: dovete <b>restare dentro</b> fino alla fine, altrimenti si interrompe.</li>
+        <li>Accesa dal Beacon, la zona può restare accesa per sempre o solo per un tempo stabilito dal Consiglio; poi si spegne da sola.</li>
+        <li><b>Disattivare un Altare:</b> avvicinatevi entro il suo raggio e lanciate il Beacon. L'Altare non si apre per nessuna coppia per il tempo stabilito (di base 15 minuti).</li>
+        <li>Se nel punto ci sono più bersagli (un Altare dentro una zona, zone sovrapposte) l'app vi chiede quale scegliere.</li>
+        <li>Il GPS ha qualche metro di incertezza: avvicinatevi bene al centro prima di lanciare.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e9">
+    <div class="rule-head"><span class="num">9</span><h3>Le zone<small>il campo cambia</small></h3></div>
+    <div class="rule-body">
+      <p>Vedete tutte le zone abilitate, accese e spente. Su di voi le zone di gioco non hanno effetto: servono a voi per capire cosa vivono le coppie.</p>
+      <ul>
+        <li><b>Cono d'Ombra:</b> chi è dentro non si vede, nemmeno da voi.</li>
+        <li><b>Campo di Luce:</b> chi è dentro lo vedono tutti, voi compresi.</li>
+        <li><b>Zona di Disturbo:</b> le coppie dentro non usano Skill e hanno la mappa oscurata.</li>
+        <li><b>Santuario</b> e <b>Zona di Conquista:</b> ricarica più veloce e Dono a chi resiste dentro.</li>
+      </ul>
+      <div class="callout"><p><b>Zona NO PLAY: vale anche per voi.</b> È un'area dove non si gioca (proprietà private, pericoli, strade). Se vi avvicinate compare una schermata rossa: avete 30 secondi per allontanarvi, poi il Consiglio viene avvisato. Nessun incarico vi autorizza a entrare.</p></div>
+    </div>
+  </article>
+
+  <article class="rule" id="e10">
+    <div class="rule-head"><span class="num">10</span><h3>Piazzare i luoghi<small>prima e durante i Giochi</small></h3></div>
+    <div class="rule-body">
+      <ul>
+        <li>Il Consiglio può chiedervi di piazzare o spostare Altari, Doni e luoghi: l'incarico vi indica cosa e, se c'è, dove.</li>
+        <li>Arrivati sul posto, registrate la posizione dall'app quando il GPS è preciso; potete aggiungere una foto.</li>
+        <li>Potete segnalare punti di interesse sul campo (passaggi, ostacoli, nascondigli): li vede il Consiglio.</li>
+        <li>Mai rivelare alle coppie dove sono Altari o Doni prima che li trovino.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e11">
+    <div class="rule-head"><span class="num">11</span><h3>Condotta<small>l'onore del Consiglio</small></h3></div>
+    <div class="rule-body">
+      <ul>
+        <li>Quando siete colpiti lo dichiarate come tutti: cappellino, fermi e zitti.</li>
+        <li>Rispettate le leggi delle coppie: non entrate negli scontri altrui, non ostacolate chi è alla Soglia.</li>
+        <li>Siete un esempio di fair play: le coppie si fidano del Consiglio anche attraverso di voi.</li>
+        <li>Nel dubbio, chiedete al Consiglio in chat prima di agire.</li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="rule" id="e12">
+    <div class="rule-head"><span class="num">12</span><h3>Sicurezza<small>prima di tutto</small></h3></div>
+    <div class="rule-body">
+      <div class="callout"><p><b>La sicurezza viene prima del gioco.</b> Un'emergenza vera si chiama con il pulsante EMERGENZA dell'app (o l'SOS di Traccar): ferma tutto e porta il Consiglio da chi ha chiamato.</p></div>
+      <ul>
+        <li>Se vedete qualcuno in difficoltà, il gioco si ferma: soccorrete e chiamate il Consiglio.</li>
+        <li>Protezioni per gli occhi sempre indossate, come per tutti.</li>
+        <li>Le leggi di sicurezza del regolamento delle coppie valgono identiche per voi.</li>
+      </ul>
+    </div>
+  </article>
+</section>
+
+<footer>
+  <div class="motto">Il buio è vostro alleato. Il Consiglio vi osserva.</div>
+  <span>Zero Dark Games · I Giochi del Buio · Decreto riservato agli Eletti</span>
+</footer>
+</div>
+<script>
+if (/[?&]pdf=1/.test(location.search)) addEventListener('load', () => setTimeout(() => window.print(), 300));
+</script>
+</body>
+</html>
