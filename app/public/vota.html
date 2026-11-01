@@ -48,6 +48,8 @@ h2{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:up
 .stamp img,.plogo img{width:100%;height:100%;object-fit:contain}
 .plogo{width:52px;height:52px;display:grid;place-items:center;border:3px solid var(--c,var(--ink));font-family:var(--f-display);font-weight:900;font-size:24px;color:var(--c,var(--ink))}
 .plogo.has-logo{border:0}
+.has-logo{position:relative}
+.has-logo .rb{position:absolute;right:-8px;bottom:-8px;min-width:24px;height:24px;padding:0 4px;display:grid;place-items:center;background:var(--bg);border:2px solid var(--c,var(--ink));color:var(--c,var(--ink));font-family:var(--f-display);font-weight:900;font-size:15px;line-height:1}
 .psec{font-size:12px;color:var(--muted);font-family:var(--f-mono)}
 .bar{grid-column:1/-1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden;display:flex;align-items:center}
 .bar i{display:block;height:100%;background:var(--c,var(--brass));border-radius:4px;transition:width .6s}
@@ -80,7 +82,8 @@ async function load() {
 }
 function teamName(t) { return t.displayName || `Settore ${t.sectorName}`; }
 // Il logo della coppia (se c'è), altrimenti il numero romano del Settore.
-function mark(t, cls = 'stamp') { return t.logo ? `<span class="${cls} has-logo"><img src="${esc(t.logo)}" alt="Logo ${esc(teamName(t))}"></span>` : `<span class="${cls}">${esc(t.roman)}</span>`; }
+// Logo della coppia con il numero romano sull'angolo (senza logo: solo il numero romano).
+function mark(t, cls = 'stamp') { return t.logo ? `<span class="${cls} has-logo"><img src="${esc(t.logo)}" alt="Logo ${esc(teamName(t))}"><b class="rb">${esc(t.roman)}</b></span>` : `<span class="${cls}">${esc(t.roman)}</span>`; }
 // Numero romano e Settore; se la coppia non ha un nome suo, il nome è già «Settore …»: resta solo il numero.
 const sector = (t) => (t.displayName ? `${esc(t.roman)} · Settore ${esc(t.sectorName)}` : `Settore ${esc(t.roman)}`);
 const people = (t) => `<ul class="people">${(t.members || []).map((m) => `<li>${esc(m.name)}</li>`).join('')}</ul>`;

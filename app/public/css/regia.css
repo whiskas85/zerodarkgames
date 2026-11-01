@@ -1313,3 +1313,5 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .lv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
 .lv-bar i { display: block; height: 100%; background: var(--c, var(--brass)); }
+.lv-logo-wrap { position: relative; width: 32px; height: 32px; }
+.lv-rb { position: absolute; right: -6px; bottom: -6px; min-width: 18px; height: 18px; padding: 0 3px; display: grid; place-items: center; background: var(--bg); border: 1.5px solid var(--c, var(--ink)); color: var(--c, var(--ink)); font-family: var(--f-display, sans-serif); font-weight: 900; font-size: 11px; line-height: 1; }

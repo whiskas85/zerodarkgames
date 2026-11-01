@@ -3793,7 +3793,7 @@ function liveVotePanel() {
       h('span', { class: 'small muted' }, `${v.votes} voti${v.closesAt && v.open ? ` · chiude ${fmtTime(v.closesAt)}` : ''}`)),
     top.length ? h('ol', { class: 'live-vote' }, v.list.map((t, i) => h('li', { style: { '--c': t.color } },
       h('span', { class: 'lv-pos' }, t.score && i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}°`),
-      t.logo ? h('img', { class: 'lv-logo', src: t.logo, alt: '' }) : h('span', { class: 'lv-roman' }, t.roman),
+      t.logo ? h('span', { class: 'lv-logo-wrap' }, h('img', { class: 'lv-logo', src: t.logo, alt: '' }), h('b', { class: 'lv-rb' }, t.roman)) : h('span', { class: 'lv-roman' }, t.roman),
       h('span', { class: 'lv-name' }, h('strong', null, `${t.roman} ${name(t)}`), t.displayName ? h('span', { class: 'tiny muted' }, ` · Settore ${t.sectorName}`) : null),
       h('span', { class: 'lv-bar' }, h('i', { style: { width: `${t.pct}%` } })),
       h('span', { class: 'mono small' }, `${String(t.pct).replace('.', ',')}%`)))) : h('p', { class: 'empty' }, 'Ancora nessun voto.'));
