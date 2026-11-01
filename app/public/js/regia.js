@@ -192,6 +192,8 @@ async function load() {
     const ms = await api('GET', `/api/m/games/${R.gameId}/state`);
     R.ms = ms;
     R.offline = false;
+    // Versione con cui si è aperta la regia: se il server ne ha una nuova (aggiornamento), compare il banner.
+    if (!R.bootVersion && ms.appVersion) R.bootVersion = ms.appVersion;
     R.savedAt = Date.now();
     // Ultimo stato salvato sul dispositivo: senza rete la regia riparte da qui (se lo spazio basta).
     try { localStorage.setItem('zdg_regia_ms', JSON.stringify({ gameId: R.gameId, at: R.savedAt, ms })); } catch { /* spazio pieno */ }
@@ -301,7 +303,7 @@ function render() {
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
       comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
-    mount($root, topbar(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
   labelTables($root);
   fitShell();
@@ -501,6 +503,13 @@ function topActions() {
     // Installa app: solo se la regia non è già installata. Notifiche: solo se non sono attive su questo dispositivo.
     R.install && !installedApp() ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Installa la regia come app su questo dispositivo', onclick: async () => { const ev = R.install; R.install = null; ev.prompt(); await ev.userChoice.catch(() => null); render(); } }, '⤓ Installa app') : null,
     R.push && R.push !== 'on' ? pushButton() : null);
+}
+
+// Il server è stato aggiornato mentre la regia era aperta: un tocco ricarica la nuova versione.
+function updateBanner() {
+  if (!R.bootVersion || !R.ms?.appVersion || R.ms.appVersion === R.bootVersion) return null;
+  return h('button', { type: 'button', class: 'update-banner', onclick: () => location.reload() },
+    h('strong', null, '⟳ Nuova versione della regia'), h('span', null, ' · tocca qui per aggiornare'));
 }
 
 // Senza rete: la regia mostra gli ultimi dati salvati, le modifiche non partono finché non torna il segnale.
