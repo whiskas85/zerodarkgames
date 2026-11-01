@@ -15,6 +15,7 @@ const A = require('./accounts');
 const K = require('./combat');
 const S = require('./skills');
 const EV = require('./events');
+const VO = require('./vote');
 const TL = require('./tiles');
 const RP = require('./replay');
 const Z = require('./zones');
@@ -322,6 +323,27 @@ const userPicture = (req) => {
   return accountId ? q.get("SELECT picture FROM account_identities WHERE accountId = ? AND picture IS NOT NULL AND picture != '' ORDER BY lastLoginAt DESC LIMIT 1", accountId)?.picture || null : null;
 };
 app.get('/api/auth/me', (req, res) => res.json({ user: req.user ? { ...req.user, home: St.homeOf(req.user.role), picture: userPicture(req) } : null, team: req.team ? { id: req.team.id } : null }));
+
+// ---- voto del pubblico (pagina /vota): un cookie per dispositivo, il voto con l'account pesa di più.
+const COOKIE_VOTE = 'zdg_vote';
+const voteDevice = (req, res) => {
+  let d = cookies(req)[COOKIE_VOTE];
+  if (!/^[\w-]{20,64}$/.test(d || '')) { d = randomToken(24); setCookie(req, res, COOKIE_VOTE, d); }
+  return d;
+};
+// Limite tecnico per indirizzo: 30 tentativi di voto ogni 10 minuti (oltre al limite di voti per rete).
+const voteHits = new Map();
+const voteLimit = (req, _res, next) => {
+  const now = Date.now();
+  const arr = (voteHits.get(req.ip) || []).filter((t) => now - t < 10 * 60000);
+  if (arr.length >= 30) return next(new HttpError(429, 'Troppi tentativi: riprova tra qualche minuto'));
+  arr.push(now);
+  voteHits.set(req.ip, arr);
+  if (voteHits.size > 5000) voteHits.clear();
+  next();
+};
+app.get('/api/public/vote', (req, res) => res.json(VO.publicState(voteDevice(req, res), req.account || null)));
+app.post('/api/public/vote', voteLimit, wrap(async (req, res) => VO.castVote({ teamId: req.body?.teamId, token: req.body?.token, device: voteDevice(req, res), account: req.account || null, ip: req.ip, ua: req.headers['user-agent'] })));
 
 // ---- iscrizione pubblica
 app.get('/api/public/games', (_req, res) => res.json(openGames()));
@@ -760,6 +782,11 @@ m.post('/players/:pid/read', wrap((req) => {
   rt.toStaff(t.gameId, 'read');
   return { ok: true };
 }));
+m.get('/games/:id/vote', wrap((req) => VO.masterVote(gameId(req))));
+m.patch('/games/:id/vote', wrap((req) => VO.updateVote(gameId(req), req.body || {}, actor(req))));
+m.post('/teams/:tid/votable', wrap((req) => { VO.setVotable(req.params.tid, !!req.body?.on, actor(req)); return { ok: true }; }));
+m.post('/games/:id/vote/annul', wrap((req) => VO.annulVotes(gameId(req), req.body?.ids, actor(req))));
+m.post('/games/:id/vote/award', wrap((req) => VO.awardPrizes(gameId(req), actor(req))));
 m.post('/teams/:tid/read', wrap((req) => {
   const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));
   if (t) G.markRead(t.id, t.kind === 'elect' ? null : undefined);
@@ -996,6 +1023,7 @@ app.get('/accettazione', sendPage('armi.html'));
 app.get('/consiglio', sendPage('consiglio.html'));
 app.get('/iscrizione', sendPage('iscrizione.html'));
 app.get('/tabellone', sendPage('tabellone.html'));
+app.get('/vota', sendPage('vota.html'));
 // Regolamento degli Eletti: riservato, lo leggono solo gli Eletti (accesso personale o della squadra) e il Consiglio.
 app.get('/regolamento-eletti', (req, res) => {
   // La regia sempre (anche se sullo stesso browser c'è l'accesso di una coppia); gli altri del Consiglio no se giocano in una coppia.

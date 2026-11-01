@@ -37,6 +37,7 @@ const TABS = [
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
   ['eventi', 'Eventi'],
+  ['voto', 'Voto del pubblico'],
   ['notifiche', 'Notifiche, Traccar e ICE'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
@@ -50,7 +51,7 @@ const TABS = [
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
   accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', catalogo: 'starFourPoints',
-  doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
+  doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
   rewind: 'timerSand', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
 const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
@@ -93,7 +94,7 @@ async function start() {
   await loadGames();
   stream('/api/stream?as=staff', {
     open: () => load(),
-    refresh: (d) => { if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
+    refresh: (d) => { if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
     // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
     emergency: async (d) => {
       if (d.gameId && d.gameId !== R.gameId) { R.gameId = d.gameId; store.set('zdg_regia_game', R.gameId); R.ms = null; }
@@ -301,7 +302,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
   });
@@ -3747,6 +3748,80 @@ function viewSupply() {
               s.status === 'fired' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true) }, 'Chiudi ora') : null,
               s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true) }, 'Elimina') : null));
         })))) : h('p', { class: 'empty' }, 'Nessuna finestra armamenti.')));
+}
+
+// ---------------------------------------------------------------- VOTO DEL PUBBLICO
+
+// Link pubblico (/vota): la regia sceglie le coppie votabili, apre e chiude, vede le percentuali, annulla i picchi
+// sospetti e assegna i Doni ai primi tre.
+let voteState = null;
+let voteGameId = null;
+async function loadVote() {
+  try { voteState = await api('GET', G('/vote')); voteGameId = R.gameId; } catch (e) { toast(e.message, 'error'); }
+  if (tab() === 'voto') render();
+}
+function viewVote() {
+  if (!voteState || voteGameId !== R.gameId) { loadVote(); return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const V = voteState;
+  const url = `${R.baseUrl || location.origin}/vota`;
+  const patch = async (body, msg) => { try { voteState = await api('PATCH', G('/vote'), body); toast(msg, 'ok'); render(); } catch (e) { toast(e.message, 'error', 6000); } };
+  const gift = (id) => V.giftTypes.find((x) => x.id === id);
+  const prizeBtn = (i) => h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+    const r = await pickGiftTypeDialog(V.giftTypes, V.prizes[i] || '');
+    if (r !== null && r !== undefined) patch({ [`prize${i + 1}`]: r || null }, 'Premio salvato');
+  } }, `${['🥇', '🥈', '🥉'][i]} ${gift(V.prizes[i]) ? `${gift(V.prizes[i]).icon} ${gift(V.prizes[i]).name}` : 'Dono a caso'}`);
+  const opens = h('input', { class: 'input', type: 'datetime-local', value: toLocalInput(V.opensAt) });
+  const closes = h('input', { class: 'input', type: 'datetime-local', value: toLocalInput(V.closesAt) });
+  const title = h('input', { class: 'input', maxlength: 80, placeholder: 'Il favore del pubblico', value: V.title || '' });
+  const pre = PRE.includes(R.ms.clock.status) && R.ms.clock.status !== 'circle';
+  return h('div', { class: 'stack' },
+    sectionActions('Voto del pubblico', [
+      h('button', { type: 'button', class: `switch ${V.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': V.enabled ? 'true' : 'false', onclick: () => patch({ enabled: !V.enabled }, V.enabled ? 'Votazione spenta' : 'Votazione accesa: il link funziona') },
+        h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), V.enabled ? 'ACCESA' : 'SPENTA')],
+      h('p', { class: 'muted tiny' }, 'Chiunque abbia il link vota la sua coppia preferita, solo prima della partita. Si vedono il podio e le percentuali, mai i numeri. Un voto per telefono (si può cambiare), al massimo 3 voti all\'ora dalla stessa rete, verifica anti-robot; chi vota con il proprio account vale ×3.'),
+      h('div', { class: 'url-now' }, h('span', { class: 'eyebrow' }, 'Link da condividere'), h('strong', { class: 'mono' }, url),
+        h('button', { class: 'btn btn-sm', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')) }, 'Copia'),
+        h('a', { class: 'btn btn-sm', href: `https://wa.me/?text=${encodeURIComponent(`Vota la tua coppia preferita ai Giochi del Buio: le prime tre ricevono un Dono! ${url}`)}`, target: '_blank', rel: 'noopener' }, 'Condividi su WhatsApp'),
+        h('a', { class: 'btn btn-sm btn-ghost', href: url, target: '_blank', rel: 'noopener' }, 'Apri')),
+      h('div', { class: 'vote-state' },
+        h('span', { class: `chip ${V.open ? 'chip-ok' : ''}` }, V.prizedAt ? `Chiusa · premi assegnati ${fmtTime(V.prizedAt)}` : V.open ? 'Aperta ora' : !V.enabled ? 'Spenta' : !pre ? 'Chiusa: la partita è iniziata' : 'Non ancora aperta o già scaduta'),
+        h('span', { class: 'small' }, `${V.votes?.n || 0} voti (${V.votes?.verified || 0} verificati) · punteggio ${V.total}${V.annulled ? ` · ${V.annulled} annullati` : ''}`),
+        V.turnstile ? h('span', { class: 'chip chip-ok' }, 'Anti-robot attivo') : h('span', { class: 'chip chip-warn', title: 'Senza chiavi di Cloudflare Turnstile la verifica anti-robot è spenta' }, 'Anti-robot spento')),
+      h('div', { class: 'form-grid' },
+        h('label', { class: 'field' }, h('span', null, 'Titolo della pagina'), title),
+        h('label', { class: 'field' }, h('span', null, 'Apre (vuoto = subito)'), opens),
+        h('label', { class: 'field' }, h('span', null, 'Chiude (vuoto = al via)'), closes)),
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => patch({ title: title.value, opensAt: opens.value ? new Date(opens.value).getTime() : null, closesAt: closes.value ? new Date(closes.value).getTime() : null }, 'Votazione aggiornata') }, 'Salva titolo e orari')),
+    section('Coppie da votare',
+      h('p', { class: 'muted tiny' }, 'Accendi le coppie che compaiono nel voto. Le percentuali sono sul punteggio (i voti verificati valgono ×3).'),
+      V.teams.length ? h('ul', { class: 'vote-teams' }, V.teams.map((t) => h('li', { style: { '--c': t.color } },
+        h('button', { type: 'button', class: `switch switch-sm ${t.votable ? 'on' : ''}`, role: 'switch', 'aria-checked': t.votable ? 'true' : 'false', onclick: async () => { try { await api('POST', `/api/m/teams/${t.id}/votable`, { on: !t.votable }); await loadVote(); } catch (e) { toast(e.message, 'error'); } } },
+          h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), t.votable ? 'IN VOTO' : 'NO'),
+        h('strong', null, `${t.roman} Settore ${t.sectorName}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
+        h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small' }, `${String(t.pct).replace('.', ',')}% · ${t.votes} voti`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
+    section('Premi',
+      h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude.'),
+      h('div', { class: 'row-actions' }, [0, 1, 2].map(prizeBtn)),
+      V.prizedAt ? h('p', { class: 'small ok-text' }, `Premi assegnati alle ${fmtTime(V.prizedAt)}.`)
+        : h('button', { class: 'btn btn-primary', disabled: !V.total, onclick: async () => {
+          const top = V.ranking.filter((t) => t.score > 0).slice(0, 3);
+          if (!(await dialog({ title: 'Assegnare i premi?', text: `${top.map((t, i) => `${['🥇', '🥈', '🥉'][i]} ${t.roman} ${t.sectorName} (${String(t.pct).replace('.', ',')}%)`).join(' · ')}. La votazione si chiude e parte l'annuncio a tutte le coppie.`, okLabel: 'Assegna i premi' }))) return;
+          try { await api('POST', G('/vote/award')); toast('Premi assegnati', 'ok'); await loadVote(); load(); } catch (e) { toast(e.message, 'error', 6000); }
+        } }, '🏆 Assegna i premi e chiudi')),
+    section('Voti sospetti',
+      h('p', { class: 'muted tiny' }, 'Gruppi di almeno 5 voti dalla stessa rete in 10 minuti: possono essere amici allo stesso Wi-Fi o voti gonfiati. Annullali se non ti convincono.'),
+      V.spikes.length ? h('ul', { class: 'list' }, V.spikes.map((x) => h('li', { class: 'row' },
+        h('span', { class: 'grow small' }, `${x.count} voti da rete ${x.net}… tra le ${fmtTime(x.from)} e le ${fmtTime(x.to)} · `, Object.entries(x.byTeam).map(([tid, n]) => { const t = V.teams.find((y) => y.id === Number(tid)); return `${t ? `${t.roman} ${t.sectorName}` : '?'}: ${n}`; }).join(', ')),
+        h('button', { class: 'btn btn-sm btn-danger', onclick: async () => { if (!(await dialog({ title: `Annullare ${x.count} voti?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return; try { await api('POST', G('/vote/annul'), { ids: x.ids }); toast('Voti annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); } } }, 'Annulla')))) : h('p', { class: 'empty' }, 'Nessun picco sospetto.')),
+    section('Verifica anti-robot (Cloudflare Turnstile)',
+      h('p', { class: 'muted tiny' }, 'Gratis: su dash.cloudflare.com → Turnstile → Add site (dominio del gioco) e copia qui le due chiavi. Senza, il voto funziona lo stesso ma è più facile gonfiarlo con programmi automatici.'),
+      V.turnstileFromEnv ? h('p', { class: 'small' }, 'Chiavi impostate nel file .env del server.') : (() => {
+        const site = h('input', { class: 'input', placeholder: 'Site key (pubblica)', value: V.turnstileSiteKey || '' });
+        const secret = h('input', { class: 'input', type: 'password', placeholder: V.turnstile ? '•••••• (già salvata: lascia vuoto per non cambiarla)' : 'Secret key' });
+        return h('div', { class: 'stack-sm' }, h('div', { class: 'form-grid' }, site, secret),
+          h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm btn-primary', onclick: () => patch({ turnstileSiteKey: site.value, ...(secret.value.trim() ? { turnstileSecret: secret.value } : {}) }, 'Chiavi salvate') }, 'Salva le chiavi'),
+            V.turnstile ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => patch({ turnstileSiteKey: '', turnstileSecret: null }, 'Anti-robot spento') }, 'Togli') : null));
+      })()));
 }
 
 // ---------------------------------------------------------------- ANNUNCI E MESSAGGI

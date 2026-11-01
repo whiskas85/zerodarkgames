@@ -715,6 +715,27 @@ addColumn('messages', 'playerId', 'INTEGER');
 addColumn('players', 'pairReadId', 'INTEGER');
 addColumn('players', 'directReadId', 'INTEGER');
 
+// Voto del pubblico (pagina /vota): coppie votabili, finestra, premi e voti (uno per dispositivo o account).
+addColumn('games', 'voteEnabled', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('games', 'voteOpensAt', 'INTEGER');
+addColumn('games', 'voteClosesAt', 'INTEGER');
+addColumn('games', 'voteTitle', 'TEXT');
+addColumn('games', 'votePrize1', 'TEXT');
+addColumn('games', 'votePrize2', 'TEXT');
+addColumn('games', 'votePrize3', 'TEXT');
+addColumn('games', 'votePrizedAt', 'INTEGER');
+addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
+db.exec(`
+CREATE TABLE IF NOT EXISTS votes (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  teamId INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, device TEXT NOT NULL, net TEXT NOT NULL,
+  accountId INTEGER, weight INTEGER NOT NULL DEFAULT 1, ua TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER,
+  annulledAt INTEGER, annulledBy TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_votes_game ON votes(gameId, annulledAt);
+CREATE INDEX IF NOT EXISTS ix_votes_net ON votes(gameId, net, createdAt);
+`);
+
 // Zone NO PLAY: chi ci entra (coppia, o singolo Eletto) ha 30 secondi per uscire, poi la regia viene avvisata.
 db.exec(`
 CREATE TABLE IF NOT EXISTS noplay_hits (

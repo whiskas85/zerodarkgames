@@ -2882,3 +2882,47 @@ test('evento «taglia su sé stessi»: le squadre vedono le iscritte, allo scade
   assert.equal(q.get('SELECT outcome FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, A.id).outcome, 'lost');
   assert.equal(q.get('SELECT outcome FROM event_entries WHERE eventId = ? AND teamId = ?', ev.id, B.id).outcome, 'won');
 });
+
+test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per rete, voto verificato, picchi, premi ai primi tre', async () => {
+  const VO = require('../src/vote');
+  const g = setupGame(4);
+  const [A, B, Cc, D] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  VO.updateVote(g.id, { enabled: true }, 'test');
+  for (const t of [A, B, Cc]) VO.setVotable(t.id, true, 'test');
+  let st = VO.publicState('dev-1', null);
+  assert.equal(st.open, true);
+  assert.equal(st.teams.length, 3);
+  // Non votabile.
+  await assert.rejects(VO.castVote({ teamId: D.id, device: 'dev-1', ip: '1.1.1.1' }), /non votabile/);
+  st = await VO.castVote({ teamId: A.id, device: 'dev-1', ip: '1.1.1.1' });
+  assert.equal(st.myVote, A.id);
+  // Lo stesso dispositivo cambia voto, non ne aggiunge.
+  await VO.castVote({ teamId: B.id, device: 'dev-1', ip: '1.1.1.1' });
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ?', g.id).n, 1);
+  // Limite per rete: al massimo 3 dispositivi nuovi all'ora dalla stessa connessione.
+  await VO.castVote({ teamId: B.id, device: 'dev-2', ip: '1.1.1.1' });
+  await VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' });
+  await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-4', ip: '1.1.1.1' }), /Troppi voti/);
+  // Voto verificato (con account): pesa 3.
+  const acc = q.get('SELECT * FROM accounts LIMIT 1') || { id: Number(q.run("INSERT INTO accounts (username, passHash, name, softairTeam, createdAt) VALUES ('votante', '', 'Votante', 'nessuno', ?)", Date.now()).lastInsertRowid) };
+  await VO.castVote({ teamId: Cc.id, device: 'dev-9', ip: '2.2.2.2', account: acc });
+  const m = VO.masterVote(g.id);
+  assert.equal(m.total, 6); // 3 voti per B + 3 (verificato) per C
+  assert.deepEqual(m.ranking.slice(0, 2).map((t) => t.pct), [50, 50]);
+  assert.equal(VO.publicState('nuovo', null).podium.length, 2);
+  // Picco: 5 voti dalla stessa rete in pochi minuti → segnalato, si annulla.
+  const now = Date.now();
+  for (let i = 0; i < 5; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, createdAt) VALUES (?, ?, ?, ?, 1, ?)', g.id, A.id, `bot-${i}`, 'deadbeefdeadbeef', now - i * 1000);
+  const sp = VO.masterVote(g.id).spikes.find((x) => x.net === 'deadbe');
+  assert.equal(sp.count, 5);
+  assert.equal(VO.annulVotes(g.id, sp.ids, 'test').annulled, 5);
+  assert.equal(VO.masterVote(g.id).spikes.length, 0);
+  // Premi ai primi tre (con i voti rimasti: B e C), poi il voto si chiude.
+  const r = VO.awardPrizes(g.id, 'test');
+  assert.equal(r.given.length, 2);
+  assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Favore del pubblico%'", B.id));
+  assert.equal(VO.publicState('dev-1', null).open, false);
+  assert.throws(() => VO.awardPrizes(g.id, 'test'), /già assegnati/);
+  // A partita iniziata il voto è chiuso.
+  VO.updateVote(g.id, { enabled: true }, 'test');
+});
