@@ -683,11 +683,17 @@ function phaseSteps() {
     if (atMs[p[0]] != null) return `+${Math.round(atMs[p[0]] / 60000)}′`;
     return '';
   };
-  return h('ol', { class: 'phase-steps', 'aria-label': 'Stati della gara' }, PHASES.map((p, i) => h('li', { class: `${i < idx ? 'done' : i === idx ? 'now' : 'next'} ${i === idx && c.status === 'paused' ? 'paused' : ''}` },
+  // Si apre e si chiude con un tocco; la scelta resta su questo dispositivo.
+  const open = store.get('zdg_regia_steps_open', true);
+  const toggle = h('button', { type: 'button', class: 'phase-toggle', 'aria-expanded': open ? 'true' : 'false', onclick: () => { store.set('zdg_regia_steps_open', !open); render(); } },
+    h('span', { 'aria-hidden': 'true' }, open ? '▾' : '▸'), ' Stati della gara',
+    open ? null : h('span', { class: 'muted' }, ` · ${idx >= 0 ? `${idx + 1}/${PHASES.length} ${PHASES[idx][1]}` : ''}${c.status === 'paused' ? ' (sospesa)' : ''}`));
+  if (!open) return toggle;
+  return [toggle, h('ol', { class: 'phase-steps', 'aria-label': 'Stati della gara' }, PHASES.map((p, i) => h('li', { class: `${i < idx ? 'done' : i === idx ? 'now' : 'next'} ${i === idx && c.status === 'paused' ? 'paused' : ''}` },
     h('span', { class: 'ps-dot', 'aria-hidden': 'true' }, i < idx ? '✓' : i + 1),
     h('span', { class: 'ps-label' }, p[1]),
     h('span', { class: 'ps-time mono' }, i === idx && c.status === 'paused' ? 'SOSPESA' : when(p, i)),
-    i === idx && pauses && c.status !== 'paused' ? h('span', { class: 'ps-time mono' }, `${pauses} ${pauses === 1 ? 'pausa' : 'pause'}`) : null)));
+    i === idx && pauses && c.status !== 'paused' ? h('span', { class: 'ps-time mono' }, `${pauses} ${pauses === 1 ? 'pausa' : 'pause'}`) : null)))];
 }
 
 // Anti «furbetto del QR», a portata di mano in Regia: interruttore del controllo di distanza sulla lettura degli Altari.
