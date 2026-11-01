@@ -1218,6 +1218,7 @@ function publicVoteCard(st) {
         h('strong', null, v.rank ? `Siete ${v.rank}° su ${v.of} · ${String(v.pct).replace('.', ',')}%` : 'Ancora nessun voto per voi'),
         h('div', { class: 'small muted' }, v.prizedAt ? 'La votazione è chiusa.' : 'Le prime tre coppie ricevono un Dono prima della partita. Fate votare amici e squadra!'))),
     h('a', { class: 'btn btn-block', href: '#/voto' }, '🏆 Classifica'),
+    st.team?.logoAt ? null : h('a', { class: 'small', href: '#/impostazioni' }, '➕ Aggiungete il logo della coppia: compare nel voto'),
     v.open ? h('div', { class: 'row-2' },
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: share }, '📤 Condividi il link'),
       h('button', { class: 'btn btn-block', type: 'button', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')).catch(() => toast(url, 'info', 8000)) }, 'Copia il link')) : null);
@@ -4654,6 +4655,36 @@ function viewTraccar() {
     h('div', { class: 'card stack' }, body));
 }
 
+// Logo della coppia: lo carica chiunque della coppia (o la regia); compare nel voto del pubblico.
+function teamLogoCard(st) {
+  if (st?.team?.kind !== 'couple') return null;
+  const t = st.team;
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, onchange: async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { toast('Immagine troppo grande (massimo 2 MB)', 'error'); return; }
+    try {
+      const res = await fetch('/api/team/logo', { method: 'POST', headers: { 'Content-Type': f.type }, body: f, credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
+      toast('Logo della coppia salvato', 'ok');
+      await refresh();
+    } catch (err) { toast(err.message || 'Serve la rete per caricarlo', 'error', 6000); }
+  } });
+  return h('div', { class: 'card team-logo-card', id: 'logo' },
+    h('div', { class: 'tlc-row' },
+      h('span', { class: `tlc-mark ${t.logoAt ? 'has' : ''}` }, t.logoAt ? h('img', { src: `/api/public/team-logo/${t.id}?v=${t.logoAt}`, alt: 'Logo della coppia' }) : t.sector?.roman || '?'),
+      h('div', { class: 'grow' }, h('strong', null, 'Logo della coppia'),
+        h('div', { class: 'muted small' }, t.logoAt ? 'Compare nel voto del pubblico accanto al vostro numero romano.' : 'Caricate il vostro stemma: compare nel voto del pubblico. PNG, JPG o WebP, massimo 2 MB, meglio quadrato.'))),
+    h('div', { class: 'row-2' },
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => file.click() }, t.logoAt ? 'Cambia il logo' : 'Carica il logo'),
+      t.logoAt ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
+        if (!(await dialog({ title: 'Togliere il logo?', text: 'Nel voto torna il solo numero romano.', okLabel: 'Togli', danger: true }))) return;
+        try { await api('DELETE', '/api/team/logo'); toast('Logo tolto', 'ok'); await refresh(); } catch (err) { toast(err.message, 'error'); }
+      } }, 'Togli') : null),
+    file);
+}
+
 function viewSettings() {
   const set = (k, v) => { S.settings[k] = v; store.set('zdg_settings', S.settings); applyTheme(); render(); };
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -4661,6 +4692,7 @@ function viewSettings() {
   return h('div', { class: 'stack' },
     h('h2', null, 'Impostazioni'),
     eventStatusCard(st?.player?.event, { gameName: st?.game?.name }),
+    teamLogoCard(st),
     h('div', { class: 'card stack' },
       h('strong', null, 'Notifiche del Consiglio'),
       h('p', { class: 'muted small' }, perm === 'granted' ? 'Attive. Riceverete gli annunci anche a schermo spento.' : 'Attivatele per ricevere annunci e rivelazioni con vibrazione anche a schermo spento.'),

@@ -1836,6 +1836,7 @@ function setTeamLogo(teamId, buffer, mime, actor) {
   q.run('UPDATE teams SET logoFile = ?, logoAt = ? WHERE id = ?', file, now, t.id);
   log(t.gameId, actor, 'team_logo', { teamId: t.id });
   rt.toStaff(t.gameId, 'teams');
+  rt.toTeams(t.gameId, 'state', {}, t.id);
   return { logoAt: now };
 }
 function clearTeamLogo(teamId, actor) {
@@ -1845,6 +1846,7 @@ function clearTeamLogo(teamId, actor) {
   q.run('UPDATE teams SET logoFile = NULL, logoAt = NULL WHERE id = ?', t.id);
   log(t.gameId, actor, 'team_logo', { teamId: t.id, removed: true });
   rt.toStaff(t.gameId, 'teams');
+  rt.toTeams(t.gameId, 'state', {}, t.id);
 }
 function teamLogoFile(teamId) {
   const t = q.get('SELECT logoFile FROM teams WHERE id = ?', Number(teamId));
@@ -2232,7 +2234,7 @@ function teamStateCore(team, player = null) {
       prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },
     team: {
-      id: team.id, kind: 'couple', displayName: team.displayName, status: team.status, finishPosition: team.finishPosition,
+      id: team.id, kind: 'couple', displayName: team.displayName, status: team.status, finishPosition: team.finishPosition, logoAt: team.logoAt || null,
       sector: s ? { id: s.id, name: s.name, roman: s.roman, motto: s.motto, element: s.element } : null,
       // Niente nomi e cognomi nell'app delle coppie: solo soprannome (e squadra softair).
       members: membersOf(team.id).map((m) => ({ id: m.id, nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: !!player && m.id === player.id })),

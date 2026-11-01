@@ -537,6 +537,18 @@ const msgChannel = (req, value) => {
 };
 const chatAuthor = (req, ch) => msgAuthor(req) || (ch && req.player ? req.player.nickname || req.player.name : null);
 app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => { const ch = msgChannel(req, req.body.channel); return G.postMessage(req.team, 'team', req.body.text, chatAuthor(req, ch), null, msgSquad(req, req.body.squadId), req.player?.id ?? null, ch); }));
+const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
+// Logo della coppia caricato dall'app (lo stesso che può caricare la regia): compare nel voto del pubblico.
+app.post('/api/team/logo', needTeam, teamRateLimit, rawImage, wrap((req) => {
+  if (req.team.kind !== 'couple') throw new HttpError(403, 'Il logo è delle coppie');
+  return G.setTeamLogo(req.team.id, req.body, req.headers['content-type'], req.player ? `giocatore:${req.player.id}` : `coppia:${req.team.id}`);
+}));
+app.delete('/api/team/logo', needTeam, wrap((req) => {
+  if (req.team.kind !== 'couple') throw new HttpError(403, 'Il logo è delle coppie');
+  G.clearTeamLogo(req.team.id, req.player ? `giocatore:${req.player.id}` : `coppia:${req.team.id}`);
+  rt.toTeams(req.team.gameId, 'state', {}, req.team.id);
+  return { ok: true };
+}));
 app.post('/api/team/chat-read', needTeam, wrap((req) => { G.markChatRead(req.player, req.body?.channel, req.body?.lastId); return { ok: true }; }));
 // Vocali: corpo binario (audio/*), durata in ?ms=. Massimo ~2 minuti.
 const rawAudio = express.raw({ type: 'audio/*', limit: '4mb' });
@@ -596,7 +608,6 @@ const fieldGame = (req) => {
   return id;
 };
 const fieldWho = (req) => (fieldStaff(req) ? req.user.username : `eletti:${req.player?.name || 'Eletti'}`);
-const rawImage = express.raw({ type: 'image/*', limit: '10mb' });
 app.get('/api/field/whoami', (req, res) => {
   if (fieldStaff(req)) return res.json({ role: 'master', regiaGameId: q.get('SELECT lastGameId FROM users WHERE id = ?', req.user.id)?.lastGameId || null, name: req.user.username, games: q.all("SELECT id, name, status FROM games WHERE status NOT IN ('ended', 'created') ORDER BY id DESC") });
   if (req.team?.kind === 'elect') {
