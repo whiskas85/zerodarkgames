@@ -725,6 +725,9 @@ addColumn('games', 'votePrize2', 'TEXT');
 addColumn('games', 'votePrize3', 'TEXT');
 addColumn('games', 'votePrizedAt', 'INTEGER');
 addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
+// Logo della coppia (immagine caricata dalla regia): compare nel voto del pubblico.
+addColumn('teams', 'logoFile', 'TEXT');
+addColumn('teams', 'logoAt', 'INTEGER');
 db.exec(`
 CREATE TABLE IF NOT EXISTS votes (
   id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,

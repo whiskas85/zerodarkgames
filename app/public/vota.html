@@ -42,9 +42,13 @@ h2{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:up
 .team.mine{border-color:var(--ok);border-left-color:var(--c,var(--ok))}
 .stamp{width:48px;height:48px;border:3px solid var(--c,var(--ink));display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:24px;color:var(--c,var(--ink))}
 .tname{font-weight:700} .tsub{font-size:13px;color:var(--muted)}
-.faces{display:flex;gap:4px;margin-top:4px}
-.face{width:26px;height:26px;border-radius:50%;background:var(--blood);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;overflow:hidden;border:1.5px solid var(--brass)}
-.face img{width:100%;height:100%;object-fit:cover}
+.people{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px;font-size:14px}
+.people li::before{content:"▸ ";color:var(--c,var(--brass))}
+.stamp{width:56px;height:56px} .stamp.has-logo{border:0;background:transparent}
+.stamp img,.plogo img{width:100%;height:100%;object-fit:contain}
+.plogo{width:52px;height:52px;display:grid;place-items:center;border:3px solid var(--c,var(--ink));font-family:var(--f-display);font-weight:900;font-size:24px;color:var(--c,var(--ink))}
+.plogo.has-logo{border:0}
+.psec{font-size:12px;color:var(--muted);font-family:var(--f-mono)}
 .bar{grid-column:1/-1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden;display:flex;align-items:center}
 .bar i{display:block;height:100%;background:var(--c,var(--brass));border-radius:4px;transition:width .6s}
 .pctline{grid-column:1/-1;display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:13px;color:var(--muted);margin-top:-6px}
@@ -75,19 +79,23 @@ async function load() {
   try { const r = await fetch('/api/public/vote', { credentials: 'same-origin' }); S = await r.json(); render(); } catch { if (!S) $app.innerHTML = '<header><p class="eyebrow">Senza rete: riprova tra poco</p></header>'; }
 }
 function teamName(t) { return t.displayName || `Settore ${t.sectorName}`; }
-function faces(t) { return `<div class="faces">${(t.members || []).map((m) => `<span class="face" title="${esc(m.name)}">${m.picture ? `<img src="${esc(m.picture)}" alt="" referrerpolicy="no-referrer">` : esc(initials(m.name))}</span>`).join('')}</div>`; }
+// Il logo della coppia (se c'è), altrimenti il numero romano del Settore.
+function mark(t, cls = 'stamp') { return t.logo ? `<span class="${cls} has-logo"><img src="${esc(t.logo)}" alt="Logo ${esc(teamName(t))}"></span>` : `<span class="${cls}">${esc(t.roman)}</span>`; }
+// Numero romano e Settore; se la coppia non ha un nome suo, il nome è già «Settore …»: resta solo il numero.
+const sector = (t) => (t.displayName ? `${esc(t.roman)} · Settore ${esc(t.sectorName)}` : `Settore ${esc(t.roman)}`);
+const people = (t) => `<ul class="people">${(t.members || []).map((m) => `<li>${esc(m.name)}</li>`).join('')}</ul>`;
 function render() {
   if (!S.game) { $app.innerHTML = `<header><div class="emblem"><span>0</span></div><h1>Nessuna <em>votazione</em></h1><p class="lede">In questo momento non c'è una votazione aperta. Torna quando il Consiglio la apre.</p></header>`; return; }
   const status = S.open ? `<span class="status open">● Votazione aperta${S.closesAt ? ` · chiude ${esc(fmtWhen(S.closesAt))}` : ''}</span>`
     : S.closed ? '<span class="status closed">Votazione chiusa</span>' : `<span class="status">Apre ${S.opensAt ? esc(fmtWhen(S.opensAt)) : 'a breve'}</span>`;
   const order = [1, 0, 2];
-  const podium = S.podium.length ? `<div class="podium">${order.map((i) => S.podium[i] ? `<div class="step p${i + 1}" style="--c:${esc(S.podium[i].color || '')}"><span class="medal">${['🥇', '🥈', '🥉'][i]}</span><span class="name">${esc(teamName(S.podium[i]))}</span>${faces(S.podium[i])}<span class="pct">${pct(S.podium[i].pct)}</span><div class="block">${esc(S.podium[i].roman)}</div></div>` : '<div></div>').join('')}</div>`
+  const podium = S.podium.length ? `<div class="podium">${order.map((i) => S.podium[i] ? `<div class="step p${i + 1}" style="--c:${esc(S.podium[i].color || '')}"><span class="medal">${['🥇', '🥈', '🥉'][i]}</span>${mark(S.podium[i], 'plogo')}<span class="name">${esc(teamName(S.podium[i]))}</span><span class="psec">${sector(S.podium[i])}</span><span class="pct">${pct(S.podium[i].pct)}</span><div class="block">${esc(S.podium[i].roman)}</div></div>` : '<div></div>').join('')}</div>`
     : '<p class="empty">Ancora nessun voto: il primo puoi darlo tu.</p>';
   const teams = S.teams.map((t) => {
     const mine = S.myVote === t.id;
     return `<div class="team ${mine ? 'mine' : ''}" style="--c:${esc(t.color || '')}">
-      <span class="stamp">${esc(t.roman)}</span>
-      <div><div class="tname">${esc(teamName(t))}</div><div class="tsub">${esc((t.members || []).map((m) => m.name).join(' · '))}</div>${faces(t)}</div>
+      ${mark(t)}
+      <div><div class="tname">${esc(teamName(t))}</div><div class="tsub">${sector(t)}</div>${people(t)}</div>
       <button class="vote ${mine ? 'done' : ''}" data-id="${t.id}" ${!S.open || busy ? 'disabled' : ''}>${mine ? 'Il tuo voto ✓' : S.myVote ? 'Cambia voto' : 'Vota'}</button>
       <div class="bar"><i style="width:${Math.max(0, Math.min(100, t.pct))}%"></i></div>
       <div class="pctline"><span>${pct(t.pct)}</span><span>${mine ? 'hai votato questa coppia' : ''}</span></div></div>`;

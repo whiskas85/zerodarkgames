@@ -2932,3 +2932,24 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   // A partita iniziata il voto è chiuso.
   VO.updateVote(g.id, { enabled: true }, 'test');
 });
+
+test('logo della coppia: si carica, compare nel voto del pubblico (senza foto delle persone), si toglie', () => {
+  const VO = require('../src/vote');
+  const fs = require('fs');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  assert.throws(() => G.setTeamLogo(A.id, Buffer.from('x'), 'image/svg+xml', 'test'), /Formato/);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4550000000049454e44ae426082', 'hex');
+  const { logoAt } = G.setTeamLogo(A.id, png, 'image/png', 'test');
+  assert.ok(fs.existsSync(G.teamLogoFile(A.id)));
+  VO.updateVote(g.id, { enabled: true }, 'test');
+  VO.setVotable(A.id, true, 'test');
+  const t = VO.publicState('d', null).teams.find((x) => x.id === A.id);
+  assert.equal(t.logo, `/api/public/team-logo/${A.id}?v=${logoAt}`);
+  assert.ok(t.members.length && t.members.every((m) => m.picture === undefined));
+  assert.equal(VO.liveVote(g.id).list[0].logo, t.logo);
+  const file = G.teamLogoFile(A.id);
+  G.clearTeamLogo(A.id, 'test');
+  assert.ok(!fs.existsSync(file));
+  assert.throws(() => G.teamLogoFile(A.id), /non trovato/);
+});

@@ -815,6 +815,8 @@ function viewLive() {
 
     liveTimeline(),
 
+    liveVotePanel(),
+
     altarRadiusPanel(),
     altarRejectionsPanel(),
 
@@ -1298,6 +1300,7 @@ function teamCard(t, editable) {
   return h('div', { class: `team-card ${t.status}` },
     h('div', { class: 'team-head' },
       h('span', { class: 'team-roman' }, t.roman || '?'),
+      teamLogo(t),
       h('div', { class: 'grow' },
         editable ? h('select', { class: 'input input-sm', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { sectorId: Number(e.target.value) }, 'Settore aggiornato') },
           ms.sectors.filter((s) => !s.archived || s.id === t.sectorId).map((s) => h('option', { value: s.id, selected: s.id === t.sectorId }, `${s.roman} · ${s.name}${used.has(s.id) && s.id !== t.sectorId ? ' (scambia)' : ''}`)))
@@ -3748,6 +3751,50 @@ function viewSupply() {
               s.status === 'fired' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Chiudere la finestra?', 'Parte l\'annuncio di chiusura a tutte le coppie.', 'POST', `/api/m/supply/${s.id}/close`, {}, 'Finestra chiusa', true) }, 'Chiudi ora') : null,
               s.status === 'scheduled' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la finestra?', '', 'DELETE', `/api/m/supply/${s.id}`, undefined, 'Eliminata', true) }, 'Elimina') : null));
         })))) : h('p', { class: 'empty' }, 'Nessuna finestra armamenti.')));
+}
+
+// Logo della coppia (scheda in Squadre Legati): tocca per caricarlo o cambiarlo; compare nel voto del pubblico.
+function teamLogo(t) {
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, onchange: async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { toast('Immagine troppo grande (massimo 2 MB)', 'error'); return; }
+    try {
+      const res = await fetch(`/api/m/teams/${t.id}/logo`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f, credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
+      toast('Logo della coppia salvato', 'ok');
+      await load();
+    } catch (err) { toast(err.message, 'error', 6000); }
+  } });
+  const remove = async (e) => {
+    e.stopPropagation();
+    if (!(await dialog({ title: 'Togliere il logo?', text: `${t.roman} Settore ${t.sectorName}`, okLabel: 'Togli', danger: true }))) return;
+    call('DELETE', `/api/m/teams/${t.id}/logo`, undefined, 'Logo tolto');
+  };
+  return h('div', { class: 'team-logo-wrap' },
+    h('button', { type: 'button', class: `team-logo ${t.logoAt ? 'has' : ''}`, title: t.logoAt ? 'Cambia il logo della coppia' : 'Carica il logo della coppia (compare nel voto del pubblico)', onclick: () => file.click() },
+      t.logoAt ? h('img', { src: `/api/public/team-logo/${t.id}?v=${t.logoAt}`, alt: 'Logo' }) : h('span', { class: 'tiny' }, '+ Logo')),
+    t.logoAt ? h('button', { type: 'button', class: 'team-logo-x', title: 'Togli il logo', 'aria-label': 'Togli il logo', onclick: remove }, '×') : null,
+    file);
+}
+
+// Pagina Regia: il voto del pubblico (podio e percentuali), se è acceso.
+function liveVotePanel() {
+  const v = R.ms.publicVote;
+  if (!v) return null;
+  const top = v.list.filter((t) => t.score > 0);
+  const name = (t) => t.displayName || `Settore ${t.sectorName}`;
+  return sectionActions('Voto del pubblico', [h('a', { class: 'btn btn-sm', href: '#voto' }, 'Gestisci'), h('a', { class: 'btn btn-sm btn-ghost', href: '/vota', target: '_blank', rel: 'noopener' }, 'Apri la pagina')],
+    h('div', { class: 'vote-state' },
+      h('span', { class: `chip ${v.open ? 'chip-ok' : ''}` }, v.prizedAt ? `Chiusa · premi ${fmtTime(v.prizedAt)}` : v.open ? 'Aperta' : 'Chiusa'),
+      h('span', { class: 'small muted' }, `${v.votes} voti${v.closesAt && v.open ? ` · chiude ${fmtTime(v.closesAt)}` : ''}`)),
+    top.length ? h('ol', { class: 'live-vote' }, v.list.map((t, i) => h('li', { style: { '--c': t.color } },
+      h('span', { class: 'lv-pos' }, t.score && i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}°`),
+      t.logo ? h('img', { class: 'lv-logo', src: t.logo, alt: '' }) : h('span', { class: 'lv-roman' }, t.roman),
+      h('span', { class: 'lv-name' }, h('strong', null, `${t.roman} ${name(t)}`), t.displayName ? h('span', { class: 'tiny muted' }, ` · Settore ${t.sectorName}`) : null),
+      h('span', { class: 'lv-bar' }, h('i', { style: { width: `${t.pct}%` } })),
+      h('span', { class: 'mono small' }, `${String(t.pct).replace('.', ',')}%`)))) : h('p', { class: 'empty' }, 'Ancora nessun voto.'));
 }
 
 // ---------------------------------------------------------------- VOTO DEL PUBBLICO

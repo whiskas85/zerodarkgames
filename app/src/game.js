@@ -1817,6 +1817,41 @@ function markChatRead(player, channel, lastId) {
   if (col) q.run(`UPDATE players SET ${col} = MAX(COALESCE(${col}, 0), ?) WHERE id = ?`, Number(lastId) || 0, player.id);
 }
 
+// ---------------------------------------------------------------- logo della coppia
+
+const LOGO_DIR = path.join(DATA_DIR, 'logos');
+const LOGO_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+function setTeamLogo(teamId, buffer, mime, actor) {
+  const t = q.get('SELECT * FROM teams WHERE id = ?', Number(teamId));
+  if (!t) throw err(404, 'Coppia non trovata');
+  const ext = LOGO_TYPES[String(mime || '').split(';')[0].trim().toLowerCase()];
+  if (!ext) throw err(415, 'Formato non supportato: usa PNG, JPG, WebP o GIF');
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw err(400, 'Immagine vuota');
+  if (buffer.length > 2 * 1024 * 1024) throw err(413, 'Immagine troppo grande (massimo 2 MB)');
+  fs.mkdirSync(LOGO_DIR, { recursive: true });
+  const now = Date.now();
+  const file = `${t.id}-${now}.${ext}`;
+  fs.writeFileSync(path.join(LOGO_DIR, file), buffer);
+  if (t.logoFile) fs.rmSync(path.join(LOGO_DIR, t.logoFile), { force: true });
+  q.run('UPDATE teams SET logoFile = ?, logoAt = ? WHERE id = ?', file, now, t.id);
+  log(t.gameId, actor, 'team_logo', { teamId: t.id });
+  rt.toStaff(t.gameId, 'teams');
+  return { logoAt: now };
+}
+function clearTeamLogo(teamId, actor) {
+  const t = q.get('SELECT * FROM teams WHERE id = ?', Number(teamId));
+  if (!t) throw err(404, 'Coppia non trovata');
+  if (t.logoFile) fs.rmSync(path.join(LOGO_DIR, t.logoFile), { force: true });
+  q.run('UPDATE teams SET logoFile = NULL, logoAt = NULL WHERE id = ?', t.id);
+  log(t.gameId, actor, 'team_logo', { teamId: t.id, removed: true });
+  rt.toStaff(t.gameId, 'teams');
+}
+function teamLogoFile(teamId) {
+  const t = q.get('SELECT logoFile FROM teams WHERE id = ?', Number(teamId));
+  if (!t?.logoFile) throw err(404, 'Logo non trovato');
+  return path.join(LOGO_DIR, t.logoFile);
+}
+
 // ---------------------------------------------------------------- correzioni di regia
 
 function correctFragments(teamId, { action, fragmentId, reason }, actor) {
@@ -2338,7 +2373,7 @@ function masterState(gameId) {
                      FROM players p LEFT JOIN accounts a ON a.id = p.accountId WHERE p.gameId = ? ORDER BY p.teamId IS NOT NULL, p.regGroup IS NULL, p.regGroup, p.id`, g.id)
       .map((p) => ({ ...p, weaponList: require('./eventstatus').weaponList(p), checks: p.status === 'accepted' ? require('./eventstatus').checksOf(p) : [] })),
     teams: teams.map((t) => ({
-      id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor,
+      id: t.id, sectorId: t.sectorId, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, color: t.sectorColor, logoAt: t.logoAt || null,
       status: t.status, finishPosition: t.finishPosition, accessCode: t.accessCode, loginToken: t.loginToken, checkinAt: t.checkinAt || null,
       members: membersOf(t.id), fragments: tfStats[t.id]?.n || 0, fragmentsTotal: fragCount,
       // Sigilli conosciuti dalla coppia (proprio, rivelati, conquistati) sui Settori in gioco.
@@ -2409,7 +2444,7 @@ module.exports = {
   assignPerson, setPending, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
-  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, markReadDirect, markChatRead, correctFragments,
+  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, markReadDirect, markChatRead, setTeamLogo, clearTeamLogo, teamLogoFile, correctFragments,
   movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, exfiltrate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };

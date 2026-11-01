@@ -26,11 +26,13 @@ const voteGame = () => q.get('SELECT * FROM games WHERE voteEnabled = 1 ORDER BY
 const isOpen = (g, now = Date.now()) => !!g && !!g.voteEnabled && PRE.includes(g.status) && (!g.voteOpensAt || g.voteOpensAt <= now) && (!g.voteClosesAt || g.voteClosesAt > now) && !g.votePrizedAt;
 
 function votableTeams(gameId) {
-  return q.all(`SELECT t.id, t.displayName, s.name AS sectorName, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId
+  return q.all(`SELECT t.id, t.displayName, t.logoAt, s.name AS sectorName, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId
                 WHERE t.gameId = ? AND t.kind = 'couple' AND t.votable = 1 AND t.status != 'withdrawn' ORDER BY s.ord, t.id`, gameId);
 }
-const membersOf = (teamId) => q.all('SELECT p.name, p.nickname, (SELECT i.picture FROM account_identities i WHERE i.accountId = p.accountId AND i.picture IS NOT NULL ORDER BY i.lastLoginAt DESC LIMIT 1) AS picture FROM players p WHERE p.teamId = ? ORDER BY p.id', teamId)
-  .map((p) => ({ name: p.nickname || p.name.split(' ')[0], picture: p.picture || null }));
+// Per il pubblico: solo il nome di battaglia (o il nome), niente foto delle persone.
+const membersOf = (teamId) => q.all('SELECT p.name, p.nickname FROM players p WHERE p.teamId = ? ORDER BY p.id', teamId)
+  .map((p) => ({ name: p.nickname || p.name.split(' ')[0] }));
+const logoUrl = (t) => (t.logoAt ? `/api/public/team-logo/${t.id}?v=${t.logoAt}` : null);
 
 // Punteggi (pesati, senza i voti annullati) → percentuali e classifica.
 function results(gameId) {
@@ -49,7 +51,7 @@ function publicState(device, account) {
   const r = results(g.id);
   const mine = (account && q.get('SELECT teamId FROM votes WHERE gameId = ? AND accountId = ? AND annulledAt IS NULL', g.id, account.id))
     || (device && q.get('SELECT teamId FROM votes WHERE gameId = ? AND device = ? AND annulledAt IS NULL', g.id, device));
-  const out = (t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, color: t.color, displayName: t.displayName || null, members: membersOf(t.id), pct: t.pct });
+  const out = (t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, color: t.color, displayName: t.displayName || null, logo: logoUrl(t), members: membersOf(t.id), pct: t.pct });
   return {
     game: { name: g.name, scheduledStart: g.scheduledStart || null },
     open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, closed: !!g.votePrizedAt || !PRE.includes(g.status),
@@ -216,4 +218,14 @@ function teamVote(team) {
   return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null };
 }
 
-module.exports = { teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+// Per la pagina Regia (live): podio e percentuali, se il voto è acceso.
+function liveVote(gameId) {
+  const g = G.getGame(gameId);
+  if (!g.voteEnabled) return null;
+  const r = results(g.id);
+  return { open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null, total: r.total,
+    votes: q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).n,
+    list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score })) };
+}
+
+module.exports = { liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

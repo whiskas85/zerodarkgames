@@ -342,6 +342,10 @@ const voteLimit = (req, _res, next) => {
   if (voteHits.size > 5000) voteHits.clear();
   next();
 };
+// Logo di una coppia: pubblico (serve alla pagina del voto); l'indirizzo cambia a ogni nuovo logo (?v=).
+app.get('/api/public/team-logo/:tid', (req, res, next) => {
+  try { res.sendFile(G.teamLogoFile(req.params.tid), { headers: { 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } }); } catch (e) { next(e); }
+});
 app.get('/api/public/vote', (req, res) => res.json(VO.publicState(voteDevice(req, res), req.account || null)));
 app.post('/api/public/vote', voteLimit, wrap(async (req, res) => VO.castVote({ teamId: req.body?.teamId, token: req.body?.token, device: voteDevice(req, res), account: req.account || null, ip: req.ip, ua: req.headers['user-agent'] })));
 
@@ -680,7 +684,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
 m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
@@ -784,6 +788,8 @@ m.post('/players/:pid/read', wrap((req) => {
   return { ok: true };
 }));
 m.get('/games/:id/vote', wrap((req) => VO.masterVote(gameId(req))));
+m.post('/teams/:tid/logo', rawImage, wrap((req) => G.setTeamLogo(req.params.tid, req.body, req.headers['content-type'], actor(req))));
+m.delete('/teams/:tid/logo', wrap((req) => { G.clearTeamLogo(req.params.tid, actor(req)); return { ok: true }; }));
 m.patch('/games/:id/vote', wrap((req) => VO.updateVote(gameId(req), req.body || {}, actor(req))));
 m.post('/teams/:tid/votable', wrap((req) => { VO.setVotable(req.params.tid, !!req.body?.on, actor(req)); return { ok: true }; }));
 m.post('/games/:id/vote/annul', wrap((req) => VO.annulVotes(gameId(req), req.body?.ids, actor(req))));
