@@ -2910,6 +2910,9 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   assert.equal(m.total, 6); // 3 voti per B + 3 (verificato) per C
   assert.deepEqual(m.ranking.slice(0, 2).map((t) => t.pct), [50, 50]);
   assert.equal(VO.publicState('nuovo', null).podium.length, 2);
+  // L'elenco da votare è in ordine di Settore, non di voti.
+  const ords = VO.publicState('nuovo', null).teams.map((t) => q.get('SELECT s.ord FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', t.id).ord);
+  assert.deepEqual(ords, [...ords].sort((x, y) => x - y));
   // Nell'app della coppia: la sua posizione (pari merito = stessa posizione), niente se non è in voto.
   const tv = (t) => VO.teamVote(q.get('SELECT * FROM teams WHERE id = ?', t.id));
   assert.equal(tv(B).rank, 1);

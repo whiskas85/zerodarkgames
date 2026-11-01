@@ -26,7 +26,7 @@ const voteGame = () => q.get('SELECT * FROM games WHERE voteEnabled = 1 ORDER BY
 const isOpen = (g, now = Date.now()) => !!g && !!g.voteEnabled && PRE.includes(g.status) && (!g.voteOpensAt || g.voteOpensAt <= now) && (!g.voteClosesAt || g.voteClosesAt > now) && !g.votePrizedAt;
 
 function votableTeams(gameId) {
-  return q.all(`SELECT t.id, t.displayName, t.logoAt, s.name AS sectorName, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId
+  return q.all(`SELECT t.id, t.displayName, t.logoAt, s.name AS sectorName, s.roman, s.color, s.ord AS sectorOrd FROM teams t JOIN sectors s ON s.id = t.sectorId
                 WHERE t.gameId = ? AND t.kind = 'couple' AND t.votable = 1 AND t.status != 'withdrawn' ORDER BY s.ord, t.id`, gameId);
 }
 // Per il pubblico: solo il nome di battaglia (o il nome), niente foto delle persone.
@@ -56,7 +56,8 @@ function publicState(device, account) {
     game: { name: g.name, scheduledStart: g.scheduledStart || null },
     open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, closed: !!g.votePrizedAt || !PRE.includes(g.status),
     title: g.voteTitle || 'Il favore del pubblico',
-    teams: r.list.map(out),
+    // Elenco da votare in ordine di Settore (numero romano); il podio resta in ordine di voti.
+    teams: [...r.list].sort((a, b) => a.sectorOrd - b.sectorOrd || a.id - b.id).map(out),
     podium: r.total ? r.list.slice(0, 3).filter((t) => t.score > 0).map(out) : [],
     myVote: mine?.teamId || null,
     verified: !!account, weight: account ? VERIFIED_WEIGHT : 1,
