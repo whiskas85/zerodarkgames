@@ -387,7 +387,9 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.guide = st.map?.guide || [];
   // Stato di Traccar Client per questa persona (il «flag» resta finché la prova non riesce).
   st.tracking = req.player ? F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) : null;
-  st.council = councilFlag(req);
+  // In gara (Legati, Eletti) la voce «Consiglio Zero» compare solo a chi ne fa già parte: per chiedere di entrarci
+  // c'è la pagina del Consiglio (o l'app senza iscrizione).
+  st.council = !!req.account && !!St.staffOf(req.account.id);
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   st.skills = S.skillsState(req.team);
