@@ -36,7 +36,7 @@ td.row-actions > * { margin: 3px 6px 3px 0; vertical-align: middle; }
 .top-clock { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .clock-big { font-size: 28px; font-weight: 600; line-height: 1; }
 .top-actions { display: flex; gap: 6px; }
-.shell { display: grid; grid-template-columns: 210px 1fr; min-height: calc(100vh - var(--shell-top, 64px)); }
+.shell { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - var(--shell-top, 64px)); }
 .sidebar { border-right: 2px solid var(--line); padding: 12px 8px; display: grid; align-content: start; gap: 2px; position: sticky; top: var(--top-h, 64px); height: calc(100vh - var(--shell-top, 64px)); overflow-y: auto; overscroll-behavior: contain; }
 .sidebar a { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; color: var(--ink); text-decoration: none; font-weight: 600; border-left: 4px solid transparent; }
 .sidebar a:hover { background: var(--paper); }
@@ -1277,3 +1277,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .offline-banner { padding: 8px 16px; background: #3a3f47; color: #fff; font-size: 14px; border-bottom: 2px solid #5b6270; }
 .contacts-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 6px; margin-bottom: 8px; }
 .ops-diag { flex-basis: 100%; display: grid; gap: 2px; padding: 6px 8px; margin-top: 4px; border-left: 3px solid var(--brass); background: var(--paper); overflow-wrap: anywhere; }
+/* Menu della regia: icona MDI a sinistra di ogni voce; Emergenze in rosso. */
+.nav-l { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.nav-l .mdi-wrap { display: inline-flex; flex: none; color: var(--muted); }
+.sidebar a.on .nav-l .mdi-wrap, .sidebar a:hover .nav-l .mdi-wrap { color: var(--ink); }
+.nav-l.nav-sos, .nav-l.nav-sos .mdi-wrap, .sidebar a .nav-l.nav-sos .mdi-wrap { color: var(--danger, #e5484d); }
+.sidebar span.off .nav-l .mdi-wrap { opacity: .5; }
+.sidebar a .badge { flex: none; }

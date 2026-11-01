@@ -21,7 +21,7 @@ const R = {
 
 const TABS = [
   ['live', 'Regia'],
-  ['emergenze', '🚨 Emergenze'],
+  ['emergenze', 'Emergenze'],
   ['persone', 'Persone'],
   ['coppie', 'Squadre Legati'],
   ['squadre', 'Squadre Eletti'],
@@ -46,6 +46,14 @@ const TABS = [
   ['impostazioni', 'Impostazioni'],
 ];
 // Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
+// Icone (MDI) del menu della regia; Emergenze è rossa.
+const TAB_ICONS = {
+  live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
+  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', catalogo: 'starFourPoints',
+  doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
+  rewind: 'timerSand', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
+};
+const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
 const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const PRE = ['created', 'draft', 'ready', 'circle'];
@@ -523,8 +531,8 @@ function sidebar() {
   const always = ['regolamento', 'regolamento-eletti', 'consiglio', 'impostazioni'];
   return [h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
     h('nav', { class: 'sidebar', onclick: (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); } }, h('div', { class: 'side-extra' }, gameSelect(), topActions()), TABS.map(([id, label]) => (noGame && !always.includes(id)
-    ? h('span', { class: 'off', title: 'Prima crea una partita' }, label)
-    : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, label,
+    ? h('span', { class: 'off', title: 'Prima crea una partita' }, navLabel(id, label))
+    : h('a', { href: `#${id}`, class: tab() === id || (noGame && id === 'impostazioni' && !always.includes(tab())) ? 'on' : '' }, navLabel(id, label),
     id === 'comunicazioni' && unread ? h('span', { class: 'badge badge-alert' }, unread) : null,
     id === 'consiglio' && R.ms?.councilPending ? h('span', { class: 'badge badge-alert', title: 'Richieste d\'accesso al Consiglio Zero' }, R.ms.councilPending) : null,
     id === 'emergenze' && openEmergencies().length ? h('span', { class: 'badge badge-alert' }, openEmergencies().length) : null,
