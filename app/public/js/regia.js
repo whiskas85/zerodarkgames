@@ -514,13 +514,13 @@ function offlineBanner() {
 function navAlerts() {
   const ms = R.ms;
   if (!ms) return 0;
-  const unread = ms.teams.reduce((a, t) => a + t.unread, 0) + (ms.elect?.unread || 0) + (ms.squads?.reduce((a, s) => a + s.unread, 0) || 0);
+  const unread = ms.teams.reduce((a, t) => a + t.unread, 0) + (ms.elect?.unread || 0) + (ms.squads?.reduce((a, s) => a + s.unread, 0) || 0) + Object.values(ms.unreadDirect || {}).reduce((a, n) => a + n, 0);
   const pending = ms.players.filter((p) => p.status === 'pending').length;
   return unread + openEmergencies().length + pending + (ms.pendingTasks?.length || 0);
 }
 
 function sidebar() {
-  const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0) + (R.ms?.squads?.reduce((a, s) => a + s.unread, 0) || 0);
+  const unread = (R.ms?.teams.reduce((a, t) => a + t.unread, 0) || 0) + (R.ms?.elect?.unread || 0) + (R.ms?.squads?.reduce((a, s) => a + s.unread, 0) || 0) + Object.values(R.ms?.unreadDirect || {}).reduce((a, n) => a + n, 0);
   const pending = R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole !== 'elect').length || 0;
   // Candidature agli Eletti: contano solo prima del via (a partita iniziata non si aggiungono più Eletti).
   const pendingElect = PRE.includes(R.ms?.clock.status) ? R.ms?.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length || 0 : 0;
@@ -3746,7 +3746,13 @@ function viewSupply() {
 function chatTarget() {
   const ms = R.ms;
   const c = R.chat || { kind: 'all' };
-  if (c.kind === 'team') { const t = ms.teams.find((x) => x.id === c.id); if (t) return { ...c, title: `${t.roman} Settore ${t.sectorName}`, sub: t.members.map((m) => m.nickname || m.name).join(' · '), unread: t.unread, url: `/api/m/teams/${t.id}`, msgs: ms.messages.filter((m) => m.teamId === t.id), who: 'coppia' }; }
+  if (c.kind === 'team') { const t = ms.teams.find((x) => x.id === c.id); if (t) return { ...c, title: `${t.roman} Settore ${t.sectorName}`, sub: t.members.map((m) => m.nickname || m.name).join(' · '), unread: t.unread, url: `/api/m/teams/${t.id}`, msgs: ms.messages.filter((m) => m.teamId === t.id && !m.channel), who: 'coppia' }; }
+  // Un solo componente della coppia: messaggi che il compagno non vede.
+  if (c.kind === 'player') {
+    const t = ms.teams.find((x) => x.members.some((m) => m.id === c.id));
+    const p = t?.members.find((m) => m.id === c.id);
+    if (p) return { ...c, title: `${p.nickname || p.name} · solo lui/lei`, sub: `${t.roman} Settore ${t.sectorName} · il compagno non vede questi messaggi`, unread: ms.unreadDirect?.[p.id] || 0, url: `/api/m/players/${p.id}`, msgs: ms.messages.filter((m) => m.channel === 'direct' && m.playerId === p.id), who: p.nickname || p.name };
+  }
   if (c.kind === 'elect') return { ...c, id: ms.elect.id, title: 'Tutti gli Eletti', sub: `${ms.elect.members.length} Eletti · ogni messaggio arriva a tutti`, unread: ms.elect.unread, url: `/api/m/teams/${ms.elect.id}`, msgs: ms.messages.filter((m) => m.teamId === ms.elect.id && !m.squadId), who: 'Eletto' };
   if (c.kind === 'squad') { const s = ms.squads.find((x) => x.id === c.id); if (s) return { ...c, title: `Squadra ${s.name}`, sub: s.members.map((m) => m.nickname || m.name).join(' · ') || 'nessun membro', unread: s.unread, url: `/api/m/squads/${s.id}`, msgs: ms.messages.filter((m) => m.squadId === s.id), who: 'Eletto', color: s.color }; }
   return { kind: 'all', title: 'Tutte le coppie', sub: 'Annunci a tutte le coppie (notifica sui telefoni)' };
@@ -3768,7 +3774,7 @@ function viewComms() {
   R.chat = { kind: cur.kind, id: cur.id };
   if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
   const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
-  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; R.chatOpen = true; render(); } },
+  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${opts.sub ? 'grandchild' : ''} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; R.chatOpen = true; render(); } },
     h('span', { class: 'tree-label' }, label, sub ? h('span', { class: 'tiny muted' }, sub) : null), unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
 
   // Tutte le coppie: broadcast (annunci). Coppie: chat privata. Eletti e squadre: canali di gruppo.
@@ -3793,7 +3799,9 @@ function viewComms() {
   return h('div', { class: `comms ${R.chatOpen ? 'chat-open' : ''}` },
     h('nav', { class: 'comms-tree', 'aria-label': 'Destinatari' },
       node('all', null, '📣 Tutte le coppie', 'annuncio a tutti'),
-      ms.teams.map((t) => node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || 'chat privata', t.unread, { child: true })),
+      ms.teams.map((t) => [node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || 'chat con la coppia', t.unread, { child: true }),
+        // Sotto ogni coppia: i singoli componenti (chat che il compagno non vede).
+        t.kind !== 'elect' && t.members.length > 1 ? t.members.map((m) => node('player', m.id, `↳ ${m.nickname || m.name}`, 'solo questa persona', ms.unreadDirect?.[m.id] || 0, { child: true, sub: true })) : null]),
       node('elect', ms.elect.id, '⛨ Tutti gli Eletti', `canale · ${ms.elect.members.length} persone`, ms.elect.unread),
       ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `canale · ${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
       ms.squads.length ? null : h('p', { class: 'tiny muted tree-hint' }, 'Le squadre degli Eletti compaiono qui quando le crei.')),

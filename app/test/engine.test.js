@@ -2658,6 +2658,36 @@ test('Taglia su sé stessi: tracciamento a intermittenza, 5 minuti sì e 5 no, g
   assert.equal(EV.bountyPhase({ ...ev, mode: 'manual' }, T0 + M), null);
 });
 
+test('chat: tra i due Legati (privata, la regia non la vede) e regia ↔ un solo componente', () => {
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const [p1, p2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', A.id);
+  assert.ok(p1 && p2);
+  // Al compagno: serve l'accesso personale.
+  assert.throws(() => G.postMessage(A, 'team', 'ciao', null, null, null, null, { channel: 'pair' }), /accesso personale/);
+  G.postMessage(A, 'team', 'Dove sei?', 'Uno', null, null, p1.id, { channel: 'pair', playerId: p1.id });
+  const st1 = G.teamState(A, p1); const st2 = G.teamState(A, p2);
+  assert.equal(st1.pairChat.length, 1);
+  assert.equal(st1.pairChat[0].mine, true);
+  assert.equal(st2.pairChat[0].mine, false);
+  assert.equal(st1.messages.length, 0); // non è nella chat con la regia
+  // La regia non la vede.
+  assert.ok(!G.masterState(g.id).messages.some((m) => m.channel === 'pair'));
+  // Regia → solo p2: p1 non lo vede.
+  G.postMessage(A, 'master', 'Solo per te', 'regia', null, null, null, { channel: 'direct', playerId: p2.id });
+  assert.equal(G.teamState(A, p2).directChat.length, 1);
+  assert.equal(G.teamState(A, p1).directChat.length, 0);
+  // Risposta di p2 alla regia: non letta finché la regia non la apre.
+  G.postMessage(A, 'team', 'Ricevuto', 'Due', null, null, p2.id, { channel: 'direct', playerId: p2.id });
+  assert.equal(G.masterState(g.id).unreadDirect[p2.id], 1);
+  assert.equal(G.masterState(g.id).teams.find((t) => t.id === A.id).unread, 0);
+  G.markReadDirect(p2.id);
+  assert.equal(G.masterState(g.id).unreadDirect[p2.id], undefined);
+  // Letti dal giocatore.
+  G.markChatRead(p2, 'pair', st2.pairChat[0].id);
+  assert.equal(G.teamState(A, p2).chatRead.pair, st2.pairChat[0].id);
+});
+
 test('Santuario: moltiplicatore della ricarica scelto dalla regia', () => {
   const Z = require('../src/zones');
   const g = setupGame(2);

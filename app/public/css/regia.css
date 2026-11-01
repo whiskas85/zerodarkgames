@@ -1291,3 +1291,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .tl-tick b.tl-wall { position: absolute; top: -29px; left: -14px; font-weight: 600; font-size: 10px; color: var(--ink); font-family: var(--f-mono, monospace); white-space: nowrap; }
 .tl-tick:not(.tl-hour) b.tl-wall { color: var(--muted); font-weight: 400; }
 @media (max-width: 860px) { .tl-tick:not(.tl-hour) b.tl-wall { display: none; } }
+.tree-item.grandchild { margin-left: 34px; font-weight: 500; font-size: 14px; padding-top: 6px; padding-bottom: 6px; }

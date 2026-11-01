@@ -1181,3 +1181,14 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .banner-phone { display: grid; gap: 6px; background: color-mix(in srgb, var(--brass) 18%, var(--bg)); border-bottom-color: var(--brass); color: var(--ink); }
 .banner-phone .phone-row { display: flex; gap: 8px; }
 .banner-phone .phone-row .input { flex: 1; min-width: 0; }
+
+/* Chat con il compagno: pulsante tondo in home (sopra la barra radio) e messaggi rapidi. */
+.chat-fab { position: fixed; right: 16px; bottom: calc(var(--radio-h) + 16px + env(safe-area-inset-bottom)); z-index: 40; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%;
+  background: var(--blood); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, .45); text-decoration: none; border: 2px solid var(--brass); }
+.chat-fab:active { transform: scale(.95); }
+.chat-fab .mdi-wrap { display: inline-flex; }
+.fab-badge { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #fff; color: var(--blood); font: 800 13px/22px var(--f-mono, monospace); text-align: center; box-shadow: 0 0 0 2px var(--blood); }
+.quick-msgs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: none; }
+.quick-msg { flex: none; padding: 7px 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
+.quick-msg:active { border-color: var(--brass); }
+@media (orientation: landscape) and (max-height: 560px) { .chat-fab { right: calc(var(--rail-w) + 16px); bottom: 16px; } }

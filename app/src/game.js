@@ -1712,7 +1712,13 @@ const MAX_AUDIO_MS = 120000;
 // Messaggio di testo o vocale (audio = { buffer, mime, ms }).
 // squadId: solo per gli Eletti, conversazione con una singola squadra (null = tutti gli Eletti).
 // senderId: il giocatore che scrive (gli Eletti scrivono in un canale di gruppo: gli altri membri lo ricevono).
-function postMessage(team, fromRole, text, author, audio = null, squadId = null, senderId = null) {
+// ch: { channel: 'pair' | 'direct', playerId } per la chat tra compagni o regia ↔ un solo componente.
+function postMessage(team, fromRole, text, author, audio = null, squadId = null, senderId = null, ch = null) {
+  const channel = ch?.channel === 'pair' || ch?.channel === 'direct' ? ch.channel : null;
+  if (channel && team.kind !== 'couple') throw err(400, 'Chat riservata alle coppie');
+  if (channel === 'pair' && (fromRole !== 'team' || !senderId)) throw err(403, 'Serve il tuo accesso personale per scrivere al compagno');
+  const chPlayer = channel === 'direct' ? q.get('SELECT * FROM players WHERE id = ? AND teamId = ?', Number(ch.playerId), team.id) : null;
+  if (channel === 'direct' && !chPlayer) throw err(400, 'Componente della coppia non trovato');
   const t = String(text || '').trim().slice(0, 1000);
   let ext = null;
   let ms = null;
@@ -1727,8 +1733,9 @@ function postMessage(team, fromRole, text, author, audio = null, squadId = null,
   const now = Date.now();
   const squad = squadId && team.kind === 'elect' ? q.get('SELECT * FROM elect_squads WHERE id = ? AND gameId = ?', Number(squadId), team.gameId) : null;
   if (squadId && !squad) throw err(400, 'Squadra non trovata');
-  const r = q.run('INSERT INTO messages (gameId, teamId, squadId, fromRole, author, text, audioMime, audioMs, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    team.gameId, team.id, squad?.id ?? null, fromRole, author || null, t, audio ? audio.mime : null, ms, now);
+  const msgPlayer = channel === 'pair' ? senderId : chPlayer?.id ?? null;
+  const r = q.run('INSERT INTO messages (gameId, teamId, squadId, fromRole, author, text, audioMime, audioMs, createdAt, channel, playerId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    team.gameId, team.id, squad?.id ?? null, fromRole, author || null, t, audio ? audio.mime : null, ms, now, channel, msgPlayer);
   const id = Number(r.lastInsertRowid);
   if (audio) {
     fs.mkdirSync(AUDIO_DIR, { recursive: true });
@@ -1736,8 +1743,26 @@ function postMessage(team, fromRole, text, author, audio = null, squadId = null,
     fs.writeFileSync(path.join(AUDIO_DIR, file), audio.buffer);
     q.run('UPDATE messages SET audioFile = ? WHERE id = ?', file, id);
   }
-  const m = { id, teamId: team.id, squadId: squad?.id ?? null, fromRole, author, text: t, audioMime: audio ? audio.mime : null, audioMs: ms, createdAt: now };
+  const m = { id, teamId: team.id, squadId: squad?.id ?? null, fromRole, author, text: t, audioMime: audio ? audio.mime : null, audioMs: ms, createdAt: now, channel, playerId: msgPlayer };
   const preview = audio ? `🎤 Messaggio vocale (${Math.round((ms || 0) / 1000)}″)` : t;
+  if (channel === 'pair') {
+    // Tra compagni: arriva a tutti i telefoni della coppia; la notifica solo a chi non l'ha scritto. La regia non la vede.
+    rt.toTeams(team.gameId, 'message', m, team.id);
+    rt.pushSubs(rt.gameSubs(team.gameId).filter((x) => x.effTeamId === team.id && x.playerId !== senderId),
+      { title: `💬 ${author || 'Il tuo compagno'}`, body: preview, tag: `pair-${team.id}`, url: '/#/compagno' });
+    return m;
+  }
+  if (channel === 'direct') {
+    if (fromRole === 'master') {
+      rt.toTeamsWhere(team.gameId, 'message', m, (c) => c.teamId === team.id && c.playerId === chPlayer.id);
+      rt.pushSubs(q.all('SELECT * FROM push_subs WHERE playerId = ?', chPlayer.id), { title: 'Messaggio dal Consiglio · solo per te', body: preview, tag: `msg-${m.id}`, url: '/#/messaggi/solo' });
+    } else {
+      rt.pushMasters({ title: `Messaggio da ${chPlayer.nickname || chPlayer.name} (solo alla regia)`, body: preview, url: `/regia#comunicazioni/player/${chPlayer.id}/${m.id}` });
+    }
+    rt.toStaff(team.gameId, 'message');
+    log(team.gameId, fromRole === 'master' ? author : `giocatore:${chPlayer.id}`, 'message', { teamId: team.id, fromRole, direct: true });
+    return m;
+  }
   if (fromRole === 'master' && squad) {
     // Solo i telefoni dei membri della squadra.
     const members = new Set(q.all('SELECT id FROM players WHERE squadId = ?', squad.id).map((x) => x.id));
@@ -1770,13 +1795,26 @@ function messageAudio(id, { team, user }) {
   const m = q.get('SELECT * FROM messages WHERE id = ?', Number(id));
   if (!m?.audioFile) throw err(404, 'Vocale non trovato');
   if (!user && team?.id !== m.teamId) throw err(403, 'Non autorizzato');
+  // Chat tra compagni: solo la coppia (nemmeno la regia).
+  if (m.channel === 'pair' && team?.id !== m.teamId) throw err(403, 'Non autorizzato');
   return { file: path.join(AUDIO_DIR, m.audioFile), mime: m.audioMime };
 }
 
 // squadId: undefined = tutta la conversazione, null = solo quella con tutti gli Eletti, numero = una squadra.
 function markRead(teamId, squadId) {
-  if (squadId === undefined) q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), teamId);
+  if (squadId === undefined) q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND fromRole = 'team' AND readAt IS NULL AND channel IS NULL", Date.now(), teamId);
   else q.run("UPDATE messages SET readAt = ? WHERE teamId = ? AND squadId IS ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), teamId, squadId);
+}
+
+// Regia: letti i messaggi di un singolo componente.
+function markReadDirect(playerId) {
+  q.run("UPDATE messages SET readAt = ? WHERE channel = 'direct' AND playerId = ? AND fromRole = 'team' AND readAt IS NULL", Date.now(), Number(playerId));
+}
+// Il giocatore ha letto fino a quel messaggio (chat con il compagno o «solo per te» con la regia).
+function markChatRead(player, channel, lastId) {
+  if (!player) return;
+  const col = channel === 'pair' ? 'pairReadId' : channel === 'direct' ? 'directReadId' : null;
+  if (col) q.run(`UPDATE players SET ${col} = MAX(COALESCE(${col}, 0), ?) WHERE id = ?`, Number(lastId) || 0, player.id);
 }
 
 // ---------------------------------------------------------------- correzioni di regia
@@ -2173,7 +2211,12 @@ function teamStateCore(team, player = null) {
     announcements: q.all('SELECT id, type, text, payload, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 200', g.id)
       .map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
     notices: noticesFor(team, player),
-    messages: q.all('SELECT id, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? ORDER BY id', team.id),
+    messages: q.all('SELECT id, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? AND channel IS NULL ORDER BY id', team.id),
+    // Chat con il compagno (tutta la coppia) e messaggi «solo per te» con la regia (solo questo telefono).
+    pairChat: team.kind === 'couple' ? q.all("SELECT id, fromRole, author, text, audioMime, audioMs, createdAt, playerId FROM messages WHERE teamId = ? AND channel = 'pair' ORDER BY id DESC LIMIT 300", team.id).reverse()
+      .map((m) => ({ ...m, mine: !!player && m.playerId === player.id })) : [],
+    directChat: player && team.kind === 'couple' ? q.all("SELECT id, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE channel = 'direct' AND playerId = ? ORDER BY id", player.id) : [],
+    chatRead: player ? { pair: q.get('SELECT pairReadId, directReadId FROM players WHERE id = ?', player.id)?.pairReadId || 0, direct: q.get('SELECT directReadId FROM players WHERE id = ?', player.id)?.directReadId || 0 } : { pair: 0, direct: 0 },
     supplyOpen: openSupply(g.id),
     // A fine partita la classifica è pubblica.
     standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, status: r.status, finishPosition: r.finishPosition, mine: r.teamId === team.id })) : null,
@@ -2253,7 +2296,8 @@ function masterState(gameId) {
   const lastUnlock = Object.fromEntries(q.all(`SELECT tf.teamId, p.label, tf.acquiredAt FROM team_fragments tf
       JOIN fragments f ON f.id = tf.fragmentId JOIN points p ON p.id = f.pointId JOIN teams t ON t.id = tf.teamId
       WHERE t.gameId = ? ORDER BY tf.acquiredAt`, g.id).map((r) => [r.teamId, r]));
-  const unread = Object.fromEntries(q.all("SELECT teamId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND squadId IS NULL GROUP BY teamId", g.id).map((r) => [r.teamId, r.n]));
+  const unread = Object.fromEntries(q.all("SELECT teamId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND squadId IS NULL AND channel IS NULL GROUP BY teamId", g.id).map((r) => [r.teamId, r.n]));
+  const unreadDirect = Object.fromEntries(q.all("SELECT playerId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND channel = 'direct' GROUP BY playerId", g.id).map((r) => [r.playerId, r.n]));
   const unreadSquad = Object.fromEntries(q.all("SELECT squadId, COUNT(*) AS n FROM messages WHERE gameId = ? AND fromRole = 'team' AND readAt IS NULL AND squadId IS NOT NULL GROUP BY squadId", g.id).map((r) => [r.squadId, r.n]));
   const owned = {};
   for (const r of q.all('SELECT tf.teamId, tf.fragmentId, tf.source FROM team_fragments tf JOIN teams t ON t.id = tf.teamId WHERE t.gameId = ?', g.id)) {
@@ -2327,7 +2371,9 @@ function masterState(gameId) {
     skills: require('./skills').masterSkills(g.id),
     supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
     announcements: q.all('SELECT * FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 100', g.id),
-    messages: q.all('SELECT * FROM messages WHERE gameId = ? ORDER BY id', g.id),
+    // La chat tra compagni è privata: alla regia non arriva.
+    messages: q.all("SELECT * FROM messages WHERE gameId = ? AND (channel IS NULL OR channel = 'direct') ORDER BY id", g.id),
+    unreadDirect,
     validations: q.all('SELECT v.*, u.username FROM validations v LEFT JOIN users u ON u.id = v.validatorId WHERE v.gameId = ? ORDER BY v.id DESC', g.id),
     events: q.all('SELECT * FROM event_log WHERE gameId = ? ORDER BY id DESC LIMIT 150', g.id),
     standings: standings(g.id),
@@ -2363,7 +2409,7 @@ module.exports = {
   assignPerson, setPending, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
-  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, correctFragments,
+  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, markReadDirect, markChatRead, correctFragments,
   movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, exfiltrate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };

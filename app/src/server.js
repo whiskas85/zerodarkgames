@@ -500,10 +500,18 @@ const msgSquad = (req, value) => {
   return Number(value);
 };
 const msgAuthor = (req) => (req.team.kind === 'elect' && req.player ? req.player.nickname || req.player.name : null);
-app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => G.postMessage(req.team, 'team', req.body.text, msgAuthor(req), null, msgSquad(req, req.body.squadId), req.player?.id ?? null)));
+// channel: 'pair' (al compagno) o 'direct' (solo alla regia, da questo componente); vuoto = coppia ↔ regia.
+const msgChannel = (req, value) => {
+  if (value !== 'pair' && value !== 'direct') return null;
+  if (!req.player) throw new HttpError(403, 'Serve il tuo accesso personale');
+  return { channel: value, playerId: req.player.id };
+};
+const chatAuthor = (req, ch) => msgAuthor(req) || (ch && req.player ? req.player.nickname || req.player.name : null);
+app.post('/api/team/message', needTeam, teamRateLimit, wrap((req) => { const ch = msgChannel(req, req.body.channel); return G.postMessage(req.team, 'team', req.body.text, chatAuthor(req, ch), null, msgSquad(req, req.body.squadId), req.player?.id ?? null, ch); }));
+app.post('/api/team/chat-read', needTeam, wrap((req) => { G.markChatRead(req.player, req.body?.channel, req.body?.lastId); return { ok: true }; }));
 // Vocali: corpo binario (audio/*), durata in ?ms=. Massimo ~2 minuti.
 const rawAudio = express.raw({ type: 'audio/*', limit: '4mb' });
-app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => G.postMessage(req.team, 'team', '', msgAuthor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, msgSquad(req, req.query.squadId), req.player?.id ?? null)));
+app.post('/api/team/message/audio', needTeam, teamRateLimit, rawAudio, wrap((req) => { const ch = msgChannel(req, req.query.channel); return G.postMessage(req.team, 'team', '', chatAuthor(req, ch), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, msgSquad(req, req.query.squadId), req.player?.id ?? null, ch); }));
 app.get('/api/media/message/:id', (req, res, next) => {
   try {
     const a = G.messageAudio(req.params.id, { team: req.team, user: req.user });
@@ -726,6 +734,29 @@ m.post('/teams/:tid/message/audio', rawAudio, wrap((req) => {
   if (!t) throw new HttpError(404, 'Coppia non trovata');
   G.markRead(t.id, t.kind === 'elect' ? null : undefined);
   return G.postMessage(t, 'master', '', actor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms });
+}));
+// Regia ↔ un solo componente della coppia.
+const playerTeam = (pid) => {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(pid));
+  const t = p?.teamId ? q.get('SELECT * FROM teams WHERE id = ?', p.teamId) : null;
+  if (!t || t.kind !== 'couple') throw new HttpError(404, 'Componente non trovato');
+  return { p, t };
+};
+m.post('/players/:pid/message', wrap((req) => {
+  const { p, t } = playerTeam(req.params.pid);
+  G.markReadDirect(p.id);
+  return G.postMessage(t, 'master', req.body.text, actor(req), null, null, null, { channel: 'direct', playerId: p.id });
+}));
+m.post('/players/:pid/message/audio', rawAudio, wrap((req) => {
+  const { p, t } = playerTeam(req.params.pid);
+  G.markReadDirect(p.id);
+  return G.postMessage(t, 'master', '', actor(req), { buffer: req.body, mime: req.headers['content-type'], ms: req.query.ms }, null, null, { channel: 'direct', playerId: p.id });
+}));
+m.post('/players/:pid/read', wrap((req) => {
+  const { p, t } = playerTeam(req.params.pid);
+  G.markReadDirect(p.id);
+  rt.toStaff(t.gameId, 'read');
+  return { ok: true };
 }));
 m.post('/teams/:tid/read', wrap((req) => {
   const t = q.get('SELECT * FROM teams WHERE id = ?', Number(req.params.tid));

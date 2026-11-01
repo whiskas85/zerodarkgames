@@ -708,6 +708,13 @@ addColumn('game_events', 'mode', "TEXT NOT NULL DEFAULT 'manual'");
 // Emergenze archiviate dalla regia (solo chiuse): spariscono dalla vista, restano nel registro.
 addColumn('emergencies', 'archivedAt', 'INTEGER');
 
+// Chat: channel NULL = coppia ↔ regia (come prima); 'pair' = tra i due Legati della coppia (privata: la regia non la
+// vede); 'direct' = regia ↔ un solo componente (playerId). Per i Legati: ultimo messaggio letto per canale.
+addColumn('messages', 'channel', 'TEXT');
+addColumn('messages', 'playerId', 'INTEGER');
+addColumn('players', 'pairReadId', 'INTEGER');
+addColumn('players', 'directReadId', 'INTEGER');
+
 // Zone NO PLAY: chi ci entra (coppia, o singolo Eletto) ha 30 secondi per uscire, poi la regia viene avvisata.
 db.exec(`
 CREATE TABLE IF NOT EXISTS noplay_hits (

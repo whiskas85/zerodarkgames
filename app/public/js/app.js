@@ -279,6 +279,21 @@ function connect() {
       refresh();
     },
     message: (m) => {
+      // Chat con il compagno e «solo per te» con la regia.
+      if (m.channel === 'pair' || m.channel === 'direct') {
+        const mineNow = m.channel === 'pair' ? m.playerId === S.state?.player?.id : m.fromRole === 'team';
+        if (!mineNow) {
+          vibrate([60, 40, 60, 40, 60]);
+          const preview = m.audioMime ? '🎤 Messaggio vocale' : m.text;
+          const [from, href] = m.channel === 'pair' ? [`💬 ${m.author || 'Compagno'}`, '#/compagno'] : ['Consiglio · solo per te', '#/messaggi/solo'];
+          const here = m.channel === 'pair' ? route().view === 'compagno' : route().view === 'messaggi' && S.msgTab === 'solo';
+          if (!here) toast(h('a', { href }, `${from}: ${preview}`), 'info', 8000);
+          if (document.hidden) localNotify(from, preview, m.channel === 'pair' ? `pair-${m.teamId}` : `msg-${m.id}`, `/${href}`);
+        }
+        S.chatScroll = true;
+        refresh();
+        return;
+      }
       const me = S.state?.player ? S.state.player.nickname || S.state.player.name : null;
       if (m.fromRole === 'team' && m.author === me) { refresh(); return; }
       vibrate([150, 80, 150]);
@@ -507,22 +522,26 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo, compagno: viewPartner,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
-    mount($app, header(view), banners(), h('main', { class: view === 'messaggi' ? 'main main-chat' : 'main' }, body), zoneHud(), radioBar());
+    if (view === 'messaggi' && arg === 'solo') S.msgTab = 'solo';
+    const chatView = view === 'messaggi' || view === 'compagno';
+    mount($app, header(view), banners(), h('main', { class: chatView ? 'main main-chat' : 'main' }, body), view === 'home' ? partnerFab() : null, zoneHud(), radioBar());
     document.body.dataset.view = view;
     applySosMode();
     if (view === 'mappa') requestAnimationFrame(fitMap);
-    document.body.classList.toggle('chat-open', view === 'messaggi');
-    if (view === 'messaggi' && !arg && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
+    document.body.classList.toggle('chat-open', chatView);
+    if (chatView && (!arg || arg === 'solo') && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
   });
   applyFocus(view, arg);
   if (view === 'annunci') markSeen('ann');
   if (view === 'messaggi') markSeen('msg');
-  if (view !== 'messaggi') S.chatScroll = true;
+  if (view === 'compagno') markChatRead('pair');
+  if (view === 'messaggi' && S.msgTab === 'solo') markChatRead('direct');
+  if (view !== 'messaggi' && view !== 'compagno') S.chatScroll = true;
   if (view === 'avvisi') markSeen('notice');
   clearNotifications(view);
   updateClocks();
@@ -1397,7 +1416,7 @@ function viewHome() {
   const owned = st.fragments.filter((f) => f.text).length;
   const lastAnn = st.announcements.find((a) => !S.annHidden.includes(a.id));
   const unreadAnn = st.announcements.filter((a) => a.id > S.seenAnn).length;
-  const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
+  const unreadMsg = st.messages.filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length + unreadOf('direct');
 
   let phase;
   if (startAt() && startAt() > clock.serverNow()) phase = startCountdown(st);
@@ -4104,7 +4123,8 @@ function viewMessages() {
   // Eletti con una squadra: due canali di gruppo, ognuno con i suoi messaggi.
   const sq = mySquad();
   const channel = sq && S.chatChannel === 'squad' ? 'squad' : 'all';
-  const all = S.state?.messages || [];
+  const solo = !isElect() && !!S.state?.player && S.msgTab === 'solo';
+  const all = solo ? S.state?.directChat || [] : S.state?.messages || [];
   const msgs = !isElect() ? all : all.filter((m) => (channel === 'squad' ? m.squadId === sq.id : !m.squadId));
   let lastDay = '';
   const items = [];
@@ -4122,12 +4142,78 @@ function viewMessages() {
   }
   return h('div', { class: 'chat-wrap' },
     h('div', { class: 'chat-head' },
-      h('strong', null, !isElect() ? 'Consiglio Zero' : channel === 'squad' ? `Squadra ${sq.name}` : 'Tutti gli Eletti'),
-      h('span', { class: 'muted small' }, !isElect() ? 'Messaggi con la regia · emergenze sempre via radio'
+      h('strong', null, !isElect() ? (solo ? 'Consiglio Zero · solo tu' : 'Consiglio Zero') : channel === 'squad' ? `Squadra ${sq.name}` : 'Tutti gli Eletti'),
+      h('span', { class: 'muted small' }, !isElect() ? (solo ? 'Messaggi tra te e la regia: il tuo compagno non li vede' : 'Messaggi con la regia · emergenze sempre via radio')
         : channel === 'squad' ? 'Canale della squadra: lo leggono i membri e la regia' : 'Canale di tutti gli Eletti: lo leggono tutti gli Eletti e la regia')),
     channelTabs(all),
+    regiaTabs(),
     msgs.length ? h('ul', { class: 'chat' }, items) : h('p', { class: 'empty chat-empty' }, isElect() ? 'Nessun messaggio in questo canale.' : 'Nessun messaggio. Scrivete o registrate un vocale alla regia.'),
     composer());
+}
+
+// Legati: con la regia come coppia (lo vedono entrambi) oppure «solo tu» (solo questo componente e la regia).
+function regiaTabs() {
+  if (isElect() || !S.state?.player || S.state.team.kind !== 'couple') return null;
+  const solo = S.msgTab === 'solo';
+  const nCouple = solo ? (S.state.messages || []).filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length : 0;
+  const nSolo = solo ? 0 : unreadOf('direct');
+  const tab = (key, label, n) => h('button', { type: 'button', class: (key === 'solo') === solo ? 'on' : '', onclick: () => { S.msgTab = key; S.chatScroll = true; if (location.hash !== '#/messaggi') location.hash = '#/messaggi'; else render(); } },
+    label, n ? h('span', { class: 'badge badge-alert' }, n) : null);
+  return h('div', { class: 'chat-target', role: 'tablist', 'aria-label': 'Con chi' }, tab('coppia', 'Coppia', nCouple), tab('solo', 'Solo tu', nSolo));
+}
+// Non letti della chat con il compagno ('pair') o dei messaggi «solo per te» della regia ('direct').
+function unreadOf(ch) {
+  const st = S.state;
+  if (!st?.player) return 0;
+  const read = st.chatRead?.[ch] || 0;
+  return ch === 'pair' ? (st.pairChat || []).filter((m) => !m.mine && m.id > read).length
+    : (st.directChat || []).filter((m) => m.fromRole === 'master' && m.id > read).length;
+}
+// Letti fino all'ultimo: si aggiorna subito sul telefono e si avvisa il server (senza aspettare).
+function markChatRead(ch) {
+  const st = S.state;
+  if (!st?.player) return;
+  const list = ch === 'pair' ? st.pairChat : st.directChat;
+  const last = list?.at(-1)?.id || 0;
+  if (!last || last <= (st.chatRead?.[ch] || 0)) return;
+  st.chatRead = { ...(st.chatRead || {}), [ch]: last };
+  api('POST', '/api/team/chat-read', { channel: ch, lastId: last }).catch(() => {});
+}
+// Chat in corso (per composer e vocali): compagno, solo tu con la regia, o coppia con la regia.
+const chatMode = () => (route().view === 'compagno' ? 'pair' : route().view === 'messaggi' && !isElect() && S.state?.player && S.msgTab === 'solo' ? 'direct' : null);
+
+// Chat tra i due Legati della coppia: privata (la regia non la vede). Messaggi rapidi per il campo.
+const QUICK = ['Dove sei?', 'Arrivo', 'Fermo qui', 'Ritirata!', 'Ho bisogno di te', 'Ok'];
+function viewPartner() {
+  const st = S.state;
+  if (!st?.player || st.team.kind !== 'couple') return h('p', { class: 'empty' }, 'La chat con il compagno è per i Legati entrati con il proprio accesso.');
+  const partner = st.team.members.find((m) => !m.me);
+  const name = partner ? partner.nickname || partner.name : 'Compagno';
+  let lastDay = '';
+  const items = [];
+  for (const m of st.pairChat || []) {
+    const day = new Date(m.createdAt).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+    if (day !== lastDay) { items.push(h('li', { class: 'chat-day' }, h('span', null, day))); lastDay = day; }
+    items.push(h('li', { class: `bubble ${m.mine ? 'mine' : 'theirs'} ${m.audioMime ? 'voice' : ''}` },
+      m.mine ? null : h('div', { class: 'bubble-who' }, m.author || name),
+      m.audioMime ? voicePlayer(`/api/media/message/${m.id}`, m.audioMs) : h('div', { class: 'bubble-text' }, m.text),
+      h('div', { class: 'bubble-time mono' }, fmtTime(m.createdAt))));
+  }
+  const quick = async (text) => {
+    try { await api('POST', '/api/team/message', { text, channel: 'pair' }); vibrate(30); S.chatScroll = true; await refresh(); } catch (err) { toast(err.offline ? 'Senza rete: riprova appena torna il segnale' : err.message, 'error', 5000); }
+  };
+  return h('div', { class: 'chat-wrap' },
+    h('div', { class: 'chat-head' }, h('strong', null, `💬 ${name}`), h('span', { class: 'muted small' }, 'Chat tra voi due: la regia non la legge. Emergenze sempre via radio.')),
+    items.length ? h('ul', { class: 'chat' }, items) : h('p', { class: 'empty chat-empty' }, `Nessun messaggio. Scrivi a ${name} o usa un messaggio rapido.`),
+    h('div', { class: 'quick-msgs' }, QUICK.map((t) => h('button', { type: 'button', class: 'quick-msg', onclick: () => quick(t) }, t))),
+    composer());
+}
+// Pulsante tondo della chat con il compagno: solo in home, con i non letti.
+function partnerFab() {
+  const st = S.state;
+  if (!st?.player || st.team?.kind !== 'couple' || !st.team.members?.some((m) => !m.me) || sosMode()) return null;
+  const n = unreadOf('pair');
+  return h('a', { class: 'chat-fab', href: '#/compagno', 'aria-label': `Chat con il compagno${n ? `: ${n} da leggere` : ''}` }, mdi('message', 28), n ? h('span', { class: 'fab-badge' }, String(n)) : null);
 }
 
 // Canali degli Eletti: "Tutti gli Eletti" e, per chi è in una squadra, il canale della squadra.
@@ -4153,7 +4239,7 @@ function composer() {
       h('button', { class: 'cmp-btn cmp-send', type: 'button', 'aria-label': 'Invia il vocale', onclick: sendVoice }, '➤'));
   }
   const canVoice = voiceSupported();
-  const ta = h('textarea', { class: 'cmp-input', 'data-keep': 'msg', rows: 1, maxlength: 1000, placeholder: 'Messaggio', 'aria-label': 'Messaggio alla regia' });
+  const ta = h('textarea', { class: 'cmp-input', 'data-keep': `msg-${chatMode() || 'regia'}`, rows: 1, maxlength: 1000, placeholder: 'Messaggio', 'aria-label': chatMode() === 'pair' ? 'Messaggio al compagno' : 'Messaggio alla regia' });
   const btn = h('button', { class: 'cmp-btn cmp-send', type: 'submit' });
   const sync = () => {
     ta.style.height = 'auto';
@@ -4173,11 +4259,11 @@ function composer() {
     if (!text) return;
     btn.disabled = true;
     try {
-      await api('POST', '/api/team/message', { text, squadId: msgSquadId() });
+      await api('POST', '/api/team/message', { text, squadId: msgSquadId(), channel: chatMode() });
       ta.value = '';
       S.chatScroll = true;
       await refresh();
-    } catch (err) { toast(err.offline ? 'Serve la rete per scrivere alla regia. In emergenza usate la radio.' : err.message, 'error', 6000); }
+    } catch (err) { toast(err.offline ? (chatMode() === 'pair' ? 'Senza rete: riprova appena torna il segnale.' : 'Serve la rete per scrivere alla regia. In emergenza usate la radio.') : err.message, 'error', 6000); }
     btn.disabled = false;
   } }, ta, btn);
   queueMicrotask(sync);
@@ -4209,7 +4295,7 @@ async function sendVoice() {
   const voice = await rec.stop();
   if (voice.ms < 700) return toast('Vocale troppo breve', 'info');
   try {
-    await uploadAudio(msgSquadId() ? `/api/team/message/audio?squadId=${msgSquadId()}` : '/api/team/message/audio', voice);
+    await uploadAudio(msgSquadId() ? `/api/team/message/audio?squadId=${msgSquadId()}` : chatMode() ? `/api/team/message/audio?channel=${chatMode()}` : '/api/team/message/audio', voice);
     vibrate(40);
     S.chatScroll = true;
     await refresh();
