@@ -4208,12 +4208,27 @@ function viewPartner() {
     h('div', { class: 'quick-msgs' }, QUICK.map((t) => h('button', { type: 'button', class: 'quick-msg', onclick: () => quick(t) }, t))),
     composer());
 }
-// Pulsante tondo della chat con il compagno: solo in home, con i non letti.
+// Pulsante tondo delle chat (solo in home): un tocco apre la scelta tra compagno, regia con la coppia e regia «solo tu»,
+// ognuna con i suoi non letti; sul pulsante il totale.
 function partnerFab() {
   const st = S.state;
-  if (!st?.player || st.team?.kind !== 'couple' || !st.team.members?.some((m) => !m.me) || sosMode()) return null;
-  const n = unreadOf('pair');
-  return h('a', { class: 'chat-fab', href: '#/compagno', 'aria-label': `Chat con il compagno${n ? `: ${n} da leggere` : ''}` }, mdi('message', 28), n ? h('span', { class: 'fab-badge' }, String(n)) : null);
+  if (!st || st.team?.kind !== 'couple' || sosMode()) return null;
+  const hasPartner = !!st.player && st.team.members?.some((m) => !m.me);
+  const nRegia = (st.messages || []).filter((m) => m.fromRole === 'master' && m.id > S.seenMsg).length;
+  const items = [
+    hasPartner ? { href: '#/compagno', icon: 'message', label: 'Compagno', n: unreadOf('pair'), go: () => {} } : null,
+    { href: '#/messaggi', icon: 'bullhorn', label: 'Regia · coppia', n: nRegia, go: () => { S.msgTab = 'coppia'; } },
+    st.player ? { href: '#/messaggi/solo', icon: 'lock', label: 'Regia · solo tu', n: unreadOf('direct'), go: () => { S.msgTab = 'solo'; } } : null,
+  ].filter(Boolean);
+  const total = items.reduce((a, x) => a + x.n, 0);
+  const menu = h('div', { class: 'fab-menu', hidden: !S.fabOpen, role: 'menu' }, items.map((x) => h('a', { class: 'fab-item', role: 'menuitem', href: x.href, onclick: () => { x.go(); S.fabOpen = false; S.chatScroll = true; } },
+    mdi(x.icon, 20), h('span', null, x.label), x.n ? h('span', { class: 'badge badge-alert' }, String(x.n)) : null)));
+  // Aperto o chiuso resta tale anche se la pagina si ridisegna (aggiornamenti in tempo reale); un tocco fuori lo chiude.
+  const close = () => { S.fabOpen = false; document.querySelector('.fab-menu')?.setAttribute('hidden', ''); document.querySelector('.chat-fab')?.classList.remove('open'); };
+  const btn = h('button', { type: 'button', class: `chat-fab ${S.fabOpen ? 'open' : ''}`, 'aria-haspopup': 'menu', 'aria-expanded': S.fabOpen ? 'true' : 'false', 'aria-label': `Chat${total ? `: ${total} da leggere` : ''}`,
+    onclick: (e) => { e.stopPropagation(); if (S.fabOpen) { close(); return; } S.fabOpen = true; menu.hidden = false; btn.classList.add('open'); setTimeout(() => document.addEventListener('click', close, { once: true }), 0); } },
+  mdi('message', 28), total ? h('span', { class: 'fab-badge' }, String(total)) : null);
+  return h('div', { class: 'fab-wrap' }, menu, btn);
 }
 
 // Canali degli Eletti: "Tutti gli Eletti" e, per chi è in una squadra, il canale della squadra.

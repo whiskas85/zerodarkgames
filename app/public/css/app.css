@@ -1192,3 +1192,11 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .quick-msg { flex: none; padding: 7px 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
 .quick-msg:active { border-color: var(--brass); }
 @media (orientation: landscape) and (max-height: 560px) { .chat-fab { right: calc(var(--rail-w) + 16px); bottom: 16px; } }
+.fab-wrap { position: fixed; right: 16px; bottom: calc(var(--radio-h) + 16px + env(safe-area-inset-bottom)); z-index: 40; display: grid; justify-items: end; gap: 10px; }
+.fab-wrap .chat-fab { position: relative; right: auto; bottom: auto; cursor: pointer; }
+.chat-fab.open { background: var(--paper); color: var(--ink); }
+.fab-menu { display: grid; gap: 6px; }
+.fab-menu[hidden] { display: none; }
+.fab-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 22px; background: var(--paper); color: var(--ink); text-decoration: none; font-weight: 700; border: 1.5px solid var(--line); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); white-space: nowrap; }
+.fab-item .mdi-wrap { display: inline-flex; color: var(--brass); }
+@media (orientation: landscape) and (max-height: 560px) { .fab-wrap { right: calc(var(--rail-w) + 16px); bottom: 16px; } }
