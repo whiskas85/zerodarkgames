@@ -4,7 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
-import { h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
+import { parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -942,7 +942,7 @@ const PRE = ['created', 'draft', 'ready', 'circle'];
 function startAt() {
   const st = S.state;
   if (!st || !PRE.includes(st.clock?.status) || !st.game?.scheduledStart) return null;
-  const t = new Date(st.game.scheduledStart).getTime();
+  const t = parseWall(st.game.scheduledStart);
   return Number.isFinite(t) ? t : null;
 }
 const pad = (n) => String(n).padStart(2, '0');
@@ -1055,7 +1055,7 @@ function unveilOnce(key) {
 // Solo la data (senza ora), es. «sabato 15 novembre 2026»; dalla stringa AAAA-MM-GG, senza fusi orari.
 function eventDate(ymd) {
   const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function viewLogin() {
@@ -1234,7 +1234,7 @@ function startCountdown(st) {
   return h('div', { class: 'phase start-cd' },
     h('div', { class: 'eyebrow' }, 'Si parte tra'),
     h('div', { class: 'cd-row' }, box('d', 'giorni'), box('h', 'ore'), box('m', 'minuti'), box('s', 'secondi')),
-    h('p', { class: 'muted' }, `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. `,
+    h('p', { class: 'muted' }, `Inizio previsto: ${new Date(parseWall(st.game.scheduledStart)).toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. `,
       st.clock.status === 'circle' ? 'Siete nel cerchio: memorizzate il vostro Sigillo.' : 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
 }
 
@@ -1443,7 +1443,7 @@ function viewHome() {
 
   let phase;
   if (startAt() && startAt() > clock.serverNow()) phase = startCountdown(st);
-  else if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(st.game.scheduledStart).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
+  else if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(parseWall(st.game.scheduledStart)).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
   else if (c.status === 'circle') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Nel cerchio'), h('div', { class: 'phase-big' }, 'In attesa del via'), h('p', { class: 'muted' }, 'Il vostro Sigillo è svelato. Memorizzatelo e non mostratelo a nessuno.'));
   else if (c.status === 'ended') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, st.team.finishPosition ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][st.team.finishPosition] || st.team.finishPosition + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le repliche e tornate al Cuore.'));
   else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));

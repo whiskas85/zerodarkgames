@@ -78,10 +78,49 @@ export function fmtDuration(ms, withHours = true) {
   return neg ? '-' + out : out;
 }
 
+// Ora del server (Italia): gli orari si mostrano e si scrivono sempre in quest'ora, qualunque sia il fuso del
+// telefono o del computer («ore 12» vuol dire le 12 in Italia).
+export const ZONE = 'Europe/Rome';
+const zoneFmt = new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+export function zoneParts(ms) {
+  const o = {};
+  for (const p of zoneFmt.formatToParts(new Date(ms))) if (p.type !== 'literal') o[p.type] = Number(p.value);
+  return { y: o.year, mo: o.month, d: o.day, h: o.hour === 24 ? 0 : o.hour, mi: o.minute, s: o.second };
+}
+// Istante di un orario «da muro» in Italia (anche a cavallo dell'ora legale).
+export function zoneTime(y, mo, d, h = 0, mi = 0) {
+  const want = Date.UTC(y, mo - 1, d, h, mi);
+  let t = want;
+  for (let i = 0; i < 3; i++) { const p = zoneParts(t); t += want - Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s); }
+  return t;
+}
+// «2026-11-14T12:00» (come lo scrivono i campi data/ora) → istante, letto in ora italiana. Con fuso esplicito vale quello.
+export function parseWall(str) {
+  const v = String(str || '').trim();
+  if (!v) return null;
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(v)) { const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(v);
+  return m ? zoneTime(+m[1], +m[2], +m[3], +(m[4] || 0), +(m[5] || 0)) : null;
+}
+// Istante → «2026-11-14T12:00» in ora italiana (per i campi data/ora).
+export function wallInput(ms) {
+  if (!ms) return '';
+  const p = zoneParts(ms);
+  return `${p.y}-${pad(p.mo)}-${pad(p.d)}T${pad(p.h)}:${pad(p.mi)}`;
+}
+// Tutte le date mostrate con toLocale…String usano l'ora italiana, se non è indicato altro.
+for (const k of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']) {
+  const orig = Date.prototype[k];
+  if (orig._zdg) continue;
+  const fn = function (locale, opts) { return orig.call(this, locale, { timeZone: ZONE, ...(opts || {}) }); };
+  fn._zdg = true;
+  Date.prototype[k] = fn;
+}
+
 export function fmtTime(ts, seconds = false) {
   if (!ts) return '—';
-  const d = new Date(ts);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}${seconds ? ':' + pad(d.getSeconds()) : ''}`;
+  const p = zoneParts(ts);
+  return `${pad(p.h)}:${pad(p.mi)}${seconds ? ':' + pad(p.s) : ''}`;
 }
 
 export function fmtMin(min) {

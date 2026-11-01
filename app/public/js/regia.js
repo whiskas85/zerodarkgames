@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
+import { parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { omnibar, matches } from './omnibar.js';
@@ -562,7 +562,7 @@ const installedApp = () => window.matchMedia?.('(display-mode: standalone)').mat
 
 // Prima del Cerchio (creata, in preparazione, pronta): conto alla rovescia all'evento invece del tempo di gara.
 const preCircle = () => ['created', 'draft', 'ready'].includes(R.ms?.clock.status);
-const eventAt = () => { const t = R.ms?.game.scheduledStart ? new Date(R.ms.game.scheduledStart).getTime() : null; return Number.isFinite(t) ? t : null; };
+const eventAt = () => { const t = R.ms?.game.scheduledStart ? parseWall(R.ms.game.scheduledStart) : null; return Number.isFinite(t) ? t : null; };
 const eventAtLabel = () => (eventAt() ? `all'evento · ${new Date(eventAt()).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'data da fissare');
 function fmtCountdown(ms) {
   const sec = Math.max(0, Math.floor(ms / 1000));
@@ -689,7 +689,7 @@ function phaseSteps() {
       const left = atMs[p[0]] - (clock.snap ? clock.elapsed() : 0);
       return `~${fmtTime(clock.serverNow() + left)}${c.status === 'paused' ? ' (in pausa)' : ''}`;
     }
-    if (p[0] === 'truce' && ms.game.scheduledStart) return `prev. ${fmtTime(new Date(ms.game.scheduledStart).getTime())}`;
+    if (p[0] === 'truce' && ms.game.scheduledStart) return `prev. ${fmtTime(parseWall(ms.game.scheduledStart))}`;
     if (atMs[p[0]] != null) return `+${Math.round(atMs[p[0]] / 60000)}′`;
     return '';
   };
@@ -3017,7 +3017,7 @@ function timeBase() {
     const el = clock.elapsed() / 60000;
     return { known: true, started: true, nowMin: el, toWall: (m) => now + (m - el) * 60000, toMin: (ts) => el + (ts - now) / 60000 };
   }
-  const start = ms.game.scheduledStart ? new Date(ms.game.scheduledStart).getTime() : null;
+  const start = ms.game.scheduledStart ? parseWall(ms.game.scheduledStart) : null;
   if (start) return { known: true, started: false, nowMin: (now - start) / 60000, toWall: (m) => start + m * 60000, toMin: (ts) => (ts - start) / 60000 };
   return { known: false, started: false, nowMin: null, toWall: () => null, toMin: () => null };
 }
@@ -3097,11 +3097,11 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
   const span = Math.max(g.durationMin, ...events.map((e) => e.to ?? e.at)) + 5;
   const lo = Math.min(-5, tb.nowMin != null && tb.nowMin < 0 ? Math.max(tb.nowMin, -120) : -5);
   const pct = (m) => `${((Math.min(Math.max(m, lo), span) - lo) / (span - lo)) * 100}%`;
-  const soon = new Date(Date.now() + 15 * 60000);
+  const soon = zoneParts(clock.serverNow() + 15 * 60000);
 
   const radios = ['now', 'in', 'at', 'min'].map((v) => h('input', { type: 'radio', name: 'tl-when', value: v }));
   const minutes = h('input', { class: 'input input-sm w-90', type: 'number', min: 1, max: 600, value: 10, 'aria-label': 'Tra quanti minuti' });
-  const time = h('input', { class: 'input input-sm w-120', type: 'time', value: `${pad2(soon.getHours())}:${pad2(soon.getMinutes())}`, 'aria-label': 'Orario' });
+  const time = h('input', { class: 'input input-sm w-120', type: 'time', value: `${pad2(soon.h)}:${pad2(soon.mi)}`, 'aria-label': 'Orario' });
   const minAt = h('input', { class: 'input input-sm w-90', type: 'number', min: 0, max: g.durationMin, step: 1, value: Math.max(0, Math.round(tb.nowMin ?? 0) + 15), 'aria-label': 'Minuto dal via' });
   const dur = withDuration ? h('input', { class: 'input input-sm w-90', type: 'number', min: 1, max: 600, step: 1, value: defaultDuration ?? '', placeholder: allowDurationEmpty ? 'nessuna' : '' }) : null;
   const sel = h('div', { class: 'tl-sel', hidden: true });
@@ -3116,8 +3116,9 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
     if (m === 'min') return Number(minAt.value);
     if (m === 'at') {
       const [hh, mm] = time.value.split(':').map(Number);
-      const d = new Date(); d.setHours(hh, mm, 0, 0);
-      return tb.toMin(d.getTime() + clock.offset);
+      // L'orario scritto è in ora italiana, di oggi (ora del server).
+      const n = zoneParts(clock.serverNow());
+      return tb.toMin(zoneTime(n.y, n.mo, n.d, hh, mm));
     }
     return null;
   };
@@ -3166,7 +3167,7 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
     h('span', null, e.label))));
 
   if (initial?.mode === 'min') { radios[3].checked = true; minAt.value = Math.round(initial.min); }
-  else if (initial?.mode === 'at' && initial.at) { radios[2].checked = true; const d = new Date(initial.at - clock.offset); time.value = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+  else if (initial?.mode === 'at' && initial.at) { radios[2].checked = true; const d = zoneParts(initial.at); time.value = `${pad2(d.h)}:${pad2(d.mi)}`; }
   else radios[0].checked = true;
 
   const result = await modal({
@@ -3209,9 +3210,10 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
       }
       const [hh, mm] = time.value.split(':').map(Number);
       if (!Number.isFinite(hh) || !Number.isFinite(mm)) { toast('Indica l\'orario', 'error'); return false; }
-      const d = new Date(); d.setHours(hh, mm, 0, 0);
-      if (d.getTime() < Date.now() - 60000) { toast('Quell\'orario è già passato', 'error'); return false; }
-      return { ...out, mode: 'at', at: d.getTime() + clock.offset };
+      const n = zoneParts(clock.serverNow());
+      const at = zoneTime(n.y, n.mo, n.d, hh, mm);
+      if (at < clock.serverNow() - 60000) { toast('Quell\'orario è già passato', 'error'); return false; }
+      return { ...out, mode: 'at', at };
     },
   });
   return result || null;
@@ -3838,7 +3840,7 @@ function viewVote() {
         h('label', { class: 'field' }, h('span', null, 'Titolo della pagina'), title),
         h('label', { class: 'field' }, h('span', null, 'Apre (vuoto = subito)'), opens),
         h('label', { class: 'field' }, h('span', null, 'Chiude (vuoto = al via)'), closes)),
-      h('button', { class: 'btn btn-sm btn-primary', onclick: () => patch({ title: title.value, opensAt: opens.value ? new Date(opens.value).getTime() : null, closesAt: closes.value ? new Date(closes.value).getTime() : null }, 'Votazione aggiornata') }, 'Salva titolo e orari')),
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => patch({ title: title.value, opensAt: opens.value ? parseWall(opens.value) : null, closesAt: closes.value ? parseWall(closes.value) : null }, 'Votazione aggiornata') }, 'Salva titolo e orari')),
     section('Coppie da votare',
       h('p', { class: 'muted tiny' }, 'Accendi le coppie che compaiono nel voto. Le percentuali sono sul punteggio (i voti verificati valgono ×3).'),
       V.teams.length ? h('ul', { class: 'vote-teams' }, V.teams.map((t) => h('li', { style: { '--c': t.color } },
@@ -4368,7 +4370,7 @@ async function eventOutcomeDialog(ev) {
 }
 
 // Data e ora in due campi separati: la data parte già dal giorno del torneo (si scrive solo l'ora).
-const isoDay = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const isoDay = (t = Date.now()) => wallInput(t).slice(0, 10);
 const tournamentDay = () => (R.ms?.game?.scheduledStart || '').slice(0, 10) || isoDay();
 function dateTimeInputs({ keep = null, value = null, defDate = tournamentDay(), name = null, defTime = '' } = {}) {
   const local = typeof value === 'number' ? toLocalInput(value) : String(value || '');
@@ -4383,11 +4385,11 @@ function dateTimeInputs({ keep = null, value = null, defDate = tournamentDay(), 
   sync();
   const el = h('div', { class: 'dt-pair' }, date, time, hidden);
   el._sync = sync;
-  return { el, date, time, get: () => { const v = str(); return v && time.value ? new Date(v).getTime() : null; } };
+  return { el, date, time, get: () => { const v = str(); return v && time.value ? parseWall(v) : null; } };
 }
 
 const fmtWhen = (t) => new Date(t).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const toLocalInput = (t) => { if (!t) return ''; const d = new Date(t); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const toLocalInput = (t) => wallInput(t);
 
 async function eventScheduleDialog(ev) {
   const start = dateTimeInputs({ value: ev.startAt });

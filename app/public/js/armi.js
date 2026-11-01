@@ -1,7 +1,7 @@
 // Test repliche e Accettazione in una pagina a sé (regia e staff): conto alla rovescia all'inizio dell'evento,
 // poi il cruscotto del cronografo (/armi) o l'accettazione all'arrivo (/accettazione).
 import * as CKUI from './checkin-ui.js';
-import { h, mount, api, makeClock, fmtDuration, toast, stream, store, STATUS_LABELS } from './lib.js';
+import { parseWall, h, mount, api, makeClock, fmtDuration, toast, stream, store, STATUS_LABELS } from './lib.js';
 
 const $root = document.getElementById('root');
 const clock = makeClock();
@@ -17,7 +17,7 @@ const pad = (n) => String(n).padStart(2, '0');
 function countdown() {
   const d = A.data;
   if (!d) return '—';
-  const st = d.game.scheduledStart ? new Date(d.game.scheduledStart).getTime() : null;
+  const st = d.game.scheduledStart ? parseWall(d.game.scheduledStart) : null;
   if (PRE.includes(d.game.status) && st) {
     const sec = Math.max(0, Math.floor((st - clock.serverNow()) / 1000));
     const days = Math.floor(sec / 86400);
