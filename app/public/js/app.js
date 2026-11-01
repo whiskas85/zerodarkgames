@@ -1199,6 +1199,29 @@ function partnerCard(m) {
 }
 
 // Prima della gara: le cose da fare (test repliche, partenza…), scritte dalla regia in markdown.
+// Voto del pubblico: la posizione della coppia e il link da far girare (gli amici votano dal link, senza app).
+function publicVoteCard(st) {
+  const v = st.publicVote;
+  if (!v || (!v.open && !v.prizedAt)) return null;
+  const url = `${location.origin}/vota`;
+  const text = 'Votate la nostra coppia ai Giochi del Buio: le prime tre ricevono un Dono del Consiglio!';
+  const share = async () => {
+    if (navigator.share) { try { await navigator.share({ title: 'I Giochi del Buio · vota', text, url }); return; } catch { /* annullato */ } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, '_blank', 'noopener');
+  };
+  const medal = v.rank && v.rank <= 3 ? ['🥇', '🥈', '🥉'][v.rank - 1] : '📣';
+  return h('div', { class: 'card vote-card' },
+    h('div', { class: 'vote-row' },
+      h('span', { class: 'vote-medal', 'aria-hidden': 'true' }, medal),
+      h('div', { class: 'grow' },
+        h('div', { class: 'eyebrow' }, v.prizedAt ? 'Favore del pubblico · chiuso' : 'Favore del pubblico'),
+        h('strong', null, v.rank ? `Siete ${v.rank}° su ${v.of} · ${String(v.pct).replace('.', ',')}%` : 'Ancora nessun voto per voi'),
+        h('div', { class: 'small muted' }, v.prizedAt ? 'La votazione è chiusa.' : 'Le prime tre coppie ricevono un Dono prima della partita. Fate votare amici e squadra!'))),
+    v.open ? h('div', { class: 'row-2' },
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: share }, '📤 Condividi il link'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')).catch(() => toast(url, 'info', 8000)) }, 'Copia il link')) : null);
+}
+
 function prepCard(st) {
   const text = st.game?.prepInfo;
   if (!text || !PRE.includes(st.clock?.status)) return null;
@@ -1428,6 +1451,7 @@ function viewHome() {
   return h('div', { class: 'home' },
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
+    publicVoteCard(st),
     phase,
     prepCard(st),
     PRE.includes(c.status) && st.team.members.find((m) => !m.me) ? partnerCard(st.team.members.find((m) => !m.me)) : null,

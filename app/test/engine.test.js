@@ -2910,6 +2910,12 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   assert.equal(m.total, 6); // 3 voti per B + 3 (verificato) per C
   assert.deepEqual(m.ranking.slice(0, 2).map((t) => t.pct), [50, 50]);
   assert.equal(VO.publicState('nuovo', null).podium.length, 2);
+  // Nell'app della coppia: la sua posizione (pari merito = stessa posizione), niente se non è in voto.
+  const tv = (t) => VO.teamVote(q.get('SELECT * FROM teams WHERE id = ?', t.id));
+  assert.equal(tv(B).rank, 1);
+  assert.equal(tv(Cc).rank, 1);
+  assert.equal(tv(A).rank, null);
+  assert.equal(tv(D), null);
   // Picco: 5 voti dalla stessa rete in pochi minuti → segnalato, si annulla.
   const now = Date.now();
   for (let i = 0; i < 5; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, createdAt) VALUES (?, ?, ?, ?, 1, ?)', g.id, A.id, `bot-${i}`, 'deadbeefdeadbeef', now - i * 1000);

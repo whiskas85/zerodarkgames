@@ -202,4 +202,18 @@ function awardPrizes(gameId, actor) {
   return { given };
 }
 
-module.exports = { publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+// Per l'app della coppia: la sua posizione nel voto del pubblico (se è tra le votabili della partita col voto acceso).
+function teamVote(team) {
+  if (!team || team.kind !== 'couple' || !team.votable) return null;
+  const g = G.getGame(team.gameId);
+  if (!g.voteEnabled) return null;
+  const r = results(g.id);
+  const i = r.list.findIndex((t) => t.id === team.id);
+  if (i < 0) return null;
+  const me = r.list[i];
+  // A pari punteggio stessa posizione.
+  const rank = r.list.filter((t) => t.score > me.score).length + 1;
+  return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null };
+}
+
+module.exports = { teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

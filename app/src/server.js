@@ -412,6 +412,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   // In gara (Legati, Eletti) la voce «Consiglio Zero» compare solo a chi ne fa già parte: per chiedere di entrarci
   // c'è la pagina del Consiglio (o l'app senza iscrizione).
   st.council = !!req.account && !!St.staffOf(req.account.id);
+  st.publicVote = VO.teamVote(req.team);
   st.gifts = req.team.kind === 'couple' ? F.teamGifts(req.team) : [];
   st.combat = K.combatState(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   st.skills = S.skillsState(req.team);

@@ -1200,3 +1200,8 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .fab-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 22px; background: var(--paper); color: var(--ink); text-decoration: none; font-weight: 700; border: 1.5px solid var(--line); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); white-space: nowrap; }
 .fab-item .mdi-wrap { display: inline-flex; color: var(--brass); }
 @media (orientation: landscape) and (max-height: 560px) { .fab-wrap { right: calc(var(--rail-w) + 16px); bottom: 16px; } }
+/* Voto del pubblico in home */
+.vote-card { display: grid; gap: 10px; border-color: var(--brass); }
+.vote-row { display: flex; gap: 12px; align-items: center; }
+.vote-medal { font-size: 36px; line-height: 1; }
+.vote-card strong { font-size: 18px; }
