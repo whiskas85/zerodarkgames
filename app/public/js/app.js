@@ -522,7 +522,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo, compagno: viewPartner,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -1217,9 +1217,45 @@ function publicVoteCard(st) {
         h('div', { class: 'eyebrow' }, v.prizedAt ? 'Favore del pubblico · chiuso' : 'Favore del pubblico'),
         h('strong', null, v.rank ? `Siete ${v.rank}° su ${v.of} · ${String(v.pct).replace('.', ',')}%` : 'Ancora nessun voto per voi'),
         h('div', { class: 'small muted' }, v.prizedAt ? 'La votazione è chiusa.' : 'Le prime tre coppie ricevono un Dono prima della partita. Fate votare amici e squadra!'))),
+    h('a', { class: 'btn btn-block', href: '#/voto' }, '🏆 Classifica'),
     v.open ? h('div', { class: 'row-2' },
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: share }, '📤 Condividi il link'),
       h('button', { class: 'btn btn-block', type: 'button', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')).catch(() => toast(url, 'info', 8000)) }, 'Copia il link')) : null);
+}
+
+// Classifica del voto del pubblico: podio e tutte le altre coppie, la vostra in evidenza.
+function viewVoteRanking() {
+  const v = S.state?.publicVote;
+  if (!v) return h('p', { class: 'empty' }, 'Il voto del pubblico non è attivo per la vostra coppia.');
+  const pct = (n) => `${String(n).replace('.', ',')}%`;
+  const name = (t) => t.displayName || `Settore ${t.sectorName}`;
+  const mark = (t, cls) => h('span', { class: `${cls} ${t.logo ? 'has-logo' : ''}`, style: { '--c': t.color } },
+    t.logo ? [h('img', { src: t.logo, alt: '' }), h('b', { class: 'rb' }, t.roman)] : t.roman);
+  const voted = v.ranking.filter((t) => t.rank);
+  const podium = voted.slice(0, 3);
+  const rest = v.ranking.filter((t) => !podium.includes(t));
+  const order = [1, 0, 2];
+  return h('div', { class: 'stack vote-rank' },
+    h('div', { class: 'eyebrow' }, v.prizedAt ? 'Favore del pubblico · classifica finale' : v.open ? 'Favore del pubblico · in diretta' : 'Favore del pubblico'),
+    podium.length ? h('div', { class: 'vr-podium' }, order.map((i) => {
+      const t = podium[i];
+      if (!t) return h('div');
+      return h('div', { class: `vr-step p${i + 1} ${t.mine ? 'mine' : ''}`, style: { '--c': t.color } },
+        h('span', { class: 'vr-medal' }, ['🥇', '🥈', '🥉'][i]), mark(t, 'vr-mark'),
+        h('strong', { class: 'vr-name' }, name(t)), t.displayName ? h('span', { class: 'tiny muted' }, `${t.roman} · Settore ${t.sectorName}`) : null,
+        h('span', { class: 'vr-pct mono' }, pct(t.pct)), t.mine ? h('span', { class: 'vr-you' }, 'VOI') : null,
+        h('div', { class: 'vr-block' }, String(t.rank)));
+    })) : h('p', { class: 'empty' }, 'Ancora nessun voto.'),
+    rest.length ? h('ol', { class: 'vr-list' }, rest.map((t) => h('li', { class: t.mine ? 'mine' : '', style: { '--c': t.color } },
+      h('span', { class: 'vr-pos mono' }, t.rank ? `${t.rank}°` : '—'), mark(t, 'vr-mark sm'),
+      h('span', { class: 'vr-who' }, h('strong', null, name(t)), t.displayName ? h('span', { class: 'tiny muted' }, `${t.roman} · Settore ${t.sectorName}`) : null),
+      t.mine ? h('span', { class: 'vr-you' }, 'VOI') : null,
+      h('span', { class: 'vr-pct mono' }, pct(t.pct))))) : null,
+    v.open ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      const url = `${location.origin}/vota`;
+      const text = 'Votate la nostra coppia ai Giochi del Buio: le prime tre ricevono un Dono del Consiglio!';
+      if (navigator.share) navigator.share({ title: 'I Giochi del Buio · vota', text, url }).catch(() => {}); else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, '_blank', 'noopener');
+    } }, '📤 Condividi il link per farvi votare') : null);
 }
 
 function prepCard(st) {

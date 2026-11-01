@@ -216,7 +216,10 @@ function teamVote(team) {
   const me = r.list[i];
   // A pari punteggio stessa posizione.
   const rank = r.list.filter((t) => t.score > me.score).length + 1;
-  return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null };
+  // Classifica completa per l'app (podio e lista): stessa posizione a pari punteggio, la propria coppia segnata.
+  const ranking = r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct,
+    rank: t.score ? r.list.filter((x) => x.score > t.score).length + 1 : null, mine: t.id === team.id }));
+  return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null, ranking };
 }
 
 // Per la pagina Regia (live): podio e percentuali, se il voto è acceso.
