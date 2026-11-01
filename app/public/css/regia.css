@@ -1286,3 +1286,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .sidebar a .badge { flex: none; }
 .phase-toggle { grid-column: 1 / -1; justify-self: start; display: inline-flex; gap: 4px; align-items: center; padding: 4px 8px; margin-top: 4px; background: none; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: 600 12px var(--f-mono, monospace); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 .phase-toggle .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+/* Ora reale sopra le tacche della timeline (minuti dal via sotto). */
+.tl-track { margin-top: 32px; }
+.tl-tick b.tl-wall { position: absolute; top: -29px; left: -14px; font-weight: 600; font-size: 10px; color: var(--ink); font-family: var(--f-mono, monospace); white-space: nowrap; }
+.tl-tick:not(.tl-hour) b.tl-wall { color: var(--muted); font-weight: 400; }
+@media (max-width: 860px) { .tl-tick:not(.tl-hour) b.tl-wall { display: none; } }

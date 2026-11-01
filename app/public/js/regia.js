@@ -3125,7 +3125,9 @@ async function timelineModal({ title, intro, okLabel = 'Conferma', withDuration 
 
   // Riga della timeline: tacche ogni 15′, fasi, avvenimenti (punti o finestre), adesso.
   const track = h('div', { class: 'tl-track', title: 'Tocca per scegliere il minuto' },
-    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    // Sopra ogni tacca anche l'ora reale (dal via, o dall'inizio previsto), se si conosce.
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } },
+      tb.toWall(m) ? h('b', { class: 'tl-wall' }, fmtTime(tb.toWall(m))) : null, h('i', null, fmtMin(m)))),
     h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
@@ -3219,7 +3221,9 @@ function liveTimeline() {
   const { lo, span, pct } = timelineScale(events);
   const tb = timeBase();
   const track = h('div', { class: 'tl-track tl-live', title: 'Clicca un punto vuoto per programmare qualcosa in quel momento', 'data-lo': lo, 'data-span': span },
-    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } }, h('i', null, fmtMin(m)))),
+    // Sopra ogni tacca anche l'ora reale (dal via, o dall'inizio previsto), se si conosce.
+    Array.from({ length: Math.floor(span / 15) + 1 }, (_, i) => i * 15).map((m) => h('span', { class: `tl-tick ${m % 60 ? '' : 'tl-hour'}`, style: { left: pct(m) } },
+      tb.toWall(m) ? h('b', { class: 'tl-wall' }, fmtTime(tb.toWall(m))) : null, h('i', null, fmtMin(m)))),
     h('div', { class: 'tl-game', style: { left: pct(0), width: `calc(${pct(g.durationMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-truce', style: { left: pct(0), width: `calc(${pct(g.truceMin)} - ${pct(0)})` } }),
     h('div', { class: 'tl-last', style: { left: pct(g.durationMin - 30), width: `calc(${pct(g.durationMin)} - ${pct(g.durationMin - 30)})` } }),
