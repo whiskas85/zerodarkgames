@@ -55,6 +55,8 @@ function publicState(device, account) {
   return {
     game: { name: g.name, scheduledStart: g.scheduledStart || null },
     open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, closed: !!g.votePrizedAt || !PRE.includes(g.status),
+    // Per i conti alla rovescia: ora del server e inizio previsto della partita (senza chiusura, il voto chiude al via).
+    serverNow: Date.now(), startAt: g.scheduledStart ? (Date.parse(g.scheduledStart) || null) : null,
     title: g.voteTitle || 'Il favore del pubblico',
     // Elenco da votare in ordine di Settore (numero romano); il podio resta in ordine di voti.
     teams: [...r.list].sort((a, b) => a.sectorOrd - b.sectorOrd || a.id - b.id).map(out),

@@ -62,12 +62,24 @@ button.vote:disabled{opacity:.5;cursor:default}
 .ts{display:flex;justify-content:center;margin:14px 0}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:12px 16px;border-radius:10px;background:var(--paper);border:2px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.5);font-weight:600;z-index:10}
 .toast.err{border-color:var(--blood)} .toast.ok{border-color:var(--ok)}
+.powered-by{display:flex;align-items:center;gap:12px;width:max-content;margin:24px auto 0;padding:10px 18px 10px 10px;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none;opacity:.9}
+.powered-by img{width:56px;height:56px;border-radius:50%;background:#000;box-shadow:0 0 0 2px rgba(0,0,0,.6),0 0 14px rgba(124,255,46,.25)}
+.powered-by span{display:grid;line-height:1.15}
+.powered-by small{font-family:var(--f-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.powered-by strong{font-family:var(--f-display);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
+.cd{display:grid;justify-items:center;gap:6px;margin-top:6px}
+.cd-row{display:flex;gap:8px}
+.cd-box{display:grid;justify-items:center;min-width:64px;padding:8px 6px;background:var(--paper);border:2px solid var(--line);border-radius:8px}
+.cd-box b{font-family:var(--f-mono);font-size:30px;line-height:1.1}
+.cd-box span{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.cd.soon .cd-box{border-color:var(--blood)}
 .verified{display:inline-block;margin-top:6px;padding:4px 10px;border-radius:999px;border:1.5px solid var(--brass);color:var(--brass);font-size:13px;font-weight:600}
 </style>
 </head>
 <body>
 <div class="wrap"><div id="app"><header><div class="emblem"><span>0</span></div><p class="eyebrow">Caricamento…</p></header></div>
-<div class="ts" id="ts" hidden></div><p class="note" id="note"></p></div>
+<div class="ts" id="ts" hidden></div><p class="note" id="note"></p>
+<div class="powered-by"><img src="/img/zdt-logo.jpg" alt="Logo Zero Dark Team" width="56" height="56"><span><small>Powered by</small><strong>Zero Dark Team</strong></span></div></div>
 <script>
 const $app = document.getElementById('app');
 let S = null; let tsToken = null; let tsWidget = null; let busy = false;
@@ -77,8 +89,10 @@ const initials = (n) => String(n || '?').trim().slice(0, 2).toUpperCase();
 function toast(msg, kind = '') { document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = `toast ${kind}`; el.textContent = msg; document.body.append(el); setTimeout(() => el.remove(), 4500); }
 const fmtWhen = (ts) => new Date(ts).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
 
+// Differenza tra l'orologio del telefono e quello del server: i conti alla rovescia seguono il server.
+let skew = 0;
 async function load() {
-  try { const r = await fetch('/api/public/vote', { credentials: 'same-origin' }); S = await r.json(); render(); } catch { if (!S) $app.innerHTML = '<header><p class="eyebrow">Senza rete: riprova tra poco</p></header>'; }
+  try { const t0 = Date.now(); const r = await fetch('/api/public/vote', { credentials: 'same-origin' }); S = await r.json(); if (S.serverNow) skew = S.serverNow - Math.round((t0 + Date.now()) / 2); render(); tick(); } catch { if (!S) $app.innerHTML = '<header><p class="eyebrow">Senza rete: riprova tra poco</p></header>'; }
 }
 function teamName(t) { return t.displayName || `Settore ${t.sectorName}`; }
 // Il logo della coppia (se c'è), altrimenti il numero romano del Settore.
@@ -103,9 +117,12 @@ function render() {
       <div class="bar"><i style="width:${Math.max(0, Math.min(100, t.pct))}%"></i></div>
       <div class="pctline"><span>${pct(t.pct)}</span><span>${mine ? 'hai votato questa coppia' : ''}</span></div></div>`;
   }).join('');
+  // Conto alla rovescia: all'apertura del voto, oppure (aperto) alla chiusura o al via della partita.
+  const target = !S.open && !S.closed && S.opensAt ? ['Si vota tra', S.opensAt] : S.open && (S.closesAt || S.startAt) ? [S.closesAt ? 'La votazione chiude tra' : 'Si vota fino al via, tra', S.closesAt || S.startAt] : null;
+  const cd = target ? `<div class="cd" data-to="${target[1]}"><span class="eyebrow">${esc(target[0])}</span><div class="cd-row">${['giorni', 'ore', 'minuti', 'secondi'].map((l, i) => `<div class="cd-box"><b data-cd="${i}">--</b><span>${l}</span></div>`).join('')}</div></div>` : '';
   $app.innerHTML = `<header><div class="emblem"><span>0</span></div><p class="eyebrow">I Giochi del Buio · ${esc(S.game.name)}</p>
       <h1>${esc(S.title).replace(/pubblico/i, '<em>pubblico</em>')}</h1>
-      <p class="lede">Vota la coppia che vuoi vedere vincere. Le prime tre ricevono un Dono del Consiglio prima della partita.</p>${status}
+      <p class="lede">Vota la coppia che vuoi vedere vincere. Le prime tre ricevono un Dono del Consiglio prima della partita.</p>${status}${cd}
       ${S.verified ? `<span class="verified">Il tuo voto vale ×${S.weight}: sei entrato con il tuo account</span>` : ''}</header>
     <h2>Il podio</h2>${podium}
     <h2>Le coppie</h2>${S.teams.length ? `<div class="teams">${teams}</div>` : '<p class="empty">Il Consiglio non ha ancora scelto le coppie da votare.</p>'}
@@ -139,7 +156,19 @@ async function vote(teamId) {
   if (tsWidget != null) { try { window.turnstile.reset(tsWidget); } catch {} }
   tsToken = null; busy = false; render();
 }
+function tick() {
+  const el = document.querySelector('.cd[data-to]');
+  if (!el) return;
+  const left = Math.max(0, Number(el.dataset.to) - (Date.now() + skew));
+  const s = Math.floor(left / 1000);
+  const parts = [Math.floor(s / 86400), Math.floor((s % 86400) / 3600), Math.floor((s % 3600) / 60), s % 60];
+  el.querySelectorAll('[data-cd]').forEach((b) => { b.textContent = String(parts[b.dataset.cd]).padStart(2, '0'); });
+  el.classList.toggle('soon', left < 3600000);
+  // Allo zero (si apre o si chiude): si ricarica lo stato.
+  if (left === 0 && tick.done !== el.dataset.to) { tick.done = el.dataset.to; setTimeout(load, 1500); }
+}
 load();
+setInterval(tick, 1000);
 setInterval(() => { if (!busy && !document.hidden) load(); }, 15000);
 </script>
 </body>
