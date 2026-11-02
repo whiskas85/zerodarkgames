@@ -1109,7 +1109,7 @@ function viewLogin() {
 }
 
 // Firma in fondo al login: chi c'è dietro i Giochi.
-const poweredBy = () => h('div', { class: 'powered-by' },
+const poweredBy = () => h('a', { class: 'powered-by', href: 'https://www.zerodarkteam.it', target: '_blank', rel: 'noopener' },
   h('img', { src: '/img/zdt-logo.jpg', alt: 'Logo Zero Dark Team', width: 56, height: 56 }),
   h('span', null, h('small', null, 'Powered by'), h('strong', null, 'Zero Dark Team')));
 
