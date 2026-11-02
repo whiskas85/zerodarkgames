@@ -388,6 +388,8 @@ function fieldState(gameId) {
     landmarks: G.landmarksOf(game.id).map(landmarkOut),
     pois: poisOf(game.id),
     guide: guideOf(game.id),
+    // Mine traccianti degli Eletti (armate e scattate da poco): le vede solo il Consiglio.
+    mines: require('./mines').minesOf(game.id),
   };
 }
 
@@ -784,6 +786,12 @@ function setTaskDone(taskId, done, who, gameId = null) {
   if (!t || (gameId && t.gameId !== Number(gameId))) throw err(404, 'Incarico non trovato');
   q.run('UPDATE squad_tasks SET doneAt = ?, doneBy = ? WHERE id = ?', done ? Date.now() : null, done ? who : null, t.id);
   G.log(t.gameId, who, done ? 'squad_task_done' : 'squad_task_reopened', { text: t.text });
+  // Punteggio degli Eletti: taglia riscossa (riaperta: i punti si tolgono).
+  if (t.kind === 'bounty' && t.squadId) {
+    const M = require('./mines');
+    if (done) M.addScore(t.gameId, 'bounty', `task:${t.id}`, { squadId: t.squadId, label: t.text });
+    else M.removeScore(t.gameId, 'bounty', `task:${t.id}`);
+  }
   if (t.squadId) notifySquad(t.squadId, null);
   if (t.targetTeamId) rt.toTeams(t.gameId, 'state', {}, t.targetTeamId);
   rt.toStaff(t.gameId, 'field');
@@ -926,6 +934,8 @@ function recordPosition(team, player, body) {
     deviceId, game.id, team.id, player?.id ?? null, lat, lng, acc, Date.now());
   trackPoint(game.id, team.id, player?.id ?? null, deviceId, lat, lng, acc);
   require('./zones').onPosition(team, { lat, lng }, Date.now(), player);
+  // Mine traccianti degli Eletti: la coppia che passa nel raggio viene marcata.
+  require('./mines').onPosition(team, { lat, lng }, Date.now());
   return { ok: true, tracking: true };
 }
 
@@ -1035,6 +1045,8 @@ function electVisibleTeams(gameId, squadId) {
     }
   }
   for (const t of q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple'", Number(gameId))) if (Z.visibilityOf(t.id) === 'shown') add(t.id, '☀️ Nel Campo di Luce');
+  // Mina tracciante scattata: la coppia la vedono tutti per qualche minuto.
+  for (const m of require('./mines').markedTeams(Number(gameId))) add(m.teamId, `💣 Mina sonora · marcata fino alle ${hhmm(m.until)}`, { mineUntil: m.until });
   return [...out.values()];
 }
 
@@ -1057,7 +1069,7 @@ function electVisiblePositions(gameId, squadId) {
       ? q.get('SELECT lat, lng, at FROM position_track WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
         || q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at <= ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, x.frozenAt, x.frozenAt - POSITION_MAX_AGE)
       : q.get('SELECT lat, lng, at FROM positions WHERE teamId = ? AND at > ? ORDER BY at DESC LIMIT 1', x.teamId, now - POSITION_MAX_AGE);
-    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: !!x.frozenAt || now - p.at > POSITION_STALE, frozen: !!x.frozenAt, blocked: !!x.blocked,
+    return p ? { deviceId: x.taskId ? `task-${x.taskId}` : `see-${x.teamId}`, teamId: x.teamId, kind: 'team', lat: p.lat, lng: p.lng, acc: null, at: p.at, stale: !!x.frozenAt || now - p.at > POSITION_STALE, frozen: !!x.frozenAt, blocked: !!x.blocked, mine: !!x.mineUntil,
       label: `${x.roman} · Settore ${x.sectorName}`, who: x.why, roman: x.roman, color: x.color } : null;
   }).filter(Boolean);
 }
@@ -1099,7 +1111,7 @@ function teamMap(team) {
       .map((p) => ({ ...p, mine: p.sectorId === team.sectorId, disabledUntil: p.disabledUntil > Date.now() ? p.disabledUntil : null })),
     // Nessun punto del gioco prima del tempo: il Cerchio compare dal Cerchio, la Soglia dal via (gli Eletti li vedono sempre).
     landmarks: q.all('SELECT id, kind, label, lat, lng FROM landmarks WHERE gameId = ? AND lat IS NOT NULL', team.gameId)
-      .filter((l) => team.kind === 'elect' || started || (l.kind === 'cerchio' && status === 'circle')),
+      .filter((l) => team.kind === 'elect' || (l.kind !== 'base' && (started || (l.kind === 'cerchio' && status === 'circle')))),
     guide: teamGuide(team.gameId),
     gifts: q.all("SELECT id, label, lat, lng, revealedAt, expiresAfterMin, revealElapsedMs FROM gifts WHERE gameId = ? AND status = 'revealed' AND lat IS NOT NULL AND (publicAt IS NULL OR publicAt <= ? OR ? = 'elect')", team.gameId, Date.now(), team.kind)
       .map((g) => ({ id: g.id, label: g.label, lat: g.lat, lng: g.lng, revealedAt: g.revealedAt, expiresAtElapsedMs: g.expiresAfterMin && g.revealElapsedMs != null ? g.revealElapsedMs + g.expiresAfterMin * 60000 : null })),

@@ -798,9 +798,9 @@ test('incarichi: punto indicato sulla mappa, spostamento alla squadra che ha pia
   F.placePoint(p.id, g.id, { ...photo, lat: 45.2 }, 'eletti:Due', sud);
   row = q.get('SELECT * FROM points WHERE id = ?', p.id);
   assert.deepEqual([row.moveRequestedAt, row.placedSquadId, row.lat], [null, sud, 45.2]);
-  // Luoghi del gioco: due per partita, piazzabili senza foto, visibili alle coppie solo se piazzati.
+  // Luoghi del gioco: tre per partita (la Base degli Eletti solo per il Consiglio), piazzabili senza foto, visibili alle coppie solo se piazzati.
   const st = F.fieldState(g.id);
-  assert.deepEqual(st.landmarks.map((l) => l.kind), ['cerchio', 'soglia']);
+  assert.deepEqual(st.landmarks.map((l) => l.kind), ['cerchio', 'soglia', 'base']);
   const soglia = st.landmarks.find((l) => l.kind === 'soglia');
   F.assignToSquad('landmark', soglia.id, nord, 'test');
   F.placeLandmark(soglia.id, g.id, { lat: 45.3, lng: 9.3, acc: 4 }, 'regia');
@@ -2980,4 +2980,98 @@ test('nome della coppia dall\'app: si cambia fino al via, poi è bloccato', () =
   G.control(g.id, 'start', 'test');
   assert.throws(() => G.renameTeamFromApp(team(), 'Altro', 'test'), /iniziata/);
   assert.equal(team().displayName, 'Ombre');
+});
+
+test('mine traccianti degli Eletti: si posano, marcano la coppia per 5 minuti (lo scopre dopo 1), si ricaricano alla Base; punteggio', () => {
+  const F = require('../src/field');
+  const K = require('../src/combat');
+  const S = require('../src/skills');
+  const M = require('../src/mines');
+  const Z = require('../src/zones');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Artificiere' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  F.setMemberSquad(eid, alfa, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const pE = () => q.get('SELECT * FROM players WHERE id = ?', eid);
+  G.updateGame(g.id, { mineCount: 2 }, 'test');
+  assert.throws(() => M.placeMine(A, null, { lat: 45, lng: 9 }), /Eletti/);
+  assert.throws(() => M.placeMine(elect, pE(), { lat: 45, lng: 9 }), /pronta/);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  assert.equal(M.electMines(elect, pE()).left, 2);
+  assert.throws(() => M.placeMine(elect, pE(), { lat: 45, lng: 9, acc: 80 }), /impreciso/);
+  const m1 = M.placeMine(elect, pE(), { lat: 45, lng: 9, acc: 5 });
+  assert.equal(m1.left, 1);
+  M.placeMine(elect, pE(), { lat: 45.01, lng: 9 });
+  assert.throws(() => M.placeMine(elect, pE(), { lat: 45.02, lng: 9 }), /Mine finite/);
+  // La vede il Consiglio (regia ed Eletti), non le coppie.
+  assert.equal(F.fieldState(g.id).mines.length, 2);
+  assert.equal(M.electMines(A, null), null);
+  // Lontano (30 m) non scatta; entro 20 m sì.
+  F.recordPosition(A, null, { lat: 45.00027, lng: 9, deviceId: 'devA-0001' });
+  assert.equal(M.markedTeams(g.id).length, 0);
+  F.recordPosition(A, null, { lat: 45.0001, lng: 9, deviceId: 'devA-0001' });
+  const marked = M.markedTeams(g.id);
+  assert.deepEqual(marked.map((x) => x.teamId), [A.id]);
+  assert.ok(Math.abs(marked[0].until - Date.now() - 5 * 60000) < 2000);
+  // Tutti la vedono: le altre coppie e gli Eletti (anche senza incarichi).
+  assert.ok(S.sightingsFor(q.get('SELECT * FROM teams WHERE id = ?', B.id)).some((x) => x.teamId === A.id && /Mina/.test(x.source)));
+  assert.ok(F.electVisibleTeams(g.id, alfa).some((x) => x.teamId === A.id && /Mina/.test(x.why)));
+  assert.ok(F.electVisibleTeams(g.id, null).some((x) => x.teamId === A.id));
+  // La coppia lo scopre il minuto dopo.
+  assert.equal(M.coupleMark(A), null);
+  q.run('UPDATE elect_mines SET notifyAt = ? WHERE teamId = ?', Date.now() - 1, A.id);
+  M.tickAll();
+  assert.ok(M.coupleMark(A).until > Date.now());
+  // Una mina scatta una volta sola: B passa lì e non succede niente.
+  F.recordPosition(B, null, { lat: 45, lng: 9, deviceId: 'devB-0001' });
+  assert.deepEqual(M.markedTeams(g.id).map((x) => x.teamId), [A.id]);
+  // Chi è nascosto (Ombra) non la fa scattare.
+  const sq = [[45.0095, 8.9995], [45.0095, 9.0005], [45.0105, 9.0005], [45.0105, 8.9995]];
+  Z.createZone(g.id, { kind: 'ombra', points: sq, active: true }, 'test');
+  F.recordPosition(B, null, { lat: 45.01, lng: 9, deviceId: 'devB-0001' });
+  assert.equal(M.markedTeams(g.id).length, 1);
+  // Fine della marcatura.
+  q.run('UPDATE elect_mines SET markUntil = ? WHERE teamId = ?', Date.now() - 1, A.id);
+  M.tickAll();
+  assert.equal(M.markedTeams(g.id).length, 0);
+  assert.ok(!S.sightingsFor(q.get('SELECT * FROM teams WHERE id = ?', B.id)).some((x) => x.teamId === A.id));
+  // Ricarica: serve la Base sul campo e starci vicino.
+  assert.throws(() => M.reloadMines(elect, pE(), { lat: 45, lng: 9 }), /Base degli Eletti non è ancora/);
+  const base = G.landmarksOf(g.id).find((l) => l.kind === 'base');
+  assert.ok(base);
+  q.run('UPDATE landmarks SET lat = 45.1, lng = 9 WHERE id = ?', base.id);
+  assert.throws(() => M.reloadMines(elect, pE(), { lat: 45, lng: 9 }), /avvicinatevi/);
+  assert.equal(M.reloadMines(elect, pE(), { lat: 45.1001, lng: 9 }).left, 2);
+  assert.equal(M.electMines(elect, pE()).left, 2);
+  // La Base la vedono gli Eletti, non le coppie.
+  assert.ok(!F.teamMap(A).landmarks.some((l) => l.kind === 'base'));
+  assert.ok(F.teamMap(elect).landmarks.some((l) => l.kind === 'base'));
+  // Punteggio: mina (2) + ingaggio vinto (3) + taglia riscossa (5) + Beacon (2), valori configurabili.
+  // (B è nel Cono d'Ombra: la taglia è su A.)
+  const task = F.createTask(g.id, { kind: 'bounty', target: `team:${A.id}`, squadId: alfa }, 'test');
+  F.acceptTask(task.id, 'test', g.id, alfa);
+  K.respondElectFight(A, K.reportElectFight(elect, pE(), { teamId: A.id, result: 'won' }).id, true);
+  const p = q.get('SELECT * FROM points WHERE gameId = ? LIMIT 1', g.id);
+  q.run('UPDATE points SET lat = 45.2, lng = 9 WHERE id = ?', p.id);
+  Z.launchBeacon(elect, pE(), { lat: 45.2, lng: 9 });
+  Z.launchBeacon(elect, pE(), { lat: 45.2, lng: 9 }); // già spento: niente punti in più
+  let sc = M.scoresOf(g.id);
+  const alfaSc = sc.squads.find((x) => x.id === alfa);
+  assert.deepEqual(alfaSc.counts, { fight: 1, bounty: 1, beacon: 1, mine: 1 });
+  assert.equal(alfaSc.total, 3 + 5 + 2 + 2);
+  assert.equal(sc.people.find((x) => x.id === eid).total, 3 + 2 + 2);
+  G.updateGame(g.id, { scoreMine: 10 }, 'test');
+  assert.equal(M.scoresOf(g.id).squads.find((x) => x.id === alfa).total, 3 + 5 + 2 + 10);
+  // Taglia riaperta: i punti della taglia si tolgono.
+  F.setTaskDone(task.id, false, 'test');
+  sc = M.scoresOf(g.id);
+  assert.equal(sc.squads.find((x) => x.id === alfa).counts.bounty, 0);
+  assert.equal(M.electMines(elect, pE()).score.squad.id, alfa);
+  // La regia toglie una mina armata.
+  const armed = F.fieldState(g.id).mines.find((x) => !x.triggeredAt);
+  M.removeMine(g.id, armed.id, 'test');
+  assert.ok(!F.fieldState(g.id).mines.some((x) => x.id === armed.id));
 });

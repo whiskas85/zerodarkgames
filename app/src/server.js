@@ -24,6 +24,7 @@ const CK = require('./checkin');
 const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
+const MN = require('./mines');
 
 const PORT = Number(process.env.PORT || 8080);
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -425,6 +426,9 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.zones = Z.teamZones(req.team, req.player);
   st.offlineMap = TL.teamOffline(req.team.gameId);
   st.beacon = Z.electBeacon(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
+  // Mine traccianti: agli Eletti le loro (e il punteggio), alla coppia marcata la marcatura (dal minuto dopo).
+  st.mines = MN.electMines(req.team, req.player);
+  st.mineMark = MN.coupleMark(req.team);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
@@ -506,6 +510,9 @@ app.post('/api/team/events/:id/start', needTeam, wrap((req) => EV.startEvent(req
 app.post('/api/team/events/:id/close', needTeam, wrap((req) => EV.closeEvent(req.params.id, electWho(req), req.body?.outcomes || {})));
 // Beacon degli Eletti: accende una zona spenta stando dentro l'area.
 app.post('/api/team/beacon', needTeam, wrap((req) => Z.launchBeacon(req.team, req.player, req.body || {})));
+// Mine traccianti degli Eletti: si posano dove si è, si ricaricano alla Base.
+app.post('/api/team/mines', needTeam, teamRateLimit, wrap((req) => MN.placeMine(req.team, req.player, req.body || {})));
+app.post('/api/team/mines/reload', needTeam, teamRateLimit, wrap((req) => MN.reloadMines(req.team, req.player, req.body || {})));
 app.post('/api/team/beacon/:zid/complete', needTeam, wrap((req) => Z.completeBeacon(req.team, req.player, Number(req.params.zid), req.body || {})));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
@@ -629,6 +636,8 @@ app.get('/api/field/export.kmz', needField, (req, res, next) => { try { sendKmz(
 app.post('/api/field/pois', needField, wrap((req) => F.createPoi(fieldGame(req), req.body || {}, fieldWho(req))));
 app.patch('/api/field/pois/:id', needField, wrap((req) => F.updatePoi(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/pois/:id', needField, wrap((req) => { F.deletePoi(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
+// Mine: la regia le toglie dal campo.
+app.delete('/api/field/mines/:id', needField, wrap((req) => { if (!fieldStaff(req)) throw new HttpError(403, 'Le mine le toglie la regia'); return MN.removeMine(fieldGame(req), req.params.id, fieldWho(req)); }));
 app.post('/api/field/guide', needField, wrap((req) => F.createGuide(fieldGame(req), req.body || {}, fieldWho(req))));
 app.patch('/api/field/guide/:id', needField, wrap((req) => F.updateGuide(req.params.id, fieldGame(req), req.body || {}, fieldWho(req))));
 app.delete('/api/field/guide/:id', needField, wrap((req) => { F.deleteGuide(req.params.id, fieldGame(req), fieldWho(req)); return { ok: true }; }));
@@ -697,7 +706,7 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), electScores: MN.scoresOf(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
 m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
@@ -1074,6 +1083,7 @@ setInterval(() => { try { K.tickAlliances(); } catch (e) { console.error(e); } }
 setInterval(() => { try { S.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 setInterval(() => { try { EV.tickAll(); } catch (e) { console.error(e); } }, 3000).unref();
 setInterval(() => { try { Z.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
+setInterval(() => { try { MN.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

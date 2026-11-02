@@ -388,6 +388,8 @@ function disableAltar(team, player, p, pos) {
   const until = Math.max(p.disabledUntil || 0, now + min * 60000);
   q.run('UPDATE points SET disabledUntil = ?, disabledBy = ? WHERE id = ?', until, electName(player), p.id);
   G.log(g.id, `giocatore:${player.id}`, 'altar_beacon', { point: p.label, minutes: min, lat: pos.lat, lng: pos.lng });
+  // Punteggio: solo se l'Altare era attivo (rilanciare il Beacon su un Altare già spento lo allunga e basta).
+  if (!((p.disabledUntil || 0) > now)) require('./mines').addScore(g.id, 'beacon', `altar:${p.id}:${now}`, { playerId: player.id, label: `Beacon: ${p.label} disattivato` });
   closeBeaconTasks(player, `point:${p.id}`);
   rt.toStaff(g.id, 'points');
   rt.toTeams(g.id, 'state', {});
@@ -416,6 +418,7 @@ function completeBeacon(team, player, zoneId, body) {
   if (until) { q.run('UPDATE map_zones SET activeUntil = ? WHERE id = ?', until, z.id); changed(z.gameId); }
   closeBeaconTasks(player, `zone:${z.id}`);
   G.log(z.gameId, `giocatore:${player.id}`, 'zone_beacon_done', { zone: z.name, minutes: z.beaconOnMin || null, lat: pos.lat, lng: pos.lng });
+  require('./mines').addScore(z.gameId, 'beacon', `zone:${z.id}:${now}`, { playerId: player.id, label: `Beacon: ${z.name} accesa` });
   return { ok: true, active: true, zone: beaconOut(getZone(z.id)) };
 }
 

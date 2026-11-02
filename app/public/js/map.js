@@ -44,7 +44,9 @@ export function pinHtml(item) {
   // Piazzato provvisorio (senza cartello né foto): stesso segnaposto con il triangolo di attenzione «!».
   if (item.provisional) return `<span class="pin-prov-wrap">${pinHtml({ ...item, provisional: false })}<span class="pin-prov" title="Provvisorio">!</span></span>`;
   if (item.kind === 'altar') return `<span class="pin pin-altar ${item.mine ? 'pin-mine' : ''} ${item.off ? 'pin-off' : ''}"${item.color ? ` style="border-color:${esc(item.color)}"` : ''}>${esc(item.text)}</span>`;
-  if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${item.place === 'soglia' ? '⛩' : '◯'}</span>`;
+  if (item.kind === 'place') return `<span class="pin pin-place pin-${esc(item.place)}">${landmarkIcon(item.place)}</span>`;
+  // Mina tracciante degli Eletti: armata (oro), scattata (rossa, pulsa finché la coppia è marcata).
+  if (item.kind === 'mine') return `<span class="pin pin-trap pin-trap-${esc(item.state || 'armed')}">💣</span>`;
   if (item.kind === 'target') return '<span class="pin pin-target">⌖</span>';
   // Emergenza reale: segnaposto rosso che pulsa (grigio se chiusa).
   if (item.kind === 'emergency') return `<span class="pin-sos ${item.state || ''}">${esc(item.text || '!')}</span>`;
@@ -409,7 +411,24 @@ export function watchPosition(onPos, onError) {
   return () => navigator.geolocation.clearWatch(id);
 }
 
-// Soglia e Cerchio di inizio.
+// Icona dei luoghi del gioco: Soglia, Base degli Eletti, Cerchio di inizio.
+export const landmarkIcon = (kind) => (kind === 'soglia' ? '⛩' : kind === 'base' ? '⌂' : '◯');
+
+// Mine traccianti degli Eletti (le vede solo il Consiglio): segnaposto e cerchio del raggio.
+export function mineItems(mines = [], popupExtra = () => '') {
+  const now = Date.now();
+  return mines.map((m) => {
+    const marked = m.markUntil && m.markUntil > now;
+    const state = m.triggeredAt ? (marked ? 'marked' : 'spent') : 'armed';
+    const t = new Date(m.placedAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    const until = marked ? new Date(m.markUntil).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+    return { key: `mine${m.id}`, kind: 'mine', state, lat: m.lat, lng: m.lng, title: 'Mina tracciante',
+      popup: `<strong>💣 Mina tracciante</strong><br>${esc(m.author || 'Eletti')} · posata alle ${t} · raggio ${m.radius} m${m.triggeredAt ? `<br><b>Scattata</b>${m.team ? `: ${esc(m.team.roman)} · Settore ${esc(m.team.sectorName)}` : ''}${marked ? ` · marcata fino alle ${until}` : ''}` : '<br>Armata'}${popupExtra(m)}` };
+  });
+}
+export const mineCircles = (mines = []) => mines.filter((m) => !m.triggeredAt).map((m) => ({ key: `minec${m.id}`, lat: m.lat, lng: m.lng, radius: m.radius, color: '#d1ad62', fill: 0.08, weight: 1, dash: '3 5', interactive: false }));
+
+// Soglia, Cerchio di inizio e Base degli Eletti.
 export function landmarkItem(l, popupExtra = '') {
   return { key: `l${l.id}`, kind: 'place', place: l.kind, lat: l.lat, lng: l.lng, title: l.label, provisional: l.provisional, popup: `<strong>${esc(l.label)}</strong>${l.provisional ? '<br>⚠ Provvisorio' : ''}${popupExtra}` };
 }
@@ -447,7 +466,7 @@ export function positionItem(p) {
   const ago = Math.max(0, Math.round((Date.now() - p.at) / 60000));
   return {
     key: `pos-${p.deviceId}`, kind: p.kind, lat: p.lat, lng: p.lng, stale: p.stale, color: p.color, blocked: p.blocked,
-    note: p.blocked ? 'non può essere mostrata' : p.frozen ? 'ultima posizione' : null,
+    note: p.blocked ? 'non può essere mostrata' : p.frozen ? 'ultima posizione' : p.mine ? '💣 marcata' : null,
     text: p.kind === 'team' ? p.roman || '?' : p.label || '?', title: p.label,
     // Popup: chi è, le persone della coppia (o della squadra di Eletti) e da quando è ferma la posizione.
     popup: `<strong>${esc(p.label)}</strong><br>${esc(p.who)}${p.together ? '<br><small>insieme (entro 30 m)</small>' : ''}${p.members?.length ? `<div class="pop-members"><small>${p.kind === 'team' ? 'Coppia' : 'Squadra'}:</small> ${p.members.map(esc).join(', ')}</div>` : ''}<small>${ago ? `${ago} min fa` : 'adesso'}${p.acc ? ` · ±${p.acc} m` : ''}</small>`,

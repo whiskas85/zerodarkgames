@@ -1,7 +1,7 @@
 // Lavoro sul campo (Altari e Doni da piazzare, incarichi delle squadre, mappa del campo).
 // Usato dall'app degli Eletti (dentro la loro app) e dallo strumento di campo della regia (/campo).
 import { h, mount, api, API_HEADERS, fmtTime, toast, dialog, store, scanQR, vibrate } from './lib.js';
-import { createMapView, watchPosition, positionItem, landmarkItem, accuracyHint, PLACE_MAX_ACC } from './map.js';
+import { createMapView, watchPosition, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, accuracyHint, PLACE_MAX_ACC } from './map.js';
 
 const GIFT_STATE = { draft: 'Da piazzare', placed: 'Piazzato · non ancora annunciato', revealed: 'Annunciato: in mappa alle coppie', claimed: 'Preso', expired: 'Svanito (scaduto)' };
 
@@ -156,7 +156,7 @@ export function createField(F, { rerender }) {
     const d = F.data;
     if (!d) return h('p', { class: 'empty' }, 'Caricamento…');
     const places = (d.landmarks || []).map((l) => h('li', { class: `campo-item ${!isPending(l, 'landmark') ? 'done' : ''}` },
-      l.hasPhoto ? h('img', { class: 'campo-thumb', src: `/api/media/landmark/${l.id}?v=${l.placedAt}`, alt: `Foto di ${l.label}`, loading: 'lazy' }) : h('div', { class: 'campo-thumb empty-thumb' }, l.kind === 'soglia' ? '⛩' : '◯'),
+      l.hasPhoto ? h('img', { class: 'campo-thumb', src: `/api/media/landmark/${l.id}?v=${l.placedAt}`, alt: `Foto di ${l.label}`, loading: 'lazy' }) : h('div', { class: 'campo-thumb empty-thumb' }, landmarkIcon(l.kind)),
       h('div', { class: 'campo-info' },
         h('strong', null, l.label), h('div', { class: 'small muted' }, 'Luogo del gioco · foto facoltativa'),
         placedLine(l), l.moveRequestedAt ? h('span', { class: 'chip chip-blood' }, 'Da spostare') : null,
@@ -216,7 +216,10 @@ export function createField(F, { rerender }) {
       ...[...d.points.map((p) => ['point', p]), ...d.gifts.map((g) => ['gift', g]), ...(d.landmarks || []).map((l) => ['landmark', l])]
         .filter(([k, x]) => x.targetLat != null && isPending(x, k) && (F.who.role === 'master' || (sq && x.squadId === sq.id)))
         .map(([k, x]) => ({ key: `t${k}${x.id}`, kind: 'target', lat: x.targetLat, lng: x.targetLng, title: `Qui: ${x.label}`, popup: `<strong>Da piazzare qui</strong><br>${x.label}${x.taskNote ? `<br><small>${x.taskNote}</small>` : ''}` })),
+      // Mine traccianti degli Eletti (solo il Consiglio le vede).
+      ...mineItems(d.mines || []),
     ]);
+    mapView.setCircles(mineCircles(d.mines || []));
     if (F.me) mapView.setMe(F.me);
   }
 
@@ -258,6 +261,8 @@ export function createField(F, { rerender }) {
         h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
         h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
         h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
+        h('span', null, h('span', { class: 'pin pin-place pin-base' }, '⌂'), ' Base degli Eletti (ricarica delle mine)'),
+        h('span', null, h('span', { class: 'pin pin-trap' }, '💣'), ' Mina tracciante (rossa: scattata, coppia marcata)'),
         h('span', null, h('span', { class: 'pin pin-gift pin-hidden' }, '✦'), ' Dono non annunciato'),
         h('span', null, h('span', { class: 'pin pin-gift pin-revealed', style: { '--c': '#d1ad62' } }, '✦'), ' Dono annunciato'),
         h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato dalla regia'),

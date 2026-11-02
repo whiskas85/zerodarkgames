@@ -514,7 +514,7 @@ function render() {
   if (isElect() && view === 'alleanze') view = 'home';
   if (!isElect() && ['campo', 'incarichi'].includes(view)) view = 'home';
   // Mappa, indicazioni e Beacon: GPS del telefono acceso in continuo (posizione in tempo reale).
-  if ((view === 'mappa' && !isElect()) || view === 'indicazioni' || view === 'beacon') startMapGps(); else stopMapGps();
+  if ((view === 'mappa' && !isElect()) || view === 'indicazioni' || view === 'beacon' || view === 'mine') startMapGps(); else stopMapGps();
   if (isElect() && FIELD_VIEWS.includes(view)) { field.startGps(); if (!FE.data) field.load(); } else field.stopGps();
   if (view !== 'mappa') field.leaveMap();
   if (view === 'sigillo') openSeal(); else closeSeal();
@@ -522,7 +522,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -597,7 +597,7 @@ function perksModal(fx) {
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
 // Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
-const UP = { eventi: '#/home', beacon: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
+const UP = { eventi: '#/home', beacon: '#/home', mine: '#/home', punteggio: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
 // Pagine che stanno sotto un'altra anche senza argomento.
 const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
@@ -968,6 +968,8 @@ function updateClocks() {
       else if (kind === 'elapsed') txt = fmtDuration(clock.elapsed());
       else if (kind === 'hunt') txt = fmtDuration(Math.max(0, c.huntAtMs - clock.elapsed()), false);
     }
+    // Conto alla rovescia verso un istante (es. fine della marcatura di una mina).
+    if (kind.startsWith('abs:')) txt = fmtDuration(Math.max(0, Number(kind.slice(4)) - clock.serverNow()), false);
     if (kind === 'start') { const at = startAt(); txt = at ? fmtStart(at - clock.serverNow(), el.classList.contains('no-sec')) : '—'; }
     if (el.textContent !== txt) el.textContent = txt;
   }
@@ -1441,6 +1443,7 @@ function viewElectHome(st) {
     st.field?.squad ? h('a', { class: 'squad-home', href: '#/incarichi', style: { '--c': st.field.squad.color } },
       h('span', { class: 'eyebrow' }, 'La tua squadra'), h('strong', null, st.field.squad.name),
       h('span', { class: st.field.todo ? 'bad-text small' : 'ok-text small' }, st.field.todo ? `${st.field.todo} incarichi da fare` : 'Nessun incarico in sospeso')) : null,
+    electScoreStrip(st),
     electTimedTasks(st),
     pushInvite(),
     latestNotice(st),
@@ -1454,6 +1457,8 @@ function viewElectHome(st) {
         h('button', { class: 'tile tile-scan', type: 'button', onclick: () => field.scanSign() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('qrcodeScan', 28)), h('span', null, 'Piazza da cartello'), h('span', { class: 'tiny muted' }, 'scansiona il QR')),
         tile('#/incarichi', 'Incarichi', '☰', st.field?.todo || null, st.field?.todo),
         tile('#/beacon', 'Beacon', mdi('satelliteUplink', 28), st.beacon?.running ? '●' : null, !!st.beacon?.running),
+        st.mines ? tile('#/mine', 'Mine traccianti', '💣', st.mines.personal ? `${st.mines.left}/${st.mines.count}` : null, st.mines.personal && !st.mines.left) : null,
+        st.mines ? tile('#/punteggio', 'Punteggio', '★', st.mines.score?.squad ? st.mines.score.squad.total : null) : null,
         st.field?.squad ? tile('#/scontri', 'Scontri', mdi('swordCross', 28), (st.combat?.targets || []).length || null) : null,
         // Punto di interesse: si segna dove si è (GPS) o toccando la mappa; lo vedono regia ed Eletti.
         h('button', { class: 'tile', type: 'button', onclick: () => field.openPoi() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, mdi('mapMarker', 28)), h('span', null, 'Punto di interesse'), h('span', { class: 'tiny muted' }, 'piazzalo qui')),
@@ -1490,6 +1495,7 @@ function viewHome() {
     st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     publicVoteCard(st),
+    mineMarkBanner(st),
     phase,
     prepCard(st),
     PRE.includes(c.status) && st.team.members.find((m) => !m.me) ? partnerCard(st.team.members.find((m) => !m.me)) : null,
@@ -1592,6 +1598,109 @@ const teamName = (t) => `${t.roman} ${t.sectorName}`;
 // Alleanze e scontri sono due pagine. Le alleanze degli altri sono segrete: negli scontri si vede solo la coppia.
 const alliancePending = (st) => (st?.combat && !st.combat.elect ? st.combat.incoming.length : 0);
 const fightPending = (st) => (st?.combat && !st.combat.elect ? st.combat.toConfirm.length + (st.combat.steals || []).length + (st.combat.electToConfirm || []).length : 0);
+
+// ---------------------------------------------------------------- Mine traccianti (Eletti)
+// L'Eletto posa una mina dove si trova: la vede solo il Consiglio. La prima coppia che passa entro il raggio è
+// marcata e per qualche minuto tutti la vedono in mappa. Le mine si ricaricano alla Base degli Eletti.
+const nearPos = () => (myPos && Date.now() - (myPos.at || 0) < 60000 ? myPos : null);
+function viewMines() {
+  const m = S.state?.mines;
+  if (!m) return h('p', { class: 'empty' }, 'Le mine le posano gli Eletti.');
+  const pos = nearPos();
+  const baseD = m.base && pos ? geoDist(pos, m.base) : null;
+  const atBase = baseD != null && baseD <= m.base.radius + Math.min(20, pos.acc || 0);
+  const armed = m.list.filter((x) => !x.triggeredAt);
+  const fired = m.list.filter((x) => x.triggeredAt);
+  const mineRow = (x) => h('li', { class: `mine-row ${x.triggeredAt ? (x.markUntil ? 'marked' : 'spent') : 'armed'} ${x.mine ? 'own' : ''}` },
+    h('span', { class: 'pin pin-trap', 'aria-hidden': 'true' }, '💣'),
+    h('span', { class: 'grow' },
+      h('strong', null, x.triggeredAt ? (x.team ? `${x.team.roman} · Settore ${x.team.sectorName}` : 'Scattata') : x.mine ? 'La tua mina' : `Mina di ${x.author || 'Eletti'}`),
+      h('span', { class: 'tiny muted' }, x.triggeredAt
+        ? `Scattata alle ${fmtTime(x.triggeredAt)}${x.markUntil ? ` · marcata fino alle ${fmtTime(x.markUntil)}` : ' · marcatura finita'}${x.mine ? ' · tua' : ` · ${x.author || ''}`}`
+        : `Posata alle ${fmtTime(x.placedAt)} · raggio ${x.radius} m${pos ? ` · a ${fmtM(geoDist(pos, x))}` : ''}`)));
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Mine traccianti'),
+    h('p', { class: 'muted small' }, `Posate una mina dove siete: la vede solo il Consiglio. La prima coppia che passa entro ${m.radius} m viene marcata e per ${m.markMin} minuti la vedono tutti in mappa (lei lo scopre un minuto dopo). Chi è nascosto (Ombra, Cono d'Ombra) non la fa scattare.`),
+    !m.personal ? h('div', { class: 'banner banner-queue' }, h('strong', null, 'Serve il tuo accesso personale'), h('span', null, 'Le mine sono di ogni Eletto: entra con il tuo account o il tuo codice personale.')) : null,
+    m.personal ? h('div', { class: 'card mine-ammo' },
+      h('div', { class: 'eyebrow' }, 'Le tue mine'),
+      h('div', { class: 'mine-pips', 'aria-label': `${m.left} mine su ${m.count}` }, Array.from({ length: m.count }, (_, i) => h('span', { class: `mine-pip ${i < m.left ? 'on' : ''}`, 'aria-hidden': 'true' }, '💣'))),
+      h('strong', { class: 'mono' }, `${m.left} / ${m.count}`),
+      h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', disabled: !m.left || !m.canPlace, onclick: placeMine }, '💣 Posa una mina qui'),
+      !m.canPlace ? h('p', { class: 'tiny muted' }, 'Le mine si posano da quando la partita è pronta fino alla fine.') : !m.left ? h('p', { class: 'tiny bad-text' }, 'Mine finite: ricaricatele alla Base degli Eletti.') : null) : null,
+    m.personal ? h('div', { class: 'card stack-sm' },
+      h('div', { class: 'eyebrow' }, '⌂ Base degli Eletti'),
+      !m.base ? h('p', { class: 'muted small' }, 'La Base non è ancora sulla mappa: chiedete alla regia di piazzarla.')
+        : h('p', { class: 'small' }, baseD == null ? 'Ricerca della posizione…' : atBase ? h('strong', { class: 'ok-text' }, 'Siete alla Base') : `Siete a ${fmtM(baseD)} dalla Base (ricarica entro ${m.base.radius} m)`),
+      m.base ? h('button', { class: `btn btn-block ${atBase && m.left < m.count ? 'btn-primary' : ''}`, type: 'button', disabled: m.left >= m.count, onclick: reloadMines }, m.left >= m.count ? 'Mine già cariche' : '⟳ Ricarica le mine') : null,
+      m.base ? h('a', { class: 'btn btn-sm', href: '#/mappa' }, 'Vedi la Base in mappa') : null) : null,
+    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Armate sul campo (${armed.length})`),
+      armed.length ? h('ul', { class: 'mine-list' }, armed.map(mineRow)) : h('p', { class: 'muted small' }, 'Nessuna mina armata.')),
+    fired.length ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Scattate da poco'), h('ul', { class: 'mine-list' }, fired.map(mineRow))) : null,
+    h('a', { class: 'btn btn-block', href: '#/punteggio' }, '★ Punteggio degli Eletti'));
+}
+
+async function placeMine() {
+  vibrate(30);
+  let pos;
+  try { pos = await getGps(10000); } catch (e) { toast(e.message, 'error'); return; }
+  try {
+    const r = await api('POST', '/api/team/mines', pos);
+    vibrate([80, 40, 80]);
+    toast(`Mina posata (raggio ${r.radius} m) · ne restano ${r.left}`, 'ok');
+  } catch (e) { toast(e.offline ? 'Serve la rete per posare la mina' : e.message, 'error', 6000); }
+  refresh();
+}
+async function reloadMines() {
+  let pos;
+  try { pos = await getGps(10000); } catch (e) { toast(e.message, 'error'); return; }
+  try {
+    const r = await api('POST', '/api/team/mines/reload', pos);
+    vibrate([60, 40, 60, 40, 200]);
+    toast(`Mine ricaricate: ${r.left}`, 'ok');
+  } catch (e) { toast(e.offline ? 'Serve la rete per ricaricare' : e.message, 'error', 6000); }
+  refresh();
+}
+
+// Punteggio degli Eletti: la propria squadra in home, il dettaglio e la classifica delle squadre nella sua pagina.
+function electScoreStrip(st) {
+  const sc = st.mines?.score;
+  if (!sc?.squad) return null;
+  return h('a', { class: 'card score-strip', href: '#/punteggio' },
+    h('span', { class: 'eyebrow' }, 'Punteggio della squadra'),
+    h('strong', { class: 'score-big mono' }, String(sc.squad.total)),
+    h('span', { class: 'tiny muted' }, `${sc.squad.rank}° su ${sc.squads.length}${sc.me ? ` · tu ${sc.me.total} punti` : ''}`));
+}
+function viewElectScore() {
+  const sc = S.state?.mines?.score;
+  if (!sc) return h('p', { class: 'empty' }, 'Il punteggio è degli Eletti.');
+  const kinds = Object.entries(sc.kinds);
+  const breakdown = (x) => h('ul', { class: 'score-kinds' }, kinds.map(([k, v]) => h('li', null,
+    h('span', { 'aria-hidden': 'true' }, v.icon), h('span', { class: 'grow' }, v.label), h('span', { class: 'mono' }, `${x.counts[k]} × ${v.points}`), h('strong', { class: 'mono' }, String(x.counts[k] * v.points)))));
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Punteggio degli Eletti'),
+    h('p', { class: 'muted small' }, `Punti per ogni azione riuscita: ${kinds.map(([, v]) => `${v.icon} ${v.label} ${v.points}`).join(' · ')}.`),
+    sc.squad ? h('div', { class: 'card' },
+      h('div', { class: 'eyebrow' }, `Squadra ${sc.squad.name} · ${sc.squad.rank}° posto`),
+      h('div', { class: 'score-big mono' }, String(sc.squad.total)),
+      breakdown(sc.squad)) : h('p', { class: 'muted small' }, 'Non sei ancora in una squadra: la sceglie la regia.'),
+    sc.me ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Tu · ${sc.me.total} punti`), breakdown(sc.me)) : null,
+    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Classifica delle squadre'),
+      sc.squads.length ? h('ol', { class: 'score-rank' }, sc.squads.map((x) => h('li', { class: sc.squad?.id === x.id ? 'mine' : '', style: { '--c': x.color || '#d1ad62' } },
+        h('span', { class: 'mono' }, `${x.rank}°`), h('span', { class: 'sq-dot', 'aria-hidden': 'true' }), h('strong', { class: 'grow' }, x.name), h('span', { class: 'mono' }, String(x.total))))) : h('p', { class: 'muted small' }, 'Nessuna squadra.')),
+    sc.recent.length ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Ultime azioni della squadra'),
+      h('ul', { class: 'score-log' }, sc.recent.map((r) => h('li', null, h('span', { class: 'mono tiny' }, fmtTime(r.at)), h('span', { class: 'grow' }, `${sc.kinds[r.kind]?.icon || ''} ${r.label || sc.kinds[r.kind]?.label}${r.who ? ` · ${r.who}` : ''}`), h('strong', { class: 'mono' }, `+${r.points}`))))) : null);
+}
+
+// Coppia marcata da una mina (lo scopre il minuto dopo): simbolo della mina e conto alla rovescia.
+function mineMarkBanner(st) {
+  const mk = st?.mineMark;
+  if (!mk || mk.until <= clock.serverNow()) return null;
+  return h('a', { class: 'mine-mark', href: '#/mappa', role: 'status' },
+    h('span', { class: 'mine-mark-ico', 'aria-hidden': 'true' }, '💣'),
+    h('span', { class: 'grow' }, h('strong', null, 'Mina sonora: siete marcati'), h('span', { class: 'small' }, `Tutti vedono la vostra posizione fino alle ${fmtTime(mk.until)}.`)),
+    h('span', { class: 'mono mine-mark-clock', 'data-clock': `abs:${mk.until}` }, '—'));
+}
 
 // ---------------------------------------------------------------- Beacon (Eletti)
 
@@ -2482,7 +2591,7 @@ function viewMap(focus = null) {
     ...(m.guide || []).map(guideItem),
     ...m.points.map((p) => ({ key: `p${p.id}`, kind: 'altar', lat: p.lat, lng: p.lng, text: p.roman, mine: p.mine, off: !!p.disabledUntil, title: p.label,
       popup: `<strong>${p.label}</strong>${p.mine ? '<br>Il vostro Altare' : ''}${p.disabledUntil ? `<br>📡 Disattivato da un Beacon degli Eletti fino alle ${fmtTime(p.disabledUntil)}` : ''}` })),
-    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, text: x.kind === 'elect' ? (x.displayName || x.sectorName || 'Eletto') : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
+    ...(S.state?.skills?.sightings || []).filter((x) => x.radius == null).map((x) => ({ key: `s${x.key}`, kind: x.kind || 'team', lat: x.lat, lng: x.lng, color: x.color, note: /Mina/.test(x.source || '') ? '💣 marcata' : null, text: x.kind === 'elect' ? (x.displayName || x.sectorName || 'Eletto') : x.roman, title: `${x.roman} · Settore ${x.sectorName}`, popup: x.kind === 'elect' ? `<strong>Squadra ${escHtml(x.sectorName)}</strong><br>${escHtml(x.displayName || 'Eletto')} · ${escHtml(x.source)}` : `<strong>${escHtml(x.roman)} · Settore ${escHtml(x.sectorName)}</strong>${x.displayName ? `<br>${escHtml(x.displayName)}` : ''}<br><small>${escHtml(x.source)} · posizione delle ${fmtTime(x.at)}</small>` })),
     // Luoghi degli eventi aperti, o in corso per chi partecipa.
     ...(S.state?.events || []).filter((e) => e.location && ['open', 'running', 'closing'].includes(e.status) && (e.status === 'open' || e.mine))
       .map((e) => ({ key: `ev${e.id}`, kind: 'event', lat: e.location.lat, lng: e.location.lng, title: e.name,
@@ -2510,6 +2619,7 @@ function viewMap(focus = null) {
   if (focus !== 'presagio') S.focusedHint = null;
   // La mappa prende quasi tutto lo schermo: niente titolo, legenda né note (il cerchio blu dice già dove siete).
   return h('div', { class: 'stack map-page' },
+    mineMarkBanner(S.state),
     bountyStrip(),
     sightingsNote(),
     canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,

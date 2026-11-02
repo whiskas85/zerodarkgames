@@ -127,8 +127,8 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'prepInfo'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
@@ -549,11 +549,11 @@ function movePlayer(playerId, { toTeamId, swapWithId } = {}, actor) {
 }
 
 // Luoghi del gioco (la Soglia, il Cerchio di inizio): una riga per partita, creata alla prima richiesta.
-const LANDMARKS = [{ kind: 'cerchio', label: 'Cerchio di inizio' }, { kind: 'soglia', label: 'La Soglia' }];
+const LANDMARKS = [{ kind: 'cerchio', label: 'Cerchio di inizio' }, { kind: 'soglia', label: 'La Soglia' }, { kind: 'base', label: 'Base degli Eletti' }];
 function landmarksOf(gameId) {
   for (const l of LANDMARKS) q.run('INSERT OR IGNORE INTO landmarks (gameId, kind, label) VALUES (?, ?, ?)', gameId, l.kind, l.label);
   q.run("UPDATE landmarks SET exitToken = ? WHERE gameId = ? AND kind = 'soglia' AND exitToken IS NULL", randomToken(18), gameId);
-  return q.all("SELECT * FROM landmarks WHERE gameId = ? ORDER BY kind = 'soglia', id", gameId);
+  return q.all("SELECT * FROM landmarks WHERE gameId = ? ORDER BY kind = 'base', kind = 'soglia', id", gameId);
 }
 
 function requireCouple(team) {
@@ -1200,6 +1200,7 @@ function wipePlay(g) {
     q.run('DELETE FROM event_entries WHERE eventId IN (SELECT id FROM game_events WHERE gameId = ?)', g.id);
     q.run("UPDATE game_events SET status = 'draft', openUntil = NULL, launchedAt = NULL, startedAt = NULL, closingAt = NULL, closeDeadline = NULL, closedBy = NULL, truceUntil = NULL, doneAt = NULL WHERE gameId = ?", g.id);
     require('./skills').resetGame(g.id);
+    require('./mines').resetGame(g.id);
   });
 }
 

@@ -537,6 +537,7 @@ function applyElectFight(f, by) {
   tx(() => {
     q.run("UPDATE elect_fights SET status = 'confirmed', resolvedAt = ?, resolvedBy = ? WHERE id = ?", Date.now(), by, f.id);
     if (f.winner === 'elect') {
+      require('./mines').addScore(f.gameId, 'fight', `fight:${f.id}`, { squadId: f.squadId, playerId: f.playerId, label: `Ingaggio vinto: Settore ${t?.sectorName || '?'}` });
       startTimer(t.id, 'veglia', `Sconfitta contro gli Eletti (squadra ${sq?.name || '?'})`);
       if (task && !task.doneAt && !task.cancelledAt) F().setTaskDone(task.id, true, by, f.gameId);
     } else if (task?.kind === 'bounty' && task.successMode === 'any' && !task.doneAt && !task.cancelledAt) {
