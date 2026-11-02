@@ -4675,7 +4675,7 @@ function teamLogoCard(st) {
     h('div', { class: 'tlc-row' },
       h('span', { class: `tlc-mark ${t.logoAt ? 'has' : ''}` }, t.logoAt ? h('img', { src: `/api/public/team-logo/${t.id}?v=${t.logoAt}`, alt: 'Logo della coppia' }) : t.sector?.roman || '?'),
       h('div', { class: 'grow' }, h('strong', null, 'Logo della coppia'),
-        h('div', { class: 'muted small' }, t.logoAt ? 'Compare nel voto del pubblico accanto al vostro numero romano.' : 'Caricate il vostro stemma: compare nel voto del pubblico. PNG, JPG o WebP, massimo 2 MB, meglio quadrato.'))),
+        h('div', { class: 'muted small' }, t.logoAt ? 'Compare nel voto del pubblico accanto al vostro numero romano.' : 'Caricate il vostro stemma: compare nel voto del pubblico. PNG, JPG o WebP, massimo 2 MB: si vede quadrato (ritagliato al centro).'))),
     h('div', { class: 'row-2' },
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => file.click() }, t.logoAt ? 'Cambia il logo' : 'Carica il logo'),
       t.logoAt ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {

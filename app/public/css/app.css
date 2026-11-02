@@ -1217,7 +1217,7 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .vr-mark { position: relative; width: 48px; height: 48px; display: grid; place-items: center; border: 3px solid var(--c, var(--ink)); font-family: var(--f-display); font-weight: 900; font-size: 22px; color: var(--c, var(--ink)); }
 .vr-mark.sm { width: 36px; height: 36px; font-size: 17px; border-width: 2px; }
 .vr-mark.has-logo { border: 0; }
-.vr-mark img { width: 100%; height: 100%; object-fit: contain; }
+.vr-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .vr-mark .rb { position: absolute; right: -7px; bottom: -7px; min-width: 20px; height: 20px; padding: 0 3px; display: grid; place-items: center; background: var(--bg); border: 2px solid var(--c, var(--ink)); color: var(--c, var(--ink)); font-size: 12px; line-height: 1; }
 .vr-you { padding: 1px 8px; border-radius: 999px; background: var(--brass); color: #111; font: 800 11px/1.6 var(--f-mono, monospace); letter-spacing: .08em; }
 .vr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -1230,4 +1230,4 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .tlc-row { display: flex; gap: 12px; align-items: center; }
 .tlc-mark { flex: none; width: 56px; height: 56px; display: grid; place-items: center; border: 3px solid var(--ink); font-family: var(--f-display); font-weight: 900; font-size: 26px; overflow: hidden; }
 .tlc-mark.has { border: 0; }
-.tlc-mark img { width: 100%; height: 100%; object-fit: contain; }
+.tlc-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }

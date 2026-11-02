@@ -45,7 +45,10 @@ h2{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:up
 .people{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px;font-size:14px}
 .people li::before{content:"▸ ";color:var(--c,var(--brass))}
 .stamp{width:56px;height:56px} .stamp.has-logo{border:0;background:transparent}
-.stamp img,.plogo img{width:100%;height:100%;object-fit:contain}
+.stamp img,.plogo img{width:100%;height:100%;object-fit:cover;border-radius:6px}
+.act{display:flex;align-items:center;gap:10px}
+.tlogo{width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid var(--c,var(--line));background:var(--bg);flex:none}
+@media (max-width:420px){.act{flex-direction:column;gap:6px}.tlogo{width:56px;height:56px}}
 .plogo{width:52px;height:52px;display:grid;place-items:center;border:3px solid var(--c,var(--ink));font-family:var(--f-display);font-weight:900;font-size:24px;color:var(--c,var(--ink))}
 .plogo.has-logo{border:0}
 .has-logo{position:relative}
@@ -110,10 +113,12 @@ function render() {
     : '<p class="empty">Ancora nessun voto: il primo puoi darlo tu.</p>';
   const teams = S.teams.map((t) => {
     const mine = S.myVote === t.id;
+    // A sinistra il numero romano; il logo (quadrato) sta accanto al pulsante di voto.
     return `<div class="team ${mine ? 'mine' : ''}" style="--c:${esc(t.color || '')}">
-      ${mark(t)}
+      <span class="stamp">${esc(t.roman)}</span>
       <div><div class="tname">${esc(teamName(t))}</div><div class="tsub">${sector(t)}</div>${people(t)}</div>
-      <button class="vote ${mine ? 'done' : ''}" data-id="${t.id}" ${!S.open || busy ? 'disabled' : ''}>${mine ? 'Il tuo voto ✓' : S.myVote ? 'Cambia voto' : 'Vota'}</button>
+      <div class="act">${t.logo ? `<img class="tlogo" src="${esc(t.logo)}" alt="Logo ${esc(teamName(t))}">` : ''}
+      <button class="vote ${mine ? 'done' : ''}" data-id="${t.id}" ${!S.open || busy ? 'disabled' : ''}>${mine ? 'Il tuo voto ✓' : S.myVote ? 'Cambia voto' : 'Vota'}</button></div>
       <div class="bar"><i style="width:${Math.max(0, Math.min(100, t.pct))}%"></i></div>
       <div class="pctline"><span>${pct(t.pct)}</span><span>${mine ? 'hai votato questa coppia' : ''}</span></div></div>`;
   }).join('');
