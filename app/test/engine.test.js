@@ -2968,3 +2968,16 @@ test('logo della coppia: si carica, compare nel voto del pubblico (senza foto de
   assert.ok(!fs.existsSync(file));
   assert.throws(() => G.teamLogoFile(A.id), /non trovato/);
 });
+
+test('nome della coppia dall\'app: si cambia fino al via, poi è bloccato', () => {
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const team = () => q.get('SELECT * FROM teams WHERE id = ?', A.id);
+  assert.equal(G.renameTeamFromApp(team(), '  Lupi   Grigi  ', 'test').displayName, 'Lupi Grigi');
+  assert.equal(G.renameTeamFromApp(team(), '', 'test').displayName, null);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test');
+  G.renameTeamFromApp(team(), 'Ombre', 'test'); // nel Cerchio ancora sì
+  G.control(g.id, 'start', 'test');
+  assert.throws(() => G.renameTeamFromApp(team(), 'Altro', 'test'), /iniziata/);
+  assert.equal(team().displayName, 'Ombre');
+});

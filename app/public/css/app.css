@@ -1231,3 +1231,5 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .tlc-mark { flex: none; width: 56px; height: 56px; display: grid; place-items: center; border: 3px solid var(--ink); font-family: var(--f-display); font-weight: 900; font-size: 26px; overflow: hidden; }
 .tlc-mark.has { border: 0; }
 .tlc-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.team-logo-card .phone-row { display: flex; gap: 8px; }
+.team-logo-card .phone-row .input { flex: 1; min-width: 0; }

@@ -4676,7 +4676,20 @@ function teamLogoCard(st) {
       await refresh();
     } catch (err) { toast(err.message || 'Serve la rete per caricarlo', 'error', 6000); }
   } });
+  // Nome della coppia: modificabile da uno dei due fino al via, poi bloccato (lo cambia solo la regia).
+  const locked = !PRE.includes(st.clock?.status);
+  const nameInput = h('input', { class: 'input', maxlength: 40, value: t.displayName || '', placeholder: `Settore ${t.sector?.name || ''}`, disabled: locked, 'data-keep': 'team-name', 'aria-label': 'Nome della coppia' });
+  const saveName = async () => {
+    const v = nameInput.value.trim();
+    if (v === (t.displayName || '')) return;
+    try { await api('POST', '/api/team/name', { displayName: v }); toast(v ? 'Nome della coppia salvato' : 'Nome tolto: resta il Settore', 'ok'); await refresh(); } catch (err) { toast(err.offline ? 'Serve la rete per salvarlo' : err.message, 'error', 6000); }
+  };
+  const nameBox = h('div', { class: 'stack-sm' },
+    h('strong', null, 'Nome della coppia'),
+    h('div', { class: 'phone-row' }, nameInput, locked ? null : h('button', { class: 'btn btn-primary', type: 'button', onclick: saveName }, 'Salva')),
+    h('div', { class: 'muted small' }, locked ? '🔒 La partita è iniziata: il nome non si cambia più (chiedete al Consiglio).' : 'Lo vedono tutti: nel voto del pubblico, in classifica e nell\'app. Si può cambiare fino al via.'));
   return h('div', { class: 'card team-logo-card', id: 'logo' },
+    nameBox,
     h('div', { class: 'tlc-row' },
       h('span', { class: `tlc-mark ${t.logoAt ? 'has' : ''}` }, t.logoAt ? h('img', { src: `/api/public/team-logo/${t.id}?v=${t.logoAt}`, alt: 'Logo della coppia' }) : t.sector?.roman || '?'),
       h('div', { class: 'grow' }, h('strong', null, 'Logo della coppia'),

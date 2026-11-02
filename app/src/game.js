@@ -1817,6 +1817,21 @@ function markChatRead(player, channel, lastId) {
   if (col) q.run(`UPDATE players SET ${col} = MAX(COALESCE(${col}, 0), ?) WHERE id = ?`, Number(lastId) || 0, player.id);
 }
 
+// ---------------------------------------------------------------- nome della coppia
+
+// Dall'app: uno dei due Legati cambia il nome della coppia, solo prima del via (poi lo può cambiare la regia).
+function renameTeamFromApp(team, name, actor) {
+  if (!team || team.kind !== 'couple') throw err(403, 'Il nome è delle coppie');
+  const g = getGame(team.gameId);
+  if (!C.PRE_START.includes(g.status)) throw err(409, 'La partita è iniziata: il nome non si cambia più (chiedete al Consiglio)');
+  const v = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  q.run('UPDATE teams SET displayName = ? WHERE id = ?', v || null, team.id);
+  log(g.id, actor, 'team_renamed', { teamId: team.id, name: v || null });
+  rt.toStaff(g.id, 'teams');
+  rt.toTeams(g.id, 'state', {}, team.id);
+  return { displayName: v || null };
+}
+
 // ---------------------------------------------------------------- logo della coppia
 
 const LOGO_DIR = path.join(DATA_DIR, 'logos');
@@ -2446,7 +2461,7 @@ module.exports = {
   assignPerson, setPending, spotsOf, pushReport, trackStateOf, TRACK_ON_PINGS, TRACK_PINGS_WINDOW_MS, ensurePoints, addFreePoints, deletePoint, gameSectorIds, generateCodes, extractNeverRevealed, buildCalendar, revelationOffsets, editRevelation, editPoint, regenPointToken, setPhrase, editFragment,
   readiness, control, revealNow, revealNext, revealSector, postponeRevelation, skipRevelation,
   saveSupply, deleteSupply, fireSupply, closeSupply, shiftSupply, freeAnnouncement, tickAll,
-  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, markReadDirect, markChatRead, setTeamLogo, clearTeamLogo, teamLogoFile, correctFragments,
+  visitPoint, unlock, addManualFragment, addCodeNote, postMessage, markRead, markReadDirect, markChatRead, renameTeamFromApp, setTeamLogo, clearTeamLogo, teamLogoFile, correctFragments,
   movePlayer, settleDemoJump, revealedCodes, validatorView, compareTyped, validate, exfiltrate, standings, teamState, masterState, boardState, log, clockOf, createDemo, advanceDemo,
   announce, notifyState,
 };
