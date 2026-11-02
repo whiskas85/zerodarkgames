@@ -325,3 +325,10 @@ body.no-scroll { overflow: hidden; }
 .who-pin.pin-stale:has(.who-note) { opacity: .85; }
 .who-pin.pin-stale .who-mark { filter: grayscale(1); }
 .pin-blocked .who-note { background: rgba(70, 40, 110, .95); }
+/* Ritaglio quadrato del logo */
+.crop { display: grid; justify-items: center; gap: 10px; }
+.crop-frame { position: relative; width: 280px; height: 280px; border-radius: 8px; overflow: hidden; background: repeating-conic-gradient(#2a2a2a 0 25%, #1c1c1c 0 50%) 0 0 / 20px 20px; box-shadow: 0 0 0 2px var(--brass, #c9a55e); }
+.crop-canvas { display: block; touch-action: none; cursor: grab; }
+.crop-canvas:active { cursor: grabbing; }
+.crop-zoom-row { display: flex; align-items: center; gap: 10px; width: 280px; font-weight: 700; }
+.crop-zoom { flex: 1; }

@@ -4,7 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
-import { parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
+import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -4659,12 +4659,16 @@ function viewTraccar() {
 function teamLogoCard(st) {
   if (st?.team?.kind !== 'couple') return null;
   const t = st.team;
-  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, onchange: async (e) => {
+  const file = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async (e) => {
     const f = e.target.files?.[0];
+    e.target.value = '';
     if (!f) return;
-    if (f.size > 2 * 1024 * 1024) { toast('Immagine troppo grande (massimo 2 MB)', 'error'); return; }
+    // Si sceglie il ritaglio quadrato prima di caricarlo.
+    let blob;
+    try { blob = await cropSquare(f); } catch (err) { toast(err.message, 'error'); return; }
+    if (!blob) return;
     try {
-      const res = await fetch('/api/team/logo', { method: 'POST', headers: { 'Content-Type': f.type }, body: f, credentials: 'same-origin' });
+      const res = await fetch('/api/team/logo', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob, credentials: 'same-origin' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
       toast('Logo della coppia salvato', 'ok');
@@ -4675,7 +4679,7 @@ function teamLogoCard(st) {
     h('div', { class: 'tlc-row' },
       h('span', { class: `tlc-mark ${t.logoAt ? 'has' : ''}` }, t.logoAt ? h('img', { src: `/api/public/team-logo/${t.id}?v=${t.logoAt}`, alt: 'Logo della coppia' }) : t.sector?.roman || '?'),
       h('div', { class: 'grow' }, h('strong', null, 'Logo della coppia'),
-        h('div', { class: 'muted small' }, t.logoAt ? 'Compare nel voto del pubblico accanto al vostro numero romano.' : 'Caricate il vostro stemma: compare nel voto del pubblico. PNG, JPG o WebP, massimo 2 MB: si vede quadrato (ritagliato al centro).'))),
+        h('div', { class: 'muted small' }, t.logoAt ? 'Compare nel voto del pubblico accanto al vostro numero romano.' : 'Caricate il vostro stemma: compare nel voto del pubblico. Scegliete voi il ritaglio quadrato.'))),
     h('div', { class: 'row-2' },
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => file.click() }, t.logoAt ? 'Cambia il logo' : 'Carica il logo'),
       t.logoAt ? h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {

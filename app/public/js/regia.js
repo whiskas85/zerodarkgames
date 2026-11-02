@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
+import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
 import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { omnibar, matches } from './omnibar.js';
@@ -3757,12 +3757,15 @@ function viewSupply() {
 
 // Logo della coppia (scheda in Squadre Legati): tocca per caricarlo o cambiarlo; compare nel voto del pubblico.
 function teamLogo(t) {
-  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, onchange: async (e) => {
+  const file = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async (e) => {
     const f = e.target.files?.[0];
+    e.target.value = '';
     if (!f) return;
-    if (f.size > 2 * 1024 * 1024) { toast('Immagine troppo grande (massimo 2 MB)', 'error'); return; }
+    let blob;
+    try { blob = await cropSquare(f, { title: `Logo · ${t.roman} Settore ${t.sectorName}` }); } catch (err) { toast(err.message, 'error'); return; }
+    if (!blob) return;
     try {
-      const res = await fetch(`/api/m/teams/${t.id}/logo`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f, credentials: 'same-origin' });
+      const res = await fetch(`/api/m/teams/${t.id}/logo`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob, credentials: 'same-origin' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
       toast('Logo della coppia salvato', 'ok');

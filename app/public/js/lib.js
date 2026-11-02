@@ -244,6 +244,63 @@ export function modal({ title, body, okLabel = 'Conferma', cancelLabel = 'Annull
   });
 }
 
+// ---- ritaglio quadrato di un'immagine (logo della coppia)
+// Si sposta la foto trascinandola e la si ingrandisce con il cursore (o due dita); torna un Blob quadrato
+// (600×600, PNG se l'originale è PNG per tenere la trasparenza, altrimenti JPEG), oppure null se si annulla.
+export async function cropSquare(file, { size = 600, title = 'Ritaglia il logo' } = {}) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Immagine non leggibile')); i.src = url; });
+    const V = 280; // lato del riquadro di anteprima
+    const base = Math.max(V / img.naturalWidth, V / img.naturalHeight); // la foto copre sempre il riquadro
+    // Zoom 1 = la foto riempie il quadrato; sotto 1 la si vede tutta (con bordi), fino a stare interamente dentro.
+    const minZ = Math.min(img.naturalWidth, img.naturalHeight) / Math.max(img.naturalWidth, img.naturalHeight);
+    const st = { zoom: 1, x: 0, y: 0 }; // x, y: spostamento del centro della foto (px dell'anteprima)
+    const canvas = h('canvas', { class: 'crop-canvas', width: V * 2, height: V * 2, style: { width: `${V}px`, height: `${V}px` } });
+    const ctx = canvas.getContext('2d');
+    const clamp = () => {
+      const k = base * st.zoom;
+      const mx = Math.abs(img.naturalWidth * k - V) / 2; const my = Math.abs(img.naturalHeight * k - V) / 2;
+      st.x = Math.max(-mx, Math.min(mx, st.x)); st.y = Math.max(-my, Math.min(my, st.y));
+    };
+    const draw = (c = ctx, out = V * 2) => {
+      const k = base * st.zoom * (out / V);
+      const w = img.naturalWidth * k; const hh = img.naturalHeight * k;
+      c.clearRect(0, 0, out, out);
+      c.drawImage(img, out / 2 - w / 2 + st.x * (out / V), out / 2 - hh / 2 + st.y * (out / V), w, hh);
+    };
+    const zoom = h('input', { type: 'range', class: 'crop-zoom', min: minZ.toFixed(3), max: 4, step: 0.01, value: 1, 'aria-label': 'Ingrandimento',
+      oninput: () => { st.zoom = Number(zoom.value); clamp(); draw(); } });
+    // Trascinamento (un dito o il mouse) e pizzico (due dita) per ingrandire.
+    const pts = new Map();
+    let last = null; let pinch = null;
+    canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); last = { x: e.clientX, y: e.clientY }; if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: st.zoom }; } });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; st.zoom = Math.max(minZ, Math.min(4, pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d)); zoom.value = st.zoom; }
+      else if (last) { st.x += e.clientX - last.x; st.y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY }; }
+      clamp(); draw();
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; last = pts.size ? [...pts.values()][0] : null; };
+    canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); st.zoom = Math.max(minZ, Math.min(4, st.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08))); zoom.value = st.zoom; clamp(); draw(); }, { passive: false });
+    const body = h('div', { class: 'crop' },
+      h('p', { class: 'small muted' }, 'Trascina la foto per scegliere cosa tenere nel quadrato; ingrandisci con il cursore (o con due dita).'),
+      h('div', { class: 'crop-frame' }, canvas),
+      h('label', { class: 'crop-zoom-row' }, h('span', { 'aria-hidden': 'true' }, '−'), zoom, h('span', { 'aria-hidden': 'true' }, '+')));
+    const png = /png|gif|webp/i.test(file.type);
+    return await modal({ title, body, okLabel: 'Usa questo ritaglio', onOpen: () => draw(),
+      onOk: () => new Promise((res) => {
+        const out = h('canvas', { width: size, height: size });
+        const c = out.getContext('2d');
+        if (!png) { c.fillStyle = '#000'; c.fillRect(0, 0, size, size); }
+        draw(c, size);
+        out.toBlob((b) => res(b), png ? 'image/png' : 'image/jpeg', 0.9);
+      }) });
+  } finally { URL.revokeObjectURL(url); }
+}
+
 // ---- stream SSE con riconnessione
 export function stream(url, handlers) {
   let es;
