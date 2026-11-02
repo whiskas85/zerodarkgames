@@ -2932,8 +2932,20 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Favore del pubblico%'", B.id));
   assert.equal(VO.publicState('dev-1', null).open, false);
   assert.throws(() => VO.awardPrizes(g.id, 'test'), /già assegnati/);
-  // A partita iniziata il voto è chiuso.
-  VO.updateVote(g.id, { enabled: true }, 'test');
+  // Senza chiusura scelta, il voto chiude all'inizio previsto della partita (e il conto alla rovescia punta lì).
+  const g2 = setupGame(2);
+  const [X] = teamsOf(g2.id).filter((t) => t.kind === 'couple');
+  VO.updateVote(g2.id, { enabled: true }, 'test');
+  VO.setVotable(X.id, true, 'test');
+  q.run('UPDATE games SET scheduledStart = ? WHERE id = ?', new Date(Date.now() + 3600000).toISOString(), g2.id);
+  let ps = VO.publicState('z', null);
+  assert.equal(ps.open, true);
+  assert.ok(ps.closesAtStart && Math.abs(ps.closesAt - (Date.now() + 3600000)) < 5000);
+  q.run('UPDATE games SET scheduledStart = ? WHERE id = ?', new Date(Date.now() - 60000).toISOString(), g2.id);
+  ps = VO.publicState('z', null);
+  assert.equal(ps.open, false);
+  assert.equal(ps.closed, true);
+  await assert.rejects(VO.castVote({ teamId: X.id, device: 'z', ip: '9.9.9.9' }), /Votazione chiusa/);
 });
 
 test('logo della coppia: si carica, compare nel voto del pubblico (senza foto delle persone), si toglie', () => {

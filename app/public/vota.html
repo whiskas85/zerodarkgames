@@ -123,7 +123,7 @@ function render() {
       <div class="pctline"><span>${pct(t.pct)}</span><span>${mine ? 'hai votato questa coppia' : ''}</span></div></div>`;
   }).join('');
   // Conto alla rovescia: all'apertura del voto, oppure (aperto) alla chiusura o al via della partita.
-  const target = !S.open && !S.closed && S.opensAt ? ['Si vota tra', S.opensAt] : S.open && (S.closesAt || S.startAt) ? [S.closesAt ? 'La votazione chiude tra' : 'Si vota fino al via, tra', S.closesAt || S.startAt] : null;
+  const target = !S.open && !S.closed && S.opensAt ? ['Si vota tra', S.opensAt] : S.open && (S.closesAt || S.startAt) ? [S.closesAtStart ? 'La votazione chiude al via, tra' : 'La votazione chiude tra', S.closesAt || S.startAt] : null;
   const cd = target ? `<div class="cd" data-to="${target[1]}"><span class="eyebrow">${esc(target[0])}</span><div class="cd-row">${['giorni', 'ore', 'minuti', 'secondi'].map((l, i) => `<div class="cd-box"><b data-cd="${i}">--</b><span>${l}</span></div>`).join('')}</div></div>` : '';
   $app.innerHTML = `<header><div class="emblem"><span>0</span></div><p class="eyebrow">I Giochi del Buio · ${esc(S.game.name)}</p>
       <h1>${esc(S.title).replace(/pubblico/i, '<em>pubblico</em>')}</h1>

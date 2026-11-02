@@ -23,7 +23,10 @@ const turnstile = () => ({ siteKey: process.env.TURNSTILE_SITE_KEY || getSetting
 
 // La partita del voto: quella con il voto acceso (la più recente).
 const voteGame = () => q.get('SELECT * FROM games WHERE voteEnabled = 1 ORDER BY id DESC LIMIT 1');
-const isOpen = (g, now = Date.now()) => !!g && !!g.voteEnabled && PRE.includes(g.status) && (!g.voteOpensAt || g.voteOpensAt <= now) && (!g.voteClosesAt || g.voteClosesAt > now) && !g.votePrizedAt;
+// Chiusura: quella scelta dalla regia, altrimenti l'inizio previsto della partita (ora del server).
+const startMs = (g) => (g?.scheduledStart ? Date.parse(g.scheduledStart) || null : null);
+const closeAt = (g) => g?.voteClosesAt || startMs(g);
+const isOpen = (g, now = Date.now()) => !!g && !!g.voteEnabled && PRE.includes(g.status) && (!g.voteOpensAt || g.voteOpensAt <= now) && (!closeAt(g) || closeAt(g) > now) && !g.votePrizedAt;
 
 function votableTeams(gameId) {
   return q.all(`SELECT t.id, t.displayName, t.logoAt, s.name AS sectorName, s.roman, s.color, s.ord AS sectorOrd FROM teams t JOIN sectors s ON s.id = t.sectorId
@@ -54,7 +57,8 @@ function publicState(device, account) {
   const out = (t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, color: t.color, displayName: t.displayName || null, logo: logoUrl(t), members: membersOf(t.id), pct: t.pct });
   return {
     game: { name: g.name, scheduledStart: g.scheduledStart || null },
-    open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, closed: !!g.votePrizedAt || !PRE.includes(g.status),
+    open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: closeAt(g), closesAtStart: !g.voteClosesAt && !!startMs(g),
+    closed: !!g.votePrizedAt || !PRE.includes(g.status) || (!!closeAt(g) && closeAt(g) <= Date.now()),
     // Per i conti alla rovescia: ora del server e inizio previsto della partita (senza chiusura, il voto chiude al via).
     serverNow: Date.now(), startAt: g.scheduledStart ? (Date.parse(g.scheduledStart) || null) : null,
     title: g.voteTitle || 'Il favore del pubblico',
@@ -86,7 +90,7 @@ async function checkTurnstile(token, ip) {
 async function castVote({ teamId, token, device, account, ip, ua }, now = Date.now()) {
   const g = voteGame();
   if (!g) throw err(404, 'Nessuna votazione in corso');
-  if (!isOpen(g, now)) throw err(409, g.votePrizedAt || !PRE.includes(g.status) ? 'Votazione chiusa' : 'La votazione non è aperta in questo momento');
+  if (!isOpen(g, now)) throw err(409, g.votePrizedAt || !PRE.includes(g.status) || (closeAt(g) && closeAt(g) <= now) ? 'Votazione chiusa' : 'La votazione non è aperta in questo momento');
   if (!device) throw err(400, 'Dispositivo non riconosciuto: abilita i cookie e riprova');
   const t = votableTeams(g.id).find((x) => x.id === Number(teamId));
   if (!t) throw err(400, 'Coppia non votabile');
@@ -221,7 +225,7 @@ function teamVote(team) {
   // Classifica completa per l'app (podio e lista): stessa posizione a pari punteggio, la propria coppia segnata.
   const ranking = r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct,
     rank: t.score ? r.list.filter((x) => x.score > t.score).length + 1 : null, mine: t.id === team.id }));
-  return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null, ranking };
+  return { rank: me.score ? rank : null, pct: me.pct, of: r.list.length, open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: closeAt(g), ranking };
 }
 
 // Per la pagina Regia (live): podio e percentuali, se il voto è acceso.
@@ -229,7 +233,7 @@ function liveVote(gameId) {
   const g = G.getGame(gameId);
   if (!g.voteEnabled) return null;
   const r = results(g.id);
-  return { open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: g.voteClosesAt || null, total: r.total,
+  return { open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: closeAt(g), total: r.total,
     votes: q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).n,
     list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score })) };
 }
