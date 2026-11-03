@@ -3075,3 +3075,30 @@ test('mine traccianti degli Eletti: si posano, marcano la coppia per 5 minuti (l
   M.removeMine(g.id, armed.id, 'test');
   assert.ok(!F.fieldState(g.id).mines.some((x) => x.id === armed.id));
 });
+
+test('Legati: con i Settori esauriti il compagno entra con il codice; un Legato può diventare Temerario Solitario', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Legati e temerari' }, 'test');
+  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 1 }, 'test');
+  let n = 0;
+  const acc = () => A.register({ username: `legato${++n}`, password: 'password1', name: `L${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
+  // Il primo Legato prende l'unico Settore: per le nuove coppie è finito, ma il compagno entra con il codice.
+  const a1 = acc();
+  const r = A.enroll(a1, { gameId: g.id, mode: 'pair' });
+  assert.equal(G.spotsOf(g.id).couples, 0);
+  assert.throws(() => A.enroll(acc(), { gameId: g.id, mode: 'pair' }), /entra con il suo codice/);
+  const a2 = acc();
+  assert.equal(A.enroll(a2, { gameId: g.id, mode: 'pair', pairCode: r.pairCode }).partner, 'L1');
+  // Il secondo non può venire con quel compagno: diventa temerario, al primo resta il codice.
+  const p2 = q.get('SELECT * FROM players WHERE accountId = ?', a2.id);
+  assert.equal(A.pairToSingle(p2, 'test').partner, 'L1');
+  const after = q.get('SELECT * FROM players WHERE id = ?', p2.id);
+  assert.deepEqual([after.requestedRole, after.regGroup], ['single', null]);
+  assert.equal(A.enrollments(a1)[0].pairCode, r.pairCode);
+  assert.throws(() => A.pairToSingle(after, 'test'), /Non sei iscritto come Legato/);
+  // Già in coppia o cerchio aperto: non si cambia più da soli.
+  const p1 = q.get('SELECT * FROM players WHERE accountId = ?', a1.id);
+  q.run("UPDATE players SET status = 'accepted' WHERE id = ?", p1.id);
+  q.run("UPDATE games SET status = 'circle' WHERE id = ?", g.id);
+  assert.throws(() => A.pairToSingle(q.get('SELECT * FROM players WHERE id = ?', p1.id), 'test'), /chiuse/);
+});

@@ -258,6 +258,15 @@ app.get('/api/account', needAccount, (req, res) => res.json({
 }));
 app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.account, req.body || {}); return { ok: true }; }));
 app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
+// Da Legato a Temerario Solitario: la propria iscrizione (dall'account o dall'accesso personale).
+app.post('/api/enrollment/:pid/single', needMember, wrap((req) => {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(req.params.pid));
+  const mine = p && ((req.account && p.accountId === req.account.id) || (req.player && req.player.id === p.id));
+  if (!mine) throw new HttpError(404, 'Iscrizione non trovata');
+  const r = A.pairToSingle(p, `giocatore:${p.id}`);
+  rt.toTeamsWhere(p.gameId, 'state', {}, (c) => c.playerId === p.id);
+  return r;
+}));
 // Gestionali collegati: il giocatore toglie un collegamento dal profilo.
 app.delete('/api/account/ops/:iid', needAccount, wrap((req) => { O.unlink(req.account, req.params.iid); return { ok: true }; }));
 // Consiglio Zero: chi è entrato con Zero Dark Ops chiede l'accesso; il master sceglie dalla regia cosa può fare.

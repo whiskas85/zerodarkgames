@@ -1407,6 +1407,14 @@ function viewLobbyHome(st) {
         : pl.role === 'single' ? 'Il Consiglio sta estraendo il vostro compagno e il Settore. L\'app si aggiornerà da sola.' : 'Il Consiglio sta formando le coppie e assegnando i Settori. L\'app si aggiornerà da sola.'),
       null),
     st.pairCode ? pairCodeCard(st.pairCode) : null,
+    // Legato senza coppia formata: può diventare Temerario Solitario.
+    pl.role === 'pair' && ['created', 'draft', 'ready'].includes(st.clock?.status) ? h('div', { class: 'card stack-sm' },
+      h('div', { class: 'eyebrow' }, 'Il tuo compagno non può venire?'),
+      h('p', { class: 'muted small' }, partner ? 'Puoi lasciare la coppia e diventare Temerario Solitario: il Consiglio ti legherà a un altro temerario. Al tuo compagno resta il codice coppia.' : 'Puoi diventare Temerario Solitario: il Consiglio ti legherà a un altro temerario estratto a sorte.'),
+      h('button', { class: 'btn btn-block', type: 'button', onclick: async () => {
+        if (!(await dialog({ title: 'Diventare Temerario Solitario?', text: 'Il codice coppia non varrà più per te. Il Consiglio ti accoppierà con un altro temerario.', okLabel: 'Divento Temerario' }))) return;
+        try { await api('POST', `/api/enrollment/${pl.id}/single`, {}); toast('Ora sei iscritto come Temerario Solitario', 'ok'); refresh(); } catch (e) { toast(e.message, 'error', 6000); }
+      } }, 'Divento Temerario Solitario')) : null,
     partner ? partnerCard(partner) : null,
     prepCard(st),
     trackFlag(st),
