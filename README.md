@@ -75,6 +75,7 @@ Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza A
 In regia, pagina **Avvisi**: titolo, testo e destinatari (tutti, solo coppie, solo Eletti, una coppia).
 Sul telefono l'avviso arriva come **notifica** (Android/Chrome, anche a schermo spento): toccandola si apre la pagina **Avvisi** dell'app.
 Con l'app aperta compare subito, con vibrazione. Nell'app c'è un invito ad attivare le notifiche; la regia vede quanti dispositivi le hanno attive.
+Ogni avviso ha il pulsante **↗ Condividi** (la finestra si apre anche subito dopo l'invio): link e QR che aprono l'app sulla pagina Avvisi con quell'avviso in evidenza (chi non è entrato fa prima il login, anche con Zero Dark Ops), più «WhatsApp», «Copia link» e, sul telefono, la condivisione del sistema. L'avviso lo vede solo chi ne è destinatario.
 Le notifiche richiedono HTTPS (vedi sotto).
 
 ## Campo, mappe, doni, alleanze e scontri

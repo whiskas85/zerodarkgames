@@ -4255,9 +4255,37 @@ async function newNoticeDialog() {
         const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null, poll: poll.checked });
         toast(`Avviso inviato · notifica a ${r.devices} dispositivi`, 'ok', 6000);
         load();
+        // Subito il link da condividere (gruppo WhatsApp…): porta dritto all'avviso nell'app.
+        setTimeout(() => shareNotice(r), 50);
         return true;
       } catch (err) { toast(err.message, 'error', 6000); return false; }
     } });
+}
+
+// Link all'avviso nell'app: chi lo apre (anche dopo il login) finisce sulla pagina Avvisi con quell'avviso in evidenza.
+// Lo vede chi ne è destinatario: per gli altri la pagina Avvisi non lo mostra.
+const noticeUrl = (n) => `${R.baseUrl || location.origin}/#/avvisi/${n.id}`;
+function shareNotice(n) {
+  const url = noticeUrl(n);
+  const text = `${n.poll ? '📊 Sondaggio' : '🔔 Avviso'} del Consiglio: ${n.title}`;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Link dell\'avviso copiato', 'ok'); }
+    catch { toast(url, 'ok', 10000); }
+  };
+  modal({
+    title: 'Condividi l\'avviso', okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'small' }, h('strong', null, n.title), ` · ${noticeTargetLabel(n)}`),
+      h('div', { class: 'notice-share' },
+        h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: 'QR dell\'avviso', width: 132, height: 132 }),
+        h('div', { class: 'stack-sm' }, h('div', { class: 'mono small notice-share-url' }, url),
+          h('div', { class: 'tiny muted' }, 'Apre l\'app sulla pagina Avvisi con questo avviso in evidenza (chi non è entrato fa prima il login). Lo vede solo chi ne è destinatario.'))),
+      h('div', { class: 'row-actions' },
+        navigator.share ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => navigator.share({ title: text, text, url }).catch(() => {}) }, '↗ Condividi…') : null,
+        h('a', { class: 'btn', href: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`, target: '_blank', rel: 'noopener' }, 'WhatsApp'),
+        h('button', { class: 'btn', type: 'button', onclick: copy }, 'Copia link'),
+        h('a', { class: 'btn btn-ghost', href: url, target: '_blank', rel: 'noopener' }, 'Apri'))),
+  });
 }
 
 function viewNotices() {
@@ -4270,6 +4298,7 @@ function viewNotices() {
           n.body ? h('p', null, n.body) : null,
           n.results ? pollResultsView(n.results) : null,
           noticeReadsView(n.reads && { ...n.reads, id: n.id })),
+        h('button', { class: 'btn btn-sm', title: 'Link che apre questo avviso nell\'app (WhatsApp, email…)', onclick: () => shareNotice(n) }, '↗ Condividi'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato: creane uno con «Crea avviso».')));
 }
 

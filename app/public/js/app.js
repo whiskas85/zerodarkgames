@@ -121,6 +121,8 @@ async function refresh() {
     setState(st, offset);
     S.auth = 'team';
     if (first) {
+      // Entrati da un link (es. un avviso) passando dal gestionale: si torna alla pagina del link.
+      try { const back = sessionStorage.getItem('zdg_after_login'); if (back) { sessionStorage.removeItem('zdg_after_login'); if (!location.hash || location.hash === '#/home') location.hash = back; } } catch { /* niente */ }
       connect();
       if ('Notification' in window && Notification.permission === 'granted') enablePush().catch(() => {});
     }
@@ -1098,7 +1100,8 @@ function viewLogin() {
       h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'submit' }, 'Entra')),
     S.ops.length ? h('div', { class: 'login-ops' },
       h('span', { class: 'login-or' }, 'oppure'),
-      S.ops.map((o) => h('a', { class: 'btn btn-block btn-ops', href: `/auth/ops/${encodeURIComponent(o.id)}?ritorno=app` }, `Accedi con ${o.name}`))) : null,
+      // Il gestionale riporta alla home: la pagina aperta da un link (es. un avviso) si riprende dopo il login.
+      S.ops.map((o) => h('a', { class: 'btn btn-block btn-ops', href: `/auth/ops/${encodeURIComponent(o.id)}?ritorno=app`, onclick: () => { try { if (location.hash && location.hash !== '#/home') sessionStorage.setItem('zdg_after_login', location.hash); } catch { /* niente */ } } }, `Accedi con ${o.name}`))) : null,
     h('a', { class: 'btn btn-block', href: '/iscrizione' }, 'Non hai un account? Registrati'),
     h('a', { class: 'btn btn-block btn-ghost', href: '/regolamento.html', target: '_blank', rel: 'noopener' }, '📖 Leggi il regolamento'),
     h('details', { class: 'login-alt' },
