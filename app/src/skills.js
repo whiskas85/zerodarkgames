@@ -526,6 +526,11 @@ function sightingsFor(me, now = Date.now()) {
     const t = couples.find((x) => x.id === e.targetTeamId);
     if (t) add(t, 'Taglia', e.endsAt, false);
   }
+  // Mina tracciante degli Eletti scattata: la coppia marcata la vedono tutti.
+  for (const m of require('./mines').markedTeams(g.id, now)) {
+    const t = couples.find((x) => x.id === m.teamId);
+    if (t) add(t, '💣 Mina sonora', m.until, false);
+  }
   const list = [];
   // Alleanze sporche: la squadra di Eletti in arrivo (o alleata) compare sulla mappa della coppia.
   for (const task of q.all("SELECT t.*, s.name AS squadName, s.color AS squadColor FROM squad_tasks t JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.acceptedAt IS NOT NULL AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id)) {

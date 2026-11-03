@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
-import { createMapView, positionItem, landmarkItem, groupPositions, loadLeaflet, tilesFor } from './map.js';
+import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { omnibar, matches } from './omnibar.js';
 
@@ -1785,9 +1785,9 @@ function viewAltars() {
         ms.game.phrase ? h('span', { class: 'muted tiny' }, `Attuale: «${ms.game.phrase}»`) : null)),
 
     section('Luoghi del gioco',
-      h('p', { class: 'muted tiny' }, 'Il Cerchio di inizio e la Soglia si piazzano sul campo come gli Altari (la foto è facoltativa) e compaiono sulla mappa di regia, Eletti e coppie.'),
+      h('p', { class: 'muted tiny' }, 'Il Cerchio di inizio, la Soglia e la Base degli Eletti si piazzano sul campo come gli Altari (la foto è facoltativa). Cerchio e Soglia compaiono sulla mappa di regia, Eletti e coppie; la Base solo a regia ed Eletti, che lì ricaricano le mine traccianti.'),
       h('div', { class: 'places' }, ms.landmarks.map((l) => h('div', { class: `place-card ${l.lat != null ? 'is-placed' : ''}` },
-        h('div', { class: 'place-ico' }, l.kind === 'soglia' ? '⛩' : '◯'),
+        h('div', { class: 'place-ico' }, landmarkIcon(l.kind)),
         h('div', { class: 'stack-sm grow' },
           h('strong', null, l.label),
           placementChips(l, l.lat != null),
@@ -1971,6 +1971,8 @@ function fieldMapItems(d) {
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
       popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}</div>` : '') })),
+    // Mine traccianti degli Eletti: armate (oro) e scattate da poco (rosse finché la coppia è marcata).
+    ...mineItems(d.mines || [], (m) => `<div class="popup-actions">${actBtn('del', 'mine', m.id, m.triggeredAt ? 'Togli dalla mappa' : 'Togli la mina')}</div>`),
   ];
 }
 
@@ -1998,7 +2000,7 @@ function viewFieldMapItems() {
 const findFieldItem = (kind, id) => {
   const d = fieldData;
   if (!d) return null;
-  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : kind === 'poi' ? d.pois || [] : kind === 'guide' ? d.guide || [] : d.points).find((x) => x.id === Number(id)) || null;
+  return (kind === 'landmark' ? d.landmarks : kind === 'gift' ? d.gifts : kind === 'poi' ? d.pois || [] : kind === 'guide' ? d.guide || [] : kind === 'mine' ? d.mines || [] : d.points).find((x) => x.id === Number(id)) || null;
 };
 
 // Pulsanti dentro i popup della mappa (in cattura: Leaflet ferma i clic nei popup prima che risalgano).
@@ -2012,8 +2014,14 @@ fieldMap.el.addEventListener('click', (e) => {
   if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
   if (b.dataset.act === 'pick') startPick(x, b.dataset.kind);
   if (b.dataset.act === 'edit') (b.dataset.kind === 'guide' ? guideDialog(x) : editPoi(x));
-  if (b.dataset.act === 'del') (b.dataset.kind === 'guide' ? deleteGuideDialog(x) : deletePoiDialog(x));
+  if (b.dataset.act === 'del') (b.dataset.kind === 'guide' ? deleteGuideDialog(x) : b.dataset.kind === 'mine' ? removeMineDialog(x) : deletePoiDialog(x));
 }, true);
+
+// Mina tracciante: la regia la toglie dal campo (se la coppia è ancora marcata, la marcatura finisce).
+async function removeMineDialog(m) {
+  const marked = m.markUntil && m.markUntil > Date.now();
+  if (await confirmCall('Togliere la mina?', m.triggeredAt ? (marked ? `La mina è scattata: togliendola il Settore ${m.team?.sectorName || '?'} smette subito di essere marcato. I punti restano.` : 'La mina è già scattata: sparisce dalla mappa. I punti restano.') : `La mina di ${m.author || 'Eletti'} sparisce dal campo e non scatta più (all'Eletto non torna).`, 'DELETE', `/api/field/mines/${m.id}?gameId=${R.gameId}`, undefined, 'Mina tolta', true)) loadField();
+}
 
 // Punti di interesse dalla regia: rinomina (e descrizione) ed elimina.
 async function editPoi(x) {
@@ -2167,6 +2175,7 @@ function viewFieldMap() {
   const zd = R.zoneDraw;
   const zk = R.ms.mapZones?.kinds || {};
   queueMicrotask(() => {
+    fieldMap.setCircles(mineCircles(d.mines || []));
     fieldMap.setLines([...allianceLines(), ...(zd && zd.pts.length > 1 ? [{ key: 'zone-draw', points: zd.pts, color: zk[zd.kind]?.color }] : [])]);
     fieldMap.setPolygons([
       ...(R.ms.mapZones?.list || []).filter((z) => (!zd || z.id !== zd.id) && R.zoneEdit?.id !== z.id).map((z) => ({ key: `z${z.id}`, points: z.points, color: z.enabled ? z.color : '#8a8a8a', fill: !z.enabled ? 0.02 : z.active ? 0.18 : 0.04, dash: z.active && z.enabled ? null : z.enabled ? '6 6' : '2 6',
@@ -2183,7 +2192,7 @@ function viewFieldMap() {
   fieldMap.refresh();
   const sqName = (id) => squadById(id)?.name;
   const toPlace = [
-    ...(d.landmarks || []).filter((l) => l.lat == null).map((l) => ({ kind: 'landmark', x: l, icon: l.kind === 'soglia' ? '⛩' : '◯' })),
+    ...(d.landmarks || []).filter((l) => l.lat == null).map((l) => ({ kind: 'landmark', x: l, icon: landmarkIcon(l.kind) })),
     ...d.points.filter((p) => p.lat == null).map((p) => ({ kind: 'point', x: p, icon: p.roman })),
     ...d.gifts.filter((g) => g.status === 'draft').map((g) => ({ kind: 'gift', x: g, icon: g.icon })),
   ];
@@ -2192,6 +2201,8 @@ function viewFieldMap() {
     h('span', null, h('span', { class: 'pin pin-altar' }, 'I'), ' Altare'),
     h('span', null, h('span', { class: 'pin pin-place pin-soglia' }, '⛩'), ' Soglia'),
     h('span', null, h('span', { class: 'pin pin-place' }, '◯'), ' Cerchio'),
+    h('span', null, h('span', { class: 'pin pin-place pin-base' }, '⌂'), ' Base degli Eletti'),
+    h('span', null, h('span', { class: 'pin pin-trap' }, '💣'), ' Mina tracciante (rossa: scattata)'),
     h('span', null, h('span', { class: 'pin pin-target' }, '⌖'), ' Punto indicato'),
     h('span', null, h('span', { class: 'pin pin-poi' }), ' Punto di interesse (si aggiunge dal campo)'),
     h('span', null, h('span', { class: 'pin pin-guide' }, mdi('parking', 16)), ' Indicazione campo (le coppie la vedono fino al Cerchio)'),
@@ -2256,7 +2267,7 @@ function viewFieldMap() {
       h('p', { class: 'tiny muted' }, 'Tocca una voce per vederla sulla mappa.'),
       h('ul', { class: 'map-side-list' },
         ...(d.landmarks || []).map((l) => locRow(`l${l.id}`, l.lat != null,
-          h('span', { class: 'side-ico landmark' }, l.kind === 'soglia' ? '⛩' : '◯'),
+          h('span', { class: 'side-ico landmark' }, landmarkIcon(l.kind)),
           h('div', { class: 'grow' }, h('strong', null, l.label), h('div', { class: 'tiny muted' }, l.lat != null ? `Piazzato${l.provisional ? ' · provvisorio' : ''}` : 'Da piazzare')),
           l.lat == null ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => startPick(l, 'landmark') }, 'Segna') : null)),
         ...d.points.map((p) => locRow(`p${p.id}`, p.lat != null,
@@ -2645,7 +2656,7 @@ function targetOptions(only = null) {
   return [
     { key: 'coppie', title: 'Coppie', hint: 'Raggiungere una coppia: la squadra la vede in mappa finché l\'incarico è aperto.',
       items: R.ms.teams.filter((t) => t.status === 'active').map((t) => ({ value: `team:${t.id}`, label: `${t.roman} · Settore ${t.sectorName}`, icon: t.roman, cls: 'point', sub: t.displayName || null })) },
-    { key: 'luoghi', title: 'Luoghi', items: placed(d.landmarks).map((x) => ({ value: `landmark:${x.id}`, label: x.label, icon: x.kind === 'soglia' ? '⛩' : '◯', cls: 'landmark' })) },
+    { key: 'luoghi', title: 'Luoghi', items: placed(d.landmarks).map((x) => ({ value: `landmark:${x.id}`, label: x.label, icon: landmarkIcon(x.kind), cls: 'landmark' })) },
     { key: 'altari', title: 'Altari', items: placed(d.points).map((x) => ({ value: `point:${x.id}`, label: x.label, icon: x.roman || '▲', cls: 'point' })) },
     { key: 'poi', title: 'Punti di interesse', items: placed(d.pois).map((x) => ({ value: `poi:${x.id}`, label: x.label, icon: '◆', cls: 'poi', sub: x.description || null })) },
     { key: 'zone', title: 'Zone (Beacon)', hint: 'Una zona: l\'incarico è accenderla con il Beacon (si chiude da solo quando la squadra ci riesce).',
@@ -2776,15 +2787,50 @@ async function newElectDialog() {
 }
 
 // Squadre Eletti: due schede (#squadre, #squadre/incarichi); il Consiglio Zero ha la sua voce di menu.
-const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi']];
+const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi'], ['punteggio', 'Punteggio e mine']];
 const squadPage = () => { const k = location.hash.slice(1).split('/')[1]; return SQUAD_PAGES.some(([x]) => x === k) ? k : 'squadre'; };
 const squadNav = (page) => h('nav', { class: 'settings-nav', 'aria-label': 'Squadre Eletti' }, SQUAD_PAGES.map(([k, label]) => h('a', { href: k === 'squadre' ? '#squadre' : `#squadre/${k}`, class: k === page ? 'on' : '' }, label)));
+
+// Punteggio degli Eletti (squadre e persone) e mine traccianti sul campo, con i parametri.
+function viewElectScores(d) {
+  const sc = R.ms.electScores;
+  const g = R.ms.game;
+  if (!sc) return [h('p', { class: 'empty' }, 'Caricamento…')];
+  const kinds = Object.entries(sc.kinds);
+  const head = ['#', 'Nome', ...kinds.map(([, v]) => `${v.icon} ${v.label} (${v.points})`), 'Totale'];
+  const row = (x, name) => h('tr', null, h('td', { class: 'mono' }, `${x.rank}°`), h('td', null, name), ...kinds.map(([k]) => h('td', { class: 'mono' }, String(x.counts[k]))), h('td', { class: 'mono' }, h('strong', null, String(x.total))));
+  const squadName = (id) => sc.squads.find((s) => s.id === id)?.name;
+  const mines = d.mines || [];
+  const armed = mines.filter((m) => !m.triggeredAt);
+  const fired = mines.filter((m) => m.triggeredAt);
+  return [
+    section('Classifica delle squadre',
+      h('p', { class: 'muted tiny' }, 'Ogni azione riuscita vale i punti scelti qui sotto (anche per le azioni già fatte): ingaggio vinto (confermato), taglia riscossa (incarico taglia chiuso), Beacon riuscito (Altare disattivato o zona accesa), mina scattata. Gli Eletti vedono il punteggio nella loro app.'),
+      sc.squads.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))),
+        h('tbody', null, sc.squads.map((x) => row(x, h('span', { class: 'chip squad-chip', style: { '--c': x.color || '#d1ad62' } }, x.name)))))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
+    section('Eletti',
+      sc.people.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))),
+        h('tbody', null, sc.people.map((x) => row(x, [x.name, x.squadId ? h('span', { class: 'tiny muted' }, ` · ${squadName(x.squadId) || ''}`) : null]))))) : h('p', { class: 'empty' }, 'Nessun Eletto.'),
+      sc.recent.length ? h('details', null, h('summary', { class: 'small' }, `Ultime azioni (${sc.recent.length})`),
+        h('ul', { class: 'tiny' }, sc.recent.map((r) => h('li', null, `${fmtTime(r.at)} · ${sc.kinds[r.kind]?.icon || ''} ${r.label || sc.kinds[r.kind]?.label}${r.who ? ` · ${r.who}` : ''}${r.squadId ? ` · ${squadName(r.squadId) || ''}` : ''} · +${r.points}`)))) : null),
+    section(`Mine traccianti sul campo (${armed.length} armate)`,
+      h('p', { class: 'muted tiny' }, 'Le vedono regia ed Eletti (in mappa: 💣 oro armata, rossa scattata). La prima coppia che passa nel raggio è marcata: tutti la vedono in mappa per i minuti scelti e lei lo scopre un minuto dopo. Ogni Eletto ha il suo numero di mine e le ricarica alla Base degli Eletti (Altari e Parola → Luoghi del gioco).'),
+      mines.length ? h('ul', { class: 'stack-sm' }, [...fired, ...armed].map((m) => h('li', { class: 'row-actions' },
+        h('span', { class: 'pin pin-trap' + (m.triggeredAt ? (m.markUntil ? ' pin-trap-marked' : ' pin-trap-spent') : '') }, '💣'),
+        h('span', { class: 'grow small' }, m.triggeredAt ? `Scattata alle ${fmtTime(m.triggeredAt)}${m.team ? ` · ${m.team.roman} ${m.team.sectorName}` : ''}${m.markUntil ? ` · marcata fino alle ${fmtTime(m.markUntil)}` : ''}` : `Armata · posata alle ${fmtTime(m.placedAt)}`,
+          h('span', { class: 'tiny muted' }, ` · ${m.author || 'Eletti'}${m.squadId ? ` (${squadName(m.squadId) || ''})` : ''} · ${m.radius} m`)),
+        h('button', { class: 'btn btn-sm', onclick: () => { location.hash = 'mappa'; setTimeout(() => fieldMap.highlight(`mine${m.id}`), 400); } }, 'Mappa'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => removeMineDialog(m) }, 'Togli')))) : h('p', { class: 'empty' }, 'Nessuna mina sul campo.')),
+    section('Parametri: mine e punteggio', gameForm(g, false, ['mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine'])),
+  ];
+}
 
 function viewSquads() {
   const page = squadPage();
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento delle squadre…'); }
   if (page === 'incarichi') return h('div', { class: 'stack' }, squadNav(page), viewTaskBoard(d));
+  if (page === 'punteggio') return h('div', { class: 'stack' }, squadNav(page), ...viewElectScores(d));
   const ms = R.ms;
   const members = ms.elect.members;
   const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
@@ -2881,7 +2927,7 @@ function viewTaskBoard(d) {
     ...d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status)).map((x) => ['gift', x]),
   ].filter(([k, x]) => placeTodo(k, x)).map(([kind, x]) => ({
     key: `${kind}${x.id}`, kind, x, squadId: x.squadId || null,
-    icon: kind === 'gift' ? x.icon : kind === 'landmark' ? (x.kind === 'soglia' ? '⛩' : '◯') : x.roman,
+    icon: kind === 'gift' ? x.icon : kind === 'landmark' ? (landmarkIcon(x.kind)) : x.roman,
     title: kind === 'gift' ? `${x.label} · ${x.name}` : x.label,
     what: x.moveRequestedAt ? 'Da spostare' : 'Da piazzare', point: x.targetLat != null,
   }));
@@ -4209,9 +4255,37 @@ async function newNoticeDialog() {
         const r = await api('POST', G('/notices'), { title: title.value, body: body.value, target: target.value, teamId: Number(teamSel.value) || null, poll: poll.checked });
         toast(`Avviso inviato · notifica a ${r.devices} dispositivi`, 'ok', 6000);
         load();
+        // Subito il link da condividere (gruppo WhatsApp…): porta dritto all'avviso nell'app.
+        setTimeout(() => shareNotice(r), 50);
         return true;
       } catch (err) { toast(err.message, 'error', 6000); return false; }
     } });
+}
+
+// Link all'avviso nell'app: chi lo apre (anche dopo il login) finisce sulla pagina Avvisi con quell'avviso in evidenza.
+// Lo vede chi ne è destinatario: per gli altri la pagina Avvisi non lo mostra.
+const noticeUrl = (n) => `${R.baseUrl || location.origin}/#/avvisi/${n.id}`;
+function shareNotice(n) {
+  const url = noticeUrl(n);
+  const text = `${n.poll ? '📊 Sondaggio' : '🔔 Avviso'} del Consiglio: ${n.title}`;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Link dell\'avviso copiato', 'ok'); }
+    catch { toast(url, 'ok', 10000); }
+  };
+  modal({
+    title: 'Condividi l\'avviso', okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'small' }, h('strong', null, n.title), ` · ${noticeTargetLabel(n)}`),
+      h('div', { class: 'notice-share' },
+        h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: 'QR dell\'avviso', width: 132, height: 132 }),
+        h('div', { class: 'stack-sm' }, h('div', { class: 'mono small notice-share-url' }, url),
+          h('div', { class: 'tiny muted' }, 'Apre l\'app sulla pagina Avvisi con questo avviso in evidenza (chi non è entrato fa prima il login). Lo vede solo chi ne è destinatario.'))),
+      h('div', { class: 'row-actions' },
+        navigator.share ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => navigator.share({ title: text, text, url }).catch(() => {}) }, '↗ Condividi…') : null,
+        h('a', { class: 'btn', href: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`, target: '_blank', rel: 'noopener' }, 'WhatsApp'),
+        h('button', { class: 'btn', type: 'button', onclick: copy }, 'Copia link'),
+        h('a', { class: 'btn btn-ghost', href: url, target: '_blank', rel: 'noopener' }, 'Apri'))),
+  });
 }
 
 function viewNotices() {
@@ -4224,6 +4298,7 @@ function viewNotices() {
           n.body ? h('p', null, n.body) : null,
           n.results ? pollResultsView(n.results) : null,
           noticeReadsView(n.reads && { ...n.reads, id: n.id })),
+        h('button', { class: 'btn btn-sm', title: 'Link che apre questo avviso nell\'app (WhatsApp, email…)', onclick: () => shareNotice(n) }, '↗ Condividi'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato: creane uno con «Crea avviso».')));
 }
 
@@ -4295,7 +4370,7 @@ async function eventLocationDialog(current = null) {
   const d = fieldData || {};
   // Schede con ricerca: luoghi del gioco, Altari, indicazioni del campo e punti di interesse.
   const groups = [
-    { key: 'luoghi', title: 'Luoghi', items: (R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => ({ label: l.kind === 'soglia' ? 'La Soglia' : l.label || 'Cerchio di inizio', icon: l.kind === 'soglia' ? '⛩' : '◯', cls: 'landmark', lat: l.lat, lng: l.lng })) },
+    { key: 'luoghi', title: 'Luoghi', items: (R.ms.landmarks || []).filter((l) => l.lat != null).map((l) => ({ label: l.kind === 'soglia' ? 'La Soglia' : l.label || 'Cerchio di inizio', icon: landmarkIcon(l.kind), cls: 'landmark', lat: l.lat, lng: l.lng })) },
     { key: 'altari', title: 'Altari', items: (R.ms.points || []).filter((p) => p.lat != null).map((p) => ({ label: p.label, icon: p.roman, cls: 'point', lat: p.lat, lng: p.lng })) },
     { key: 'indicazioni', title: 'Indicazioni', items: (d.guide || []).filter((g) => g.lat != null).map((g) => ({ label: g.label, icon: mdi(g.icon || 'mapMarker', 16), cls: 'guide', sub: g.description, lat: g.lat, lng: g.lng })) },
     { key: 'poi', title: 'Punti di interesse', items: (d.pois || []).filter((x) => x.lat != null).map((x) => ({ label: x.label, icon: '◆', cls: 'poi', sub: x.description, lat: x.lat, lng: x.lng })) },
@@ -4785,6 +4860,13 @@ function gameForm(g, isNew, only = null) {
       nodeScanMin: () => f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
       eyeMin: () => f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
       eyeRadiusM: () => f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),
+      mineCount: () => f('mineCount', 'Mine traccianti per Eletto (si ricaricano alla Base)', 'number', { def: 3, attrs: { min: 0, max: 20 } }),
+      mineRadiusM: () => f('mineRadiusM', 'Raggio della mina (m)', 'number', { def: 20, attrs: { min: 5, max: 200 } }),
+      mineMarkMin: () => f('mineMarkMin', 'Coppia marcata e visibile a tutti per (min)', 'number', { def: 5, attrs: { min: 1, max: 60 } }),
+      scoreFight: () => f('scoreFight', 'Punti: ingaggio vinto', 'number', { def: 3, attrs: { min: 0 } }),
+      scoreBounty: () => f('scoreBounty', 'Punti: taglia riscossa', 'number', { def: 5, attrs: { min: 0 } }),
+      scoreBeacon: () => f('scoreBeacon', 'Punti: Beacon riuscito', 'number', { def: 2, attrs: { min: 0 } }),
+      scoreMine: () => f('scoreMine', 'Punti: mina scattata', 'number', { def: 2, attrs: { min: 0 } }),
       maxCouples: () => f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
       maxSingles: () => f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
       maxActiveSkills: () => f('maxActiveSkills', 'Skill attive o Ultimate per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
@@ -5106,6 +5188,7 @@ const SETTINGS_PAGES = [
   ['coppie', 'Settaggio coppie', 'Quanti Settori aprire, posti per i temerari e quante Skill per coppia.'],
   ['settori', 'Settori e Altari', 'I Settori e i loro Altari, validi per tutte le partite.'],
   ['altari', 'Altari e Skill', 'Lettura dei QR degli Altari (validità, raggio) e i parametri delle Skill.'],
+  ['eletti', 'Eletti: mine e punteggio', 'Mine traccianti degli Eletti (quante, raggio, durata della marcatura) e i punti di ogni azione riuscita.'],
   ['testi', 'Testi degli annunci', 'I testi che il Consiglio manda in automatico alle coppie.'],
   ['accessi', 'Accessi e notifiche', 'Indirizzo per link e QR, gestionali, organizzazione, notifiche alla regia e account dei giocatori.'],
   ['cronografi', 'Cronografi', 'I cronografi del Test armi: l\'AC6000 integrato, altri marchi da aggiungere e la diagnostica Bluetooth.'],
@@ -5136,6 +5219,7 @@ function viewSettings() {
       gameForm(g, false, ['maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']))],
     settori: () => [viewSectors()],
     altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
+    eletti: () => [section('Eletti: mine e punteggio', h('p', { class: 'muted tiny' }, 'La classifica e le mine sul campo sono in Squadre Eletti → Punteggio e mine.'), gameForm(g, false, ['mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']))],
     testi: () => [section('Testi degli annunci',
       h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
       h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { templates: Object.fromEntries(new FormData(e.target).entries()) }, 'Testi salvati'); } },

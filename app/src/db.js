@@ -749,4 +749,34 @@ CREATE TABLE IF NOT EXISTS noplay_hits (
 CREATE INDEX IF NOT EXISTS ix_noplay_open ON noplay_hits(gameId, leftAt);
 `);
 
+// Mine traccianti degli Eletti: un punto sul campo (raggio mineRadiusM) che marca la prima coppia che ci passa:
+// per mineMarkMin minuti tutti la vedono in mappa; la coppia lo scopre un minuto dopo. Ogni Eletto ne ha mineCount,
+// si ricaricano alla Base degli Eletti (luogo del gioco).
+db.exec(`
+CREATE TABLE IF NOT EXISTS elect_mines (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  squadId INTEGER REFERENCES elect_squads(id) ON DELETE SET NULL, playerId INTEGER, author TEXT,
+  lat REAL NOT NULL, lng REAL NOT NULL, radiusM INTEGER NOT NULL, placedAt INTEGER NOT NULL,
+  triggeredAt INTEGER, teamId INTEGER REFERENCES teams(id) ON DELETE SET NULL, trigLat REAL, trigLng REAL,
+  markUntil INTEGER, notifyAt INTEGER, notifiedAt INTEGER, endedNotifiedAt INTEGER, removedAt INTEGER, removedBy TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_mines_game ON elect_mines(gameId, triggeredAt, removedAt);
+`);
+addColumn('players', 'minesReloadAt', 'INTEGER');
+addColumn('games', 'mineCount', 'INTEGER NOT NULL DEFAULT 3');
+addColumn('games', 'mineRadiusM', 'INTEGER NOT NULL DEFAULT 20');
+addColumn('games', 'mineMarkMin', 'INTEGER NOT NULL DEFAULT 5');
+// Punteggio degli Eletti: un'azione riuscita per riga (il valore lo dà la partita, così cambiarlo vale anche per il passato).
+db.exec(`
+CREATE TABLE IF NOT EXISTS elect_scores (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  squadId INTEGER, playerId INTEGER, kind TEXT NOT NULL, ref TEXT NOT NULL, label TEXT, at INTEGER NOT NULL,
+  UNIQUE (gameId, kind, ref)
+);
+`);
+addColumn('games', 'scoreFight', 'INTEGER NOT NULL DEFAULT 3');
+addColumn('games', 'scoreBounty', 'INTEGER NOT NULL DEFAULT 5');
+addColumn('games', 'scoreBeacon', 'INTEGER NOT NULL DEFAULT 2');
+addColumn('games', 'scoreMine', 'INTEGER NOT NULL DEFAULT 2');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

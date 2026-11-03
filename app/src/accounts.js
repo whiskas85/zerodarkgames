@@ -123,7 +123,9 @@ function enroll(account, data) {
   let partner = null;
   // Posti: chi si unisce al compagno occupa il posto già preso dalla sua coppia.
   const spots = G.spotsOf(g.id);
-  if (mode === 'pair' && !String(data.pairCode || '').trim() && spots.couples < 1) throw err(409, 'Settori per le coppie esauriti: puoi candidarti come Temerario Solitario se ci sono posti, o chiedere al Consiglio');
+  if (mode === 'pair' && !String(data.pairCode || '').trim() && spots.couples < 1) {
+    throw err(409, spots.singles > 0 ? 'Settori per le coppie esauriti: se il tuo compagno ha già creato la coppia entra con il suo codice, altrimenti iscriviti come Temerario Solitario' : 'Settori per le coppie esauriti: se il tuo compagno ha già creato la coppia entra con il suo codice, altrimenti chiedi al Consiglio');
+  }
   if (mode === 'single' && spots.singles < 1) throw err(409, 'Posti per i temerari solitari esauriti');
   if (mode === 'pair') {
     const code = String(data.pairCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -150,6 +152,27 @@ function enroll(account, data) {
   rt.pushMasters({ title: `${what} da approvare`, body: `${account.name}${partner ? ` con ${partner.name}` : ''} — ${g.name}`, url: mode === 'elect' ? '/regia#squadre' : '/regia#coppie', tag: `iscrizione-${playerId}` });
   rt.toStaff(g.id, 'registration');
   return { ok: true, playerId, mode, pairCode: mode === 'pair' && !partner ? group : null, partner: partner ? partner.name : null };
+}
+
+/**
+ * Un Legato diventa Temerario Solitario (es. il compagno non arriva o non può più venire): fino al Cerchio, finché
+ * non è in una coppia. Il posto da Legato si libera; se il compagno si era già unito, a lui resta il codice coppia
+ * per un altro Legato. Lo stato dell'iscrizione (in attesa o accettata) resta com'è.
+ */
+function pairToSingle(player, actor) {
+  if (!player) throw err(404, 'Iscrizione non trovata');
+  const g = G.getGame(player.gameId);
+  if (!['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Le iscrizioni a questa partita sono chiuse');
+  if (player.requestedRole !== 'pair') throw err(409, 'Non sei iscritto come Legato');
+  if (player.teamId) throw err(409, 'Sei già in una coppia: per cambiare chiedi al Consiglio');
+  if (!['pending', 'accepted'].includes(player.status)) throw err(409, 'Iscrizione non attiva');
+  if (g.maxSingles != null && G.spotsOf(g.id).taken.singles >= g.maxSingles) throw err(409, 'Posti per i temerari solitari esauriti: chiedi al Consiglio');
+  const partner = player.regGroup ? q.get("SELECT * FROM players WHERE gameId = ? AND regGroup = ? AND id != ? AND requestedRole = 'pair'", g.id, player.regGroup, player.id) : null;
+  q.run("UPDATE players SET requestedRole = 'single', regGroup = NULL, requestedTeamName = NULL WHERE id = ?", player.id);
+  G.log(g.id, actor, 'pair_to_single', { name: player.name, partner: partner?.name || null });
+  rt.pushMasters({ title: 'Legato → Temerario solitario', body: `${player.name}${partner ? ` lascia la coppia con ${partner.name}` : ''} — ${g.name}`, url: '/regia#coppie', tag: `iscrizione-${player.id}` });
+  rt.toStaff(g.id, 'registration');
+  return { ok: true, partner: partner ? partner.name : null };
 }
 
 // ---- gestione dalla regia
@@ -196,4 +219,4 @@ function deleteOrphanAccounts(actor) {
 }
 
 module.exports = {
-  cleanPhone, listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, publicAccount };
+  cleanPhone, listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, pairToSingle, publicAccount };

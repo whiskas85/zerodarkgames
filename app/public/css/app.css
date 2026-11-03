@@ -1233,3 +1233,30 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .tlc-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .team-logo-card .phone-row { display: flex; gap: 8px; }
 .team-logo-card .phone-row .input { flex: 1; min-width: 0; }
+
+/* Mine traccianti degli Eletti */
+.mine-ammo { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.mine-pips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.mine-pip { font-size: 26px; opacity: .2; filter: grayscale(1); }
+.mine-pip.on { opacity: 1; filter: none; }
+.mine-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.mine-row { display: flex; align-items: center; gap: 10px; }
+.mine-row .grow { display: grid; gap: 2px; min-width: 0; }
+.mine-row.own strong::after { content: ' ★'; color: #d1ad62; }
+.mine-row.marked .pin-trap { border-color: #fff; background: #d0021b; }
+.mine-row.spent { opacity: .6; }
+/* Coppia marcata: fascia rossa con la mina e il conto alla rovescia. */
+.mine-mark { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: #3a0608; border: 2px solid #d0021b; color: #fff; text-decoration: none; }
+.mine-mark .grow { display: grid; gap: 2px; min-width: 0; }
+.mine-mark-ico { font-size: 28px; animation: mine-beat 1.2s ease-in-out infinite; }
+.mine-mark-clock { font-size: 18px; font-weight: 700; }
+@keyframes mine-beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) { .mine-mark-ico { animation: none; } }
+/* Punteggio degli Eletti */
+.score-strip { display: grid; gap: 2px; text-decoration: none; color: inherit; }
+.score-big { font-size: 40px; font-weight: 800; line-height: 1; }
+.score-kinds, .score-rank, .score-log { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.score-kinds li, .score-rank li, .score-log li { display: flex; align-items: center; gap: 10px; }
+.score-kinds .grow, .score-rank .grow, .score-log .grow { flex: 1; min-width: 0; }
+.score-rank li.mine { font-weight: 700; }
+.score-rank .sq-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }

@@ -241,14 +241,17 @@
         !mine && S.account.needsPhone ? phoneCard() : null,
         mine ? enrolledCard(mine) : S.account.needsPhone ? null : h('nav', { class: 'paths', 'aria-label': 'Le tre sfide' }, Object.entries(PATHS).map(([key, c]) => {
           const left = spotsLeft(game, c.mode);
-          const full = left === 0;
+          // Legati: con i Settori esauriti resta aperta per chi ha il codice del compagno (il Settore è già della sua coppia).
+          const joinOnly = c.mode === 'pair' && left === 0;
+          const full = left === 0 && !joinOnly;
           return h(full ? 'div' : 'a', { class: `path ${full ? 'path-full' : ''}`, href: full ? null : `#${key}`, 'aria-disabled': full ? 'true' : null },
             h('div', { class: 'path-head' }, h('span', { class: 'path-title' }, c.title), h('span', { class: 'path-tag' }, c.tag)),
-            left != null ? h('div', { class: `spots ${full ? 'spots-full' : left <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, left))
+            joinOnly ? h('div', { class: 'spots spots-full' }, 'Settori esauriti · solo con il codice del compagno')
+              : left != null ? h('div', { class: `spots ${full ? 'spots-full' : left <= 2 ? 'spots-low' : ''}` }, spotsText(c.mode, left))
               : c.mode === 'elect' ? h('div', { class: 'spots' }, 'Posti senza limite') : null,
             c.text.map((t) => h('p', null, t)),
             h('div', { class: 'dare' }, c.dare),
-            full ? h('span', { class: 'btn path-go', 'aria-hidden': 'true' }, 'Posti esauriti') : h('span', { class: 'btn btn-primary path-go' }, 'Scelgo questa sfida →'));
+            full ? h('span', { class: 'btn path-go', 'aria-hidden': 'true' }, 'Posti esauriti') : h('span', { class: 'btn btn-primary path-go' }, joinOnly ? 'Ho il codice del compagno →' : 'Scelgo questa sfida →'));
         })),
       ];
     }
@@ -277,7 +280,24 @@
           h('p', null, `${c.title || 'Iscrizione'} · ${STATUS[e.status] || e.status}${e.teamId ? ' · sei già nella tua squadra' : ''}.`),
           h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
         eventStatusCard(e.event, { gameName: e.gameName }),
-        e.pairCode ? pairCodeCard(e.pairCode) : null);
+        e.pairCode ? pairCodeCard(e.pairCode) : null,
+        canGoSingle(e) ? toSingleCard(e) : null);
+    }
+
+    // Legato senza coppia formata: può diventare Temerario Solitario (il Consiglio lo accoppierà con un altro).
+    const canGoSingle = (e) => e.requestedRole === 'pair' && !e.teamId && ['pending', 'accepted'].includes(e.status) && ['created', 'draft', 'ready'].includes(e.gameStatus);
+    function toSingleCard(e) {
+      return h('div', { class: 'card stack' },
+        h('div', { class: 'eyebrow' }, 'Il tuo compagno non può venire?'),
+        h('p', { class: 'muted small' }, e.groupSize > 1
+          ? 'Puoi lasciare la coppia e diventare Temerario Solitario: il Consiglio ti legherà a un altro temerario. Al tuo compagno resta il codice coppia per un altro Legato.'
+          : 'Puoi diventare Temerario Solitario: il Consiglio ti legherà a un altro temerario estratto a sorte.'),
+        h('button', { class: 'btn btn-block', type: 'button', onclick: async (ev) => {
+          if (!confirm('Diventare Temerario Solitario? Il codice coppia non varrà più per te.')) return;
+          ev.target.disabled = true;
+          try { await api('POST', `/api/enrollment/${e.id}/single`, {}); toast('Ora sei iscritto come Temerario Solitario', 'ok'); await loadAccount(); render(); }
+          catch (err) { toast(err.message, 'error', 6000); ev.target.disabled = false; }
+        } }, 'Divento Temerario Solitario'));
     }
 
     // ---- passo 3: conferma della sfida (i dati personali vengono dall'account)
@@ -285,10 +305,14 @@
       const c = PATHS[key];
       const game = S.games.find((g) => g.id === S.gameId);
       if (enrolledIn(S.gameId)) { location.hash = 'scelta'; return pageChoose(); }
-      const pairMode = { value: 'new' };
+      const noSectors = c.mode === 'pair' && game?.spots?.couples === 0;
+      const pairMode = { value: noSectors ? 'join' : 'new' };
       const pairBox = h('div', { class: 'stack' });
       const drawPair = () => mount(pairBox,
-        h('div', { class: 'auth-tabs' },
+        noSectors ? h('div', { class: 'card stack' },
+          h('p', { class: 'small' }, 'I Settori per nuove coppie sono esauriti: se il tuo compagno ha già creato la coppia, inserisci il suo codice.'),
+          game?.spots?.singles > 0 ? h('a', { class: 'btn btn-block', href: '#temerario' }, 'Non ho un codice: mi iscrivo come Temerario Solitario') : null)
+        : h('div', { class: 'auth-tabs' },
           h('button', { type: 'button', class: pairMode.value === 'new' ? 'on' : '', onclick: () => { pairMode.value = 'new'; drawPair(); } }, 'Creo io la coppia'),
           h('button', { type: 'button', class: pairMode.value === 'join' ? 'on' : '', onclick: () => { pairMode.value = 'join'; drawPair(); } }, 'Ho il codice del compagno')),
         pairMode.value === 'new'
@@ -338,7 +362,8 @@
           h('p', null, r.partner ? `Sei Legato con ${r.partner}. ${c.done}` : c.done),
           h('p', null, 'Non serve aspettare il giorno dei Giochi: entra subito nell\'app per conoscerla, con il giro guidato. Da qualsiasi telefono entri con username e password.'),
           h('a', { class: 'btn btn-primary btn-xl btn-block', href: '/#/home' }, 'Entra nell\'app')),
-        eventStatusCard(e.event, { gameName: e.gameName }),
+        // Stato all'evento dell'iscrizione appena inviata (dopo loadAccount è tra le iscrizioni).
+        (() => { const e = enrolledIn(S.gameId); return e ? eventStatusCard(e.event, { gameName: e.gameName }) : null; })(),
         r.pairCode ? pairCodeCard(r.pairCode) : null,
         h('a', { class: 'btn btn-ghost', href: '/regolamento.html' }, 'Leggi il regolamento'),
       ];
