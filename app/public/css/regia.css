@@ -203,6 +203,10 @@ tr.rev-skipped td { opacity: .45; text-decoration: line-through; }
 .elect-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); background: var(--bg); }
 .notice-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .notice-list li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 2px solid var(--line); background: var(--bg); }
+/* Avviso inviato: tutto a piena larghezza, i pulsanti in una riga sotto (sul telefono il testo non si stringe più). */
+.notice-list li.notice-item { flex-direction: column; align-items: stretch; gap: 6px; }
+.notice-item .notice-body { white-space: pre-line; overflow-wrap: anywhere; }
+.notice-actions { justify-content: flex-end; }
 .notice-list p { margin: 6px 0 0; }
 .notice-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
@@ -1321,3 +1325,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .notice-share img { background: #fff; padding: 6px; border-radius: 6px; flex: none; }
 .notice-share-url { word-break: break-all; }
 @media (max-width: 520px) { .notice-share { flex-direction: column; align-items: flex-start; } }
+
+/* Anteprima dell'avviso come nell'app dei giocatori. */
+.notice-preview > summary { cursor: pointer; color: var(--brass); }
+.np-phone { max-width: 400px; margin-top: 8px; display: grid; gap: 6px; }
+.np-card { background: var(--paper); border: 2px solid var(--line); border-left: 6px solid var(--brass); padding: 12px 14px; }
+.np-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.np-title { font-family: var(--f-display); font-size: 24px; text-transform: uppercase; margin: 8px 0 0; line-height: 1.05; }
+.np-body { font-family: var(--f-body); font-size: 17px; margin-top: 8px; overflow-wrap: anywhere; }
+.np-body p { margin: 0 0 8px; }
+.np-body p:last-child { margin-bottom: 0; }
+.np-poll { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.np-poll .btn { justify-content: center; pointer-events: none; font-weight: 700; }
