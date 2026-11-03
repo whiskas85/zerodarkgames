@@ -1337,3 +1337,16 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .np-body p:last-child { margin-bottom: 0; }
 .np-poll { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
 .np-poll .btn { justify-content: center; pointer-events: none; font-weight: 700; }
+
+/* Sondaggi: risposte per gruppo (coppie, squadre di Eletti, iscritti senza coppia). */
+.poll-groups { display: grid; gap: 6px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.pg-row { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: start; padding: 6px 0 6px 10px; border-left: 4px solid var(--line); }
+.pg-label { display: flex; justify-content: space-between; gap: 8px; }
+.pg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.pg-si { border-left-color: #2f8f4e; } .pg-si .pg-label strong { color: #6fd08e; }
+.pg-no { border-left-color: var(--blood); } .pg-no .pg-label strong { color: var(--blood); }
+.pg-forse { border-left-color: #c9a227; } .pg-forse .pg-label strong { color: #e0c060; }
+.pg-mixed { border-left-color: #9b6cf0; }
+.pg-none { border-left-color: #6b6b6b; } .pg-none .pg-label strong { color: var(--muted); }
+@media (max-width: 560px) { .pg-row { grid-template-columns: 1fr; gap: 4px; } }
+.notice-list .pg-list li { display: block; border: 0; padding: 0; background: none; }

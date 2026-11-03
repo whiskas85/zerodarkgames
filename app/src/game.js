@@ -633,7 +633,7 @@ function voteNotice(team, player, noticeId, choice) {
 
 // Per la regia: conteggi e chi ha risposto cosa.
 function pollResults(noticeId) {
-  const votes = q.all('SELECT name, choice, at FROM notice_votes WHERE noticeId = ? ORDER BY at', noticeId);
+  const votes = q.all('SELECT name, choice, at, playerId, teamId FROM notice_votes WHERE noticeId = ? ORDER BY at', noticeId);
   const counts = Object.fromEntries(Object.keys(POLL_CHOICES).map((k) => [k, votes.filter((v) => v.choice === k).length]));
   return { counts, votes };
 }
