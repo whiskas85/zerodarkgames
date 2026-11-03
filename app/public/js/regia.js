@@ -275,14 +275,16 @@ function preserve(fn) {
   const scrollers = () => [...$root.querySelectorAll(`[data-keep-scroll], ${SCROLLERS.join(', ')}`)];
   scrollers().forEach((el, i) => { if (el.scrollTop) scrolls[scrollKey(el, i)] = el.scrollTop; });
   fn();
-  // Il menu a sinistra resta dov'era anche cambiando pagina.
-  scrollers().forEach((el, i) => { const k = scrollKey(el, i); if (scrolls[k] && (samePage || el.matches('.sidebar'))) el.scrollTop = scrolls[k]; });
-  if (samePage && window.scrollY !== winY) window.scrollTo(0, winY);
+  // Prima i valori e i menù a scomparsa aperti: la pagina torna alta com'era, poi si rimette lo scorrimento
+  // (al contrario, con i menù ancora chiusi la pagina è più corta e lo scorrimento salta).
   for (const el of $root.querySelectorAll('[data-keep]')) {
     const v = keep[el.dataset.keep];
     if (v === undefined || el.dataset.fresh) continue;
     if (el.type === 'checkbox') el.checked = v; else if (el.tagName === 'DETAILS') el.open = v; else el.value = v;
   }
+  // Il menu a sinistra resta dov'era anche cambiando pagina.
+  scrollers().forEach((el, i) => { const k = scrollKey(el, i); if (scrolls[k] && (samePage || el.matches('.sidebar'))) el.scrollTop = scrolls[k]; });
+  if (samePage && window.scrollY !== winY) window.scrollTo(0, winY);
   if (focus) {
     const el = $root.querySelector(`[data-keep="${CSS.escape(focus)}"]`);
     if (el) { el.focus(); try { if (sel) el.setSelectionRange(...sel); } catch { /* select */ } }
@@ -4183,16 +4185,59 @@ function viewPushReport() {
 
 // Risultati di un sondaggio: conteggi e, aprendo, chi ha risposto cosa.
 const POLL_LABEL = { si: 'Sì', no: 'No', forse: 'Forse' };
-function pollResultsView(res) {
+function pollResultsView(res, n = null) {
   const total = res.votes.length;
   return h('div', { class: 'poll-res' },
     h('div', { class: 'poll-counts' }, Object.entries(POLL_LABEL).map(([k, l]) => h('span', { class: `chip poll-chip-${k}` }, `${l}: ${res.counts[k] || 0}`)),
       h('span', { class: 'tiny muted' }, `${total} ${total === 1 ? 'risposta' : 'risposte'}`)),
-    total ? h('details', null, h('summary', { class: 'tiny' }, 'Chi ha risposto'),
+    n?.reads ? pollGroupsView(res, n) : null,
+    total ? h('details', { 'data-keep': `pv-${n?.id ?? 'x'}` }, h('summary', { class: 'tiny' }, 'Chi ha risposto (persona per persona)'),
       h('ul', { class: 'poll-voters' }, Object.keys(POLL_LABEL).map((k) => {
         const list = res.votes.filter((v) => v.choice === k);
         return list.length ? h('li', null, h('strong', null, `${POLL_LABEL[k]}: `), list.map((v) => v.name).join(', ')) : null;
       }))) : null);
+}
+
+// Risposte per gruppo: coppie (la risposta è quella dei due, o dell'accesso di coppia), squadre di Eletti e iscritti
+// senza coppia, divisi in Sì / No / Forse / risposte diverse / nessuna risposta.
+function pollGroupsView(res, n) {
+  const ms = R.ms;
+  const rd = n.reads;
+  const playerOf = (id) => ms.players.find((p) => p.id === id);
+  const teamOf = (id) => ms.teams.find((t) => t.id === id);
+  const groups = [];
+  for (const c of rd.couples) {
+    const t = teamOf(c.id);
+    const members = rd.persons.filter((p) => p.teamId === c.id);
+    const votes = res.votes.filter((v) => (v.playerId != null && members.some((m) => m.id === v.playerId)) || (v.playerId == null && v.teamId === c.id));
+    groups.push({ key: `t${c.id}`, label: t ? `${t.roman} ${t.sectorName}` : `Coppia ${c.id}`, size: members.length, votes });
+  }
+  const electId = ms.elect?.id;
+  const elect = rd.persons.filter((p) => electId && p.teamId === electId);
+  const bySquad = new Map();
+  for (const p of elect) { const sq = playerOf(p.id)?.squadId ?? null; (bySquad.get(sq) || bySquad.set(sq, []).get(sq)).push(p); }
+  for (const [sq, members] of bySquad) {
+    const name = (ms.squads || []).find((x) => x.id === sq)?.name;
+    groups.push({ key: `s${sq}`, label: name ? `Eletti · ${name}` : 'Eletti senza squadra', size: members.length, votes: res.votes.filter((v) => members.some((m) => m.id === v.playerId)) });
+  }
+  for (const p of rd.persons.filter((x) => !x.teamId)) groups.push({ key: `p${p.id}`, label: `${p.name} (senza coppia)`, size: 1, votes: res.votes.filter((v) => v.playerId === p.id) });
+  if (!groups.length) return null;
+  const bucketOf = (g) => { const set = new Set(g.votes.map((v) => v.choice)); return !set.size ? 'none' : set.size > 1 ? 'mixed' : [...set][0]; };
+  const BUCKETS = [['si', 'Sì'], ['no', 'No'], ['forse', 'Forse'], ['mixed', 'Risposte diverse'], ['none', 'Non hanno risposto']];
+  const who = (g) => {
+    if (g.size < 2) return null;
+    const names = g.votes.map((v) => `${String(v.name || '').replace(/\s*\([^)]*\)\s*$/, '')}: ${POLL_LABEL[v.choice]}`);
+    return h('span', { class: 'tiny muted' }, ` · ${g.votes.length}/${g.size}${names.length ? ` (${names.join(', ')})` : ''}`);
+  };
+  return h('div', { class: 'poll-groups' },
+    h('div', { class: 'eyebrow' }, `Risposte per gruppo (${groups.length})`),
+    BUCKETS.map(([k, label]) => {
+      const list = groups.filter((g) => bucketOf(g) === k);
+      if (!list.length && (k === 'mixed' || k === 'forse')) return null;
+      return h('div', { class: `pg-row pg-${k}` },
+        h('div', { class: 'pg-label' }, h('strong', null, label), h('span', { class: 'mono' }, String(list.length))),
+        list.length ? h('ul', { class: 'pg-list' }, list.map((g) => h('li', null, h('strong', null, g.label), who(g)))) : h('span', { class: 'tiny muted' }, 'nessuno'));
+    }));
 }
 
 // Chi ha letto l'avviso: conteggi per persone e coppie, aprendo il dettaglio ✓ / ✗.
@@ -4308,7 +4353,7 @@ function viewNotices() {
       ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', { class: 'notice-item' },
         h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
         n.body ? h('p', { class: 'notice-body' }, n.body) : null,
-        n.results ? pollResultsView(n.results) : null,
+        n.results ? pollResultsView(n.results, n) : null,
         noticeReadsView(n.reads && { ...n.reads, id: n.id }),
         // Come lo vedono coppie ed Eletti nella pagina Avvisi dell'app (si apre a richiesta).
         h('details', { class: 'notice-preview', 'data-keep': `np-${n.id}` },
