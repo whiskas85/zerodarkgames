@@ -4288,18 +4288,35 @@ function shareNotice(n) {
   });
 }
 
+// Anteprima dell'avviso come nella pagina Avvisi dell'app (stessi testi, markdown, pulsanti del sondaggio non attivi).
+const NOTICE_FOR = { team: 'Solo per voi', elect: 'Per gli Eletti', couples: 'Per le coppie', all: 'Per tutti' };
+function noticePreview(n) {
+  return h('div', { class: 'np-phone' },
+    h('div', { class: 'np-card' },
+      h('div', { class: 'np-head' }, h('span', { class: `chip ${n.target === 'team' ? 'chip-blood' : 'chip-brass'}` }, NOTICE_FOR[n.target] || NOTICE_FOR.all),
+        h('span', { class: 'mono muted tiny' }, `${new Date(n.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · ${fmtTime(n.createdAt)}`)),
+      h('h3', { class: 'np-title' }, n.poll ? '📊 ' : '', n.title),
+      n.body ? h('div', { class: 'md np-body' }, md(n.body)) : null,
+      n.poll ? h('div', { class: 'np-poll' }, ['Sì', 'No', 'Forse'].map((x) => h('span', { class: 'btn btn-sm', 'aria-hidden': 'true' }, x))) : null),
+    h('p', { class: 'tiny muted' }, 'Nella notifica sul telefono: «', n.poll ? 'Sondaggio' : 'Avviso', ` · ${n.title}», con il testo senza formattazione.`));
+}
+
 function viewNotices() {
   const ms = R.ms;
   return h('div', { class: 'stack' },
     sectionActions(`Avvisi inviati (${ms.notices.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newNoticeDialog }, '＋ Crea avviso')],
-      ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', null,
-        h('div', { class: 'grow' },
-          h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
-          n.body ? h('p', null, n.body) : null,
-          n.results ? pollResultsView(n.results) : null,
-          noticeReadsView(n.reads && { ...n.reads, id: n.id })),
-        h('button', { class: 'btn btn-sm', title: 'Link che apre questo avviso nell\'app (WhatsApp, email…)', onclick: () => shareNotice(n) }, '↗ Condividi'),
-        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina')))) : h('p', { class: 'empty' }, 'Nessun avviso inviato: creane uno con «Crea avviso».')));
+      ms.notices.length ? h('ul', { class: 'notice-list' }, ms.notices.map((n) => h('li', { class: 'notice-item' },
+        h('div', { class: 'notice-head' }, h('strong', null, n.title), h('span', { class: 'chip' }, noticeTargetLabel(n)), h('span', { class: 'mono tiny muted' }, `${fmtTime(n.createdAt)} · ${n.author || 'regia'}`)),
+        n.body ? h('p', { class: 'notice-body' }, n.body) : null,
+        n.results ? pollResultsView(n.results) : null,
+        noticeReadsView(n.reads && { ...n.reads, id: n.id }),
+        // Come lo vedono coppie ed Eletti nella pagina Avvisi dell'app (si apre a richiesta).
+        h('details', { class: 'notice-preview', 'data-keep': `np-${n.id}` },
+          h('summary', { class: 'small' }, '👁 Come lo vedono i giocatori'),
+          noticePreview(n)),
+        h('div', { class: 'row-actions notice-actions' },
+          h('button', { class: 'btn btn-sm', title: 'Link che apre questo avviso nell\'app (WhatsApp, email…)', onclick: () => shareNotice(n) }, '↗ Condividi'),
+          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare l\'avviso?', 'Sparisce dalla pagina Avvisi dei telefoni (le notifiche già arrivate restano).', 'DELETE', `/api/m/notices/${n.id}`, undefined, 'Avviso eliminato', true) }, 'Elimina'))))) : h('p', { class: 'empty' }, 'Nessun avviso inviato: creane uno con «Crea avviso».')));
 }
 
 // ---------------------------------------------------------------- STAMPE
