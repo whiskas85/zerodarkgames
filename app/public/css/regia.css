@@ -1367,3 +1367,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .spike-teams li { display: flex; align-items: center; gap: 10px; }
 .spike-list .spike-teams { padding-left: 14px; }
 .spike-list > li > .row { display: flex; align-items: center; gap: 10px; } .spike-list > li > .row > .grow { flex: 1; }
+.spike-sum > .row { display: flex; align-items: center; gap: 10px; } .spike-sum > .row > .grow { flex: 1; }

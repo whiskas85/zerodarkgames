@@ -3152,6 +3152,7 @@ test('voto del pubblico: dalla rete Tor non si vota, i voti già arrivati da Tor
   await assert.rejects(VO.castVote({ teamId: A.id, device: 'dev-tor-2', ip: '185.220.101.8' }), /Tor/);
   const tor = VO.masterVote(g.id).tor;
   assert.deepEqual([tor.exits, tor.votes], [2, 1]);
+  assert.deepEqual(Object.keys(tor.idsByTeam).map(Number), [A.id]);
   VO.annulVotes(g.id, tor.ids, 'test');
   assert.equal(VO.masterVote(g.id).tor.votes, 0);
   assert.equal(VO.masterVote(g.id).votes.n, 1);

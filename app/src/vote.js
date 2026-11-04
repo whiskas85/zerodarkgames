@@ -186,8 +186,11 @@ function masterVote(gameId) {
     // Voti (validi) arrivati da indirizzi che oggi sono nodi di uscita di Tor.
     tor: (() => {
       const nets = new Set([...torIps].map(netHash));
-      const ids = q.all('SELECT id, net FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).filter((v) => nets.has(v.net)).map((v) => v.id);
-      return { listAt: torAt, exits: torIps.size, votes: ids.length, ids };
+      const rows = q.all('SELECT id, teamId, net FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).filter((v) => nets.has(v.net));
+      // Divisi per coppia: a chi sono andati i voti da Tor (e quali, per annullarli a parte).
+      const idsByTeam = {};
+      for (const v of rows) (idsByTeam[v.teamId] ||= []).push(v.id);
+      return { listAt: torAt, exits: torIps.size, votes: rows.length, ids: rows.map((v) => v.id), idsByTeam };
     })(),
   };
 }
