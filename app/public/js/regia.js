@@ -3964,9 +3964,13 @@ function viewVote() {
     section('Voti da Tor',
       h('p', { class: 'muted tiny' }, 'Con il browser Tor ogni voto arriva da un indirizzo diverso e salta il limite per rete. Il server scarica ogni ora l\'elenco pubblico dei nodi di uscita di Tor: da lì non si vota più. Qui sotto i voti già arrivati da quegli indirizzi.'),
       h('p', { class: 'tiny muted' }, V.tor?.listAt ? `Elenco aggiornato alle ${fmtTime(V.tor.listAt)} · ${V.tor.exits} nodi di uscita.` : 'Elenco di Tor non ancora scaricato: il server ci riprova ogni ora.'),
-      V.tor?.votes ? h('div', { class: 'row-actions' },
-        h('span', { class: 'chip chip-blood' }, `${V.tor.votes} ${V.tor.votes === 1 ? 'voto' : 'voti'} da Tor`),
-        h('button', { class: 'btn btn-sm btn-danger', onclick: async () => { if (!(await dialog({ title: `Annullare ${V.tor.votes} voti da Tor?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return; try { await api('POST', G('/vote/annul'), { ids: V.tor.ids }); toast('Voti da Tor annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); } } }, 'Annulla i voti da Tor'))
+      V.tor?.votes ? h('div', { class: 'spike-sum' },
+        h('div', { class: 'row' }, h('strong', { class: 'grow' }, `${V.tor.votes} ${V.tor.votes === 1 ? 'voto' : 'voti'} da Tor`),
+          annulBtn(V.tor.ids, `tutti i ${V.tor.votes} voti da Tor`, 'Annulla tutti')),
+        // Per coppia: a chi sono andati i voti da Tor, dalla più votata.
+        h('ul', { class: 'spike-teams' }, Object.entries(V.tor.idsByTeam || {}).sort((a, b) => b[1].length - a[1].length).map(([tid, ids]) => h('li', null,
+          h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+          annulBtn(ids, `i ${ids.length} voti da Tor per ${teamLabel(tid)}`)))))
         : h('p', { class: 'empty' }, 'Nessun voto da Tor.')),
     section('Voti sospetti',
       h('p', { class: 'muted tiny' }, 'Gruppi di almeno 5 voti dalla stessa rete in 10 minuti: possono essere amici allo stesso Wi-Fi o voti gonfiati. Annullali se non ti convincono.'),
