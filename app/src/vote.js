@@ -157,7 +157,10 @@ function spikes(gameId) {
       const group = rows.slice(i, j + 1);
       const byTeam = {};
       for (const v of group) byTeam[v.teamId] = (byTeam[v.teamId] || 0) + 1;
-      out.push({ net: rows[i].net.slice(0, 6), from: group[0].createdAt, to: group.at(-1).createdAt, count: group.length, ids: group.map((v) => v.id), byTeam });
+      // Per squadra: quanti voti di questo picco sono andati a ogni coppia (e quali, per annullarli a parte).
+      const idsByTeam = {};
+      for (const v of group) (idsByTeam[v.teamId] ||= []).push(v.id);
+      out.push({ net: rows[i].net.slice(0, 6), from: group[0].createdAt, to: group.at(-1).createdAt, count: group.length, ids: group.map((v) => v.id), byTeam, idsByTeam });
       i = j + 1;
     } else i++;
   }
