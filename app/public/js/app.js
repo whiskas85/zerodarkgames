@@ -3497,7 +3497,7 @@ function viewSkills() {
     skillSlots(sk),
     skillBar(mineHit.length + others.length),
     q && !mineHit.length && !others.length ? noSkillHit() : null,
-    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rateText(rechargeRate())} finché restate dentro.`) : null,
+    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rateText(rechargeRate())}${S.state?.zones?.devoto ? ' (triplicata da Devoto del Santuario)' : ''} finché restate dentro.`) : null,
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
       const list = mineHit.filter((s) => s.kind === kind);

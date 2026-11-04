@@ -28,6 +28,9 @@ const DEFAULT_RATE = 2;
 const rateOf = (z) => (Number(z.rate) > 1 ? Number(z.rate) : DEFAULT_RATE);
 const clampRate = (v) => (v == null || v === '' ? null : Math.max(1.1, Math.min(10, Math.round(Number(String(v).replace(',', '.')) * 10) / 10 || DEFAULT_RATE)));
 const fmtRate = (r) => String(r).replace('.', ',');
+// Devoto del Santuario (passiva): per chi ce l'ha il moltiplicatore del Santuario vale il triplo.
+const DEVOTO_FACTOR = 3;
+const devotoRate = (teamId, rate) => (rate > 1 && SK().hasSkill(teamId, 'devoto') ? rate * DEVOTO_FACTOR : rate);
 const effectOf = (z) => KINDS[z.kind].effect.replace('{min}', z.holdMin || 3).replace('{rate}', fmtRate(rateOf(z)));
 
 // ---------------------------------------------------------------- geometria
@@ -306,7 +309,8 @@ function tickAll(now = Date.now()) {
       // Dentro più Santuari vale il moltiplicatore più alto.
       for (const p of q.all(`SELECT p.teamId, MAX(COALESCE(z.rate, ${DEFAULT_RATE})) AS rate FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
                              WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0 GROUP BY p.teamId`, gameId)) {
-        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (p.rate - 1), p.teamId, now);
+        const rate = devotoRate(p.teamId, p.rate);
+        q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (rate - 1), p.teamId, now);
       }
     }
     for (const z of q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND enabled = 1 AND kind = 'conquista' AND winnerTeamId IS NULL", gameId)) {
@@ -497,7 +501,8 @@ function teamZones(t, player = null) {
     immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),
     // Dentro un Santuario: la ricarica delle Skill corre più veloce (il moltiplicatore più alto).
-    recharge: Math.max(1, ...mine.filter((z) => z.kind === 'santuario').map(rateOf)),
+    recharge: devotoRate(t.id, Math.max(1, ...mine.filter((z) => z.kind === 'santuario').map(rateOf))),
+    devoto: SK().hasSkill(t.id, 'devoto'),
     won: q.all('SELECT * FROM map_zones WHERE gameId = ? AND winnerTeamId = ? AND wonAt > ?', t.gameId, t.id, now - 30 * 60000).map((z) => ({ id: z.id, name: z.name, wonAt: z.wonAt, reward: JSON.parse(z.reward || 'null') })),
   };
 }

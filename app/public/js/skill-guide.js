@@ -217,6 +217,14 @@ export const SKILL_GUIDE = {
       { t: 'card', ico: '⛓️', eyebrow: 'Veglia', title: 'Cappellino: 4 minuti', bar: 1, tone: 'bad', cap: 'Il timer di chi perde contro di voi.' },
     ],
   }),
+  devoto: () => ({
+    how: 'Passiva: sempre attiva, dentro un Santuario.',
+    effect: ['Dentro un Santuario la ricarica delle vostre Skill accelera tre volte di più degli altri: un Santuario ×2 per voi vale ×6, un ×3 vale ×9.', 'Fuori dal Santuario non cambia niente.'],
+    tips: 'Quando le vostre Skill sono in ricarica, un Santuario vi rimette in gioco in pochi minuti.',
+    shots: [
+      { t: 'card', ico: '🏛️', eyebrow: 'Santuario · Devoto', title: 'Ricarica ×6', bar: 0.8, cap: 'L\'indicatore della ricarica velocizzata.' },
+    ],
+  }),
   ritirata: () => ({
     how: 'Passiva: sempre attiva.',
     effect: ['Dopo una trattativa d\'alleanza fallita il blocco ingaggio sale a 8 minuti.'],
