@@ -3908,6 +3908,12 @@ async function loadVote() {
   if (tab() === 'voto') render();
 }
 function viewVote() {
+  // Voti sospetti: nome della coppia e pulsante per annullare un gruppo di voti.
+  const teamLabel = (tid) => { const t = V.teams.find((y) => y.id === Number(tid)); return t ? `${t.roman} ${t.sectorName}` : '?'; };
+  const annulBtn = (ids, what, label = 'Annulla') => h('button', { class: 'btn btn-sm btn-danger', onclick: async () => {
+    if (!(await dialog({ title: `Annullare ${what}?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return;
+    try { await api('POST', G('/vote/annul'), { ids }); toast('Voti annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); }
+  } }, label);
   if (!voteState || voteGameId !== R.gameId) { loadVote(); return h('p', { class: 'empty' }, 'Caricamento…'); }
   const V = voteState;
   const url = `${R.baseUrl || location.origin}/vota`;
@@ -3964,9 +3970,24 @@ function viewVote() {
         : h('p', { class: 'empty' }, 'Nessun voto da Tor.')),
     section('Voti sospetti',
       h('p', { class: 'muted tiny' }, 'Gruppi di almeno 5 voti dalla stessa rete in 10 minuti: possono essere amici allo stesso Wi-Fi o voti gonfiati. Annullali se non ti convincono.'),
-      V.spikes.length ? h('ul', { class: 'list' }, V.spikes.map((x) => h('li', { class: 'row' },
-        h('span', { class: 'grow small' }, `${x.count} voti da rete ${x.net}… tra le ${fmtTime(x.from)} e le ${fmtTime(x.to)} · `, Object.entries(x.byTeam).map(([tid, n]) => { const t = V.teams.find((y) => y.id === Number(tid)); return `${t ? `${t.roman} ${t.sectorName}` : '?'}: ${n}`; }).join(', ')),
-        h('button', { class: 'btn btn-sm btn-danger', onclick: async () => { if (!(await dialog({ title: `Annullare ${x.count} voti?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return; try { await api('POST', G('/vote/annul'), { ids: x.ids }); toast('Voti annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); } } }, 'Annulla')))) : h('p', { class: 'empty' }, 'Nessun picco sospetto.')),
+      V.spikes.length ? [
+        // In totale, per coppia: quanti voti sospetti ha ricevuto (da tutti i picchi).
+        (() => {
+          const tot = {};
+          for (const x of V.spikes) for (const [tid, ids] of Object.entries(x.idsByTeam || {})) (tot[tid] ||= []).push(...ids);
+          const rows = Object.entries(tot).sort((a, b) => b[1].length - a[1].length);
+          return h('div', { class: 'spike-sum' }, h('div', { class: 'eyebrow' }, 'Voti sospetti per coppia (tutti i picchi)'),
+            h('ul', { class: 'spike-teams' }, rows.map(([tid, ids]) => h('li', null,
+              h('strong', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+              annulBtn(ids, `i ${ids.length} voti sospetti per ${teamLabel(tid)}`)))));
+        })(),
+        h('ul', { class: 'spike-list' }, V.spikes.map((x) => h('li', null,
+          h('div', { class: 'row' }, h('span', { class: 'grow small' }, h('strong', null, `${x.count} voti`), ` dalla rete ${x.net}… tra le ${fmtTime(x.from)} e le ${fmtTime(x.to)}`),
+            annulBtn(x.ids, `tutti i ${x.count} voti di questo picco`, 'Annulla tutti')),
+          h('ul', { class: 'spike-teams' }, Object.entries(x.idsByTeam || {}).sort((a, b) => b[1].length - a[1].length).map(([tid, ids]) => h('li', null,
+            h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+            annulBtn(ids, `i ${ids.length} voti di questo picco per ${teamLabel(tid)}`)))))))]
+        : h('p', { class: 'empty' }, 'Nessun picco sospetto.')),
     section('Verifica anti-robot (Cloudflare Turnstile)',
       h('p', { class: 'muted tiny' }, 'Gratis: su dash.cloudflare.com → Turnstile → Add site (dominio del gioco) e copia qui le due chiavi. Senza, il voto funziona lo stesso ma è più facile gonfiarlo con programmi automatici.'),
       V.turnstileFromEnv ? h('p', { class: 'small' }, 'Chiavi impostate nel file .env del server.') : (() => {

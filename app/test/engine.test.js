@@ -2925,6 +2925,9 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   for (let i = 0; i < 5; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, createdAt) VALUES (?, ?, ?, ?, 1, ?)', g.id, A.id, `bot-${i}`, 'deadbeefdeadbeef', now - i * 1000);
   const sp = VO.masterVote(g.id).spikes.find((x) => x.net === 'deadbe');
   assert.equal(sp.count, 5);
+  // Divisi per coppia: tutti e 5 sono andati ad A.
+  assert.deepEqual(Object.keys(sp.idsByTeam).map(Number), [A.id]);
+  assert.equal(sp.idsByTeam[A.id].length, 5);
   assert.equal(VO.annulVotes(g.id, sp.ids, 'test').annulled, 5);
   assert.equal(VO.masterVote(g.id).spikes.length, 0);
   // Premi ai primi tre (con i voti rimasti: B e C), poi il voto si chiude.

@@ -1359,3 +1359,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .dev-table { width: 100%; font-size: 13px; }
 .dev-table th { font-size: 11px; }
 .dev-traccar td { border-top: 1px dashed var(--line); }
+/* Voti sospetti divisi per coppia: in totale e dentro ogni picco. */
+.spike-sum { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+.spike-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.spike-list > li { padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--blood); background: var(--bg); display: grid; gap: 6px; }
+.spike-teams { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.spike-teams li { display: flex; align-items: center; gap: 10px; }
+.spike-list .spike-teams { padding-left: 14px; }
+.spike-list > li > .row { display: flex; align-items: center; gap: 10px; } .spike-list > li > .row > .grow { flex: 1; }
