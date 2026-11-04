@@ -77,7 +77,7 @@ function results(gameId) {
 }
 
 // Pagina pubblica: niente numeri assoluti, solo percentuali.
-function publicState(device, account) {
+function publicState(device, account, ip = null) {
   const g = voteGame();
   if (!g) return { game: null };
   const r = results(g.id);
@@ -97,6 +97,8 @@ function publicState(device, account) {
     myVote: mine?.teamId || null,
     verified: !!account, weight: account ? VERIFIED_WEIGHT : 1,
     turnstile: turnstile().siteKey,
+    // Dalla rete Tor: la pagina lo dice subito (e non mostra i pulsanti attivi).
+    tor: !!ip && isTor(ip),
   };
 }
 
@@ -139,7 +141,7 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
     else q.run('INSERT INTO votes (gameId, teamId, device, net, accountId, weight, ua, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', g.id, t.id, device, net, account?.id ?? null, weight, String(ua || '').slice(0, 160), now);
   });
   rt.toStaff(g.id, 'vote');
-  return publicState(device, account);
+  return publicState(device, account, ip);
 }
 
 // ---------------------------------------------------------------- regia

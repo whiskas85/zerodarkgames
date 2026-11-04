@@ -64,6 +64,8 @@ button.vote:disabled{opacity:.5;cursor:default}
 .note a{color:var(--brass)}
 .ts{display:flex;justify-content:center;margin:14px 0}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:12px 16px;border-radius:10px;background:var(--paper);border:2px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.5);font-weight:600;z-index:10}
+.tor-block{display:grid;gap:4px;margin:14px auto 0;max-width:520px;padding:12px 14px;border:2px solid var(--blood);border-radius:10px;background:rgba(224,96,63,.12);text-align:left}
+.tor-block strong{color:var(--blood)}
 .toast.err{border-color:var(--blood)} .toast.ok{border-color:var(--ok)}
 .powered-by{display:flex;align-items:center;gap:12px;width:max-content;margin:24px auto 0;padding:10px 18px 10px 10px;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none;opacity:.9}
 .powered-by img{width:56px;height:56px;border-radius:50%;background:#000;box-shadow:0 0 0 2px rgba(0,0,0,.6),0 0 14px rgba(124,255,46,.25)}
@@ -118,7 +120,7 @@ function render() {
       <span class="stamp">${esc(t.roman)}</span>
       <div><div class="tname">${esc(teamName(t))}</div><div class="tsub">${sector(t)}</div>${people(t)}</div>
       <div class="act">${t.logo ? `<img class="tlogo" src="${esc(t.logo)}" alt="Logo ${esc(teamName(t))}">` : ''}
-      <button class="vote ${mine ? 'done' : ''}" data-id="${t.id}" ${!S.open || busy ? 'disabled' : ''}>${mine ? 'Il tuo voto ✓' : S.myVote ? 'Cambia voto' : 'Vota'}</button></div>
+      <button class="vote ${mine ? 'done' : ''}" data-id="${t.id}" ${!S.open || busy || S.tor ? 'disabled' : ''}>${mine ? 'Il tuo voto ✓' : S.myVote ? 'Cambia voto' : 'Vota'}</button></div>
       <div class="bar"><i style="width:${Math.max(0, Math.min(100, t.pct))}%"></i></div>
       <div class="pctline"><span>${pct(t.pct)}</span><span>${mine ? 'hai votato questa coppia' : ''}</span></div></div>`;
   }).join('');
@@ -128,6 +130,7 @@ function render() {
   $app.innerHTML = `<header><div class="emblem"><span>0</span></div><p class="eyebrow">I Giochi del Buio · ${esc(S.game.name)}</p>
       <h1>${esc(S.title).replace(/pubblico/i, '<em>pubblico</em>')}</h1>
       <p class="lede">Vota la coppia che vuoi vedere vincere. Le prime tre ricevono un Dono del Consiglio prima della partita.</p>${status}${cd}
+      ${S.tor ? '<div class="tor-block" role="alert"><strong>Dalla rete Tor non si vota</strong><span>Stai usando Tor (o un servizio che passa da Tor). Per votare apri questa pagina con una connessione normale: Wi-Fi o dati del telefono, senza Tor.</span></div>' : ''}
       ${S.verified ? `<span class="verified">Il tuo voto vale ×${S.weight}: sei entrato con il tuo account</span>` : ''}</header>
     <h2>Il podio</h2>${podium}
     <h2>Le coppie</h2>${S.teams.length ? `<div class="teams">${teams}</div>` : '<p class="empty">Il Consiglio non ha ancora scelto le coppie da votare.</p>'}
@@ -135,9 +138,9 @@ function render() {
   // Fuori dalla parte che si ridisegna: il riquadro anti-robot non si azzera con gli aggiornamenti.
   document.getElementById('note').innerHTML = `Un voto per telefono (puoi cambiarlo finché la votazione è aperta). Si vedono solo le percentuali.<br>
       ${S.verified ? '' : 'Hai un account dei Giochi o di Zero Dark Ops? <a href="/">Entra</a> e torna qui: il tuo voto vale di più.'}`;
-  document.getElementById('ts').hidden = !(S.turnstile && S.open);
+  document.getElementById('ts').hidden = !(S.turnstile && S.open) || !!S.tor;
   for (const b of $app.querySelectorAll('button.vote')) b.addEventListener('click', () => vote(Number(b.dataset.id)));
-  if (S.turnstile && S.open) mountTurnstile();
+  if (S.turnstile && S.open && !S.tor) mountTurnstile();
 }
 function mountTurnstile() {
   const box = document.getElementById('ts');
