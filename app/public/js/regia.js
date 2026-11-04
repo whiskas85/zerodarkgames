@@ -5059,8 +5059,11 @@ function gameForm(g, isNew, only = null) {
       scoreMine: () => f('scoreMine', 'Punti: mina scattata', 'number', { def: 2, attrs: { min: 0 } }),
       maxCouples: () => f('maxCouples', 'Settori da aprire (vuoto = tutti)', 'number', { attrs: { min: 0, placeholder: 'tutti i Settori' } }),
       maxSingles: () => f('maxSingles', 'Posti temerari solitari (vuoto = nei posti coppie)', 'number', { attrs: { min: 0, placeholder: 'senza limite a parte' } }),
-      maxActiveSkills: () => f('maxActiveSkills', 'Skill attive o Ultimate per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
-      maxPassiveSkills: () => f('maxPassiveSkills', 'Skill passive per coppia', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+      maxActiveSkills: () => f('maxActiveSkills', 'Skill attive o Ultimate scelte all\'inizio', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+      maxPassiveSkills: () => f('maxPassiveSkills', 'Skill passive scelte all\'inizio', 'number', { def: 1, lock: true, attrs: { min: 0 } }),
+      // Slot: il massimo per coppia; quelli oltre l'inizio si riempiono in gioco con i doni Maestro (attive) e Saggio (passive).
+      activeSlots: () => f('activeSlots', 'Slot per Skill attive o Ultimate (riempibili con Maestro)', 'number', { attrs: { min: 0, placeholder: 'senza limite' } }),
+      passiveSlots: () => f('passiveSlots', 'Slot per Skill passive (riempibili con Saggio)', 'number', { attrs: { min: 0, placeholder: 'senza limite' } }),
     };
     return (only || Object.keys(all)).map((k) => all[k]());
   })(),
@@ -5406,7 +5409,8 @@ function viewSettings() {
           timers(), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer')))],
     coppie: () => [section('Settaggio coppie',
       h('p', { class: 'muted tiny' }, 'Quante coppie possono iscriversi (un Settore per coppia) e quanti temerari solitari, che il Consiglio accoppia poi tra loro. Le Skill per coppia si scelgono prima del via.'),
-      gameForm(g, false, ['maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills']))],
+      h('p', { class: 'muted tiny' }, 'Skill: all\'inizio ogni coppia ne sceglie quante indicato qui; gli slot sono il massimo che può avere. Gli slot in più si riempiono in gioco con i doni Maestro (attive o Ultimate) e Saggio (passive); con gli slot pieni il dono viene rifiutato. Slot vuoto = senza limite.'),
+      gameForm(g, false, ['maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots']))],
     settori: () => [viewSectors()],
     altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
     eletti: () => [section('Eletti: mine e punteggio', h('p', { class: 'muted tiny' }, 'La classifica e le mine sul campo sono in Squadre Eletti → Punteggio e mine.'), gameForm(g, false, ['mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']))],

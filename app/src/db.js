@@ -790,4 +790,9 @@ CREATE TABLE IF NOT EXISTS player_devices (
 `);
 addColumn('push_subs', 'deviceId', 'TEXT');
 
+// Slot delle Skill: quante una coppia ne può avere al massimo (attive o Ultimate / passive). All'inizio se ne scelgono
+// maxActiveSkills / maxPassiveSkills; gli altri slot si riempiono in gioco con i doni Maestro e Saggio. NULL = senza limite.
+addColumn('games', 'activeSlots', 'INTEGER');
+addColumn('games', 'passiveSlots', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };
