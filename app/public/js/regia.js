@@ -1972,7 +1972,7 @@ function fieldMapItems(d) {
       popup: `<strong>🏁 ${escHtml(ev.name)}</strong><br>${EVENT_STATUS[ev.status]?.[0] || ev.status}${ev.location.label ? ` · ${escHtml(ev.location.label)}` : ''}${ev.startAt ? `<br><small>Inizio ${fmtTime(ev.startAt)}${ev.durationMin ? ` · ${ev.durationMin}′` : ''}</small>` : ''}` })),
     // Doni: grigi finché non compaiono, colorati quando compaiono, barrati quando presi.
     ...d.gifts.map((g) => ({ key: `g${g.id}`, kind: 'gift', lat: g.lat, lng: g.lng, text: g.icon, color: g.color, state: g.status === 'placed' ? 'hidden' : g.status, title: g.label, provisional: g.provisional,
-      popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}</div>` : '') })),
+      popup: giftPopup(g) + (['placed', 'revealed'].includes(g.status) ? `<div class="popup-actions">${actBtn('pick', 'gift', g.id, 'Sposta: clicca sulla mappa')}${actBtn('move', 'gift', g.id, 'Fai spostare a una squadra')}${actBtn('edit', 'gift', g.id, 'Modifica')}</div>` : '') })),
     // Mine traccianti degli Eletti: armate (oro) e scattate da poco (rosse finché la coppia è marcata).
     ...mineItems(d.mines || [], (m) => `<div class="popup-actions">${actBtn('del', 'mine', m.id, m.triggeredAt ? 'Togli dalla mappa' : 'Togli la mina')}</div>`),
   ];
@@ -2015,7 +2015,7 @@ fieldMap.el.addEventListener('click', (e) => {
   fieldMap.map?.closePopup();
   if (b.dataset.act === 'move') assignDialog(b.dataset.kind, x, true);
   if (b.dataset.act === 'pick') startPick(x, b.dataset.kind);
-  if (b.dataset.act === 'edit') (b.dataset.kind === 'guide' ? guideDialog(x) : editPoi(x));
+  if (b.dataset.act === 'edit') (b.dataset.kind === 'guide' ? guideDialog(x) : b.dataset.kind === 'gift' ? editGiftDialog(x) : editPoi(x));
   if (b.dataset.act === 'del') (b.dataset.kind === 'guide' ? deleteGuideDialog(x) : b.dataset.kind === 'mine' ? removeMineDialog(x) : deletePoiDialog(x));
 }, true);
 
@@ -3643,6 +3643,51 @@ async function createGiftDialog() {
     } });
 }
 
+// Modifica di un dono già creato (finché non è preso o svanito): tipo, titolo, ritardo, scadenza, dopo la lettura, cartello.
+// L'annuncio si cambia con «Annuncia…», la squadra con «Assegna».
+async function editGiftDialog(g) {
+  const d = fieldData;
+  let type = d.giftTypes.find((t) => t.id === g.typeId) || null;
+  const title = h('input', { class: 'input', maxlength: 40, value: g.label });
+  const delay = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'nessuno', value: g.revealDelayMin ?? '' });
+  const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai', value: g.expiresAfterMin ?? '' });
+  const after = h('select', { class: 'input', onchange: () => { if (after.value === '1') sign.value = '0'; } },
+    h('option', { value: '0', selected: !g.multi }, 'Scade: lo prende una sola coppia'),
+    h('option', { value: '1', selected: !!g.multi }, 'Resta attivo per le altre coppie'));
+  const sign = h('select', { class: 'input' },
+    h('option', { value: '1', selected: g.removeSign }, 'Cartello da rimuovere (dopo la scansione)'),
+    h('option', { value: '0', selected: !g.removeSign }, 'Non rimuovere il cartello'));
+  const chosen = h('p', { class: 'gift-chosen' }, type ? `${type.icon} ${type.name}` : `${g.icon} ${g.name}`);
+  const cards = h('div', { class: 'gift-cards' }, d.giftTypes.map((t) => {
+    const card = h('button', { type: 'button', class: `gift-card ${t.id === g.typeId ? 'on' : ''}`, style: { '--c': t.color }, onclick: () => {
+      type = t;
+      for (const c of cards.children) c.classList.toggle('on', c === card);
+      chosen.textContent = `${t.icon} ${t.name}`;
+    } },
+    h('span', { class: 'gift-card-ico', 'aria-hidden': 'true' }, t.icon), h('strong', null, t.name), h('span', { class: 'tiny' }, t.description));
+    return card;
+  }));
+  return modal({ title: `Modifica dono · ${g.label}`, wide: true, tall: true, okLabel: 'Salva',
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'form-grid gift-opts' },
+        h('label', { class: 'field' }, h('span', null, 'Titolo (sul cartello)'), title),
+        h('label', { class: 'field' }, h('span', null, 'Ritardo all\'annuncio (min)'), delay),
+        h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
+        h('label', { class: 'field' }, h('span', null, 'Dopo la lettura'), after),
+        h('label', { class: 'field' }, h('span', null, 'Cartello stampato'), sign)),
+      h('p', { class: 'tiny muted' }, 'Il titolo è stampato sul cartello: se lo cambi e il cartello è già stampato, ristampalo (il QR resta lo stesso). L\'annuncio si cambia con «Annuncia…», la squadra con «Assegna».'),
+      h('div', { class: 'eyebrow' }, 'Tipo di dono (segreto: non è sul cartello)'), cards, chosen),
+    onOk: async () => {
+      try {
+        await api('PATCH', `/api/m/gifts/${g.id}`, { label: title.value.trim() || g.label, typeId: type?.id ?? g.typeId, revealDelayMin: delay.value, expiresAfterMin: exp.value,
+          multi: after.value === '1', removeSign: sign.value === '1' });
+        toast('Dono modificato', 'ok');
+        loadField();
+        return true;
+      } catch (e) { toast(e.message, 'error', 6000); return false; }
+    } });
+}
+
 function viewGiftsQR() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento dei doni…'); }
@@ -3671,6 +3716,7 @@ function viewGiftsQR() {
     h('td', { class: 'tiny' }, giftRevealCell(g)),
     h('td', { class: 'tiny' }, !g.expiresAfterMin ? 'mai' : g.status === 'revealed' && g.expiresAtElapsedMs != null ? h('span', null, 'tra ', h('span', { class: 'mono', 'data-clock': `until:${g.expiresAtElapsedMs}` }, '—')) : `${g.expiresAfterMin}′ dopo l'annuncio`),
     h('td', { class: 'row-actions' },
+      !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm', onclick: () => editGiftDialog(g) }, '✎ Modifica') : null,
       ['draft', 'placed'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => scheduleGiftDialog(g) }, ['at', 'onplace', 'time'].includes(g.revealMode) ? '◷ Cambia annuncio' : '◷ Annuncia…') : null,
       ['draft', 'placed'].includes(g.status) && ['at', 'onplace', 'time'].includes(g.revealMode) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => call('POST', `/api/m/gifts/${g.id}/schedule`, { mode: 'cancel' }, 'Annuncio annullato').then(() => loadField()) }, 'Annulla annuncio') : null,
       ['draft', 'placed', 'revealed'].includes(g.status) ? placementButtons('gift', g, g.status !== 'draft') : null,

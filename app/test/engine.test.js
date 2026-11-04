@@ -3102,3 +3102,19 @@ test('Legati: con i Settori esauriti il compagno entra con il codice; un Legato 
   q.run("UPDATE games SET status = 'circle' WHERE id = ?", g.id);
   assert.throws(() => A.pairToSingle(q.get('SELECT * FROM players WHERE id = ?', p1.id), 'test'), /chiuse/);
 });
+
+test('doni: dalla regia si cambiano tipo, titolo e opzioni finché non è preso', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const types = F.giftTypes(G.getGame(g.id));
+  const [id] = F.createGifts(g.id, { typeId: types[0].id, label: 'Cassa' }, 'test').ids;
+  F.updateGift(id, { typeId: types[1].id, label: 'Cassa del bosco', revealDelayMin: '5', expiresAfterMin: '20', multi: true, removeSign: false }, 'test');
+  const row = q.get('SELECT * FROM gifts WHERE id = ?', id);
+  assert.deepEqual([row.typeId, row.name, row.icon, row.label, row.revealDelayMin, row.expiresAfterMin, row.multi, row.removeSign],
+    [types[1].id, types[1].name, types[1].icon, 'Cassa del bosco', 5, 20, 1, 0]);
+  F.updateGift(id, { revealDelayMin: '', expiresAfterMin: '' }, 'test');
+  assert.deepEqual([q.get('SELECT revealDelayMin FROM gifts WHERE id = ?', id).revealDelayMin, q.get('SELECT expiresAfterMin FROM gifts WHERE id = ?', id).expiresAfterMin], [null, null]);
+  assert.throws(() => F.updateGift(id, { typeId: 'inesistente' }, 'test'), /non valido/);
+  q.run("UPDATE gifts SET status = 'claimed' WHERE id = ?", id);
+  assert.throws(() => F.updateGift(id, { label: 'X' }, 'test'), /non si modifica/);
+});
