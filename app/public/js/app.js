@@ -705,6 +705,8 @@ function openAvatarMenu(anchor) {
     item('#/regolamento', mdi('fileDocument', 18), 'Regolamento'),
     // Riservato agli Eletti: le coppie non lo vedono (e il server non lo serve loro).
     isElect() ? item('/regolamento-eletti', '◈', 'Regolamento Eletti', { target: '_blank', rel: 'noopener' }) : null,
+    // Il tour guidato (quello degli Eletti per gli Eletti, quello dei Legati per le coppie), da rivedere quando si vuole.
+    item(null, '▶', 'Il tour dell\'app', { onclick: () => openTour() }),
     S.state?.council ? item('/consiglio', '◈', 'Consiglio Zero') : null,
     acc?.staff === 'master' ? item('/regia', '◉', 'Regia') : null,
     item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: () => logout() }));
