@@ -3955,6 +3955,13 @@ function viewVote() {
           if (!(await dialog({ title: 'Assegnare i premi?', text: `${top.map((t, i) => `${['🥇', '🥈', '🥉'][i]} ${t.roman} ${t.sectorName} (${String(t.pct).replace('.', ',')}%)`).join(' · ')}. La votazione si chiude e parte l'annuncio a tutte le coppie.`, okLabel: 'Assegna i premi' }))) return;
           try { await api('POST', G('/vote/award')); toast('Premi assegnati', 'ok'); await loadVote(); load(); } catch (e) { toast(e.message, 'error', 6000); }
         } }, '🏆 Assegna i premi e chiudi')),
+    section('Voti da Tor',
+      h('p', { class: 'muted tiny' }, 'Con il browser Tor ogni voto arriva da un indirizzo diverso e salta il limite per rete. Il server scarica ogni ora l\'elenco pubblico dei nodi di uscita di Tor: da lì non si vota più. Qui sotto i voti già arrivati da quegli indirizzi.'),
+      h('p', { class: 'tiny muted' }, V.tor?.listAt ? `Elenco aggiornato alle ${fmtTime(V.tor.listAt)} · ${V.tor.exits} nodi di uscita.` : 'Elenco di Tor non ancora scaricato: il server ci riprova ogni ora.'),
+      V.tor?.votes ? h('div', { class: 'row-actions' },
+        h('span', { class: 'chip chip-blood' }, `${V.tor.votes} ${V.tor.votes === 1 ? 'voto' : 'voti'} da Tor`),
+        h('button', { class: 'btn btn-sm btn-danger', onclick: async () => { if (!(await dialog({ title: `Annullare ${V.tor.votes} voti da Tor?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return; try { await api('POST', G('/vote/annul'), { ids: V.tor.ids }); toast('Voti da Tor annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); } } }, 'Annulla i voti da Tor'))
+        : h('p', { class: 'empty' }, 'Nessun voto da Tor.')),
     section('Voti sospetti',
       h('p', { class: 'muted tiny' }, 'Gruppi di almeno 5 voti dalla stessa rete in 10 minuti: possono essere amici allo stesso Wi-Fi o voti gonfiati. Annullali se non ti convincono.'),
       V.spikes.length ? h('ul', { class: 'list' }, V.spikes.map((x) => h('li', { class: 'row' },
