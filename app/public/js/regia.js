@@ -38,7 +38,7 @@ const TABS = [
   ['avvisi', 'Avvisi'],
   ['eventi', 'Eventi'],
   ['voto', 'Voto del pubblico'],
-  ['notifiche', 'Notifiche, Traccar e ICE'],
+  ['notifiche', 'Pronti per la gara'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['rewind', 'Rewind'],
@@ -4141,13 +4141,15 @@ async function loadPushReport() {
 }
 
 const PUSH_STATE = {
-  on: (x) => h('span', { class: 'chip chip-ok' }, `attive${x.devices > 1 ? ` · ${x.devices} dispositivi` : ''}`),
+  on: (x) => { const n = x.pushDevices ?? x.devices; return h('span', { class: 'chip chip-ok' }, `attive${n > 1 ? ` · ${n} dispositivi` : ''}`); },
   shared: () => h('span', { class: 'chip chip-warn', title: 'Le riceve solo il telefono entrato con il codice della coppia, non il suo' }, 'solo telefono della coppia'),
   off: () => h('span', { class: 'chip chip-blood' }, 'non attive'),
 };
 const TRACCAR_STATE = {
   ok: (x) => h('span', { class: 'chip chip-ok', title: x.trackSeenAt ? `Ultimo segnale ${fmtTime(x.trackSeenAt)}` : '' }, 'verificato'),
   stale: (x) => h('span', { class: 'chip chip-blood', title: x.trackSeenAt ? `Ultimo segnale ${fmtTime(x.trackSeenAt)}` : 'Nessun segnale' }, 'non manda'),
+  // Prima del via: verificato in passato ma adesso spento.
+  off: (x) => h('span', { class: 'chip chip-warn', title: x.trackSeenAt ? `Ultimo segnale ${fmtTime(x.trackSeenAt)}` : 'Nessun segnale' }, 'spento'),
   none: () => h('span', { class: 'chip chip-warn' }, 'da attivare'),
 };
 
@@ -4162,6 +4164,43 @@ function appCell(app, current) {
     h('span', { class: `chip ${app.installed ? 'chip-ok' : ''}`, title: app.installed ? 'Installata nella schermata Home' : 'Aperta dal browser, non installata' }, app.installed ? 'installata' : 'browser'),
     h('div', { class: `mono tiny ${old ? 'warn-text' : 'muted'}`, title: old ? `Versione vecchia: l'ultima è ${current}. Deve chiudere e riaprire l'app.` : `Vista ${fmtTime(app.at)}` },
       (app.version || '?').replace('zdg-', ''), old ? ' · vecchia' : ''));
+}
+
+// Dispositivi di una persona: il migliore in tabella, tutti nella riga che si apre sotto.
+const OS_NAME = { ios: '🍎 iPhone/iPad', android: '🤖 Android', desktop: '💻 Computer' };
+const devName = (d) => (d.unknown ? 'Dispositivo non identificato' : [OS_NAME[d.os] || 'Dispositivo', d.browser].filter(Boolean).join(' · '));
+function bestDeviceCell(p, current) {
+  const list = p.devices || [];
+  const best = list[0];
+  const open = R.devOpen?.has(p.id);
+  const toggle = list.length ? h('button', { class: `btn btn-xs ${open ? 'btn-primary' : 'btn-ghost'}`, type: 'button', title: 'Tutti i dispositivi di questa persona',
+    onclick: () => { R.devOpen ||= new Set(); if (open) R.devOpen.delete(p.id); else R.devOpen.add(p.id); render(); } }, `${list.length} ${list.length === 1 ? 'dispositivo' : 'dispositivi'} ${open ? '▴' : '▾'}`) : null;
+  if (!best || best.unknown) return h('div', { class: 'app-cell' }, best ? h('span', { class: 'tiny' }, devName(best)) : appCell(p.app, current), toggle);
+  return h('div', { class: 'app-cell' },
+    appCell({ installed: best.installed, version: best.version, at: best.lastAt, os: best.os }, current),
+    best.browser ? h('span', { class: 'tiny muted' }, best.browser) : null,
+    toggle);
+}
+function devicesTable(p, current) {
+  const yes = (ok, on, off) => h('span', { class: `chip ${ok ? 'chip-ok' : 'chip-warn'}` }, ok ? on : off);
+  const rows = (p.devices || []).map((d, i) => h('tr', null,
+    h('td', null, i === 0 && !d.unknown ? h('span', { class: 'chip chip-ok', title: 'Il dispositivo con più cose attive' }, '★ migliore') : null, ' ', h('strong', null, devName(d))),
+    h('td', null, d.unknown ? h('span', { class: 'tiny muted' }, 'registrato prima dell\'aggiornamento') : [yes(d.installed, 'installata', 'browser'), ' ', h('span', { class: `mono tiny ${current && d.version && d.version !== current ? 'warn-text' : 'muted'}` }, (d.version || '?').replace('zdg-', ''))]),
+    h('td', null, yes(d.push, 'attive', 'non attive')),
+    h('td', { class: 'tiny' }, d.gpsAt ? [h('span', { 'data-ago': d.gpsAt }, agoText(d.gpsAt))] : h('span', { class: 'muted' }, 'mai')),
+    h('td', { class: 'tiny' }, d.online ? h('span', { class: 'chip chip-ok' }, 'online adesso') : d.lastAt ? [h('span', { 'data-ago': d.lastAt }, agoText(d.lastAt)), h('div', { class: 'muted' }, fmtTime(d.lastAt))] : h('span', { class: 'muted' }, '—')),
+    h('td', { class: 'tiny muted' }, d.firstAt ? new Date(d.firstAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }) : '—')));
+  // Traccar Client è un'app a parte (spesso sullo stesso telefono): una riga sua.
+  rows.push(h('tr', { class: 'dev-traccar' },
+    h('td', null, h('strong', null, '⌁ Traccar Client')),
+    h('td', { class: 'tiny muted' }, 'app separata'),
+    h('td', { class: 'tiny muted' }, '—'),
+    h('td', { class: 'tiny' }, p.trackSeenAt ? h('span', { 'data-ago': p.trackSeenAt }, agoText(p.trackSeenAt)) : h('span', { class: 'muted' }, 'mai')),
+    h('td', null, (TRACCAR_STATE[p.traccar] || TRACCAR_STATE.none)(p)),
+    h('td', null)));
+  return h('table', { class: 'dev-table' },
+    h('thead', null, h('tr', null, ['Dispositivo', 'App', 'Notifiche', 'Posizione dall\'app', 'Ultima apertura', 'Prima volta'].map((x) => h('th', null, x)))),
+    h('tbody', null, rows));
 }
 
 // Pallino: app aperta adesso (verde), aperta solo sul telefono della coppia (giallo), chiusa (grigio).
@@ -4188,24 +4227,26 @@ function viewPushReport() {
     navigator.clipboard?.writeText(text).then(() => toast('Elenco copiato: incollalo nel gruppo WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
   };
   const table = (list, staff = false) => h('div', { class: 'table-wrap' }, h('table', null,
-    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'App', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
-    h('tbody', null, list.map((p) => (staff
+    h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'Dispositivo migliore', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
+    h('tbody', null, list.flatMap((p) => (staff
       ? h('tr', null, h('td', null, onlineDot(p.online), ' ', h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
-      : h('tr', { class: p.ready ? 'row-ready' : '' },
+      : [h('tr', { class: p.ready ? 'row-ready' : '' },
         h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓') : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.todo.length)),
         h('td', null, h('div', { class: 'who-online' }, onlineDot(p.online), personLine(p))),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? phoneLinks(p.phone, { cls: '' }) : h('span', { class: 'muted' }, '—')),
-        h('td', null, appCell(p.app, rep.currentVersion)),
+        h('td', null, bestDeviceCell(p, rep.currentVersion)),
         h('td', null, PUSH_STATE[p.state](p)),
-        h('td', null, TRACCAR_STATE[p.traccar](p)),
+        h('td', null, (TRACCAR_STATE[p.traccar] || TRACCAR_STATE.none)(p)),
         h('td', { class: 'mono tiny' }, p.trackSeenAt
           ? [h('span', { 'data-ago': p.trackSeenAt, class: clock.serverNow() - p.trackSeenAt > 10 * 60000 ? 'bad' : '' }, agoText(p.trackSeenAt)), h('div', { class: 'muted' }, fmtTime(p.trackSeenAt))]
           : h('span', { class: 'muted' }, 'mai')),
         h('td', null, p.ice == null ? h('span', { class: 'tiny muted', title: 'Entra senza account personale: niente ICE' }, 'senza account') : p.ice ? h('span', { class: 'chip chip-ok' }, 'compilato') : h('span', { class: 'chip chip-warn' }, 'non compilato')),
-        h('td', null, p.safetyAckAt ? h('span', { class: 'chip chip-ok', title: `Letto e compreso alle ${fmtTime(p.safetyAckAt)}` }, 'letto') : h('span', { class: 'chip chip-blood' }, 'non letto'))))))));
+        h('td', null, p.safetyAckAt ? h('span', { class: 'chip chip-ok', title: `Letto e compreso alle ${fmtTime(p.safetyAckAt)}` }, 'letto') : h('span', { class: 'chip chip-blood' }, 'non letto'))),
+        // Sotto la persona, se aperta: tutti i suoi dispositivi con le loro attivazioni.
+        R.devOpen?.has(p.id) ? h('tr', { class: 'dev-row' }, h('td', { colspan: 10 }, devicesTable(p, rep.currentVersion))) : null].filter(Boolean))))));
   return h('div', { class: 'stack' },
-    sectionActions('Pronti per la gara: notifiche, Traccar, ICE e sicurezza', [
+    sectionActions('Pronti per la gara: dispositivi, notifiche, Traccar, ICE e sicurezza', [
       missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
       h('p', { class: 'muted tiny' }, 'Traccar: «verificato» = ha fatto la prova a schermo spento nell\'app (pagina Traccar); «non manda» = a partita in corso non arriva niente da 10 minuti. Senza Traccar la posizione si perde appena chiude l\'app.'),
       h('p', { class: 'muted tiny' }, 'In alto chi è a posto (✓), poi chi ha meno cose da sistemare (il numero dice quante). ICE: solo se è compilato, il contenuto la regia non lo vede mai (arriva solo con un\'emergenza). Sicurezza: ha letto e compreso l\'avviso pre-gara su EMERGENZA e ICE.'),

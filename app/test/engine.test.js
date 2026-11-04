@@ -3118,3 +3118,18 @@ test('doni: dalla regia si cambiano tipo, titolo e opzioni finché non è preso'
   q.run("UPDATE gifts SET status = 'claimed' WHERE id = ?", id);
   assert.throws(() => F.updateGift(id, { label: 'X' }, 'test'), /non si modifica/);
 });
+
+test('pronti per la gara: più dispositivi per persona, il migliore in cima', () => {
+  const g = setupGame(2);
+  const p = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", g.id);
+  const now = Date.now();
+  q.run("INSERT INTO player_devices (playerId, deviceId, os, browser, installed, version, firstAt, lastAt) VALUES (?, 'dev-vecchio-pc', 'desktop', 'Chrome', 0, 'zdg-1', ?, ?)", p.id, now - 5000, now - 5000);
+  q.run("INSERT INTO player_devices (playerId, deviceId, os, browser, installed, version, firstAt, lastAt) VALUES (?, 'dev-telefono-1', 'android', 'Chrome', 1, 'zdg-2', ?, ?)", p.id, now - 9000, now - 9000);
+  q.run("INSERT INTO push_subs (endpoint, data, playerId, deviceId, createdAt) VALUES ('https://push/1', '{}', ?, 'dev-telefono-1', ?)", p.id, now);
+  q.run("INSERT INTO push_subs (endpoint, data, playerId, createdAt) VALUES ('https://push/2', '{}', ?, ?)", p.id, now);
+  const me = G.pushReport(g.id).people.find((x) => x.id === p.id);
+  assert.equal(me.state, 'on');
+  assert.equal(me.pushDevices, 2);
+  assert.deepEqual(me.devices.map((d) => [d.key, d.push, d.installed]), [['dev-telefono-1', true, true], ['dev-vecchio-pc', false, false], ['sub-0', true, null]]);
+  assert.equal(me.devices[2].unknown, true);
+});

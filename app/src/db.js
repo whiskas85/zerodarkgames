@@ -779,4 +779,15 @@ addColumn('games', 'scoreBounty', 'INTEGER NOT NULL DEFAULT 5');
 addColumn('games', 'scoreBeacon', 'INTEGER NOT NULL DEFAULT 2');
 addColumn('games', 'scoreMine', 'INTEGER NOT NULL DEFAULT 2');
 
+// Dispositivi di ogni persona (telefoni, tablet, computer da cui apre l'app): una persona può averne più d'uno.
+// deviceId è l'identificativo che l'app tiene nel browser; le notifiche di quel dispositivo sono in push_subs.deviceId.
+db.exec(`
+CREATE TABLE IF NOT EXISTS player_devices (
+  id INTEGER PRIMARY KEY, playerId INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE, deviceId TEXT NOT NULL,
+  os TEXT, browser TEXT, installed INTEGER, version TEXT, firstAt INTEGER NOT NULL, lastAt INTEGER NOT NULL,
+  UNIQUE (playerId, deviceId)
+);
+`);
+addColumn('push_subs', 'deviceId', 'TEXT');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

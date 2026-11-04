@@ -333,6 +333,14 @@ export function urlBase64ToUint8Array(base64) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+// Identificativo di questo dispositivo (lo tiene il browser): serve a distinguere i telefoni della stessa persona.
+export function deviceIdOf() {
+  let id = null;
+  try { id = JSON.parse(localStorage.getItem('zdg_device') || 'null'); } catch { /* niente */ }
+  if (!id) { id = `dev-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; try { localStorage.setItem('zdg_device', JSON.stringify(id)); } catch { /* niente */ } }
+  return id;
+}
+
 export async function enablePush(as = 'team') {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Notifiche push non supportate su questo dispositivo/connessione (serve HTTPS)');
   const perm = await Notification.requestPermission();
@@ -341,7 +349,8 @@ export async function enablePush(as = 'team') {
   const { publicKey } = await api('GET', '/api/push/key');
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
-  await api('POST', `/api/push/subscribe${as === 'staff' ? '?as=staff' : ''}`, { subscription: sub.toJSON() });
+  // Il dispositivo (lo stesso identificativo dell'app): la regia vede su quale telefono sono attive.
+  await api('POST', `/api/push/subscribe${as === 'staff' ? '?as=staff' : ''}`, { subscription: sub.toJSON(), deviceId: as === 'staff' ? null : deviceIdOf() });
   return true;
 }
 

@@ -4,7 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
-import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS } from './lib.js';
+import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS, deviceIdOf } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -254,7 +254,7 @@ function connect() {
   if (sse) return;
   // Alla regia: app installata (schermata Home) e versione caricata.
   const installed = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
-  sse = stream(`/api/stream?v=${encodeURIComponent(S.bootVersion || '')}&inst=${installed ? 1 : 0}`, {
+  sse = stream(`/api/stream?v=${encodeURIComponent(S.bootVersion || '')}&inst=${installed ? 1 : 0}&d=${encodeURIComponent(deviceIdOf())}`, {
     open: () => { S.connected = true; S.online = true; refresh(); flushQueue(); },
     error: () => { S.connected = false; render(); },
     state: () => refresh(),
@@ -2414,11 +2414,7 @@ function viewCombat() {
 // Coppie: solo a partita iniziata. Eletti: da quando la partita è pronta. Funziona con l'app aperta (limite dei browser).
 
 const ACTIVE_OR_PAUSED = ['truce', 'hunt', 'last_half_hour', 'paused'];
-const deviceId = (() => {
-  let id = store.get('zdg_device');
-  if (!id) { id = `dev-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; store.set('zdg_device', id); }
-  return id;
-})();
+const deviceId = deviceIdOf();
 let trackStop = null;
 let lastSent = { at: 0, lat: 0, lng: 0 };
 let trackMsg = null;

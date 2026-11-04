@@ -1354,3 +1354,8 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .map-side-list li { flex-wrap: wrap; }
 .map-side-list li > .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
 .map-side-list li > .row-actions { flex: 1 1 100%; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+/* Pronti per la gara: tutti i dispositivi di una persona, sotto la sua riga. */
+.dev-row > td { background: var(--bg); padding: 6px 10px 12px 40px; }
+.dev-table { width: 100%; font-size: 13px; }
+.dev-table th { font-size: 11px; }
+.dev-traccar td { border-top: 1px dashed var(--line); }

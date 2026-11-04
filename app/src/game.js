@@ -2303,6 +2303,26 @@ function pushReport(gameId) {
   const shared = Object.fromEntries(q.all('SELECT teamId, COUNT(*) AS n FROM push_subs WHERE teamId IS NOT NULL AND playerId IS NULL GROUP BY teamId').map((r) => [r.teamId, r.n]));
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   const live = rt.onlineNow();
+  // Dispositivi di ognuno: quelli da cui ha aperto l'app, le notifiche attive (anche di dispositivi registrati prima
+  // che l'app mandasse l'identificativo) e l'ultima posizione mandata dall'app di quel dispositivo.
+  const devRows = q.all('SELECT d.* FROM player_devices d JOIN players p ON p.id = d.playerId WHERE p.gameId = ? ORDER BY d.lastAt DESC', g.id);
+  const subRows = q.all('SELECT ps.playerId, ps.deviceId, ps.createdAt FROM push_subs ps JOIN players p ON p.id = ps.playerId WHERE p.gameId = ?', g.id);
+  const posRows = q.all("SELECT playerId, deviceId, at FROM positions WHERE gameId = ? AND playerId IS NOT NULL AND deviceId NOT LIKE 'trk-%'", g.id);
+  const devicesOf = (playerId) => {
+    const subs = subRows.filter((s) => s.playerId === playerId);
+    const list = devRows.filter((d) => d.playerId === playerId).map((d) => ({
+      key: d.deviceId, os: d.os || null, browser: d.browser || null, installed: !!d.installed, version: d.version || null, firstAt: d.firstAt, lastAt: d.lastAt,
+      push: subs.some((s) => s.deviceId === d.deviceId), gpsAt: posRows.find((x) => x.playerId === playerId && x.deviceId === d.deviceId)?.at || null,
+      online: live.devices.has(`${playerId}:${d.deviceId}`),
+    }));
+    // Notifiche attivate da un dispositivo che non conosciamo ancora (prima dell'aggiornamento): una riga a parte.
+    subs.filter((s) => !s.deviceId || !list.some((d) => d.key === s.deviceId)).forEach((s, i) => list.push({
+      key: `sub-${i}`, unknown: true, os: null, browser: null, installed: null, version: null, firstAt: s.createdAt, lastAt: null, push: true, gpsAt: null, online: false }));
+    // Punteggio: più cose attive su quel dispositivo (app installata, notifiche, posizione mandata, aperta adesso).
+    for (const d of list) d.score = (d.installed ? 2 : 0) + (d.push ? 3 : 0) + (d.gpsAt ? 1 : 0) + (d.online ? 1 : 0) + (d.lastAt ? 0.5 : 0);
+    // I dispositivi riconosciuti prima (il migliore è sempre uno vero), quelli non identificati in fondo.
+    return list.sort((a, b) => !!a.unknown - !!b.unknown || b.score - a.score || (b.lastAt || 0) - (a.lastAt || 0));
+  };
   // ICE: alla regia arriva solo se è compilato (sì/no), mai il contenuto.
   const people = q.all(`SELECT p.id, p.name, p.nickname, p.phone, p.status, p.requestedRole, p.teamId, p.squadId, a.username, p.trackVerifiedAt, p.trackSeenAt, p.safetyAckAt, p.accountId, p.appInstalled, p.appVersion, p.appSeenAt, p.appOs,
                                (a.iceBlood IS NOT NULL OR a.iceConditions IS NOT NULL OR a.iceContactName IS NOT NULL OR a.iceContactPhone IS NOT NULL) AS iceFilled,
@@ -2316,11 +2336,12 @@ function pushReport(gameId) {
     return {
       id: p.id, name: p.name, nickname: p.nickname, phone: p.phone, username: p.username, status: p.status, requestedRole: p.requestedRole,
       group, where: group === 'couple' ? `${p.roman || ''} ${p.sectorName || ''}`.trim() : group === 'elect' ? (squads[p.squadId] ? `Squadra ${squads[p.squadId]}` : 'Eletti') : null,
-      sectorOrd: p.ord ?? 999, devices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
+      sectorOrd: p.ord ?? 999, pushDevices: mine, teamDevices: team, state: mine ? 'on' : team ? 'shared' : 'off',
       // Traccar Client: verificato con la prova a schermo spento; «stale» se a partita in corso tace da 10 minuti.
       traccar: trackStateOf(p, g, p.teamId ? { kind: p.teamKind, status: p.teamStatus } : null).state, trackSeenAt: p.trackSeenAt || null,
       ice: p.accountId ? !!p.iceFilled : null, safetyAckAt: p.safetyAckAt || null,
       app: p.appSeenAt ? { installed: !!p.appInstalled, version: p.appVersion, at: p.appSeenAt, os: p.appOs || null } : null,
+      devices: devicesOf(p.id),
       // App aperta adesso: con il suo accesso personale, oppure (solo) dal telefono della coppia.
       online: live.players.has(p.id) ? 'on' : p.teamId && live.teams.has(p.teamId) ? 'team' : 'off',
     };
