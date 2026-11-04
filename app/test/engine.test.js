@@ -2922,12 +2922,14 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   assert.equal(tv(D), null);
   // Picco: 5 voti dalla stessa rete in pochi minuti → segnalato, si annulla.
   const now = Date.now();
-  for (let i = 0; i < 5; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, createdAt) VALUES (?, ?, ?, ?, 1, ?)', g.id, A.id, `bot-${i}`, 'deadbeefdeadbeef', now - i * 1000);
+  // Uno dei cinque con l'account (×3).
+  for (let i = 0; i < 5; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, createdAt) VALUES (?, ?, ?, ?, ?, ?)', g.id, A.id, `bot-${i}`, 'deadbeefdeadbeef', i === 0 ? 3 : 1, now - i * 1000);
   const sp = VO.masterVote(g.id).spikes.find((x) => x.net === 'deadbe');
   assert.equal(sp.count, 5);
   // Divisi per coppia: tutti e 5 sono andati ad A.
   assert.deepEqual(Object.keys(sp.idsByTeam).map(Number), [A.id]);
   assert.equal(sp.idsByTeam[A.id].length, 5);
+  assert.deepEqual(sp.weights[A.id], { votes: 5, heavy: 1, points: 7 });
   assert.equal(VO.annulVotes(g.id, sp.ids, 'test').annulled, 5);
   assert.equal(VO.masterVote(g.id).spikes.length, 0);
   // Premi ai primi tre (con i voti rimasti: B e C), poi il voto si chiude.
@@ -3153,6 +3155,7 @@ test('voto del pubblico: dalla rete Tor non si vota, i voti già arrivati da Tor
   const tor = VO.masterVote(g.id).tor;
   assert.deepEqual([tor.exits, tor.votes], [2, 1]);
   assert.deepEqual(Object.keys(tor.idsByTeam).map(Number), [A.id]);
+  assert.deepEqual(tor.weights[A.id], { votes: 1, heavy: 0, points: 1 });
   VO.annulVotes(g.id, tor.ids, 'test');
   assert.equal(VO.masterVote(g.id).tor.votes, 0);
   assert.equal(VO.masterVote(g.id).votes.n, 1);

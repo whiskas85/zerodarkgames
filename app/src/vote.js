@@ -69,9 +69,9 @@ const logoUrl = (t) => (t.logoAt ? `/api/public/team-logo/${t.id}?v=${t.logoAt}`
 // Punteggi (pesati, senza i voti annullati) → percentuali e classifica.
 function results(gameId) {
   const teams = votableTeams(gameId);
-  const sum = Object.fromEntries(q.all('SELECT teamId, SUM(weight) AS w, COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL GROUP BY teamId', gameId).map((r) => [r.teamId, r]));
+  const sum = Object.fromEntries(q.all('SELECT teamId, SUM(weight) AS w, COUNT(*) AS n, SUM(weight > 1) AS x3 FROM votes WHERE gameId = ? AND annulledAt IS NULL GROUP BY teamId', gameId).map((r) => [r.teamId, r]));
   const total = teams.reduce((a, t) => a + (sum[t.id]?.w || 0), 0);
-  const list = teams.map((t) => ({ ...t, score: sum[t.id]?.w || 0, votes: sum[t.id]?.n || 0, pct: total ? Math.round(((sum[t.id]?.w || 0) / total) * 1000) / 10 : 0 }))
+  const list = teams.map((t) => ({ ...t, score: sum[t.id]?.w || 0, votes: sum[t.id]?.n || 0, heavy: sum[t.id]?.x3 || 0, pct: total ? Math.round(((sum[t.id]?.w || 0) / total) * 1000) / 10 : 0 }))
     .sort((a, b) => b.score - a.score || a.id - b.id);
   return { total, list };
 }
@@ -146,9 +146,19 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
 
 // ---------------------------------------------------------------- regia
 
+// Per un gruppo di voti: per coppia quanti voti, quanti ×3 (con l'account) e quanti punti valgono.
+function weightsOf(votes) {
+  const out = {};
+  for (const v of votes) {
+    const w = (out[v.teamId] ||= { votes: 0, heavy: 0, points: 0 });
+    w.votes += 1; w.points += v.weight || 1; if ((v.weight || 1) > 1) w.heavy += 1;
+  }
+  return out;
+}
+
 // Picchi sospetti: tanti voti dalla stessa rete in poco tempo (finestre di 10 minuti).
 function spikes(gameId) {
-  const rows = q.all('SELECT id, teamId, net, createdAt FROM votes WHERE gameId = ? AND annulledAt IS NULL ORDER BY net, createdAt', gameId);
+  const rows = q.all('SELECT id, teamId, net, weight, createdAt FROM votes WHERE gameId = ? AND annulledAt IS NULL ORDER BY net, createdAt', gameId);
   const out = [];
   for (let i = 0; i < rows.length;) {
     let j = i;
@@ -160,7 +170,7 @@ function spikes(gameId) {
       // Per squadra: quanti voti di questo picco sono andati a ogni coppia (e quali, per annullarli a parte).
       const idsByTeam = {};
       for (const v of group) (idsByTeam[v.teamId] ||= []).push(v.id);
-      out.push({ net: rows[i].net.slice(0, 6), from: group[0].createdAt, to: group.at(-1).createdAt, count: group.length, ids: group.map((v) => v.id), byTeam, idsByTeam });
+      out.push({ weights: weightsOf(group), net: rows[i].net.slice(0, 6), from: group[0].createdAt, to: group.at(-1).createdAt, count: group.length, ids: group.map((v) => v.id), byTeam, idsByTeam });
       i = j + 1;
     } else i++;
   }
@@ -180,17 +190,19 @@ function masterVote(gameId) {
     votes: q.get('SELECT COUNT(*) AS n, SUM(accountId IS NOT NULL) AS verified FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id),
     annulled: q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NOT NULL', g.id).n,
     teams: q.all("SELECT t.id, t.votable, t.displayName, s.name AS sectorName, s.roman, s.color FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.gameId = ? AND t.kind = 'couple' AND t.status != 'withdrawn' ORDER BY s.ord, t.id", g.id)
-      .map((t) => { const x = r.list.find((y) => y.id === t.id); return { ...t, votable: !!t.votable, pct: x?.pct || 0, votes: x?.votes || 0, score: x?.score || 0 }; }),
-    ranking: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, pct: t.pct, votes: t.votes, score: t.score })),
+      .map((t) => { const x = r.list.find((y) => y.id === t.id); return { ...t, votable: !!t.votable, pct: x?.pct || 0, votes: x?.votes || 0, score: x?.score || 0, heavy: x?.heavy || 0 }; }),
+    ranking: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, pct: t.pct, votes: t.votes, score: t.score, heavy: t.heavy })),
     spikes: spikes(g.id),
+    // Quanto vale un voto dato con l'account (per i conteggi «×3» della regia).
+    weight: VERIFIED_WEIGHT,
     // Voti (validi) arrivati da indirizzi che oggi sono nodi di uscita di Tor.
     tor: (() => {
       const nets = new Set([...torIps].map(netHash));
-      const rows = q.all('SELECT id, teamId, net FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).filter((v) => nets.has(v.net));
+      const rows = q.all('SELECT id, teamId, net, weight FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).filter((v) => nets.has(v.net));
       // Divisi per coppia: a chi sono andati i voti da Tor (e quali, per annullarli a parte).
       const idsByTeam = {};
       for (const v of rows) (idsByTeam[v.teamId] ||= []).push(v.id);
-      return { listAt: torAt, exits: torIps.size, votes: rows.length, ids: rows.map((v) => v.id), idsByTeam };
+      return { listAt: torAt, exits: torIps.size, votes: rows.length, ids: rows.map((v) => v.id), idsByTeam, weights: weightsOf(rows) };
     })(),
   };
 }
