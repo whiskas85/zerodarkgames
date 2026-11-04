@@ -3155,3 +3155,10 @@ test('voto del pubblico: dalla rete Tor non si vota, i voti già arrivati da Tor
   VO.setTorList([]); // non svuota l'elenco
   assert.equal(VO.masterVote(g.id).tor.exits, 2);
 });
+
+test('voto del pubblico: la pagina dice subito a chi usa Tor che non può votare', () => {
+  const VO = require('../src/vote');
+  VO.setTorList(['185.220.101.9']);
+  assert.equal(VO.publicState('dev-x', null, '185.220.101.9').tor, true);
+  assert.equal(VO.publicState('dev-x', null, '93.40.1.2').tor, false);
+});

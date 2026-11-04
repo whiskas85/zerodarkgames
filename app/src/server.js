@@ -356,7 +356,7 @@ const voteLimit = (req, _res, next) => {
 app.get('/api/public/team-logo/:tid', (req, res, next) => {
   try { res.sendFile(G.teamLogoFile(req.params.tid), { headers: { 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } }); } catch (e) { next(e); }
 });
-app.get('/api/public/vote', (req, res) => res.json(VO.publicState(voteDevice(req, res), req.account || null)));
+app.get('/api/public/vote', (req, res) => res.json(VO.publicState(voteDevice(req, res), req.account || null, req.ip)));
 app.post('/api/public/vote', voteLimit, wrap(async (req, res) => VO.castVote({ teamId: req.body?.teamId, token: req.body?.token, device: voteDevice(req, res), account: req.account || null, ip: req.ip, ua: req.headers['user-agent'] })));
 
 // ---- iscrizione pubblica
