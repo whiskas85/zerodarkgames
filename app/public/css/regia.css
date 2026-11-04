@@ -1350,3 +1350,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .pg-none { border-left-color: #6b6b6b; } .pg-none .pg-label strong { color: var(--muted); }
 @media (max-width: 560px) { .pg-row { grid-template-columns: 1fr; gap: 4px; } }
 .notice-list .pg-list li { display: block; border: 0; padding: 0; background: none; }
+/* Barra laterale della mappa: il nome prende tutta la riga, i pulsanti vanno sotto (non stringono più il testo). */
+.map-side-list li { flex-wrap: wrap; }
+.map-side-list li > .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.map-side-list li > .row-actions { flex: 1 1 100%; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }

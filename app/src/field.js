@@ -148,6 +148,12 @@ function updateGift(id, data, actor) {
   const sets = [];
   const vals = [];
   if (data.label !== undefined) { sets.push('label = ?'); vals.push(String(data.label).trim().slice(0, 40) || g.label); }
+  // Tipo del dono (finché non è preso): nome, icona, colore e descrizione seguono il catalogo.
+  if (data.typeId !== undefined && data.typeId !== g.typeId) {
+    const type = giftTypes(G.getGame(g.gameId)).find((t) => t.id === data.typeId);
+    if (!type) throw err(400, 'Tipo di dono non valido');
+    sets.push('typeId = ?', 'name = ?', 'icon = ?', 'color = ?', 'description = ?'); vals.push(type.id, type.name, type.icon, type.color, type.description);
+  }
   if (data.revealMode !== undefined) {
     if (!['manual', 'onplace', 'time'].includes(data.revealMode)) throw err(400, 'Modalità non valida');
     sets.push('revealMode = ?'); vals.push(data.revealMode);
