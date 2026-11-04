@@ -4163,7 +4163,7 @@ function appCell(app, current) {
     os ? h('span', { class: `os-tag os-${app.os}`, title: os[1] }, os[0]) : null,
     h('span', { class: `chip ${app.installed ? 'chip-ok' : ''}`, title: app.installed ? 'Installata nella schermata Home' : 'Aperta dal browser, non installata' }, app.installed ? 'installata' : 'browser'),
     h('div', { class: `mono tiny ${old ? 'warn-text' : 'muted'}`, title: old ? `Versione vecchia: l'ultima è ${current}. Deve chiudere e riaprire l'app.` : `Vista ${fmtTime(app.at)}` },
-      (app.version || '?').replace('zdg-', ''), old ? ' · vecchia' : ''));
+      `versione ${(app.version || '?').replace('zdg-', '')}`, old ? ' · vecchia' : ''));
 }
 
 // Dispositivi di una persona: il migliore in tabella, tutti nella riga che si apre sotto.
@@ -4173,9 +4173,11 @@ function bestDeviceCell(p, current) {
   const list = p.devices || [];
   const best = list[0];
   const open = R.devOpen?.has(p.id);
-  const toggle = list.length ? h('button', { class: `btn btn-xs ${open ? 'btn-primary' : 'btn-ghost'}`, type: 'button', title: 'Tutti i dispositivi di questa persona',
+  // Con un solo dispositivo niente sotto-tabella: è già tutto nella riga.
+  const toggle = list.length > 1 ? h('button', { class: `btn btn-xs ${open ? 'btn-primary' : 'btn-ghost'}`, type: 'button', title: 'Tutti i dispositivi di questa persona',
     onclick: () => { R.devOpen ||= new Set(); if (open) R.devOpen.delete(p.id); else R.devOpen.add(p.id); render(); } }, `${list.length} ${list.length === 1 ? 'dispositivo' : 'dispositivi'} ${open ? '▴' : '▾'}`) : null;
-  if (!best || best.unknown) return h('div', { class: 'app-cell' }, best ? h('span', { class: 'tiny' }, devName(best)) : appCell(p.app, current), toggle);
+  // Nessun dispositivo riconosciuto (solo notifiche registrate prima dell'aggiornamento): l'app vista l'ultima volta.
+  if (!best || best.unknown) return h('div', { class: 'app-cell' }, appCell(p.app, current), toggle);
   return h('div', { class: 'app-cell' },
     appCell({ installed: best.installed, version: best.version, at: best.lastAt, os: best.os }, current),
     best.browser ? h('span', { class: 'tiny muted' }, best.browser) : null,
@@ -4185,7 +4187,7 @@ function devicesTable(p, current) {
   const yes = (ok, on, off) => h('span', { class: `chip ${ok ? 'chip-ok' : 'chip-warn'}` }, ok ? on : off);
   const rows = (p.devices || []).map((d, i) => h('tr', null,
     h('td', null, i === 0 && !d.unknown ? h('span', { class: 'chip chip-ok', title: 'Il dispositivo con più cose attive' }, '★ migliore') : null, ' ', h('strong', null, devName(d))),
-    h('td', null, d.unknown ? h('span', { class: 'tiny muted' }, 'registrato prima dell\'aggiornamento') : [yes(d.installed, 'installata', 'browser'), ' ', h('span', { class: `mono tiny ${current && d.version && d.version !== current ? 'warn-text' : 'muted'}` }, (d.version || '?').replace('zdg-', ''))]),
+    h('td', null, d.unknown ? h('span', { class: 'tiny muted' }, 'registrato prima dell\'aggiornamento') : [yes(d.installed, 'installata', 'browser'), ' ', h('span', { class: `mono tiny ${current && d.version && d.version !== current ? 'warn-text' : 'muted'}` }, `versione ${(d.version || '?').replace('zdg-', '')}${current && d.version && d.version !== current ? ' · vecchia' : ''}`)]),
     h('td', null, yes(d.push, 'attive', 'non attive')),
     h('td', { class: 'tiny' }, d.gpsAt ? [h('span', { 'data-ago': d.gpsAt }, agoText(d.gpsAt))] : h('span', { class: 'muted' }, 'mai')),
     h('td', { class: 'tiny' }, d.online ? h('span', { class: 'chip chip-ok' }, 'online adesso') : d.lastAt ? [h('span', { 'data-ago': d.lastAt }, agoText(d.lastAt)), h('div', { class: 'muted' }, fmtTime(d.lastAt))] : h('span', { class: 'muted' }, '—')),
@@ -4244,7 +4246,7 @@ function viewPushReport() {
         h('td', null, p.ice == null ? h('span', { class: 'tiny muted', title: 'Entra senza account personale: niente ICE' }, 'senza account') : p.ice ? h('span', { class: 'chip chip-ok' }, 'compilato') : h('span', { class: 'chip chip-warn' }, 'non compilato')),
         h('td', null, p.safetyAckAt ? h('span', { class: 'chip chip-ok', title: `Letto e compreso alle ${fmtTime(p.safetyAckAt)}` }, 'letto') : h('span', { class: 'chip chip-blood' }, 'non letto'))),
         // Sotto la persona, se aperta: tutti i suoi dispositivi con le loro attivazioni.
-        R.devOpen?.has(p.id) ? h('tr', { class: 'dev-row' }, h('td', { colspan: 10 }, devicesTable(p, rep.currentVersion))) : null].filter(Boolean))))));
+        R.devOpen?.has(p.id) && (p.devices || []).length > 1 ? h('tr', { class: 'dev-row' }, h('td', { colspan: 10 }, devicesTable(p, rep.currentVersion))) : null].filter(Boolean))))));
   return h('div', { class: 'stack' },
     sectionActions('Pronti per la gara: dispositivi, notifiche, Traccar, ICE e sicurezza', [
       missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
