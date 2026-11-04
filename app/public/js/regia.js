@@ -3909,6 +3909,9 @@ async function loadVote() {
 }
 function viewVote() {
   // Voti sospetti: nome della coppia e pulsante per annullare un gruppo di voti.
+  // Quanti voti, quanti ×3 (con l'account) e quanti punti valgono.
+  const voteCount = (n, heavy = 0, points = null) => `${n} ${n === 1 ? 'voto' : 'voti'}${heavy ? ` · ${heavy} ×${V.weight || 3}` : ''}${points != null && points !== n ? ` = ${points} punti` : ''}`;
+  const wOf = (weights, tid, ids) => weights?.[tid] || { votes: ids.length, heavy: 0, points: ids.length };
   const teamLabel = (tid) => { const t = V.teams.find((y) => y.id === Number(tid)); return t ? `${t.roman} ${t.sectorName}` : '?'; };
   const annulBtn = (ids, what, label = 'Annulla') => h('button', { class: 'btn btn-sm btn-danger', onclick: async () => {
     if (!(await dialog({ title: `Annullare ${what}?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return;
@@ -3951,7 +3954,7 @@ function viewVote() {
         h('button', { type: 'button', class: `switch switch-sm ${t.votable ? 'on' : ''}`, role: 'switch', 'aria-checked': t.votable ? 'true' : 'false', onclick: async () => { try { await api('POST', `/api/m/teams/${t.id}/votable`, { on: !t.votable }); await loadVote(); } catch (e) { toast(e.message, 'error'); } } },
           h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), t.votable ? 'IN VOTO' : 'NO'),
         h('strong', null, `${t.roman} Settore ${t.sectorName}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
-        h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small' }, `${String(t.pct).replace('.', ',')}% · ${t.votes} voti`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
+        h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small', title: `${t.score} punti: ogni voto con l'account vale ×${V.weight || 3}` }, `${String(t.pct).replace('.', ',')}% · ${voteCount(t.votes, t.heavy, t.score)}`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
     section('Premi',
       h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude.'),
       h('div', { class: 'row-actions' }, [0, 1, 2].map(prizeBtn)),
@@ -3965,11 +3968,11 @@ function viewVote() {
       h('p', { class: 'muted tiny' }, 'Con il browser Tor ogni voto arriva da un indirizzo diverso e salta il limite per rete. Il server scarica ogni ora l\'elenco pubblico dei nodi di uscita di Tor: da lì non si vota più. Qui sotto i voti già arrivati da quegli indirizzi.'),
       h('p', { class: 'tiny muted' }, V.tor?.listAt ? `Elenco aggiornato alle ${fmtTime(V.tor.listAt)} · ${V.tor.exits} nodi di uscita.` : 'Elenco di Tor non ancora scaricato: il server ci riprova ogni ora.'),
       V.tor?.votes ? h('div', { class: 'spike-sum' },
-        h('div', { class: 'row' }, h('strong', { class: 'grow' }, `${V.tor.votes} ${V.tor.votes === 1 ? 'voto' : 'voti'} da Tor`),
+        h('div', { class: 'row' }, h('strong', { class: 'grow' }, (() => { const all = Object.values(V.tor.weights || {}); const heavy = all.reduce((a, x) => a + x.heavy, 0); const pts = all.reduce((a, x) => a + x.points, 0); return `${voteCount(V.tor.votes, heavy, pts || null)} da Tor`; })()),
           annulBtn(V.tor.ids, `tutti i ${V.tor.votes} voti da Tor`, 'Annulla tutti')),
         // Per coppia: a chi sono andati i voti da Tor, dalla più votata.
         h('ul', { class: 'spike-teams' }, Object.entries(V.tor.idsByTeam || {}).sort((a, b) => b[1].length - a[1].length).map(([tid, ids]) => h('li', null,
-          h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+          h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, (() => { const w = wOf(V.tor.weights, tid, ids); return voteCount(w.votes, w.heavy, w.points); })()),
           annulBtn(ids, `i ${ids.length} voti da Tor per ${teamLabel(tid)}`)))))
         : h('p', { class: 'empty' }, 'Nessun voto da Tor.')),
     section('Voti sospetti',
@@ -3978,18 +3981,22 @@ function viewVote() {
         // In totale, per coppia: quanti voti sospetti ha ricevuto (da tutti i picchi).
         (() => {
           const tot = {};
-          for (const x of V.spikes) for (const [tid, ids] of Object.entries(x.idsByTeam || {})) (tot[tid] ||= []).push(...ids);
+          const wt = {};
+          for (const x of V.spikes) for (const [tid, ids] of Object.entries(x.idsByTeam || {})) {
+            (tot[tid] ||= []).push(...ids);
+            const w = wOf(x.weights, tid, ids); const a = (wt[tid] ||= { votes: 0, heavy: 0, points: 0 }); a.votes += w.votes; a.heavy += w.heavy; a.points += w.points;
+          }
           const rows = Object.entries(tot).sort((a, b) => b[1].length - a[1].length);
           return h('div', { class: 'spike-sum' }, h('div', { class: 'eyebrow' }, 'Voti sospetti per coppia (tutti i picchi)'),
             h('ul', { class: 'spike-teams' }, rows.map(([tid, ids]) => h('li', null,
-              h('strong', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+              h('strong', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, voteCount(wt[tid].votes, wt[tid].heavy, wt[tid].points)),
               annulBtn(ids, `i ${ids.length} voti sospetti per ${teamLabel(tid)}`)))));
         })(),
         h('ul', { class: 'spike-list' }, V.spikes.map((x) => h('li', null,
           h('div', { class: 'row' }, h('span', { class: 'grow small' }, h('strong', null, `${x.count} voti`), ` dalla rete ${x.net}… tra le ${fmtTime(x.from)} e le ${fmtTime(x.to)}`),
             annulBtn(x.ids, `tutti i ${x.count} voti di questo picco`, 'Annulla tutti')),
           h('ul', { class: 'spike-teams' }, Object.entries(x.idsByTeam || {}).sort((a, b) => b[1].length - a[1].length).map(([tid, ids]) => h('li', null,
-            h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}`),
+            h('span', { class: 'grow' }, teamLabel(tid)), h('span', { class: 'mono' }, (() => { const w = wOf(x.weights, tid, ids); return voteCount(w.votes, w.heavy, w.points); })()),
             annulBtn(ids, `i ${ids.length} voti di questo picco per ${teamLabel(tid)}`)))))))]
         : h('p', { class: 'empty' }, 'Nessun picco sospetto.')),
     section('Verifica anti-robot (Cloudflare Turnstile)',
