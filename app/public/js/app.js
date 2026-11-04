@@ -3553,7 +3553,9 @@ async function askParams(target, name, text, id = null) {
     case 'expiredAltar': return one('pointId', 'Altare da riaprire', visitedOptions(true), 'Altari già inquadrati con la scansione scaduta.');
     case 'scannedAltar': return one('pointId', 'Altare da aprire', visitedOptions(false), 'Solo gli Altari appena inquadrati (scansione ancora valida).');
     case 'seal': return one('sectorId', 'Sigillo da proteggere', sealOptions(), text);
-    case 'newSkill': return one('skillId', 'nuova Skill', skillOptions(sk.catalog.filter((s) => s.available && !mine.has(s.id))), text);
+    // Maestro: attive e Ultimate; Saggio: passive.
+    case 'newSkill': return one('skillId', id === 'saggio' ? 'nuova Skill passiva' : id === 'maestro' ? 'nuova Skill attiva' : 'nuova Skill',
+      skillOptions(sk.catalog.filter((s) => s.available && !mine.has(s.id) && (id === 'saggio' ? s.kind === 'passive' : id === 'maestro' ? s.kind !== 'passive' : true))), text);
     case 'cooldownSkill': return one('skillId', 'Skill da ricaricare', skillOptions(sk.mine.filter((s) => s.readyAt)), text);
     case 'swap': {
       const from = await pick(`${name}: Skill da sostituire`, skillOptions(sk.mine));
