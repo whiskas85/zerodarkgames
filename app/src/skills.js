@@ -41,6 +41,7 @@ const SKILLS = [
   { id: 'privilegio', name: 'Privilegio del Cuore', icon: '❤️', kind: 'passive', description: 'Gli armamenti al Cuore valgono per voi 5 minuti prima dell\'apertura (e la notifica vi arriva subito) e 5 minuti dopo la chiusura.' },
   { id: 'veglia_forzata', name: 'Veglia Forzata', icon: '⛓️', kind: 'passive', description: 'Chi perde contro di voi resta fermo 4 minuti invece di 2.' },
   { id: 'ritirata', name: 'Ritirata del Diplomatico', icon: '🏳️', kind: 'passive', description: 'Dopo una trattativa fallita il blocco ingaggio sale a 8 minuti.' },
+  { id: 'devoto', name: 'Devoto del Santuario', icon: '🕯️', kind: 'passive', description: 'Dentro un Santuario il suo potere per voi è triplo: la ricarica delle Skill accelera ×3 rispetto agli altri (un Santuario ×2 per voi vale ×6).' },
 ];
 
 // target: team | altar | skill | swap | null. phase > 1: non ancora creabile dalla regia.

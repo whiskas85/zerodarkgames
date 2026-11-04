@@ -2262,6 +2262,13 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   const t0 = Date.now();
   Z.tickAll(t0); Z.tickAll(t0 + 60000);
   assert.ok(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt <= ready - 59000);
+  // Devoto del Santuario: per A il Santuario ×2 vale ×6 (5 minuti guadagnati per ogni minuto dentro).
+  q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, 'devoto', 'gift', ?)", A.id, Date.now());
+  assert.equal(Z.teamZones(A).recharge, 6);
+  assert.equal(Z.teamZones(A).devoto, true);
+  const r1 = q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt;
+  Z.tickAll(t0 + 120000);
+  assert.ok(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt <= r1 - 5 * 60000 + 1000);
   // Conquista: chi resta dentro X minuti vince un Dono a caso.
   const cq = Z.createZone(g.id, { kind: 'conquista', points: sq(45, 9.05), holdMin: 2 }, 'test');
   go(Cc, 45, 9.05);
