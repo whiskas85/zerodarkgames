@@ -580,11 +580,14 @@ app.get('/api/media/message/:id', (req, res, next) => {
 
 // ---- push e stream
 app.get('/api/push/key', (_req, res) => res.json({ publicKey: rt.publicKey() }));
+// Identificativo del dispositivo che l'app tiene nel browser (zdg_device).
+const cleanDevice = (v) => { const s = String(v || '').replace(/[^\w-]/g, '').slice(0, 40); return s.length >= 8 ? s : null; };
 app.post('/api/push/subscribe', wrap((req) => {
   const staff = req.query.as === 'staff';
   if (staff ? !req.user : !req.team && !req.player) throw new HttpError(401, 'Non autenticato');
+  const deviceId = cleanDevice(req.body.deviceId);
   rt.saveSubscription(req.body.subscription, staff ? { userId: req.user.id }
-    : req.player ? { playerId: req.player.id } : { teamId: req.team.id });
+    : req.player ? { playerId: req.player.id, deviceId } : { teamId: req.team.id, deviceId });
   return { ok: true };
 }));
 
@@ -602,8 +605,16 @@ app.get('/api/stream', (req, res, next) => {
       const ua = String(req.headers['user-agent'] || '');
       const os = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && /Mobile/i.test(ua)) ? 'ios' : /Android/i.test(ua) ? 'android' : ua ? 'desktop' : null;
       q.run('UPDATE players SET appVersion = ?, appInstalled = ?, appSeenAt = ?, appOs = ? WHERE id = ?', String(req.query.v).slice(0, 20), req.query.inst === '1' ? 1 : 0, Date.now(), os, req.player.id);
+      // Un dispositivo per riga: una persona può aprire l'app da più telefoni, tablet o computer.
+      const dev = cleanDevice(req.query.d);
+      if (dev) {
+        const browser = /SamsungBrowser/i.test(ua) ? 'Samsung Internet' : /EdgA?\//i.test(ua) ? 'Edge' : /Firefox|FxiOS/i.test(ua) ? 'Firefox' : /CriOS|Chrome/i.test(ua) ? 'Chrome' : /Safari/i.test(ua) ? 'Safari' : null;
+        q.run(`INSERT INTO player_devices (playerId, deviceId, os, browser, installed, version, firstAt, lastAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(playerId, deviceId) DO UPDATE SET os = excluded.os, browser = excluded.browser, installed = excluded.installed, version = excluded.version, lastAt = excluded.lastAt`,
+        req.player.id, dev, os, browser, req.query.inst === '1' ? 1 : 0, String(req.query.v).slice(0, 20), Date.now(), Date.now());
+      }
     }
-    rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null });
+    rt.addClient({ res, kind: 'team', teamId: req.team?.id ?? null, gameId, playerId: req.player?.id ?? null, deviceId: cleanDevice(req.query.d) });
     rt.toStaff(gameId, 'online');
     res.on('close', () => rt.toStaff(gameId, 'online'));
   }

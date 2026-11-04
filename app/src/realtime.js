@@ -43,12 +43,14 @@ function onlineNow() {
   const players = new Set();
   const teams = new Set();
   const users = new Set();
+  // Dispositivi con l'app aperta adesso (per la pagina «Pronti per la gara»).
+  const devices = new Set();
   for (const c of clients) {
     if (c.kind === 'user') users.add(c.userId);
-    else if (c.playerId) players.add(c.playerId);
+    else if (c.playerId) { players.add(c.playerId); if (c.deviceId) devices.add(`${c.playerId}:${c.deviceId}`); }
     else if (c.teamId) teams.add(c.teamId);
   }
-  return { players, teams, users };
+  return { players, teams, users, devices };
 }
 
 function onlineByTeam() {
@@ -78,14 +80,14 @@ const publicKey = () => vapid?.publicKey;
 
 // Lo stesso telefono può essere usato dalla regia e da un giocatore: l'accesso della regia (userId) e quello
 // del giocatore (teamId / playerId) si aggiornano separatamente, senza cancellarsi a vicenda.
-function saveSubscription(sub, { teamId = null, userId = null, playerId = null }) {
+function saveSubscription(sub, { teamId = null, userId = null, playerId = null, deviceId = null }) {
   if (!sub?.endpoint) return;
   if (userId) {
     q.run(`INSERT INTO push_subs (endpoint, data, userId, createdAt) VALUES (?, ?, ?, ?)
            ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, userId = excluded.userId`, sub.endpoint, JSON.stringify(sub), userId, Date.now());
   } else {
-    q.run(`INSERT INTO push_subs (endpoint, data, teamId, playerId, createdAt) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, teamId = excluded.teamId, playerId = excluded.playerId`, sub.endpoint, JSON.stringify(sub), teamId, playerId, Date.now());
+    q.run(`INSERT INTO push_subs (endpoint, data, teamId, playerId, deviceId, createdAt) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, teamId = excluded.teamId, playerId = excluded.playerId, deviceId = COALESCE(excluded.deviceId, push_subs.deviceId)`, sub.endpoint, JSON.stringify(sub), teamId, playerId, deviceId, Date.now());
   }
 }
 
