@@ -3169,3 +3169,30 @@ test('voto del pubblico: la pagina dice subito a chi usa Tor che non può votare
   assert.equal(VO.publicState('dev-x', null, '185.220.101.9').tor, true);
   assert.equal(VO.publicState('dev-x', null, '93.40.1.2').tor, false);
 });
+
+test('doni Maestro e Saggio: Maestro aggiunge una Skill attiva (o Ultimate), Saggio una passiva, uno per dono', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const team = () => q.get('SELECT * FROM teams WHERE id = ?', A.id);
+  // Doni già presi dalla coppia A.
+  const give = (typeId) => {
+    const [id] = F.createGifts(g.id, { typeId }, 'test').ids;
+    q.run("UPDATE gifts SET status = 'claimed', claimedByTeamId = ?, claimedAt = ? WHERE id = ?", A.id, Date.now(), id);
+    return id;
+  };
+  const skills = () => q.all('SELECT skillId FROM team_skills WHERE teamId = ?', A.id).map((r) => r.skillId);
+  const m1 = give('maestro');
+  assert.throws(() => F.useGift(team(), m1, { skillId: 'veglia_forzata' }), /attiva/);
+  F.useGift(team(), m1, { skillId: 'tracker' });
+  // Un dono usato non si riusa (resta «già usato»), un secondo Maestro aggiunge un'altra Skill.
+  assert.equal(F.useGift(team(), m1, { skillId: 'veggenza' }).already, true);
+  F.useGift(team(), give('maestro'), { skillId: 'veggenza' });
+  const s1 = give('saggio');
+  assert.throws(() => F.useGift(team(), s1, { skillId: 'rete' }), /passiva/);
+  F.useGift(team(), s1, { skillId: 'veglia_forzata' });
+  assert.ok(['tracker', 'veggenza', 'veglia_forzata'].every((id) => skills().includes(id)));
+  assert.ok(F.giftTypes(G.getGame(g.id)).some((t) => t.id === 'saggio'));
+});

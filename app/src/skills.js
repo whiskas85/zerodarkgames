@@ -45,7 +45,10 @@ const SKILLS = [
 
 // target: team | altar | skill | swap | null. phase > 1: non ancora creabile dalla regia.
 const GIFTS = [
-  { id: 'maestro', name: 'Maestro', icon: '🎓', color: '#d1ad62', target: 'newSkill', description: 'Aggiungete alle vostre Skill una Skill a scelta, pronta da usare.' },
+  // Maestro: una Skill attiva (o Ultimate) in più; Saggio: una passiva in più. Oltre i limiti scelti prima del via:
+  // ogni dono si usa una volta (non si riprende), più doni aggiungono più Skill.
+  { id: 'maestro', name: 'Maestro', icon: '🎓', color: '#d1ad62', target: 'newSkill', skillKinds: ['active', 'ultimate'], description: 'Aggiungete alle vostre Skill una Skill attiva (o Ultimate) a scelta, pronta da usare.' },
+  { id: 'saggio', name: 'Saggio', icon: '🦉', color: '#8fbf9f', target: 'newSkill', skillKinds: ['passive'], description: 'Aggiungete alle vostre Skill una Skill passiva a scelta: vale subito.' },
   { id: 'chiave', name: 'Chiave Maestra', icon: '🗝️', color: '#e0b04f', target: 'scannedAltar', description: 'Aprite un Altare senza il suo Sigillo. Dovete averlo appena inquadrato (scansione valida).' },
   { id: 'furto', name: 'Grande Furto', icon: '💰', color: '#e0603f', target: 'team', description: 'Rubate a una coppia un Sigillo a caso tra quelli che conosce e voi no: se l\'aveva solo annotato, lo perde. Nessuno viene avvisato.' },
   { id: 'tracciamento', name: 'Tracciamento', icon: '📍', color: '#5aa0e0', target: 'team', durationMin: 20, description: 'Vedete sulla mappa una coppia a scelta per {durata} minuti. Se ne accorge dopo 1 minuto.' },
@@ -369,9 +372,12 @@ function useGift(me, gift, params = {}) {
 function applyGift(g, me, type, p) {
   const now = Date.now();
   switch (type.id) {
-    case 'maestro': {
+    case 'maestro':
+    case 'saggio': {
       const s = skillById(p.skillId);
       if (!s || !available(s)) throw err(400, 'Scegliete una Skill disponibile');
+      // Maestro solo attive (e Ultimate), Saggio solo passive.
+      if (!type.skillKinds.includes(s.kind)) throw err(400, type.id === 'saggio' ? 'Con il Saggio scegliete una Skill passiva' : 'Con il Maestro scegliete una Skill attiva (o Ultimate)');
       if (hasSkill(me.id, s.id)) throw err(409, `Avete già ${s.name}`);
       q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, ?, 'gift', ?)", me.id, s.id, now);
       return { message: `${s.name} aggiunta alle vostre Skill.` };
