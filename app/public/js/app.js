@@ -3391,15 +3391,21 @@ function skillSlots(sk) {
   const empty = (kind) => h('button', { type: 'button', class: `slot slot-empty slot-${kind}`,
     onclick: () => (choosing ? document.getElementById(`sk-${kind}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('Slot vuoto: le Skill si scelgono prima del via', 'info')) },
   h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, '◇'), h('span', { class: 'slot-name' }, 'Vuoto'), h('span', { class: 'slot-st' }, choosing ? 'Scegli sotto' : '—'));
-  const locked = h('button', { type: 'button', class: 'slot slot-locked', 'aria-disabled': 'true', title: 'Slot da sbloccare in gioco',
-    onclick: () => toast('Questo slot si può aprire durante il gioco: un Dono come il Maestro vi aggiunge una Skill.', 'info', 6000) },
-  h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, '+'), h('span', { class: 'slot-name' }, 'Bloccato'), h('span', { class: 'slot-st' }, '🔒 in gioco'));
   const n = (limit, list) => Math.max(limit, list.length);
+  // Slot: quelli dell'inizio (pieni o da scegliere), poi quelli bloccati fino a un dono (Maestro / Saggio).
+  // Senza limite impostato resta un solo slot bloccato, come promemoria.
+  const lockedFor = (gift) => h('button', { type: 'button', class: 'slot slot-locked', 'aria-disabled': 'true', title: 'Slot da sbloccare in gioco',
+    onclick: () => toast(`Questo slot si apre durante il gioco con un Dono ${gift}: vi aggiunge una Skill.`, 'info', 6000) },
+  h('span', { class: 'slot-ico', 'aria-hidden': 'true' }, '+'), h('span', { class: 'slot-name' }, 'Bloccato'), h('span', { class: 'slot-st' }, `🔒 ${gift}`));
+  const row = (label, list, start, slots, kind, gift) => {
+    const base = n(start, list);
+    const extra = slots == null ? (kind === 'active' ? 1 : 0) : Math.max(0, slots - base);
+    return h('div', { class: 'slot-row' }, h('div', { class: 'eyebrow' }, slots == null ? label : `${label} · ${Math.min(list.length, slots)}/${slots} slot`),
+      h('div', { class: 'slots' }, Array.from({ length: base }, (_, i) => (list[i] ? filled(list[i]) : empty(kind))), Array.from({ length: extra }, () => lockedFor(gift))));
+  };
   return h('section', { class: 'slot-bar' },
-    h('div', { class: 'slot-row' }, h('div', { class: 'eyebrow' }, 'Attive · Ultimate'),
-      h('div', { class: 'slots' }, Array.from({ length: n(sk.limits.active, act) }, (_, i) => (act[i] ? filled(act[i]) : empty('active'))), locked)),
-    h('div', { class: 'slot-row' }, h('div', { class: 'eyebrow' }, 'Passiva'),
-      h('div', { class: 'slots' }, Array.from({ length: n(sk.limits.passive, pas) }, (_, i) => (pas[i] ? filled(pas[i]) : empty('passive'))))));
+    row('Attive · Ultimate', act, sk.limits.active, sk.limits.activeSlots ?? null, 'active', 'Maestro'),
+    row('Passive', pas, sk.limits.passive, sk.limits.passiveSlots ?? null, 'passive', 'Saggio'));
 }
 
 // Pagina della Skill: descrizione dettagliata, come si usa, cosa succede e le «schermate» dei comportamenti.

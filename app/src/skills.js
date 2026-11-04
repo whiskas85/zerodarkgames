@@ -155,7 +155,19 @@ function refreshTeams(gameId, ids) {
 // ---------------------------------------------------------------- scelta prima del via
 
 function limitsOf(g) {
-  return { active: Math.max(0, g.maxActiveSkills ?? 1), passive: Math.max(0, g.maxPassiveSkills ?? 1) };
+  const active = Math.max(0, g.maxActiveSkills ?? 1);
+  const passive = Math.max(0, g.maxPassiveSkills ?? 1);
+  // Slot: il massimo (null = senza limite), mai meno delle Skill scelte all'inizio.
+  const slots = (v, start) => (v == null ? null : Math.max(start, Number(v)));
+  return { active, passive, activeSlots: slots(g.activeSlots, active), passiveSlots: slots(g.passiveSlots, passive) };
+}
+// Skill della coppia in un gruppo (attive e Ultimate, oppure passive), da qualunque fonte.
+const groupCount = (teamId, passive) => q.all('SELECT skillId FROM team_skills WHERE teamId = ?', teamId).map((r) => skillById(r.skillId)).filter((s) => s && isPassive(s) === passive).length;
+// Un dono che aggiunge una Skill: c'è uno slot libero in quel gruppo?
+function requireFreeSlot(g, me, passive) {
+  const lim = limitsOf(g);
+  const max = passive ? lim.passiveSlots : lim.activeSlots;
+  if (max != null && groupCount(me.id, passive) >= max) throw err(409, `Tutti i vostri slot ${passive ? 'passivi' : 'attivi'} sono pieni (${max}): non c'è posto per un'altra Skill ${passive ? 'passiva' : 'attiva'}`);
 }
 
 function chooseSkill(me, skillId, on) {
@@ -379,6 +391,7 @@ function applyGift(g, me, type, p) {
       // Maestro solo attive (e Ultimate), Saggio solo passive.
       if (!type.skillKinds.includes(s.kind)) throw err(400, type.id === 'saggio' ? 'Con il Saggio scegliete una Skill passiva' : 'Con il Maestro scegliete una Skill attiva (o Ultimate)');
       if (hasSkill(me.id, s.id)) throw err(409, `Avete già ${s.name}`);
+      requireFreeSlot(g, me, isPassive(s));
       q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, ?, 'gift', ?)", me.id, s.id, now);
       return { message: `${s.name} aggiunta alle vostre Skill.` };
     }
@@ -388,6 +401,8 @@ function applyGift(g, me, type, p) {
       if (!from || !hasSkill(me.id, from.id)) throw err(400, 'Scegliete la Skill da sostituire');
       if (!to || !available(to)) throw err(400, 'Scegliete la nuova Skill');
       if (hasSkill(me.id, to.id)) throw err(409, `Avete già ${to.name}`);
+      // Cambiando gruppo (da attiva a passiva o viceversa) serve uno slot libero nel nuovo.
+      if (isPassive(from) !== isPassive(to)) requireFreeSlot(g, me, isPassive(to));
       tx(() => {
         q.run('DELETE FROM team_skills WHERE teamId = ? AND skillId = ?', me.id, from.id);
         q.run("INSERT INTO team_skills (teamId, skillId, source, addedAt) VALUES (?, ?, 'gift', ?)", me.id, to.id, now);

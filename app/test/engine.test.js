@@ -3196,3 +3196,33 @@ test('doni Maestro e Saggio: Maestro aggiunge una Skill attiva (o Ultimate), Sag
   assert.ok(['tracker', 'veggenza', 'veglia_forzata'].every((id) => skills().includes(id)));
   assert.ok(F.giftTypes(G.getGame(g.id)).some((t) => t.id === 'saggio'));
 });
+
+test('slot delle Skill: si sceglie all\'inizio quanto impostato, gli altri slot si riempiono con Maestro e Saggio fino al massimo', () => {
+  const F = require('../src/field');
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  assert.throws(() => G.updateGame(g.id, { maxActiveSkills: 2, activeSlots: 1 }, 'test'), /almeno/);
+  G.updateGame(g.id, { maxActiveSkills: 1, activeSlots: 2, maxPassiveSkills: 1, passiveSlots: 1 }, 'test');
+  assert.deepEqual(S.limitsOf(G.getGame(g.id)), { active: 1, passive: 1, activeSlots: 2, passiveSlots: 1 });
+  const team = () => q.get('SELECT * FROM teams WHERE id = ?', A.id);
+  S.chooseSkill(team(), 'tracker', true);
+  assert.throws(() => S.chooseSkill(team(), 'rete', true), /già/);
+  S.chooseSkill(team(), 'veglia_forzata', true);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const give = (typeId) => {
+    const [id] = F.createGifts(g.id, { typeId }, 'test').ids;
+    q.run("UPDATE gifts SET status = 'claimed', claimedByTeamId = ?, claimedAt = ? WHERE id = ?", A.id, Date.now(), id);
+    return id;
+  };
+  // Un solo slot attivo libero: il primo Maestro entra, il secondo no.
+  F.useGift(team(), give('maestro'), { skillId: 'rete' });
+  assert.throws(() => F.useGift(team(), give('maestro'), { skillId: 'veggenza' }), /slot attivi sono pieni/);
+  // Slot passivi già pieni: il Saggio viene rifiutato.
+  assert.throws(() => F.useGift(team(), give('saggio'), { skillId: 'ritirata' }), /slot passivi sono pieni/);
+  // Senza limite (vuoto) si torna come prima.
+  G.updateGame(g.id, { passiveSlots: '' }, 'test');
+  assert.equal(S.limitsOf(G.getGame(g.id)).passiveSlots, null);
+  F.useGift(team(), give('saggio'), { skillId: 'ritirata' });
+});

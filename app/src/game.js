@@ -127,10 +127,10 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
-const NULLABLE_INT = new Set(['maxCouples', 'maxSingles']);
+const NULLABLE_INT = new Set(['maxCouples', 'maxSingles', 'activeSlots', 'passiveSlots']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
 const LOCKED_AFTER_START = new Set(['maxActiveSkills', 'maxPassiveSkills', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength']);
 
@@ -160,6 +160,11 @@ function updateGame(id, data, actor) {
     }
     if (f === 'codeLength' && (v < 4 || v > 12)) throw err(400, 'La lunghezza del Sigillo deve essere tra 4 e 12');
     if (f === 'durationMin' && v < 40) throw err(400, 'Durata troppo breve');
+    // Gli slot sono almeno quante Skill si scelgono all'inizio.
+    if ((f === 'activeSlots' || f === 'passiveSlots') && v != null) {
+      const start = Number(data[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? g[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? 1);
+      if (v < start) throw err(400, `Gli slot ${f === 'activeSlots' ? 'attivi' : 'passivi'} devono essere almeno quante Skill si scelgono all'inizio (${start})`);
+    }
     if (f === 'registrationOpen' || f === 'altarCheckOn' || f === 'zoneCountdown') v = v && v !== '0' && v !== 'false' ? 1 : 0;
     if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
     sets.push(`${f} = ?`);
