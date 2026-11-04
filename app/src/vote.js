@@ -18,6 +18,35 @@ const VERIFIED_WEIGHT = 3; // chi vota con l'account dei Giochi (o Zero Dark Ops
 const SPIKE_MIN = 5; // segnalazione: almeno 5 voti dalla stessa rete in 10 minuti
 const SPIKE_MS = 10 * 60000;
 
+// ---------------------------------------------------------------- Tor
+// Con Tor ogni voto arriva da un indirizzo diverso: il limite per rete non basta. L'elenco pubblico dei nodi di uscita
+// di Tor si scarica all'avvio e ogni ora (resta salvato: un riavvio senza rete usa l'ultimo). Da lì non si vota, e la
+// regia vede (e annulla) i voti già arrivati da quegli indirizzi: l'impronta della rete è la stessa (netHash).
+const TOR_LIST_URL = 'https://check.torproject.org/torbulkexitlist';
+let torIps = new Set((() => { try { return JSON.parse(getSetting('torExitList') || '[]'); } catch { return []; } })());
+let torAt = Number(getSetting('torExitListAt')) || null;
+const cleanIp = (ip) => String(ip || '').replace(/^::ffff:/, '').trim();
+function setTorList(list, at = Date.now()) {
+  const ips = [...new Set(list.map(cleanIp).filter((x) => /^[\d.:a-f]+$/i.test(x)))];
+  if (!ips.length) return 0;
+  torIps = new Set(ips); torAt = at;
+  setSetting('torExitList', JSON.stringify(ips)); setSetting('torExitListAt', String(at));
+  return ips.length;
+}
+async function refreshTor() {
+  try {
+    const res = await fetch(TOR_LIST_URL, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const n = setTorList((await res.text()).split(/\s+/));
+    if (n) console.log(`Tor: ${n} nodi di uscita`);
+  } catch (e) { console.warn('Elenco Tor non aggiornato:', e.message); }
+}
+const isTor = (ip) => torIps.has(cleanIp(ip));
+if (process.env.NODE_ENV !== 'test' && !process.env.ZDG_NO_TOR_FETCH) {
+  setTimeout(refreshTor, 5000).unref();
+  setInterval(refreshTor, 3600000).unref();
+}
+
 const netHash = (ip) => crypto.createHash('sha256').update(`zdg-vote:${String(ip || '').replace(/^::ffff:/, '')}`).digest('hex').slice(0, 16);
 const turnstile = () => ({ siteKey: process.env.TURNSTILE_SITE_KEY || getSetting('turnstileSiteKey') || null, secret: process.env.TURNSTILE_SECRET || getSetting('turnstileSecret') || null });
 
@@ -94,6 +123,8 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
   if (!device) throw err(400, 'Dispositivo non riconosciuto: abilita i cookie e riprova');
   const t = votableTeams(g.id).find((x) => x.id === Number(teamId));
   if (!t) throw err(400, 'Coppia non votabile');
+  // Dal browser Tor (o da un programma che passa da Tor) non si vota.
+  if (isTor(ip)) throw err(403, 'Dalla rete Tor non si vota: usa una connessione normale (Wi-Fi o dati del telefono)');
   const net = netHash(ip);
   const existing = (account && q.get('SELECT * FROM votes WHERE gameId = ? AND accountId = ? AND annulledAt IS NULL', g.id, account.id))
     || q.get('SELECT * FROM votes WHERE gameId = ? AND device = ? AND annulledAt IS NULL', g.id, device);
@@ -147,6 +178,12 @@ function masterVote(gameId) {
       .map((t) => { const x = r.list.find((y) => y.id === t.id); return { ...t, votable: !!t.votable, pct: x?.pct || 0, votes: x?.votes || 0, score: x?.score || 0 }; }),
     ranking: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, pct: t.pct, votes: t.votes, score: t.score })),
     spikes: spikes(g.id),
+    // Voti (validi) arrivati da indirizzi che oggi sono nodi di uscita di Tor.
+    tor: (() => {
+      const nets = new Set([...torIps].map(netHash));
+      const ids = q.all('SELECT id, net FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).filter((v) => nets.has(v.net)).map((v) => v.id);
+      return { listAt: torAt, exits: torIps.size, votes: ids.length, ids };
+    })(),
   };
 }
 
@@ -238,4 +275,4 @@ function liveVote(gameId) {
     list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score })) };
 }
 
-module.exports = { liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+module.exports = { setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

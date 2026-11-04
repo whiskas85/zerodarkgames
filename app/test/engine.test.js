@@ -3,6 +3,7 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+process.env.ZDG_NO_TOR_FETCH = '1';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'zdg-test-'));
 
 const test = require('node:test');
@@ -3132,4 +3133,25 @@ test('pronti per la gara: più dispositivi per persona, il migliore in cima', ()
   assert.equal(me.pushDevices, 2);
   assert.deepEqual(me.devices.map((d) => [d.key, d.push, d.installed]), [['dev-telefono-1', true, true], ['dev-vecchio-pc', false, false], ['sub-0', true, null]]);
   assert.equal(me.devices[2].unknown, true);
+});
+
+test('voto del pubblico: dalla rete Tor non si vota, i voti già arrivati da Tor si annullano', async () => {
+  const VO = require('../src/vote');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  VO.updateVote(g.id, { enabled: true }, 'test');
+  VO.setVotable(A.id, true, 'test');
+  // Un voto arrivato prima che l'indirizzo fosse nell'elenco di Tor.
+  await VO.castVote({ teamId: A.id, device: 'dev-tor-1', ip: '185.220.101.7' });
+  await VO.castVote({ teamId: A.id, device: 'dev-ok-1', ip: '93.40.1.2' });
+  VO.setTorList(['185.220.101.7', '::ffff:185.220.101.8', 'non-un-ip']);
+  assert.ok(VO.isTor('::ffff:185.220.101.7'));
+  await assert.rejects(VO.castVote({ teamId: A.id, device: 'dev-tor-2', ip: '185.220.101.8' }), /Tor/);
+  const tor = VO.masterVote(g.id).tor;
+  assert.deepEqual([tor.exits, tor.votes], [2, 1]);
+  VO.annulVotes(g.id, tor.ids, 'test');
+  assert.equal(VO.masterVote(g.id).tor.votes, 0);
+  assert.equal(VO.masterVote(g.id).votes.n, 1);
+  VO.setTorList([]); // non svuota l'elenco
+  assert.equal(VO.masterVote(g.id).tor.exits, 2);
 });
