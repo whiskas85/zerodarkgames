@@ -48,6 +48,15 @@ const $app = document.getElementById('app');
 watchGlyphs();
 const $overlay = document.getElementById('overlay');
 let installPrompt = null;
+// Installazione come app (PWA). Su iPhone non c'è un pulsante «Installa»: si fa da Condividi → «Aggiungi alla schermata
+// Home», solo da Safari (o, da iOS 16.4, anche dal Condividi di Chrome/Edge). Le notifiche su iPhone funzionano solo
+// dall'app installata.
+const UA = navigator.userAgent || '';
+const isIOS = /iPhone|iPad|iPod/i.test(UA) || (/Macintosh/i.test(UA) && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+// Dentro un'altra app (WhatsApp, Instagram, Facebook, Telegram…) o in un browser che non è Safari.
+const iosInApp = /FBAN|FBAV|Instagram|Line\/|Telegram|WhatsApp|GSA\//i.test(UA);
+const iosOtherBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(UA);
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
 
 applyTheme();
@@ -524,7 +533,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, installa: viewInstall, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -599,7 +608,7 @@ function perksModal(fx) {
 
 // Il ‹ del titolo sale alla pagina di sopra: dalla pagina di una Skill all'elenco, da un Altare agli Altari, ecc.
 // Pagine con un livello sotto (con argomento): la pagina di un elemento torna al suo elenco.
-const UP = { eventi: '#/home', beacon: '#/home', mine: '#/home', punteggio: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
+const UP = { eventi: '#/home', installa: '#/home', beacon: '#/home', mine: '#/home', punteggio: '#/home', skill: '#/skill', altare: '#/altari', dono: '#/doni', uscita: '#/mappa/soglia', annunci: '#/home', avvisi: '#/home', messaggi: '#/home' };
 // Pagine che stanno sotto un'altra anche senza argomento.
 const UP_PAGE = { traccar: '#/impostazioni' };
 function upOf(view) {
@@ -1142,7 +1151,19 @@ const isElect = () => S.state?.team.kind === 'elect';
 const isLobby = () => S.state?.team.kind === 'lobby';
 
 // Invito ad attivare le notifiche (Android: arrivano anche a schermo spento).
+// iPhone non ancora installata: prima l'installazione (le notifiche arrivano solo dall'app sulla schermata Home).
+function iosInstallCard() {
+  if (S.iosInstallLater) return null;
+  return h('div', { class: 'card push-invite ios-install' },
+    h('strong', null, '📲 Installa l\'app sull\'iPhone'),
+    h('p', { class: 'muted small' }, 'Su iPhone le notifiche del Consiglio arrivano solo dall\'app installata sulla schermata Home. Ci vuole un minuto.'),
+    h('div', { class: 'row' },
+      h('a', { class: 'btn btn-primary', href: '#/installa' }, 'Come si fa'),
+      h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { S.iosInstallLater = true; render(); } }, 'Più tardi')));
+}
+
 function pushInvite() {
+  if (isIOS && !isStandalone()) return iosInstallCard();
   if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) {
     return isSecureContext ? null : h('div', { class: 'card push-invite' }, h('strong', null, 'Notifiche non disponibili'), h('p', { class: 'muted small' }, 'Aprite l\'app dall\'indirizzo https del Consiglio per ricevere gli avvisi sul telefono.'));
   }
@@ -1294,7 +1315,7 @@ function viewNotAccepted() {
 }
 
 // Prima della gara: accettazione e test repliche si aprono dai pulsanti azzurri del menu.
-const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/impostazioni', 'Come installarla'] };
+const CHECK_FIX = { notifiche: ['#/impostazioni', 'Attivale'], traccar: ['#/traccar', 'Provalo'], iceLetto: [null, 'Leggilo'], iceCompilato: ['#/ice', 'Compila'], app: ['#/installa', 'Come installarla'] };
 const nJ = (j) => `${Number(j).toFixed(2).replace('.', ',')} J`;
 // Pulsanti azzurri del menu prima della gara: accettazione e test repliche (in tempo reale).
 function prepTiles() {
@@ -4830,6 +4851,43 @@ function teamLogoCard(st) {
     file);
 }
 
+// Pagina «Installa l'app»: passo passo per iPhone, Android e computer.
+function viewInstall() {
+  const done = isStandalone();
+  const step = (n, title, ...body) => h('li', { class: 'inst-step' }, h('span', { class: 'inst-n', 'aria-hidden': 'true' }, String(n)), h('div', null, h('strong', null, title), ...body));
+  // Icona Condividi di iOS (quadrato con freccia in su), disegnata in SVG.
+  const shareIco = (() => { const el = h('span', { class: 'inst-share', role: 'img', 'aria-label': 'icona Condividi' }); el.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'; return el; })();
+  const copyLink = async () => { try { await navigator.clipboard.writeText(location.origin); toast('Indirizzo copiato: incollalo in Safari', 'ok'); } catch { toast(location.origin, 'ok', 8000); } };
+  const ios = () => [
+    (iosInApp || iosOtherBrowser) ? h('div', { class: 'banner banner-queue' }, h('strong', null, iosInApp ? 'Sei dentro un\'altra app' : 'Non sei in Safari'),
+      h('span', null, iosInApp ? 'Da WhatsApp, Instagram e simili l\'app non si installa. Apri questa pagina in Safari: tocca ⋯ o il simbolo della bussola e scegli «Apri in Safari», oppure copia l\'indirizzo e incollalo in Safari.'
+        : 'Con iOS 16.4 o più recente puoi farlo anche da qui con il tasto Condividi; se non trovi «Aggiungi alla schermata Home», apri questa pagina in Safari.'),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: copyLink }, 'Copia l\'indirizzo')) : null,
+    h('ol', { class: 'inst-steps' },
+      step(1, 'Apri il sito in Safari', h('p', { class: 'muted small' }, `Indirizzo: ${location.host}. Entra con il tuo account se non l'hai già fatto.`)),
+      step(2, 'Tocca il tasto Condividi ', shareIco, h('p', { class: 'muted small' }, 'Su iPhone è nella barra in basso (al centro, o dietro ⋯ se la barra è compatta); su iPad in alto a destra.')),
+      step(3, 'Scegli «Aggiungi alla schermata Home»', h('p', { class: 'muted small' }, 'Scorri l\'elenco verso il basso. Se non c\'è, tocca «Altro» o «Modifica azioni» in fondo e aggiungilo.')),
+      step(4, 'Tocca «Aggiungi»', h('p', { class: 'muted small' }, 'Se compare l\'interruttore «Apri come app web», lascialo acceso.')),
+      step(5, 'Apri l\'app dall\'icona sulla schermata Home', h('p', { class: 'muted small' }, 'Non da Safari. La prima volta entra di nuovo con username e password: su iPhone l\'app installata non condivide l\'accesso con Safari.')),
+      step(6, 'Attiva le notifiche', h('p', { class: 'muted small' }, 'Nell\'app installata premi «Attiva le notifiche» e consenti. Da Safari non si può: su iPhone funzionano solo così.'))),
+  ];
+  const android = () => [
+    installPrompt ? h('button', { class: 'btn btn-primary btn-xl btn-block', type: 'button', onclick: async () => { installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; render(); } }, '⤓ Installa l\'app') : null,
+    h('ol', { class: 'inst-steps' },
+      step(1, 'Apri il sito in Chrome', h('p', { class: 'muted small' }, 'Da WhatsApp o altre app: menu ⋮ → «Apri in Chrome».')),
+      step(2, 'Menu ⋮ in alto a destra → «Installa app»', h('p', { class: 'muted small' }, 'Su alcuni telefoni si chiama «Aggiungi a schermata Home». Samsung Internet: menu ☰ → «Aggiungi pagina a» → «Schermata Home».')),
+      step(3, 'Apri l\'app dall\'icona e attiva le notifiche'))];
+  const desktop = () => [h('ol', { class: 'inst-steps' },
+    step(1, 'Chrome o Edge: icona di installazione nella barra dell\'indirizzo', h('p', { class: 'muted small' }, 'Oppure menu ⋮ → «Installa I Giochi del Buio». Su Mac con Safari: menu File → «Aggiungi al Dock».')))];
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Installa l\'app'),
+    done ? h('div', { class: 'result result-ok' }, '✓ Stai già usando l\'app installata. Se non l\'hai fatto, attiva le notifiche.') : null,
+    h('p', { class: 'muted small' }, 'Installata sulla schermata Home si apre come un\'app vera, a tutto schermo, funziona anche con poca rete e riceve le notifiche del Consiglio.'),
+    ...(isIOS ? ios() : /Android/i.test(UA) ? android() : desktop()),
+    done ? h('a', { class: 'btn btn-primary btn-block', href: '#/impostazioni' }, 'Vai alle notifiche') : null,
+    h('details', { class: 'card' }, h('summary', { class: 'small' }, isIOS ? 'Hai un telefono Android?' : 'Hai un iPhone?'), ...(isIOS ? android() : ios())));
+}
+
 function viewSettings() {
   const set = (k, v) => { S.settings[k] = v; store.set('zdg_settings', S.settings); applyTheme(); render(); };
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -4837,6 +4895,7 @@ function viewSettings() {
   return h('div', { class: 'stack' },
     h('h2', null, 'Impostazioni'),
     eventStatusCard(st?.player?.event, { gameName: st?.game?.name }),
+    !isStandalone() ? h('a', { class: 'btn btn-block', href: '#/installa' }, isIOS ? '📲 Installa l\'app sull\'iPhone' : '📲 Installa l\'app') : null,
     teamLogoCard(st),
     h('div', { class: 'card stack' },
       h('strong', null, 'Notifiche del Consiglio'),
@@ -4884,8 +4943,7 @@ function tourSlides() {
   const installBox = () => {
     if (window.matchMedia?.('(display-mode: standalone)').matches) return h('p', { class: 'ok-text' }, '✓ L\'app è già installata.');
     if (installPrompt) return h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => { installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; } }, 'Installa l\'app');
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    return h('p', { class: 'muted small' }, ios ? 'Su iPhone: tasto Condividi → "Aggiungi alla schermata Home".' : 'Su Android: menu ⋮ di Chrome → "Installa app" (o "Aggiungi a schermata Home").');
+    return h('a', { class: 'btn btn-primary btn-block', href: '#/installa', onclick: () => document.querySelector('.tour .tour-top .btn')?.click() }, isIOS ? 'Come si installa su iPhone →' : 'Come si installa →');
   };
 
   const welcome = {

@@ -3233,3 +3233,18 @@ test('slot delle Skill: si sceglie all\'inizio quanto impostato, gli altri slot 
   assert.equal(S.limitsOf(G.getGame(g.id)).passiveSlots, null);
   F.useGift(team(), give('saggio'), { skillId: 'ritirata' });
 });
+
+test('pronti per la gara: verde con tutto, verdino con app, notifiche e Traccar ma senza sicurezza', () => {
+  const g = setupGame(2);
+  const p = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", g.id);
+  const me = () => G.pushReport(g.id).people.find((x) => x.id === p.id);
+  assert.deepEqual(me().must, ['app installata', 'notifiche', 'Traccar']);
+  const now = Date.now();
+  q.run("INSERT INTO player_devices (playerId, deviceId, os, installed, version, firstAt, lastAt) VALUES (?, 'dev-telefono-9', 'android', 1, 'zdg-2', ?, ?)", p.id, now, now);
+  q.run("INSERT INTO push_subs (endpoint, data, playerId, deviceId, createdAt) VALUES ('https://push/9', '{}', ?, 'dev-telefono-9', ?)", p.id, now);
+  q.run('UPDATE players SET trackVerifiedAt = ? WHERE id = ?', now, p.id);
+  assert.deepEqual([me().must, me().almost, me().ready], [[], true, false]);
+  assert.ok(me().todo.includes('sicurezza'));
+  q.run('UPDATE players SET safetyAckAt = ? WHERE id = ?', now, p.id);
+  assert.deepEqual([me().almost, me().ready], [false, true]);
+});

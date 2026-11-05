@@ -4271,8 +4271,11 @@ function viewPushReport() {
     h('thead', null, h('tr', null, (staff ? ['Persona', 'Ruolo', 'Notifiche'] : ['', 'Persona', 'Dove', 'Telefono', 'Dispositivo migliore', 'Notifiche', 'Traccar', 'Ultimo ping', 'ICE', 'Sicurezza']).map((x) => h('th', null, x)))),
     h('tbody', null, list.flatMap((p) => (staff
       ? h('tr', null, h('td', null, onlineDot(p.online), ' ', h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
-      : [h('tr', { class: p.ready ? 'row-ready' : '' },
-        h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓') : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.todo.length)),
+      // Verde: tutto a posto. Verdino: app installata, notifiche e Traccar ok, manca solo sicurezza (o ICE).
+      : [h('tr', { class: p.ready ? 'row-ready' : p.almost ? 'row-almost' : '' },
+        h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓')
+          : p.almost ? h('span', { class: 'chip chip-almost', title: `Essenziali a posto (app, notifiche, Traccar). Manca: ${p.todo.join(', ')}` }, `✓ manca ${p.todo.join(' e ')}`)
+            : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.must.length)),
         h('td', null, h('div', { class: 'who-online' }, onlineDot(p.online), personLine(p))),
         h('td', null, p.where || h('span', { class: 'muted' }, p.status === 'pending' ? 'in attesa' : '—')),
         h('td', null, p.phone ? phoneLinks(p.phone, { cls: '' }) : h('span', { class: 'muted' }, '—')),
@@ -4290,7 +4293,7 @@ function viewPushReport() {
     sectionActions('Pronti per la gara: dispositivi, notifiche, Traccar, ICE e sicurezza', [
       missing.length ? h('button', { class: 'btn btn-sm btn-primary', onclick: copyList }, `Copia l'elenco (${missing.length})`) : null],
       h('p', { class: 'muted tiny' }, 'Traccar: «verificato» = ha fatto la prova a schermo spento nell\'app (pagina Traccar); «non manda» = a partita in corso non arriva niente da 10 minuti. Senza Traccar la posizione si perde appena chiude l\'app.'),
-      h('p', { class: 'muted tiny' }, 'In alto chi è a posto (✓), poi chi ha meno cose da sistemare (il numero dice quante). ICE: solo se è compilato, il contenuto la regia non lo vede mai (arriva solo con un\'emergenza). Sicurezza: ha letto e compreso l\'avviso pre-gara su EMERGENZA e ICE.'),
+      h('p', { class: 'muted tiny' }, 'In alto chi è a posto (✓, verde), poi in verdino chi ha le cose essenziali (app installata, notifiche, Traccar verificato) e deve solo leggere la sicurezza o compilare l\'ICE, poi chi ha meno cose essenziali da sistemare (il numero dice quante). ICE: solo se è compilato, il contenuto la regia non lo vede mai (arriva solo con un\'emergenza). Sicurezza: ha letto e compreso l\'avviso pre-gara su EMERGENZA e ICE.'),
       h('p', { class: 'muted tiny' }, 'Senza notifiche una persona non riceve tradimenti, annunci, messaggi e avvisi quando l\'app è chiusa. Si attivano dall\'app con «Attiva le notifiche», su ogni telefono. «Solo telefono della coppia»: le riceve il telefono entrato con il codice della coppia, non quello personale.'),
       h('div', { class: 'row-actions' },
         h('span', { class: `chip ${off.length ? 'chip-blood' : 'chip-ok'}` }, `${off.length} senza notifiche`),
@@ -4298,6 +4301,8 @@ function viewPushReport() {
         h('span', { class: 'chip chip-ok' }, `${rep.people.length - missing.length} con notifiche`),
         h('span', { class: `chip ${noTrk.length ? 'chip-warn' : 'chip-ok'}` }, `${noTrk.length} senza Traccar verificato`),
         h('span', { class: 'chip chip-ok' }, `${rep.people.filter((p) => p.ready).length} su ${rep.people.length} a posto`),
+        h('span', { class: 'chip chip-almost', title: 'App installata, notifiche e Traccar a posto: manca solo sicurezza (o ICE)' }, `${rep.people.filter((p) => p.almost).length} quasi (manca sicurezza o ICE)`),
+        h('span', { class: `chip ${rep.people.some((p) => !p.installed) ? 'chip-warn' : 'chip-ok'}` }, `${rep.people.filter((p) => !p.installed).length} senza app installata`),
         h('span', { class: `chip ${rep.people.some((p) => p.ice === false) ? 'chip-warn' : 'chip-ok'}` }, `${rep.people.filter((p) => p.ice).length} ICE compilati`),
         h('span', { class: `chip ${rep.people.some((p) => !p.safetyAckAt) ? 'chip-blood' : 'chip-ok'}` }, `${rep.people.filter((p) => !p.safetyAckAt).length} senza avviso letto`),
         h('span', { class: 'tiny muted' }, `aggiornato ${fmtTime(rep.at)}`))),

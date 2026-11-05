@@ -1260,3 +1260,10 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .score-kinds .grow, .score-rank .grow, .score-log .grow { flex: 1; min-width: 0; }
 .score-rank li.mine { font-weight: 700; }
 .score-rank .sq-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+
+/* Installare l'app (PWA): passi numerati. */
+.inst-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.inst-step { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+.inst-step p { margin: 4px 0 0; }
+.inst-n { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--blood); color: #fff; font-weight: 800; }
+.inst-share { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1.5px solid currentColor; border-radius: 6px; vertical-align: middle; color: #3b82f6; }
