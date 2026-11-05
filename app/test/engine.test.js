@@ -3276,3 +3276,22 @@ test('posti per l\'iscrizione: si contano le coppie formate (anche da due codici
   A.enroll(acc(), { gameId: g.id, mode: 'single' });
   assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 0]);
 });
+
+test('posti per l\'iscrizione: chi crea la coppia e aspetta il compagno conta come un temerario', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Legato solo' }, 'test');
+  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 2 }, 'test');
+  let n = 0;
+  const acc = () => A.register({ username: `solo${++n}`, password: 'password1', name: `S${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
+  // Una coppia completa (due con lo stesso codice): un Settore.
+  const r = A.enroll(acc(), { gameId: g.id, mode: 'pair' }); A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: r.pairCode });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [1, 2]);
+  // Un Legato che aspetta il compagno: mezzo Settore, come un temerario.
+  const solo = A.enroll(acc(), { gameId: g.id, mode: 'pair' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 1]);
+  // Un temerario prende l'ultimo posto (la regia lo accoppierà con il Legato rimasto solo).
+  A.enroll(acc(), { gameId: g.id, mode: 'single' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 0]);
+  // Il compagno con il codice può comunque entrare.
+  assert.ok(A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: solo.pairCode }).partner);
+});
