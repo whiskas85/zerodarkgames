@@ -2352,10 +2352,15 @@ function pushReport(gameId) {
     };
   }).map((p) => {
     // Cosa manca a ognuno: notifiche, Traccar (coppie ed Eletti), ICE (chi ha l'account), avviso di sicurezza letto.
-    const todo = [p.state !== 'on' ? 'notifiche' : null, ['couple', 'elect'].includes(p.group) && p.traccar !== 'ok' ? 'Traccar' : null,
-      p.ice === false ? 'ICE' : null, !p.safetyAckAt ? 'sicurezza' : null].filter(Boolean);
-    return { ...p, todo, ready: !todo.length };
-  }).sort((a, b) => b.ready - a.ready || a.todo.length - b.todo.length || a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
+    // Essenziali: app installata (su almeno un dispositivo), notifiche e Traccar verificato (coppie ed Eletti).
+    // Poi ICE (chi ha l'account) e avviso di sicurezza letto. «Quasi»: le essenziali ci sono, manca solo il resto.
+    const installed = p.devices.some((d) => d.installed) || !!p.app?.installed;
+    const must = [!installed ? 'app installata' : null, p.state !== 'on' ? 'notifiche' : null,
+      ['couple', 'elect'].includes(p.group) && p.traccar !== 'ok' ? 'Traccar' : null].filter(Boolean);
+    const also = [p.ice === false ? 'ICE' : null, !p.safetyAckAt ? 'sicurezza' : null].filter(Boolean);
+    const todo = [...must, ...also];
+    return { ...p, installed, must, todo, ready: !todo.length, almost: !must.length && !!also.length };
+  }).sort((a, b) => b.ready - a.ready || b.almost - a.almost || a.must.length - b.must.length || a.todo.length - b.todo.length || a.sectorOrd - b.sectorOrd || a.name.localeCompare(b.name));
   const staff = q.all(`SELECT u.id, u.username, u.displayName, u.role, (SELECT COUNT(*) FROM push_subs ps WHERE ps.userId = u.id) AS devices
                        FROM users u ORDER BY u.role = 'master' DESC, u.username`).map((u) => ({ ...u, state: u.devices ? 'on' : 'off', online: live.users.has(u.id) ? 'on' : 'off' }));
   return { people, staff };
