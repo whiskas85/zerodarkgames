@@ -347,8 +347,10 @@ function spotsOf(gameId) {
   // Si parte da com'è davvero la partita, non da come ci si è iscritti (due compagni che hanno creato ognuno il suo
   // codice, un Legato accoppiato con un temerario… restano un Settore solo):
   // - ogni coppia già formata occupa un Settore;
-  // - ogni coppia iscritta ma non ancora formata (codice coppia, anche con il compagno non ancora entrato) un Settore;
-  // - chi è iscritto e non è ancora in coppia (temerari, aggiunti a mano, Legati rimasti soli) mezzo Settore.
+  // - ogni coppia iscritta e completa (i due entrati con lo stesso codice) ma non ancora formata un Settore;
+  // - chi è iscritto e non è ancora in coppia (temerari, aggiunti a mano, Legati senza compagno) mezzo Settore:
+  //   chi ha creato la coppia e aspetta il compagno conta come un temerario. Se un temerario prende l'ultimo posto,
+  //   la regia li accoppia; il compagno con il codice può comunque entrare.
   // Gli Eletti (e le candidature agli Eletti) non contano.
   const formed = q.get("SELECT COUNT(*) AS n FROM teams WHERE gameId = ? AND kind = 'couple' AND status != 'withdrawn'", g.id).n;
   const all = q.all(`SELECT p.id, p.teamId, p.requestedRole, p.regGroup, t.kind AS teamKind FROM players p LEFT JOIN teams t ON t.id = p.teamId
@@ -356,8 +358,11 @@ function spotsOf(gameId) {
   // Codici coppia con qualcuno già in una coppia formata: chi resta fuori è da solo.
   const groupInTeam = new Set(all.filter((p) => p.teamId && p.regGroup).map((p) => p.regGroup));
   const free = all.filter((p) => !p.teamId && p.requestedRole !== 'elect');
-  const pairGroups = new Set(free.filter((p) => p.requestedRole === 'pair' && p.regGroup && !groupInTeam.has(p.regGroup)).map((p) => p.regGroup)).size;
-  const loose = free.filter((p) => !(p.requestedRole === 'pair' && p.regGroup && !groupInTeam.has(p.regGroup))).length;
+  const groupSize = {};
+  for (const p of free) if (p.requestedRole === 'pair' && p.regGroup && !groupInTeam.has(p.regGroup)) groupSize[p.regGroup] = (groupSize[p.regGroup] || 0) + 1;
+  const complete = (p) => p.requestedRole === 'pair' && p.regGroup && groupSize[p.regGroup] >= 2;
+  const pairGroups = Object.values(groupSize).filter((x) => x >= 2).length;
+  const loose = free.filter((p) => !complete(p)).length;
   const used = formed + pairGroups;
   // I temerari in attesa: due fanno un Settore, uno da solo ne tiene già mezzo (per difetto: si arrotonda in su).
   const couples = Math.max(0, capacity - used - Math.ceil(loose / 2));
