@@ -887,10 +887,10 @@ test('posti per l\'iscrizione: Settori da aprire, coppie e temerari', () => {
   let n = 0;
   const acc = () => A.register({ username: `posti${++n}`, password: 'password1', name: `P${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
   const pair = () => { const r = A.enroll(acc(), { gameId: g.id, mode: 'pair' }); A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: r.pairCode }); };
-  // 9 Settori = 18 posti. 3 coppie e 1 temerario in attesa → 6 Settori per le coppie, 18 − 6 − 1 = 11 temerari.
+  // 9 Settori = 18 posti. 3 coppie e 1 temerario in attesa → 5 Settori per le coppie (il temerario ne tiene mezzo), 18 − 6 − 1 = 11 temerari.
   pair(); pair(); pair();
   A.enroll(acc(), { gameId: g.id, mode: 'single' });
-  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles, G.spotsOf(g.id).places], [6, 11, 18]);
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles, G.spotsOf(g.id).places], [5, 11, 18]);
   // Un secondo temerario: con il primo fanno un Settore.
   A.enroll(acc(), { gameId: g.id, mode: 'single' });
   assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [5, 10]);
@@ -3247,4 +3247,32 @@ test('pronti per la gara: verde con tutto, verdino con app, notifiche e Traccar 
   assert.ok(me().todo.includes('sicurezza'));
   q.run('UPDATE players SET safetyAckAt = ? WHERE id = ?', now, p.id);
   assert.deepEqual([me().almost, me().ready], [false, true]);
+});
+
+test('posti per l\'iscrizione: si contano le coppie formate (anche da due codici diversi o Legato + temerario), non le iscrizioni', () => {
+  const A = require('../src/accounts');
+  const g = G.createGame({ name: 'Posti reali' }, 'test');
+  G.updateGame(g.id, { registrationOpen: 1, maxCouples: 10 }, 'test');
+  let n = 0;
+  const acc = () => A.register({ username: `reali${++n}`, password: 'password1', name: `R${n}`, softairTeam: 'nessuno', phone: '+39 333 1234567' });
+  const pid = (a) => q.get('SELECT id FROM players WHERE accountId = ?', a.id).id;
+  const accept = (...ids) => ids.forEach((id) => q.run("UPDATE players SET status = 'accepted' WHERE id = ?", id));
+  // 7 coppie normali, formate.
+  for (let i = 0; i < 7; i++) {
+    const a1 = acc(); const r = A.enroll(a1, { gameId: g.id, mode: 'pair' }); const a2 = acc(); A.enroll(a2, { gameId: g.id, mode: 'pair', pairCode: r.pairCode });
+    accept(pid(a1), pid(a2)); G.createTeam(g.id, { playerIds: [pid(a1), pid(a2)] }, 'test');
+  }
+  // Due compagni che hanno creato ognuno il proprio codice, messi insieme dalla regia: un Settore solo.
+  const b1 = acc(); A.enroll(b1, { gameId: g.id, mode: 'pair' }); const b2 = acc(); A.enroll(b2, { gameId: g.id, mode: 'pair' });
+  accept(pid(b1), pid(b2)); G.createTeam(g.id, { playerIds: [pid(b1), pid(b2)] }, 'test');
+  // Un Legato accoppiato con un temerario: un Settore solo.
+  const c1 = acc(); A.enroll(c1, { gameId: g.id, mode: 'pair' }); const c2 = acc(); A.enroll(c2, { gameId: g.id, mode: 'single' });
+  accept(pid(c1), pid(c2)); G.createTeam(g.id, { playerIds: [pid(c1), pid(c2)] }, 'test');
+  // 9 Settori su 10 occupati: 1 Settore per una coppia, 2 posti per i temerari.
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [1, 2]);
+  // Un temerario in attesa: per una coppia nuova non c'è più posto, per un altro temerario sì.
+  A.enroll(acc(), { gameId: g.id, mode: 'single' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 1]);
+  A.enroll(acc(), { gameId: g.id, mode: 'single' });
+  assert.deepEqual([G.spotsOf(g.id).couples, G.spotsOf(g.id).singles], [0, 0]);
 });
