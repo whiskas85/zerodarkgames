@@ -3343,3 +3343,18 @@ test('canali radio: privati per coppia, della squadra e del Consiglio per gli El
   assert.equal(G.radioOf(g.id).teams.find((t) => t.id === A.id).backup, 'PMR 7');
   assert.throws(() => G.setRadio(g.id, { scope: 'team', refId: elect.id, main: 'x' }, 'test'), /Coppia non trovata/);
 });
+
+test('suoni del VIA: si caricano, si sostituiscono e si tolgono (solo formati audio)', () => {
+  const SND = require('../src/sounds');
+  const wav = Buffer.from('RIFF0000WAVEfmt ');
+  assert.throws(() => SND.save('go', wav, 'image/png', 'x.png'), /Formato/);
+  assert.throws(() => SND.save('zz', wav, 'audio/wav', 'x.wav'), /non valido/);
+  SND.save('go', wav, 'audio/wav', 'corno.wav');
+  SND.save('3', wav, 'audio/mpeg; charset=x', 'tre.mp3');
+  assert.deepEqual(Object.keys(SND.list()).sort(), ['3', 'go']);
+  assert.equal(SND.list().go.name, 'corno.wav');
+  assert.ok(require('fs').existsSync(SND.file('go').path));
+  SND.remove('go');
+  assert.deepEqual(Object.keys(SND.list()), ['3']);
+  assert.throws(() => SND.file('go'), /non trovato/);
+});

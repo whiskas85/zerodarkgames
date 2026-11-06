@@ -92,6 +92,7 @@ window.addEventListener('appinstalled', () => { R.install = null; toast('Regia i
 async function start() {
   try { R.baseUrl = (await api('GET', '/api/m/base-url')).baseUrl; } catch { /* default */ }
   await loadGames();
+  loadSounds();
   stream('/api/stream?as=staff', {
     open: () => load(),
     refresh: (d) => { if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
@@ -369,8 +370,33 @@ function emergencyAlarm() {
 const goSound = () => ({ on: true, volume: 0.8, ...(store.get('zdg_go_sound') || {}) });
 let audioCtx = null;
 const actx = () => { try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); } catch { audioCtx = null; } return audioCtx; };
-window.addEventListener('pointerdown', () => { const c = actx(); if (c?.state === 'suspended') c.resume().catch(() => {}); }, { capture: true });
-function playBeep(final = false) {
+window.addEventListener('pointerdown', () => { const c = actx(); if (c?.state === 'suspended') c.resume().catch(() => {}); if (R.sounds && !soundBuf.size && Object.keys(R.sounds).length) loadSounds(); }, { capture: true });
+// Suoni caricati dalla regia (validi per tutte le regie): si scaricano e si preparano una volta, poi si usano al
+// posto di quelli sintetizzati. Slot: tick (bip di ogni secondo), 5…1 (un suono per numero), go (il VIA).
+const SOUND_SLOTS = [['tick', 'Bip dei secondi (tutti i numeri)'], ['5', 'Cinque'], ['4', 'Quattro'], ['3', 'Tre'], ['2', 'Due'], ['1', 'Uno'], ['go', 'VIA (al posto del corno)']];
+const soundBuf = new Map(); // slot → { at, buf }
+async function loadSounds() {
+  try { R.sounds = await api('GET', '/api/m/sounds'); } catch { return; }
+  const c = actx(); if (!c) return;
+  for (const [slot] of SOUND_SLOTS) {
+    const info = R.sounds?.[slot];
+    if (!info) { soundBuf.delete(slot); continue; }
+    if (soundBuf.get(slot)?.at === info.at) continue;
+    try {
+      const data = await (await fetch(`/api/m/sounds/${slot}/file?v=${info.at}`, { credentials: 'same-origin' })).arrayBuffer();
+      soundBuf.set(slot, { at: info.at, buf: await c.decodeAudioData(data) });
+    } catch { soundBuf.delete(slot); }
+  }
+}
+function playFile(slot) {
+  const s = goSound(); const c = actx(); const b = soundBuf.get(slot)?.buf;
+  if (!s.on || !c || !b) return false;
+  const src = c.createBufferSource(); const g = c.createGain(); g.gain.value = s.volume;
+  src.buffer = b; src.connect(g); g.connect(c.destination); src.start();
+  return true;
+}
+function playBeep(final = false, n = null) {
+  if (n != null && (playFile(String(n)) || playFile('tick'))) return;
   const s = goSound(); const c = actx(); if (!s.on || !c) return;
   const t = c.currentTime; const o = c.createOscillator(); const g = c.createGain();
   o.type = 'sine'; o.frequency.value = final ? 1046 : 880;
@@ -379,6 +405,7 @@ function playBeep(final = false) {
 }
 // Corno da caccia: due trombe (quinta), filtro morbido, attacco lento e un leggero vibrato, circa 2,5 secondi.
 function playHorn() {
+  if (playFile('go')) return;
   const s = goSound(); const c = actx(); if (!s.on || !c) return;
   const t = c.currentTime; const out = c.createGain(); const lp = c.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.setValueAtTime(700, t); lp.frequency.linearRampToValueAtTime(1600, t + 0.4); lp.Q.value = 2;
@@ -406,7 +433,7 @@ function goTick() {
   if (goPlayed.at !== key) goPlayed = { at: key, done: new Set() };
   const left = key - clock.serverNow();
   const sec = Math.ceil(left / 1000);
-  if (sec >= 1 && sec <= 5 && !goPlayed.done.has(sec)) { goPlayed.done.add(sec); playBeep(); if (navigator.vibrate) navigator.vibrate(80); }
+  if (sec >= 1 && sec <= 5 && !goPlayed.done.has(sec)) { goPlayed.done.add(sec); playBeep(false, sec); if (navigator.vibrate) navigator.vibrate(80); }
   if (left <= 0 && !goPlayed.done.has(0)) { goPlayed.done.add(0); playHorn(); if (navigator.vibrate) navigator.vibrate([300, 100, 600]); }
   if (!goEl) {
     goEl = h('div', { class: 'go-overlay', role: 'alert', 'aria-live': 'assertive' }, h('div', { class: 'go-num' }), h('div', { class: 'go-sub' }),
@@ -5157,8 +5184,37 @@ function goSoundSection() {
     h('label', { class: 'field' }, h('span', null, `Volume: ${Math.round(s.volume * 100)}%`),
       h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(s.volume * 100), disabled: !s.on, onchange: (e) => save({ volume: Number(e.target.value) / 100 }) })),
     h('div', { class: 'row-actions' },
-      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playBeep() }, '🔈 Prova il bip'),
-      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playHorn() }, '📯 Prova il corno')));
+      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playBeep(false, 5) }, '🔈 Prova il bip'),
+      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playHorn() }, '📯 Prova il VIA')),
+    soundUploads());
+}
+// Carica i tuoi suoni: valgono per tutte le regie. Senza file resta il suono sintetizzato.
+function soundUploads() {
+  if (R.sounds === undefined) { loadSounds().then(() => render()); return h('p', { class: 'tiny muted' }, 'Caricamento dei suoni…'); }
+  const upload = async (slot, file) => {
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) return toast('File troppo grande (massimo 3 MB)', 'error');
+    try {
+      const r = await fetch(`/api/m/sounds/${slot}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Caricamento non riuscito');
+      toast('Suono caricato', 'ok'); await loadSounds(); render();
+    } catch (e) { toast(e.message, 'error', 6000); }
+  };
+  const del = async (slot) => { try { await api('DELETE', `/api/m/sounds/${slot}`); toast('Suono tolto: torna quello sintetizzato', 'ok'); await loadSounds(); render(); } catch (e) { toast(e.message, 'error'); } };
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: 'eyebrow' }, 'I tuoi suoni (per tutte le regie)'),
+    h('p', { class: 'tiny muted' }, 'MP3, WAV, OGG o M4A, massimo 3 MB. Il bip vale per tutti i numeri; se carichi un numero (es. una voce che dice «tre»), per quel secondo si usa quello. Dove non c\'è un file resta il suono sintetizzato.'),
+    h('ul', { class: 'sound-list' }, SOUND_SLOTS.map(([slot, label]) => {
+      const info = R.sounds?.[slot];
+      const input = h('input', { type: 'file', accept: 'audio/*', hidden: true, onchange: (e) => upload(slot, e.target.files[0]) });
+      return h('li', null,
+        h('span', { class: 'grow' }, h('strong', null, label), h('span', { class: 'tiny muted' }, info ? ` · ${info.name} (${Math.round(info.size / 1024)} KB)` : ' · suono sintetizzato')),
+        input,
+        info ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => (playFile(slot) || toast('Tocca prima la pagina per attivare l\'audio', 'info')) }, '▶') : null,
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => input.click() }, info ? 'Sostituisci' : 'Carica'),
+        info ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => del(slot) }, 'Togli') : null);
+    })));
 }
 
 // Canali radio: una riga per il Consiglio, per ogni squadra di Eletti e per ogni coppia. Si salva uscendo dal campo.

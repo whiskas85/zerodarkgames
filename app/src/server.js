@@ -25,6 +25,7 @@ const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
 const MN = require('./mines');
+const SND = require('./sounds');
 
 const PORT = Number(process.env.PORT || 8080);
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -772,6 +773,12 @@ m.get('/games/:id/prints', wrap((req) => print.catalog(G.getGame(gameId(req)), b
 m.get('/games/:id/offline-map', wrap((req) => TL.status(gameId(req))));
 m.post('/games/:id/offline-map', wrap((req) => TL.startDownload(gameId(req), req.body || {}, actor(req))));
 m.delete('/games/:id/offline-map', wrap((req) => TL.clearArea(gameId(req))));
+// Suoni del VIA caricati dalla regia (bip, numeri 5-1, VIA): valgono per tutte le regie.
+const rawSound = express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '4mb' });
+m.get('/sounds', (_req, res) => res.json(SND.list()));
+m.post('/sounds/:slot', rawSound, wrap((req) => SND.save(req.params.slot, req.body, req.headers['content-type'], decodeURIComponent(String(req.headers['x-file-name'] || '')))));
+m.delete('/sounds/:slot', wrap((req) => SND.remove(req.params.slot)));
+m.get('/sounds/:slot/file', (req, res, next) => { try { const f = SND.file(req.params.slot); res.type(f.type).set('Cache-Control', 'no-cache').sendFile(f.path); } catch (e) { next(e); } });
 m.post('/print-logo', rawImage, wrap((req) => { print.saveLogo(req.body, String(req.headers['content-type'] || '').split(';')[0]); return { ok: true }; }));
 m.delete('/print-logo', wrap(() => { print.resetLogo(); return { ok: true }; }));
 m.get('/games/:id/events', wrap((req) => EV.masterEvents(gameId(req))));
