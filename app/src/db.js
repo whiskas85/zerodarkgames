@@ -795,4 +795,17 @@ addColumn('push_subs', 'deviceId', 'TEXT');
 addColumn('games', 'activeSlots', 'INTEGER');
 addColumn('games', 'passiveSlots', 'INTEGER');
 
+// VIA con il conto alla rovescia: istante in cui parte davvero (5 secondi dopo il tasto), sincronizzato sulle regie.
+addColumn('games', 'goAt', 'INTEGER');
+
+// Canali radio: canale e canale di riserva per coppia (privati: li vede solo la coppia), per squadra di Eletti e per
+// il Consiglio (regia ed Eletti). scope: 'team' | 'squad' | 'council' (refId 0).
+db.exec(`
+CREATE TABLE IF NOT EXISTS radio_channels (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL, refId INTEGER NOT NULL DEFAULT 0, main TEXT, backup TEXT, updatedAt INTEGER,
+  UNIQUE (gameId, scope, refId)
+);
+`);
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

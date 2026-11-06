@@ -55,7 +55,7 @@ Il browser tiene una sola coppia alla volta: per più coppie sullo stesso PC usa
 4. **Altari e Parola**: scrivi la Parola, che viene divisa tra gli Altari; poi stampa i cartelli A4 con il QR.
 5. **Armamenti** (facoltativo): finestre con apertura (minuto dal via, orario o a mano) e durata, scelte sulla timeline del torneo.
 6. **Stampa credenziali**: un QR di accesso e un codice per coppia.
-7. **Regia**: Segna pronta → Apri il cerchio (le coppie vedono il Sigillo) → **VIA!** Da qui il motore gestisce da solo tregua, caccia, rivelazioni, doni, ultima mezz'ora e fine; puoi sospendere, riprendere, rivelare a mano, posticipare o saltare.
+7. **Regia**: Segna pronta → Apri il cerchio (le coppie vedono il Sigillo) → **VIA!** (5 secondi di conto alla rovescia a tutto schermo con i bip 5, 4, 3, 2, 1 e il corno su tutte le regie aperte, anche se il VIA lo dà un telefono; si può annullare. Volume e suoni in Impostazioni → Questo dispositivo; il browser suona solo dopo un clic sulla pagina: a cerchio aperto c'è «🔈 Attiva i suoni del VIA su questo computer») Da qui il motore gestisce da solo tregua, caccia, rivelazioni, doni, ultima mezz'ora e fine; puoi sospendere, riprendere, rivelare a mano, posticipare o saltare.
 8. **La Soglia**: il validatore sceglie la coppia e registra l'esito; vittoria e podio partono in automatico. In alternativa la coppia **esfiltra da sola**: in Luoghi del gioco stampa il **QR di uscita** («Stampa QR di uscita») e appendilo alla Soglia. Con la Parola intera la mappa della coppia mostra «⌖ Leggi il codice di uscita»: se ha tutti i frammenti e nessun alleato esce (vittoria o podio) e il suo Sigillo viene rivelato a tutti come un tradimento; altrimenti compare «Uscita negata» (frammenti mancanti, oppure alleanza ancora in piedi, che finisce anche nel registro della regia).
 
 ### I simulacri sfocati
@@ -69,6 +69,10 @@ In regia i Sigilli veri sono sfocati e si leggono tenendo premuto; il prossimo t
 Un gruppo per partita con un numero qualsiasi di persone, divise in **squadre**. Non esiste un codice comune: ogni Eletto, una volta accettato, entra con il proprio **accesso personale** (QR o codice, stampato in "Stampa accessi").
 **Spostamenti tra Eletti e Settori:** in *Squadre Eletti* «↔ Settore…» porta un Eletto in una coppia (in una incompleta, o al posto di un Legato che diventa Eletto nella stessa squadra); nelle schede delle coppie «→ Eletti…» fa il contrario, da solo o in scambio. L'accesso personale segue la persona.
 Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza Altari e Doni** (con scanner, GPS e foto), mappa del campo, messaggi con la regia (a tutti gli Eletti o solo alla propria squadra), avvisi, annunci, timer e regolamento. Non hanno Sigillo, non usano gli Altari e non entrano in classifica.
+
+## Canali radio
+
+In **Impostazioni → Canali radio** la regia assegna canale e riserva al **Consiglio** (regia ed Eletti), a ogni **squadra di Eletti** e a ogni **coppia**. Nell'app ognuno vede solo i suoi, nella scheda «📻 I vostri canali radio» in home: la coppia solo i propri (privati, le altre coppie non li ricevono mai), l'Eletto quelli della sua squadra e del Consiglio. Il canale d'emergenza (SOS) resta nella barra in basso e si imposta in Impostazioni → Partita.
 
 ## Avvisi e notifiche
 

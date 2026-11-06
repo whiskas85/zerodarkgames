@@ -1270,8 +1270,30 @@ function control(gameId, action, actor) {
       setStatus(g, 'circle');
       pushTraccarOn(g);
       break;
+    // VIA con il conto alla rovescia: tra 5 secondi parte davvero (le regie suonano 5-4-3-2-1 e il corno).
+    case 'go': {
+      need('circle');
+      const r = readiness(g);
+      if (!r.ok) throw err(409, 'Setup incompleto: ' + r.issues.filter((i) => i.level === 'error').map((i) => i.text).join('; '));
+      if (g.goAt && g.goAt > now) break;
+      const at = now + GO_COUNTDOWN_MS;
+      q.run('UPDATE games SET goAt = ? WHERE id = ?', at, g.id);
+      log(g.id, actor, 'game_go_countdown', { seconds: GO_COUNTDOWN_MS / 1000 });
+      rt.toStaffEvent('go', { gameId: g.id, at, by: actor });
+      rt.toStaff(g.id, 'go');
+      break;
+    }
+    case 'go_cancel': {
+      if (!g.goAt) break;
+      q.run('UPDATE games SET goAt = NULL WHERE id = ?', g.id);
+      log(g.id, actor, 'game_go_cancelled');
+      rt.toStaffEvent('go', { gameId: g.id, at: null, by: actor });
+      rt.toStaff(g.id, 'go');
+      break;
+    }
     case 'start': {
       need('circle');
+      q.run('UPDATE games SET goAt = NULL WHERE id = ?', g.id);
       const r = readiness(g);
       if (!r.ok) throw err(409, 'Setup incompleto: ' + r.issues.filter((i) => i.level === 'error').map((i) => i.text).join('; '));
       setStatus(g, 'truce', { startedAt: now, totalPausedMs: 0, pausedAt: null, pausedFrom: null, endedAt: null });
@@ -1302,7 +1324,7 @@ function control(gameId, action, actor) {
     default:
       throw err(400, 'Azione sconosciuta');
   }
-  if (!['start', 'pause', 'resume', 'end'].includes(action)) log(g.id, actor, `status_${action === 'prepare' ? 'draft' : action}`);
+  if (!['start', 'pause', 'resume', 'end', 'go', 'go_cancel'].includes(action)) log(g.id, actor, `status_${action === 'prepare' ? 'draft' : action}`);
   notifyState(g.id);
   if (action === 'resume') tickGame(getGame(g.id));
   return getGame(g.id);
@@ -1527,7 +1549,21 @@ function tickGame(g) {
   }
 }
 
+// VIA con il conto alla rovescia: 5 secondi dopo il tasto la partita parte da sola.
+const GO_COUNTDOWN_MS = 5000;
+function tickGo(now = Date.now()) {
+  for (const g of q.all("SELECT * FROM games WHERE status = 'circle' AND goAt IS NOT NULL AND goAt <= ?", now)) {
+    try { control(g.id, 'start', 'regia (VIA)'); } catch (e) {
+      q.run('UPDATE games SET goAt = NULL WHERE id = ?', g.id);
+      console.error('VIA', g.id, e.message);
+      rt.toStaffEvent('go', { gameId: g.id, at: null, error: e.message });
+      rt.toStaff(g.id, 'go');
+    }
+  }
+}
+
 function tickAll() {
+  tickGo();
   const games = q.all(`SELECT * FROM games WHERE status IN (${C.ACTIVE.map(() => '?').join(',')})`, ...C.ACTIVE);
   for (const g of games) {
     try { tickGame(g); } catch (e) { console.error('tick', g.id, e); }
@@ -2204,6 +2240,50 @@ function lobbyState(player) {
   };
 }
 
+// ---------------------------------------------------------------- canali radio
+const RADIO_SCOPES = ['team', 'squad', 'council'];
+const radioRow = (gameId, scope, refId) => q.get('SELECT main, backup FROM radio_channels WHERE gameId = ? AND scope = ? AND refId = ?', gameId, scope, refId) || { main: null, backup: null };
+function setRadio(gameId, data, actor) {
+  const g = getGame(gameId);
+  const scope = RADIO_SCOPES.includes(data.scope) ? data.scope : null;
+  if (!scope) throw err(400, 'Canale non valido');
+  const refId = scope === 'council' ? 0 : Number(data.refId);
+  if (scope === 'team' && !q.get("SELECT 1 FROM teams WHERE id = ? AND gameId = ? AND kind = 'couple'", refId, g.id)) throw err(404, 'Coppia non trovata');
+  if (scope === 'squad' && !q.get('SELECT 1 FROM elect_squads WHERE id = ? AND gameId = ?', refId, g.id)) throw err(404, 'Squadra non trovata');
+  const clean = (v) => String(v ?? '').trim().slice(0, 60) || null;
+  const cur = radioRow(g.id, scope, refId);
+  const main = data.main !== undefined ? clean(data.main) : cur.main;
+  const backup = data.backup !== undefined ? clean(data.backup) : cur.backup;
+  q.run(`INSERT INTO radio_channels (gameId, scope, refId, main, backup, updatedAt) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(gameId, scope, refId) DO UPDATE SET main = excluded.main, backup = excluded.backup, updatedAt = excluded.updatedAt`, g.id, scope, refId, main, backup, Date.now());
+  log(g.id, actor, 'radio_set', { scope, refId, main, backup });
+  // Solo chi deve saperlo si aggiorna: la coppia, gli Eletti.
+  if (scope === 'team') rt.toTeams(g.id, 'state', {}, refId);
+  else { const el = electOf(g.id); if (el) rt.toTeams(g.id, 'state', {}, el.id); }
+  rt.toStaff(g.id, 'radio');
+  return { main, backup };
+}
+// Per la regia: tutti i canali.
+function radioOf(gameId) {
+  return {
+    council: radioRow(gameId, 'council', 0),
+    squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', gameId).map((s) => ({ ...s, ...radioRow(gameId, 'squad', s.id) })),
+    teams: teamsOf(gameId).filter((t) => t.sectorId).map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, ...radioRow(gameId, 'team', t.id) })),
+  };
+}
+// Per l'app: la coppia vede solo i suoi canali; l'Eletto quelli della sua squadra e del Consiglio.
+function radioFor(team, player) {
+  const out = [];
+  const add = (label, r, note) => { if (r.main || r.backup) out.push({ label, main: r.main, backup: r.backup, note }); };
+  if (team.kind === 'couple') add('Canale della coppia', radioRow(team.gameId, 'team', team.id), 'Solo voi: non ditelo a nessuno.');
+  if (team.kind === 'elect') {
+    const sq = player?.squadId ? q.get('SELECT id, name FROM elect_squads WHERE id = ?', player.squadId) : null;
+    if (sq) add(`Squadra ${sq.name}`, radioRow(team.gameId, 'squad', sq.id), 'Solo la vostra squadra.');
+    add('Consiglio (regia ed Eletti)', radioRow(team.gameId, 'council', 0), 'Regia e tutti gli Eletti.');
+  }
+  return out;
+}
+
 function teamState(team, player = null) {
   const st = teamStateCore(team, player);
   st.player = playerInfo(player);
@@ -2503,6 +2583,7 @@ function boardState(gameId) {
 }
 
 module.exports = {
+  tickGo, setRadio, radioOf, radioFor,
   notAccepted, acceptanceUsed, acceptanceClosed, requireAcceptanceOpen, playingCouples, landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, readNotices, membersOf, createGame, updateGame, deleteGame,

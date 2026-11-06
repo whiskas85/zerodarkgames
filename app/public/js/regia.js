@@ -26,6 +26,7 @@ const TABS = [
   ['coppie', 'Squadre Legati'],
   ['squadre', 'Squadre Eletti'],
   ['consiglio', 'Consiglio Zero'],
+  ['notifiche', 'Pronti per la gara'],
   ['accettazione', 'Accettazione'],
   ['altari', 'Altari e Parola'],
   ['sigilli', 'Sigilli e tradimenti'],
@@ -38,7 +39,6 @@ const TABS = [
   ['avvisi', 'Avvisi'],
   ['eventi', 'Eventi'],
   ['voto', 'Voto del pubblico'],
-  ['notifiche', 'Pronti per la gara'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['rewind', 'Rewind'],
@@ -95,6 +95,14 @@ async function start() {
   stream('/api/stream?as=staff', {
     open: () => load(),
     refresh: (d) => { if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
+    // VIA: conto alla rovescia sincronizzato (anche se il tasto l'ha premuto un'altra regia, es. dal telefono).
+    go: (d) => {
+      if (d.gameId !== R.gameId) return;
+      R.goEvt = { at: d.at || null, ts: Date.now() };
+      if (d.error) toast(`VIA non partito: ${d.error}`, 'error', 8000);
+      goTick();
+      load();
+    },
     // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
     emergency: async (d) => {
       if (d.gameId && d.gameId !== R.gameId) { R.gameId = d.gameId; store.set('zdg_regia_game', R.gameId); R.ms = null; }
@@ -307,6 +315,7 @@ function render() {
       comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    goTick();
   });
   labelTables($root);
   fitShell();
@@ -352,6 +361,63 @@ function emergencyAlarm() {
   beepOnce();
   clearInterval(alarmTimer);
   alarmTimer = setInterval(() => { if (openEmergencies().some((e) => !e.ackAt)) beepOnce(); else clearInterval(alarmTimer); }, 4000);
+}
+
+// ---------------------------------------------------------------- VIA: 5, 4, 3, 2, 1 e corno
+// Suoni sintetizzati (niente file): bip per i secondi, corno al VIA. Volume e acceso/spento per dispositivo
+// (Impostazioni → Questo dispositivo). Il browser suona solo dopo un primo tocco o clic sulla pagina.
+const goSound = () => ({ on: true, volume: 0.8, ...(store.get('zdg_go_sound') || {}) });
+let audioCtx = null;
+const actx = () => { try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); } catch { audioCtx = null; } return audioCtx; };
+window.addEventListener('pointerdown', () => { const c = actx(); if (c?.state === 'suspended') c.resume().catch(() => {}); }, { capture: true });
+function playBeep(final = false) {
+  const s = goSound(); const c = actx(); if (!s.on || !c) return;
+  const t = c.currentTime; const o = c.createOscillator(); const g = c.createGain();
+  o.type = 'sine'; o.frequency.value = final ? 1046 : 880;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * s.volume + 0.0001, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.25);
+}
+// Corno da caccia: due trombe (quinta), filtro morbido, attacco lento e un leggero vibrato, circa 2,5 secondi.
+function playHorn() {
+  const s = goSound(); const c = actx(); if (!s.on || !c) return;
+  const t = c.currentTime; const out = c.createGain(); const lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(700, t); lp.frequency.linearRampToValueAtTime(1600, t + 0.4); lp.Q.value = 2;
+  out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.45 * s.volume + 0.0001, t + 0.15);
+  out.gain.setValueAtTime(0.45 * s.volume + 0.0001, t + 1.9); out.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+  lp.connect(out); out.connect(c.destination);
+  const vib = c.createOscillator(); const vibG = c.createGain(); vib.frequency.value = 5; vibG.gain.value = 3; vib.connect(vibG);
+  for (const [f, v] of [[174.6, 1], [261.6, 0.7], [349.2, 0.35]]) {
+    const o = c.createOscillator(); const g = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 0.94, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.18);
+    vibG.connect(o.frequency); g.gain.value = v * 0.3; o.connect(g); g.connect(lp); o.start(t); o.stop(t + 2.7);
+  }
+  vib.start(t); vib.stop(t + 2.7);
+}
+// Conto alla rovescia: istante del VIA dal server (evento immediato o stato della partita).
+const goAtNow = () => { const at = R.goEvt && Date.now() - R.goEvt.ts < 10000 ? R.goEvt.at : R.ms?.game?.goAt; return R.ms?.clock.status === 'circle' && at && at > clock.serverNow() - 3000 ? at : null; };
+let goPlayed = { at: null, done: new Set() };
+let goEl = null;
+let goTimer = null;
+function goTick() {
+  const at = goAtNow();
+  const via = goPlayed.at && goPlayed.done.has(0) && clock.serverNow() - goPlayed.at < 2500 ? goPlayed.at : null;
+  if (!at && !via) { goEl?.remove(); goEl = null; clearInterval(goTimer); goTimer = null; return; }
+  if (!goTimer) goTimer = setInterval(goTick, 100);
+  const key = at || via;
+  if (goPlayed.at !== key) goPlayed = { at: key, done: new Set() };
+  const left = key - clock.serverNow();
+  const sec = Math.ceil(left / 1000);
+  if (sec >= 1 && sec <= 5 && !goPlayed.done.has(sec)) { goPlayed.done.add(sec); playBeep(); if (navigator.vibrate) navigator.vibrate(80); }
+  if (left <= 0 && !goPlayed.done.has(0)) { goPlayed.done.add(0); playHorn(); if (navigator.vibrate) navigator.vibrate([300, 100, 600]); }
+  if (!goEl) {
+    goEl = h('div', { class: 'go-overlay', role: 'alert', 'aria-live': 'assertive' }, h('div', { class: 'go-num' }), h('div', { class: 'go-sub' }),
+      h('button', { class: 'btn btn-danger go-cancel', type: 'button', onclick: () => call('POST', G('/action'), { action: 'go_cancel' }, 'VIA annullato') }, '✋ Annulla'));
+    document.body.append(goEl);
+  }
+  const num = left > 0 ? String(Math.min(5, Math.max(1, sec))) : 'VIA!';
+  const n = goEl.querySelector('.go-num'); if (n.textContent !== num) { n.textContent = num; n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop'); }
+  goEl.classList.toggle('is-via', left <= 0);
+  goEl.querySelector('.go-sub').textContent = left > 0 ? (actx()?.state === 'suspended' ? '🔇 Tocca la pagina per sentire i suoni' : 'I Giochi del Buio stanno per cominciare') : 'I Giochi sono cominciati';
+  goEl.querySelector('.go-cancel').hidden = left <= 0;
 }
 
 // Fascia rossa in cima a ogni pagina finché ci sono emergenze aperte.
@@ -549,6 +615,8 @@ function sidebar() {
     id === 'consiglio' && R.ms?.councilPending ? h('span', { class: 'badge badge-alert', title: 'Richieste d\'accesso al Consiglio Zero' }, R.ms.councilPending) : null,
     id === 'emergenze' && openEmergencies().length ? h('span', { class: 'badge badge-alert' }, openEmergencies().length) : null,
     id === 'coppie' && pending ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni da approvare' }, pending) : null,
+    // Persone: tutte le iscrizioni in attesa (Legati, temerari ed Eletti).
+    id === 'persone' && pending + pendingElect ? h('span', { class: 'badge badge-alert', title: 'Iscrizioni in attesa (Legati, temerari, Eletti)' }, pending + pendingElect) : null,
     id === 'squadre' && pendingTasks ? h('span', { class: 'badge badge-alert badge-task', title: 'Incarichi da assegnare (Maestro della caccia…)' }, `🎯 ${pendingTasks}`) : null,
     id === 'squadre' && pendingElect ? h('span', { class: 'badge badge-alert', title: 'Candidature agli Eletti da approvare' }, pendingElect) : null,
     id === 'live' && errors && PRE.includes(R.ms?.clock.status) ? h('span', { class: 'badge' }, errors) : null,
@@ -652,7 +720,10 @@ function controlButtons() {
   if (st === 'draft') b.push(act('ready', 'Segna pronta', 'btn-primary', 'Partita pronta?', 'Le coppie potranno accedere e leggere il regolamento. Le iscrizioni si chiudono.'),
     act('created', 'Torna a «Creata»', '', 'Tornare a «Creata»?', 'La partita sparisce dalle app di campo e le iscrizioni si chiudono. Resta tutto in regia.'));
   if (st === 'ready') b.push(act('circle', 'Apri il cerchio', 'btn-primary', 'Aprire il cerchio?', 'Ogni coppia vedrà il proprio Sigillo.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', `La partita torna modificabile.${draftWipe()}`));
-  if (st === 'circle') b.push(act('start', 'VIA!', 'btn-primary btn-go', 'Dare il VIA?', 'Parte l\'orologio di partita: tregua di ' + R.ms.game.truceMin + ' minuti, poi la caccia. Tutte le coppie ricevono l\'annuncio.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', 'Le coppie non vedranno più il Sigillo fino al prossimo cerchio.' + draftWipe()));
+  // Il browser suona solo dopo un clic: a cerchio aperto si «sblocca» l'audio prima del VIA.
+  if (st === 'circle' && goSound().on && actx()?.state !== 'running') b.push(h('button', { class: 'btn', type: 'button', title: 'Il browser suona solo dopo un clic sulla pagina', onclick: async () => { try { await actx()?.resume(); } catch { /* niente */ } playBeep(); render(); } }, '🔈 Attiva i suoni del VIA su questo computer'));
+  if (st === 'circle' && goAtNow()) b.push(h('button', { class: 'btn btn-danger', onclick: () => call('POST', G('/action'), { action: 'go_cancel' }, 'VIA annullato') }, '✋ Annulla il VIA'));
+  else if (st === 'circle') b.push(act('go', 'VIA!', 'btn-primary btn-go', 'Dare il VIA?', 'Parte il conto alla rovescia di 5 secondi (5, 4, 3, 2, 1, corno) sulle regie aperte, poi l\'orologio di partita: tregua di ' + R.ms.game.truceMin + ' minuti, poi la caccia. Tutte le coppie ricevono l\'annuncio.'), act('draft', 'Torna in preparazione', '', 'Tornare in preparazione?', 'Le coppie non vedranno più il Sigillo fino al prossimo cerchio.' + draftWipe()));
   if (ACTIVE.includes(st)) b.push(act('pause', 'Sospendi', 'btn-danger', 'Sospendere la partita?', 'Tutti gli orologi e il calendario si fermano. Banner rosso su tutti i dispositivi.', true), act('end', 'Termina', '', 'Terminare la partita?', 'Gli Altari si chiudono e si calcola la classifica finale.', true));
   if (st === 'paused') b.push(act('resume', 'Riprendi', 'btn-primary', 'Riprendere la partita?', 'Gli orologi ripartono da dove si erano fermati.'), act('end', 'Termina', '', 'Terminare la partita?', 'Gli Altari si chiudono e si calcola la classifica finale.', true));
   // Solo nell'ambiente di test: una partita finita si rigioca senza rifare il setup.
@@ -5076,6 +5147,37 @@ function gameForm(g, isNew, only = null) {
     locked ? h('span', { class: 'tiny muted' }, 'Tempi e Sigilli non sono più modificabili dopo il via.') : null));
 }
 
+// Suoni del VIA su questo dispositivo: acceso/spento, volume e prova.
+function goSoundSection() {
+  const s = goSound();
+  const save = (patch) => { store.set('zdg_go_sound', { ...goSound(), ...patch }); render(); };
+  return section('Suoni del VIA',
+    h('p', { class: 'muted tiny' }, 'Al VIA le regie aperte suonano 5, 4, 3, 2, 1 e il corno, anche se il VIA lo dà un altro dispositivo (es. dal telefono): tieni la regia aperta sul computer collegato alle casse. Il browser suona solo dopo un primo clic sulla pagina.'),
+    h('label', { class: 'toggle-row' }, h('input', { type: 'checkbox', checked: s.on, onchange: (e) => save({ on: e.target.checked }) }), h('span', null, 'Suoni del VIA su questo dispositivo')),
+    h('label', { class: 'field' }, h('span', null, `Volume: ${Math.round(s.volume * 100)}%`),
+      h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(s.volume * 100), disabled: !s.on, onchange: (e) => save({ volume: Number(e.target.value) / 100 }) })),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playBeep() }, '🔈 Prova il bip'),
+      h('button', { class: 'btn btn-sm', type: 'button', disabled: !s.on, onclick: () => playHorn() }, '📯 Prova il corno')));
+}
+
+// Canali radio: una riga per il Consiglio, per ogni squadra di Eletti e per ogni coppia. Si salva uscendo dal campo.
+function radioSettings() {
+  const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
+  const save = async (scope, refId, key, value) => { try { await api('PUT', G('/radio'), { scope, refId, [key]: value }); toast('Canale salvato', 'ok', 1500); load(); } catch (e) { toast(e.message, 'error', 6000); } };
+  const inp = (scope, refId, key, value, ph) => h('input', { class: 'input input-sm mono', value: value || '', placeholder: ph, maxlength: 60, 'data-keep': `radio-${scope}-${refId}-${key}`,
+    onchange: (e) => save(scope, refId, key, e.target.value) });
+  const row = (label, scope, refId, r, extra = null) => h('tr', null, h('td', null, label, extra), h('td', null, inp(scope, refId, 'main', r.main, 'es. PMR 3 · CTCSS 12')), h('td', null, inp(scope, refId, 'backup', r.backup, 'riserva')));
+  const table = (rows) => h('div', { class: 'table-wrap' }, h('table', { class: 'radio-table' }, h('thead', null, h('tr', null, ['', 'Canale', 'Riserva'].map((x) => h('th', null, x)))), h('tbody', null, rows)));
+  return h('div', { class: 'stack' },
+    section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Il canale d\'emergenza (SOS) si imposta in Impostazioni → Partita.'),
+      table([row('Consiglio', 'council', 0, rd.council)])),
+    section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
+      rd.squads.length ? table(rd.squads.map((sq) => row(h('span', { class: 'chip squad-chip', style: { '--c': sq.color || '#d1ad62' } }, sq.name), 'squad', sq.id, sq))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
+    section('Coppie', h('p', { class: 'muted tiny' }, 'Privati: ogni coppia vede solo i suoi canali, mai quelli delle altre.'),
+      rd.teams.length ? table(rd.teams.map((t) => row(`${t.roman} · Settore ${t.sectorName}`, 'team', t.id, t, t.displayName ? h('span', { class: 'tiny muted' }, ` · ${t.displayName}`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')));
+}
+
 // ---- indirizzo usato in link e QR (localhost funziona solo sul PC: per i telefoni in Wi-Fi serve l'IP del PC)
 let publicUrlInfo = null;
 
@@ -5387,6 +5489,7 @@ const SETTINGS_PAGES = [
   ['settori', 'Settori e Altari', 'I Settori e i loro Altari, validi per tutte le partite.'],
   ['altari', 'Altari e Skill', 'Lettura dei QR degli Altari (validità, raggio) e i parametri delle Skill.'],
   ['eletti', 'Eletti: mine e punteggio', 'Mine traccianti degli Eletti (quante, raggio, durata della marcatura) e i punti di ogni azione riuscita.'],
+  ['radio', 'Canali radio', 'Canale e riserva per ogni coppia (li vede solo lei), per ogni squadra di Eletti e per il Consiglio (regia ed Eletti).'],
   ['testi', 'Testi degli annunci', 'I testi che il Consiglio manda in automatico alle coppie.'],
   ['accessi', 'Accessi e notifiche', 'Indirizzo per link e QR, gestionali, organizzazione, notifiche alla regia e account dei giocatori.'],
   ['cronografi', 'Cronografi', 'I cronografi del Test armi: l\'AC6000 integrato, altri marchi da aggiungere e la diagnostica Bluetooth.'],
@@ -5419,6 +5522,7 @@ function viewSettings() {
     settori: () => [viewSectors()],
     altari: () => [section('Altari e Skill', gameForm(g, false, ['altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'nodeScanMin', 'eyeMin', 'eyeRadiusM']))],
     eletti: () => [section('Eletti: mine e punteggio', h('p', { class: 'muted tiny' }, 'La classifica e le mine sul campo sono in Squadre Eletti → Punteggio e mine.'), gameForm(g, false, ['mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']))],
+    radio: () => [radioSettings()],
     testi: () => [section('Testi degli annunci',
       h('p', { class: 'muted tiny' }, '[settore], [codice] e [posizione] si compilano in automatico.'),
       h('form', { class: 'stack-sm', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { templates: Object.fromEntries(new FormData(e.target).entries()) }, 'Testi salvati'); } },
@@ -5429,7 +5533,7 @@ function viewSettings() {
         pushButton('btn')),
       accountsSection()],
     cronografi: () => CKUI.chronoSettings({ render, call }),
-    dispositivo: () => [keepAwakeRow(render), dimRow()],
+    dispositivo: () => [keepAwakeRow(render), dimRow(), goSoundSection()],
     strumenti: () => [
       section('Partita di prova',
         h('p', { class: 'muted tiny' }, 'Crea una nuova partita già preparata con giocatori finti, per provare il gioco.'),
