@@ -193,7 +193,10 @@ function loginLimit(req, _res, next) {
 // ---------------------------------------------------------------- app
 
 const app = express();
-app.set('trust proxy', true);
+// Indirizzo vero del client: ci si fida solo dei proxy sulla stessa macchina o in rete privata (Caddy, Docker), letti
+// da destra in X-Forwarded-For. Così un client non può inventarsi l'indirizzo (e aggirare limiti e voto per rete)
+// mettendo un X-Forwarded-For finto. TRUST_PROXY nel .env cambia la regola (es. con un altro proxy davanti).
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal');
 app.disable('x-powered-by');
 app.use(express.json({ limit: '200kb' }));
 app.use(loadAuth);

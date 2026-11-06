@@ -2916,6 +2916,13 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' }, t0 + 4 * 60000), /tra \d+ minuti/);
   await VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' }, t0 + 13 * 60000 + 2000);
   await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-4', ip: '1.1.1.1' }, t0 + 30 * 60000), (e) => e.extra.waitUntil >= t0 + 43 * 60000);
+  // IPv6: la rete è il blocco /64, cambiare indirizzo dentro il blocco non aiuta.
+  assert.equal(VO.netOf('2a01:4f8:1c1c:abcd:1:2:3:4'), VO.netOf('2a01:4f8:1c1c:abcd::99'));
+  assert.notEqual(VO.netOf('2a01:4f8:1c1c:abcd::1'), VO.netOf('2a01:4f8:1c1c:abce::1'));
+  assert.equal(VO.netOf('::ffff:1.2.3.4'), '1.2.3.4');
+  await VO.castVote({ teamId: A.id, device: 'v6-1', ip: '2a01:4f8:1c1c:abcd::1' }, t0 + 1000);
+  await assert.rejects(VO.castVote({ teamId: A.id, device: 'v6-2', ip: '2a01:4f8:1c1c:abcd:ffff::2' }, t0 + 2000), (e) => e.status === 429);
+  q.run("DELETE FROM votes WHERE device LIKE 'v6-%'");
   // Voto verificato (con account): pesa 3.
   const acc = q.get('SELECT * FROM accounts LIMIT 1') || { id: Number(q.run("INSERT INTO accounts (username, passHash, name, softairTeam, createdAt) VALUES ('votante', '', 'Votante', 'nessuno', ?)", Date.now()).lastInsertRowid) };
   await VO.castVote({ teamId: Cc.id, device: 'dev-9', ip: '2.2.2.2', account: acc });
