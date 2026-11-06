@@ -1092,7 +1092,7 @@ app.use((e, req, res, _next) => {
   const status = e.status || (e.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(e);
   if (req.path.startsWith('/api/') || req.headers.accept?.includes('application/json')) {
-    return res.status(status).json({ error: status >= 500 ? 'Errore interno' : e.message });
+    return res.status(status).json({ error: status >= 500 ? 'Errore interno' : e.message, ...(status < 500 && e.extra ? e.extra : {}) });
   }
   if (status === 401) return res.redirect('/');
   res.status(status).type('text').send(e.message);

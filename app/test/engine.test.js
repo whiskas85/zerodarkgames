@@ -2907,10 +2907,15 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   // Lo stesso dispositivo cambia voto, non ne aggiunge.
   await VO.castVote({ teamId: B.id, device: 'dev-1', ip: '1.1.1.1' });
   assert.equal(q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ?', g.id).n, 1);
-  // Limite per rete: al massimo 3 dispositivi nuovi all'ora dalla stessa connessione.
-  await VO.castVote({ teamId: B.id, device: 'dev-2', ip: '1.1.1.1' });
-  await VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' });
-  await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-4', ip: '1.1.1.1' }), /Troppi voti/);
+  // Stessa rete: un altro dispositivo aspetta 3 minuti, poi 10, poi 30.
+  const t0 = Date.now();
+  await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-2', ip: '1.1.1.1' }, t0 + 1000), (e) => e.status === 429 && e.extra.waitUntil > t0 + 170000);
+  assert.ok(VO.publicState('dev-2', null, '1.1.1.1', t0 + 1000).netWait > t0);
+  assert.equal(VO.publicState('dev-1', null, '1.1.1.1', t0 + 1000).netWait, null); // chi ha votato può cambiare
+  await VO.castVote({ teamId: B.id, device: 'dev-2', ip: '1.1.1.1' }, t0 + 3 * 60000 + 1000);
+  await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' }, t0 + 4 * 60000), /tra \d+ minuti/);
+  await VO.castVote({ teamId: B.id, device: 'dev-3', ip: '1.1.1.1' }, t0 + 13 * 60000 + 2000);
+  await assert.rejects(VO.castVote({ teamId: B.id, device: 'dev-4', ip: '1.1.1.1' }, t0 + 30 * 60000), (e) => e.extra.waitUntil >= t0 + 43 * 60000);
   // Voto verificato (con account): pesa 3.
   const acc = q.get('SELECT * FROM accounts LIMIT 1') || { id: Number(q.run("INSERT INTO accounts (username, passHash, name, softairTeam, createdAt) VALUES ('votante', '', 'Votante', 'nessuno', ?)", Date.now()).lastInsertRowid) };
   await VO.castVote({ teamId: Cc.id, device: 'dev-9', ip: '2.2.2.2', account: acc });

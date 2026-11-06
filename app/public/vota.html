@@ -66,6 +66,13 @@ button.vote:disabled{opacity:.5;cursor:default}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:12px 16px;border-radius:10px;background:var(--paper);border:2px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.5);font-weight:600;z-index:10}
 .tor-block{display:grid;gap:4px;margin:14px auto 0;max-width:520px;padding:12px 14px;border:2px solid var(--blood);border-radius:10px;background:rgba(224,96,63,.12);text-align:left}
 .tor-block strong{color:var(--blood)}
+.wait-pop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.7)}
+.wait-box{max-width:420px;width:100%;display:grid;gap:12px;padding:22px;border:2px solid var(--brass);border-radius:14px;background:var(--paper);text-align:center}
+.wait-box h3{margin:0;font-family:var(--f-display);font-size:28px;text-transform:uppercase}
+.wait-clock{font-family:var(--f-mono);font-size:44px;font-weight:700;color:var(--brass)}
+.wait-box p{margin:0;color:var(--muted);font-size:14px}
+.wait-box button{font:inherit;font-weight:700;padding:10px 16px;border-radius:8px;border:2px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+.wait-box.ready{border-color:var(--ok)} .wait-box.ready .wait-clock{color:var(--ok)}
 .toast.err{border-color:var(--blood)} .toast.ok{border-color:var(--ok)}
 .powered-by{display:flex;align-items:center;gap:12px;width:max-content;margin:24px auto 0;padding:10px 18px 10px 10px;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none;opacity:.9}
 .powered-by img{width:56px;height:56px;border-radius:50%;background:#000;box-shadow:0 0 0 2px rgba(0,0,0,.6),0 0 14px rgba(124,255,46,.25)}
@@ -150,16 +157,46 @@ function mountTurnstile() {
   if (window.turnstile) go();
   else if (!document.getElementById('ts-js')) { const s = document.createElement('script'); s.id = 'ts-js'; s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; s.async = true; s.onload = go; document.head.append(s); }
 }
+// Stessa rete: un voto nuovo aspetta (3, poi 10, poi 30 minuti dal precedente). Popup con il conto alla rovescia.
+// Cambiare il proprio voto non aspetta mai.
+let waitTimer = null;
+function showWait(until) {
+  document.querySelector('.wait-pop')?.remove(); clearInterval(waitTimer);
+  const clock = el('div', 'wait-clock');
+  const box = el('div', 'wait-box');
+  const title = el('h3'); title.textContent = 'Un attimo di pazienza';
+  const p = el('p'); p.textContent = 'Da questa connessione (stesso Wi-Fi o stessa rete) è appena stato votato. Per evitare voti multipli, il prossimo voto nuovo da qui è possibile tra:';
+  const p2 = el('p'); p2.textContent = 'Le attese crescono a ogni voto dalla stessa rete: 3, poi 10, poi 30 minuti. Con i dati del telefono (senza Wi-Fi) di solito non devi aspettare.';
+  const close = el('button'); close.type = 'button'; close.textContent = 'Chiudi';
+  box.append(title, p, clock, p2, close);
+  const pop = el('div', 'wait-pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.append(box);
+  const end = () => { clearInterval(waitTimer); pop.remove(); };
+  close.onclick = end; pop.onclick = (e) => { if (e.target === pop) end(); };
+  const upd = () => {
+    const left = until - (Date.now() + skew);
+    if (left <= 0) { clock.textContent = 'Ora puoi votare'; box.classList.add('ready'); p.textContent = 'L\'attesa è finita: chiudi e vota.'; clearInterval(waitTimer); if (S) S.netWait = null; render(); return; }
+    const s = Math.ceil(left / 1000); clock.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  };
+  upd(); waitTimer = setInterval(upd, 500);
+  document.body.append(pop);
+}
+function el(tag, cls) { const x = document.createElement(tag); if (cls) x.className = cls; return x; }
+
 async function vote(teamId) {
   if (busy) return;
+  // Voto nuovo da una rete che deve ancora aspettare: niente richiesta, subito il popup.
+  if (!S.myVote && S.netWait && S.netWait > Date.now() + skew) { showWait(S.netWait); return; }
   if (S.turnstile && !tsToken) { toast('Conferma prima di non essere un robot (il riquadro qui sotto)', 'err'); document.getElementById('ts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   busy = true; render();
   try {
     const r = await fetch('/api/public/vote', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamId, token: tsToken }) });
     const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Voto non riuscito');
+    if (!r.ok) {
+      if (r.status === 429 && data.waitUntil) { if (data.serverNow) skew = data.serverNow - Date.now(); S.netWait = data.waitUntil; showWait(data.waitUntil); throw null; }
+      throw new Error(data.error || 'Voto non riuscito');
+    }
     S = data; toast('Voto registrato. Grazie!', 'ok');
-  } catch (e) { toast(e.message, 'err'); }
+  } catch (e) { if (e) toast(e.message, 'err'); }
   // Un token vale una volta: dopo il voto se ne chiede uno nuovo.
   if (tsWidget != null) { try { window.turnstile.reset(tsWidget); } catch {} }
   tsToken = null; busy = false; render();
