@@ -1,7 +1,7 @@
 'use strict';
 // Voto del pubblico: un link da condividere (/vota) dove chiunque vota la sua coppia preferita tra quelle scelte dalla
 // regia, solo prima della partita. Si vedono solo le percentuali e il podio. Difese contro i voti gonfiati:
-// un voto per dispositivo (cookie), al massimo VOTES_PER_NET voti all'ora dalla stessa rete, verifica anti-robot
+// un voto per dispositivo (cookie), attese crescenti (3, 10, 30 minuti) per i voti nuovi dalla stessa rete, verifica anti-robot
 // (Cloudflare Turnstile, se configurata), voto «verificato» (con account) che pesa di più, segnalazione dei picchi.
 const crypto = require('crypto');
 const { q, tx, getSetting, setSetting } = require('./db');
@@ -13,7 +13,19 @@ const err = (status, msg) => new HttpError(status, msg);
 const SK = () => require('./skills');
 
 const PRE = ['created', 'draft', 'ready'];
-const VOTES_PER_NET = 3; // voti (dispositivi diversi) all'ora dalla stessa rete
+const VOTES_PER_NET = 3; // (storico) prima: voti all'ora dalla stessa rete
+// Stessa rete (stesso Wi-Fi o indirizzo): dopo il primo voto, ogni voto nuovo da un altro dispositivo aspetta
+// 3, poi 10, poi 30 minuti dal precedente. Dopo 2 ore senza voti da quella rete si riparte da capo.
+const NET_WAITS_MIN = [3, 10, 30];
+const NET_WINDOW_MS = 2 * 3600000;
+// Fino a quando questa rete deve aspettare per un voto nuovo (null = può votare subito).
+function netWaitUntil(gameId, net, now = Date.now()) {
+  const rows = q.all('SELECT createdAt FROM votes WHERE gameId = ? AND net = ? AND createdAt > ? ORDER BY createdAt', gameId, net, now - NET_WINDOW_MS);
+  if (!rows.length) return null;
+  const wait = NET_WAITS_MIN[Math.min(rows.length, NET_WAITS_MIN.length) - 1] * 60000;
+  const until = rows.at(-1).createdAt + wait;
+  return until > now ? until : null;
+}
 const VERIFIED_WEIGHT = 3; // chi vota con l'account dei Giochi (o Zero Dark Ops)
 const SPIKE_MIN = 5; // segnalazione: almeno 5 voti dalla stessa rete in 10 minuti
 const SPIKE_MS = 10 * 60000;
@@ -77,7 +89,7 @@ function results(gameId) {
 }
 
 // Pagina pubblica: niente numeri assoluti, solo percentuali.
-function publicState(device, account, ip = null) {
+function publicState(device, account, ip = null, now = Date.now()) {
   const g = voteGame();
   if (!g) return { game: null };
   const r = results(g.id);
@@ -99,6 +111,8 @@ function publicState(device, account, ip = null) {
     turnstile: turnstile().siteKey,
     // Dalla rete Tor: la pagina lo dice subito (e non mostra i pulsanti attivi).
     tor: !!ip && isTor(ip),
+    // Stessa rete: fino a quando aspettare per un voto nuovo (chi ha già votato può sempre cambiarlo).
+    netWait: !mine && ip ? netWaitUntil(g.id, netHash(ip), now) : null,
   };
 }
 
@@ -131,8 +145,11 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
   const existing = (account && q.get('SELECT * FROM votes WHERE gameId = ? AND accountId = ? AND annulledAt IS NULL', g.id, account.id))
     || q.get('SELECT * FROM votes WHERE gameId = ? AND device = ? AND annulledAt IS NULL', g.id, device);
   // Limite per rete: solo per i voti nuovi (cambiare il proprio voto è sempre permesso).
-  if (!existing && q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND net = ? AND createdAt > ?', g.id, net, now - 3600000).n >= VOTES_PER_NET) {
-    throw err(429, 'Troppi voti da questa connessione: riprova più tardi o da un\'altra rete');
+  const wait = existing ? null : netWaitUntil(g.id, net, now);
+  if (wait) {
+    const e = err(429, `Da questa connessione è appena stato votato: il prossimo voto sarà possibile tra ${Math.ceil((wait - now) / 60000)} minuti`);
+    e.extra = { waitUntil: wait, serverNow: now };
+    throw e;
   }
   await checkTurnstile(token, ip);
   const weight = account ? VERIFIED_WEIGHT : 1;
@@ -141,7 +158,7 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
     else q.run('INSERT INTO votes (gameId, teamId, device, net, accountId, weight, ua, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', g.id, t.id, device, net, account?.id ?? null, weight, String(ua || '').slice(0, 160), now);
   });
   rt.toStaff(g.id, 'vote');
-  return publicState(device, account, ip);
+  return publicState(device, account, ip, now);
 }
 
 // ---------------------------------------------------------------- regia
