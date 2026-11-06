@@ -370,21 +370,26 @@ function emergencyAlarm() {
 const goSound = () => ({ on: true, volume: 0.8, ...(store.get('zdg_go_sound') || {}) });
 let audioCtx = null;
 const actx = () => { try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); } catch { audioCtx = null; } return audioCtx; };
-window.addEventListener('pointerdown', () => { const c = actx(); if (c?.state === 'suspended') c.resume().catch(() => {}); if (R.sounds && !soundBuf.size && Object.keys(R.sounds).length) loadSounds(); }, { capture: true });
+window.addEventListener('pointerdown', () => { const c = actx(); if (c?.state === 'suspended') c.resume().catch(() => {}); if (R.sounds && !soundBuf.size) loadSounds(); }, { capture: true });
 // Suoni caricati dalla regia (validi per tutte le regie): si scaricano e si preparano una volta, poi si usano al
 // posto di quelli sintetizzati. Slot: tick (bip di ogni secondo), 5…1 (un suono per numero), go (il VIA).
 const SOUND_SLOTS = [['tick', 'Bip dei secondi (tutti i numeri)'], ['5', 'Cinque'], ['4', 'Quattro'], ['3', 'Tre'], ['2', 'Due'], ['1', 'Uno'], ['go', 'VIA (al posto del corno)']];
 const soundBuf = new Map(); // slot → { at, buf }
+// Suoni predefiniti (generati per i Giochi: tools/genera-suoni-via.py).
+const SOUND_DEFAULTS = { tick: '/sounds/via-bip.mp3', go: '/sounds/via-corno.mp3' };
 async function loadSounds() {
   try { R.sounds = await api('GET', '/api/m/sounds'); } catch { return; }
   const c = actx(); if (!c) return;
   for (const [slot] of SOUND_SLOTS) {
     const info = R.sounds?.[slot];
-    if (!info) { soundBuf.delete(slot); continue; }
-    if (soundBuf.get(slot)?.at === info.at) continue;
+    // Senza file caricato: i suoni predefiniti dell'app (battito horror e corno da guerra) per bip e VIA.
+    const def = SOUND_DEFAULTS[slot];
+    if (!info && !def) { soundBuf.delete(slot); continue; }
+    const key = info ? info.at : `def:${def}`;
+    if (soundBuf.get(slot)?.at === key) continue;
     try {
-      const data = await (await fetch(`/api/m/sounds/${slot}/file?v=${info.at}`, { credentials: 'same-origin' })).arrayBuffer();
-      soundBuf.set(slot, { at: info.at, buf: await c.decodeAudioData(data) });
+      const data = await (await fetch(info ? `/api/m/sounds/${slot}/file?v=${info.at}` : def, { credentials: 'same-origin' })).arrayBuffer();
+      soundBuf.set(slot, { at: key, buf: await c.decodeAudioData(data) });
     } catch { soundBuf.delete(slot); }
   }
 }
@@ -5201,17 +5206,17 @@ function soundUploads() {
       toast('Suono caricato', 'ok'); await loadSounds(); render();
     } catch (e) { toast(e.message, 'error', 6000); }
   };
-  const del = async (slot) => { try { await api('DELETE', `/api/m/sounds/${slot}`); toast('Suono tolto: torna quello sintetizzato', 'ok'); await loadSounds(); render(); } catch (e) { toast(e.message, 'error'); } };
+  const del = async (slot) => { try { await api('DELETE', `/api/m/sounds/${slot}`); toast('Suono tolto: torna quello predefinito', 'ok'); await loadSounds(); render(); } catch (e) { toast(e.message, 'error'); } };
   return h('div', { class: 'stack-sm' },
     h('div', { class: 'eyebrow' }, 'I tuoi suoni (per tutte le regie)'),
-    h('p', { class: 'tiny muted' }, 'MP3, WAV, OGG o M4A, massimo 3 MB. Il bip vale per tutti i numeri; se carichi un numero (es. una voce che dice «tre»), per quel secondo si usa quello. Dove non c\'è un file resta il suono sintetizzato.'),
+    h('p', { class: 'tiny muted' }, 'MP3, WAV, OGG o M4A, massimo 3 MB. Il bip vale per tutti i numeri; se carichi un numero (es. una voce che dice «tre»), per quel secondo si usa quello. Senza file valgono i suoni predefiniti: battito horror per i secondi e corno da guerra per il VIA; i numeri senza file usano il bip.'),
     h('ul', { class: 'sound-list' }, SOUND_SLOTS.map(([slot, label]) => {
       const info = R.sounds?.[slot];
       const input = h('input', { type: 'file', accept: 'audio/*', hidden: true, onchange: (e) => upload(slot, e.target.files[0]) });
       return h('li', null,
-        h('span', { class: 'grow' }, h('strong', null, label), h('span', { class: 'tiny muted' }, info ? ` · ${info.name} (${Math.round(info.size / 1024)} KB)` : ' · suono sintetizzato')),
+        h('span', { class: 'grow' }, h('strong', null, label), h('span', { class: 'tiny muted' }, info ? ` · ${info.name} (${Math.round(info.size / 1024)} KB)` : SOUND_DEFAULTS[slot] ? ` · predefinito (${slot === 'go' ? 'corno da guerra' : 'battito horror'})` : ' · usa il bip')),
         input,
-        info ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => (playFile(slot) || toast('Tocca prima la pagina per attivare l\'audio', 'info')) }, '▶') : null,
+        info || SOUND_DEFAULTS[slot] ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => (playFile(slot) || toast('Tocca prima la pagina per attivare l\'audio', 'info')) }, '▶') : null,
         h('button', { class: 'btn btn-sm', type: 'button', onclick: () => input.click() }, info ? 'Sostituisci' : 'Carica'),
         info ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => del(slot) }, 'Togli') : null);
     })));
