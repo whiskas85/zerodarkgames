@@ -167,6 +167,7 @@ function setState(st, offset) {
   if (!S.bootVersion && st.appVersion && offset !== undefined) S.bootVersion = st.appVersion;
   S.state = st;
   clock.set(st.clock, offset);
+  goTick();
   syncServerTimers(st);
   updateTracking(st);
   if (st.team.kind === 'elect') {
@@ -267,6 +268,8 @@ function connect() {
     open: () => { S.connected = true; S.online = true; refresh(); flushQueue(); },
     error: () => { S.connected = false; render(); },
     state: () => refresh(),
+    // VIA dalla regia: conto alla rovescia subito, senza aspettare lo stato.
+    go: (x) => { GO.evt = { at: x?.at ?? null, ts: Date.now() }; goTick(); refresh(); },
     // Allarme di Prossimità (Skill passiva): solo una vibrazione e un avviso, senza chi né dove.
     proximity: () => { vibrate([80]); toast('Presenza rilevata nelle vicinanze', 'info', 6000); refresh(); },
     // Segugio: la coppia seguita ha conquistato un Altare. Avviso a tutto schermo.
@@ -348,6 +351,34 @@ function beep(force = false) {
   } catch { /* audio non disponibile */ }
 }
 
+// ---------------------------------------------------------------- VIA: conto alla rovescia
+// La regia dà il VIA: 5, 4, 3, 2, 1 a tutto schermo anche sui telefoni. Niente suoni (li fa la regia), solo vibrazione.
+const GO = { evt: null, at: null, done: new Set(), el: null, timer: null };
+function goAtNow() {
+  const st = S.state;
+  const at = GO.evt && Date.now() - GO.evt.ts < 10000 ? GO.evt.at : st?.clock?.goAt;
+  return st?.clock?.status === 'circle' && at && at > clock.serverNow() - 3000 ? at : null;
+}
+function goTick() {
+  const at = goAtNow();
+  const via = GO.at && GO.done.has(0) && clock.serverNow() - GO.at < 2500 ? GO.at : null;
+  if (!at && !via) { GO.el?.remove(); GO.el = null; clearInterval(GO.timer); GO.timer = null; return; }
+  if (!GO.timer) GO.timer = setInterval(goTick, 100);
+  const key = at || via;
+  if (GO.at !== key) { GO.at = key; GO.done = new Set(); }
+  const left = key - clock.serverNow();
+  const sec = Math.ceil(left / 1000);
+  if (sec >= 1 && sec <= 5 && !GO.done.has(sec)) { GO.done.add(sec); vibrate([80]); }
+  if (left <= 0 && !GO.done.has(0)) { GO.done.add(0); vibrate([300, 100, 600]); }
+  if (!GO.el) {
+    GO.el = h('div', { class: 'go-overlay', role: 'alert', 'aria-live': 'assertive' }, h('div', { class: 'go-num' }), h('div', { class: 'go-sub' }));
+    document.body.append(GO.el);
+  }
+  const num = left > 0 ? String(Math.min(5, Math.max(1, sec))) : 'VIA!';
+  const n = GO.el.querySelector('.go-num'); if (n.textContent !== num) { n.textContent = num; n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop'); }
+  GO.el.classList.toggle('is-via', left <= 0);
+  GO.el.querySelector('.go-sub').textContent = left > 0 ? 'I Giochi del Buio stanno per cominciare' : 'I Giochi sono cominciati';
+}
 // ---------------------------------------------------------------- coda offline
 
 function saveQueue() { store.set('zdg_queue', S.queue); }

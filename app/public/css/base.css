@@ -338,3 +338,12 @@ body.no-scroll { overflow: hidden; }
 .crop-canvas:active { cursor: grabbing; }
 .crop-zoom-row { display: flex; align-items: center; gap: 10px; width: 280px; font-weight: 700; }
 .crop-zoom { flex: 1; }
+
+/* VIA: conto alla rovescia a tutto schermo (5, 4, 3, 2, 1, VIA!). */
+.go-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; gap: 16px; background: rgba(8, 10, 9, .92); color: var(--ink); text-align: center; }
+.go-num { font-family: var(--f-display); font-size: min(46vw, 420px); line-height: .85; color: var(--blood); }
+.go-overlay.is-via .go-num { color: #46c46a; font-size: min(30vw, 300px); }
+.go-num.pop { animation: go-pop .5s ease-out; }
+.go-sub { padding: 0 16px; font-family: var(--f-mono); letter-spacing: .14em; text-transform: uppercase; font-size: 14px; color: var(--muted); }
+@keyframes go-pop { from { transform: scale(1.35); opacity: .3; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .go-num.pop { animation: none; } }

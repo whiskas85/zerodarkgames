@@ -1371,14 +1371,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .spike-list .spike-teams { padding-left: 14px; }
 .spike-list > li > .row { display: flex; align-items: center; gap: 10px; } .spike-list > li > .row > .grow { flex: 1; }
 .spike-sum > .row { display: flex; align-items: center; gap: 10px; } .spike-sum > .row > .grow { flex: 1; }
-/* VIA: conto alla rovescia a tutto schermo (5, 4, 3, 2, 1, VIA!). */
-.go-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; gap: 16px; background: rgba(8, 10, 9, .92); color: var(--ink); text-align: center; }
-.go-num { font-family: var(--f-display); font-size: min(46vw, 420px); line-height: .85; color: var(--blood); }
-.go-overlay.is-via .go-num { color: #46c46a; font-size: min(30vw, 300px); }
-.go-num.pop { animation: go-pop .5s ease-out; }
-.go-sub { font-family: var(--f-mono); letter-spacing: .14em; text-transform: uppercase; font-size: 14px; color: var(--muted); }
-@keyframes go-pop { from { transform: scale(1.35); opacity: .3; } to { transform: scale(1); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .go-num.pop { animation: none; } }
 .radio-table input { width: 100%; min-width: 140px; }
 .sound-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .sound-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); }
