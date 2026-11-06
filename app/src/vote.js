@@ -59,7 +59,18 @@ if (process.env.NODE_ENV !== 'test' && !process.env.ZDG_NO_TOR_FETCH) {
   setInterval(refreshTor, 3600000).unref();
 }
 
-const netHash = (ip) => crypto.createHash('sha256').update(`zdg-vote:${String(ip || '').replace(/^::ffff:/, '')}`).digest('hex').slice(0, 16);
+// La «rete» di un voto: l'indirizzo IPv4, oppure per IPv6 il prefisso /64 (una casa o un telefono ne ha un blocco intero
+// e può cambiare indirizzo a piacere dentro quel blocco).
+function netOf(ip) {
+  const a = cleanIp(ip);
+  if (!a.includes(':')) return a;
+  const [head, tail = ''] = a.split('%')[0].split('::');
+  const hs = head ? head.split(':') : [];
+  const ts = a.includes('::') && tail ? tail.split(':') : [];
+  const full = a.includes('::') ? [...hs, ...Array(Math.max(0, 8 - hs.length - ts.length)).fill('0'), ...ts] : hs;
+  return `${full.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(':')}::/64`;
+}
+const netHash = (ip) => crypto.createHash('sha256').update(`zdg-vote:${netOf(ip)}`).digest('hex').slice(0, 16);
 const turnstile = () => ({ siteKey: process.env.TURNSTILE_SITE_KEY || getSetting('turnstileSiteKey') || null, secret: process.env.TURNSTILE_SECRET || getSetting('turnstileSecret') || null });
 
 // La partita del voto: quella con il voto acceso (la più recente).
@@ -312,4 +323,5 @@ function liveVote(gameId) {
     list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score })) };
 }
 
-module.exports = { setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+module.exports = {
+  netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
