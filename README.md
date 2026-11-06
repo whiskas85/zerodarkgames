@@ -51,6 +51,7 @@ Il browser tiene una sola coppia alla volta: per più coppie sullo stesso PC usa
    Ogni candidatura resta **da approvare**: coppie e temerari in **Iscrizioni e coppie**, candidati agli Eletti in **Squadre Eletti** (accettandoli scegli subito la squadra). Il Settore (e il suo Altare) lo assegna sempre il Consiglio.
    Poi formi le coppie (selezione manuale, "Accoppia come richiesto" o "Accoppia automaticamente").
    Puoi anche aggiungere persone a mano (già accettate) e spostare chiunque tra gli Eletti.
+   In **Persone** ogni persona ha «Elimina…»: la toglie dalla partita (in attesa, senza coppia, tra gli Eletti o in coppia; la coppia rimasta vuota si scioglie) e, con la spunta, elimina anche il suo profilo (account). Chi è in coppia si toglie solo prima di aprire il cerchio: dopo si ritira la coppia.
 3. **Sigilli e tradimenti**: genera i Sigilli; si estraggono i mai rivelati e si calcola il calendario (sezione 7.1), modificabile fino al via.
 4. **Altari e Parola**: scrivi la Parola, che viene divisa tra gli Altari; poi stampa i cartelli A4 con il QR.
 5. **Armamenti** (facoltativo): finestre con apertura (minuto dal via, orario o a mano) e durata, scelte sulla timeline del torneo.

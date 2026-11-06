@@ -312,6 +312,32 @@ function deletePlayer(id, actor) {
   log(pl.gameId, actor, 'player_deleted', { name: pl.name });
 }
 
+// Persone → Elimina: toglie la persona dalla partita in qualunque stato (in attesa, senza coppia, Eletto, in coppia).
+// In coppia solo prima del cerchio (poi si ritira la coppia); la coppia rimasta vuota si scioglie.
+function removePerson(id, actor) {
+  const pl = q.get('SELECT * FROM players WHERE id = ?', Number(id));
+  if (!pl) throw err(404, 'Persona non trovata');
+  const g = getGame(pl.gameId);
+  const t = pl.teamId ? q.get('SELECT * FROM teams WHERE id = ?', pl.teamId) : null;
+  if (t && g.status !== 'ended') {
+    if (t.kind !== 'elect' && !['created', 'draft', 'ready'].includes(g.status)) throw err(409, 'Il cerchio è già aperto: per togliere una coppia dal gioco usa «Ritira» in Coppie');
+    requireAcceptanceOpen(g.id);
+  }
+  let dissolved = false;
+  tx(() => {
+    q.run("DELETE FROM sessions WHERE kind = 'player' AND refId = ?", pl.id);
+    q.run('DELETE FROM players WHERE id = ?', pl.id);
+    if (t && t.kind !== 'elect' && g.status !== 'ended' && !q.get('SELECT 1 FROM players WHERE teamId = ?', t.id)) {
+      q.run('DELETE FROM teams WHERE id = ?', t.id);
+      dissolved = true;
+    }
+  });
+  log(g.id, actor, 'player_deleted', { name: pl.name, from: t ? (t.kind === 'elect' ? 'Eletti' : `Settore ${sectorById(t.sectorId)?.name || ''}`) : null, dissolved });
+  if (dissolved) syncPoints(g);
+  notifyState(g.id);
+  return { dissolved };
+}
+
 // Codici d'accesso unici tra coppie, Eletti e giocatori.
 function uniqueAccessCode() {
   for (;;) {
@@ -2588,6 +2614,7 @@ function boardState(gameId) {
 }
 
 module.exports = {
+  removePerson,
   tickGo, setRadio, radioOf, radioFor,
   notAccepted, acceptanceUsed, acceptanceClosed, requireAcceptanceOpen, playingCouples, landmarksOf, scanExpiresAt,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,

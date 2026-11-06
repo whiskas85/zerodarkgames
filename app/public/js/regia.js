@@ -1648,8 +1648,33 @@ function viewPeople() {
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
         r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
         r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
-        r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null))))
+        r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null,
+        r.pid ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deletePersonDialog(r) }, 'Elimina…') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
+}
+
+// Elimina una persona: dalla partita (l'account resta) oppure anche il profilo. r: { pid, accountId, username, name, teamId }.
+async function deletePersonDialog(r) {
+  const ms = R.ms;
+  const team = r.teamId ? ms.teams.find((t) => t.id === r.teamId) : null;
+  const isElect = r.teamId && r.teamId === ms.elect?.id;
+  const mate = team && !isElect ? team.members.find((m) => m.id !== r.pid) : null;
+  const effect = isElect ? 'Esce dagli Eletti.' : team ? (mate ? `${mate.name} resta senza compagno nel Settore ${team.sectorName || '?'}.` : `Il Settore ${team.sectorName || '?'} si libera (la coppia si scioglie).`) : null;
+  const acc = r.accountId ? h('input', { type: 'checkbox' }) : null;
+  const ok = await modal({
+    title: `Eliminare ${r.name}?`, okLabel: 'Elimina',
+    body: h('div', { class: 'stack-sm' },
+      h('p', null, 'Viene tolto da questa partita: iscrizione, accesso all\'app e posizione.', effect ? ` ${effect}` : ''),
+      acc ? h('label', { class: 'del-acc' }, acc, h('span', null, h('strong', null, `Elimina anche il profilo @${r.username || '?'}`), h('br'), h('span', { class: 'tiny muted' }, 'Non potrà più entrare con questo account, nemmeno in altre partite. Senza la spunta l\'account resta e finisce in «Da iscrivere».')))
+        : h('p', { class: 'tiny muted' }, 'Non ha un account: sparisce del tutto.')),
+    onOk: async () => {
+      const res = await api('POST', `/api/m/players/${r.pid}/remove`, { account: !!acc?.checked });
+      toast(`${r.name} eliminato${res.account ? ' (anche il profilo)' : ''}${res.dissolved ? ' · coppia sciolta' : ''}`, 'ok');
+      await Promise.all([load(), loadAccounts()]);
+      return true;
+    },
+  });
+  return ok;
 }
 
 // Giocatore senza account, aggiunto dalla regia (già accettato) con il suo ruolo.
@@ -1684,9 +1709,14 @@ function couplesBoard() {
   return h('div', { class: 'pair-board' }, teams.map((t) => h('div', { class: 'pair-card', style: t.color ? { '--c': t.color } : null },
     h('div', { class: 'pair-head' }, h('span', { class: 'mono roman' }, t.roman || '?'), h('strong', null, `Settore ${t.sectorName || '?'}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
       t.members.length < 2 ? h('span', { class: 'chip chip-warn' }, 'incompleta') : null),
-    h('ul', { class: 'pair-members' }, t.members.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null))))));
+    h('ul', { class: 'pair-members' }, t.members.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null, memberDelBtn(m, t.id)))))));
 }
 
+const memberDelBtn = (m, teamId) => {
+  const p = R.ms.players.find((x) => x.id === m.id) || m;
+  return h('button', { class: 'btn btn-sm btn-ghost member-del', type: 'button', title: `Elimina ${m.name}`, 'aria-label': `Elimina ${m.name}`,
+    onclick: () => deletePersonDialog({ pid: m.id, name: m.name, accountId: p.accountId, username: p.username || (accountsCache || []).find((a) => a.id === p.accountId)?.username, teamId }) }, 'Elimina…');
+};
 // Eletti: raggruppati per squadra (e chi non ne ha ancora una).
 function electBoard() {
   const ms = R.ms;
@@ -1695,7 +1725,7 @@ function electBoard() {
   if (!members.length && !(ms.squads || []).length) return h('p', { class: 'empty' }, 'Nessun Eletto.');
   return h('div', { class: 'pair-board' }, groups.map(({ sq, list }) => h('div', { class: 'pair-card', style: sq?.color ? { '--c': sq.color } : null },
     h('div', { class: 'pair-head' }, h('strong', null, sq ? `Squadra ${sq.name}` : 'Senza squadra'), h('span', { class: 'tiny muted' }, `${list.length} Eletti`)),
-    list.length ? h('ul', { class: 'pair-members' }, list.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null)))
+    list.length ? h('ul', { class: 'pair-members' }, list.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null, memberDelBtn(m, ms.elect.id))))
       : h('p', { class: 'tiny muted' }, 'Nessuno ancora.'))));
 }
 
