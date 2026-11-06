@@ -1380,3 +1380,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 @keyframes go-pop { from { transform: scale(1.35); opacity: .3; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .go-num.pop { animation: none; } }
 .radio-table input { width: 100%; min-width: 140px; }
+.sound-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sound-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); }
+.sound-list .grow { flex: 1; min-width: 160px; }
