@@ -3358,3 +3358,30 @@ test('suoni del VIA: si caricano, si sostituiscono e si tolgono (solo formati au
   assert.deepEqual(Object.keys(SND.list()), ['3']);
   assert.throws(() => SND.file('go'), /non trovato/);
 });
+
+test('Persone → Elimina: dalla coppia (che si scioglie se resta vuota), dagli Eletti e con il profilo', () => {
+  const A = require('../src/accounts');
+  const id = G.createDemo(4, 'test');
+  q.run("UPDATE games SET status = 'draft' WHERE id = ?", id);
+  const team = q.get("SELECT * FROM teams WHERE gameId = ? AND kind = 'couple' ORDER BY id LIMIT 1", id);
+  const [m1, m2] = q.all('SELECT * FROM players WHERE teamId = ? ORDER BY id', team.id);
+  const acc = A.register({ username: 'daeliminare', password: 'password1', name: 'Da Eliminare', softairTeam: 'ZDT', phone: '+39 333 1234567' });
+  q.run('UPDATE players SET accountId = ? WHERE id = ?', acc.id, m1.id);
+  // Solo dalla partita: l'account resta.
+  assert.deepEqual(A.deletePerson(m1.id, false, 'test'), { dissolved: false, account: false });
+  assert.ok(A.authenticate('daeliminare', 'password1'));
+  assert.ok(q.get('SELECT 1 FROM teams WHERE id = ?', team.id));
+  // L'ultimo della coppia: la coppia si scioglie.
+  assert.equal(A.deletePerson(m2.id, false, 'test').dissolved, true);
+  assert.equal(q.get('SELECT 1 FROM teams WHERE id = ?', team.id), undefined);
+  // Eletto con il profilo: sparisce anche l'account.
+  const el = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'elect' LIMIT 1", id);
+  q.run('UPDATE players SET accountId = ? WHERE id = ?', acc.id, el.id);
+  assert.equal(A.deletePerson(el.id, true, 'test').account, true);
+  assert.equal(A.authenticate('daeliminare', 'password1'), null);
+  assert.equal(q.get('SELECT 1 FROM players WHERE id = ?', el.id), undefined);
+  // A cerchio aperto una persona in coppia non si toglie: si ritira la coppia.
+  q.run("UPDATE games SET status = 'circle' WHERE id = ?", id);
+  const other = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", id);
+  assert.throws(() => A.deletePerson(other.id, false, 'test'), /Ritira/);
+});

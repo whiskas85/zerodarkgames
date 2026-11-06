@@ -204,6 +204,23 @@ function deleteAccount(id, actor) {
   G.log(null, actor, 'account_deleted', { username: a.username });
 }
 
+// Persone → Elimina: toglie la persona dalla partita e, se chiesto, elimina anche il suo profilo (account).
+function deletePerson(playerId, withAccount, actor) {
+  const p = q.get('SELECT * FROM players WHERE id = ?', Number(playerId));
+  if (!p) throw err(404, 'Persona non trovata');
+  const a = withAccount && p.accountId ? q.get('SELECT * FROM accounts WHERE id = ?', p.accountId) : null;
+  if (a) {
+    // Prima i controlli sull'account, così non si toglie la persona per poi fermarsi a metà.
+    const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id);
+    if (staff) throw err(409, `${a.username} fa parte dell'organizzazione (${staff.role === 'master' ? 'master' : 'validatore'}): toglilo prima da Organizzazione`);
+    const busy = q.get(`SELECT g.name FROM players x JOIN games g ON g.id = x.gameId WHERE x.accountId = ? AND x.id != ? AND g.status != 'ended' AND x.teamId IS NOT NULL`, a.id, p.id);
+    if (busy) throw err(409, `${a.username} è anche in una coppia o tra gli Eletti nella partita «${busy.name}»: toglilo prima da lì`);
+  }
+  const r = G.removePerson(p.id, actor);
+  if (a) deleteAccount(a.id, actor);
+  return { ...r, account: !!a };
+}
+
 // Account senza alcuna iscrizione (es. dopo aver eliminato una partita).
 function deleteOrphanAccounts(actor) {
   // Chi fa parte dell'organizzazione (master, validatori) resta anche senza iscrizioni.
@@ -219,4 +236,4 @@ function deleteOrphanAccounts(actor) {
 }
 
 module.exports = {
-  cleanPhone, listAccounts, deleteAccount, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, pairToSingle, publicAccount };
+  cleanPhone, listAccounts, deleteAccount, deletePerson, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, pairToSingle, publicAccount };

@@ -1375,3 +1375,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .sound-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .sound-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); }
 .sound-list .grow { flex: 1; min-width: 160px; }
+/* Persone → Elimina: spunta per eliminare anche il profilo; pulsante accanto ai membri di coppie ed Eletti. */
+.del-acc { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.del-acc input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.pair-members .member-del { float: right; margin-left: 6px; padding: 2px 8px; font-size: 12px; }

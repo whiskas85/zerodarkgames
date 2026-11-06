@@ -796,6 +796,7 @@ m.post('/games/:id/notices', wrap((req) => G.createNotice(gameId(req), req.body 
 m.delete('/notices/:nid', wrap((req) => { G.deleteNotice(Number(req.params.nid), actor(req)); return { ok: true }; }));
 m.patch('/players/:pid', wrap((req) => { G.updatePlayer(Number(req.params.pid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/players/:pid', wrap((req) => { G.deletePlayer(Number(req.params.pid), actor(req)); return { ok: true }; }));
+m.post('/players/:pid/remove', wrap((req) => A.deletePerson(req.params.pid, !!req.body?.account, actor(req))));
 
 m.post('/games/:id/teams', wrap((req) => ({ id: G.createTeam(gameId(req), req.body || {}, actor(req)) })));
 m.post('/games/:id/auto-pair', wrap((req) => G.autoPair(gameId(req), actor(req))));
