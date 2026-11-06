@@ -3295,3 +3295,46 @@ test('posti per l\'iscrizione: chi crea la coppia e aspetta il compagno conta co
   // Il compagno con il codice può comunque entrare.
   assert.ok(A.enroll(acc(), { gameId: g.id, mode: 'pair', pairCode: solo.pairCode }).partner);
 });
+
+test('VIA con il conto alla rovescia: parte dopo 5 secondi, si può annullare', () => {
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'go', 'test');
+  const at = G.getGame(g.id).goAt;
+  assert.ok(at > Date.now() + 4000 && at <= Date.now() + 5000);
+  assert.equal(G.getGame(g.id).status, 'circle');
+  G.control(g.id, 'go_cancel', 'test');
+  assert.equal(G.getGame(g.id).goAt, null);
+  G.tickGo(Date.now() + 6000);
+  assert.equal(G.getGame(g.id).status, 'circle');
+  G.control(g.id, 'go', 'test');
+  G.tickGo(Date.now() + 1000);
+  assert.equal(G.getGame(g.id).status, 'circle');
+  G.tickGo(Date.now() + 6000);
+  assert.deepEqual([G.getGame(g.id).status, G.getGame(g.id).goAt], ['truce', null]);
+});
+
+test('canali radio: privati per coppia, della squadra e del Consiglio per gli Eletti', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const eid = G.addElectPerson(g.id, { name: 'Radiofonico' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  F.setMemberSquad(eid, alfa, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  G.setRadio(g.id, { scope: 'team', refId: A.id, main: 'PMR 3 · CTCSS 12', backup: 'PMR 7' }, 'test');
+  G.setRadio(g.id, { scope: 'team', refId: B.id, main: 'PMR 5' }, 'test');
+  G.setRadio(g.id, { scope: 'squad', refId: alfa, main: 'PMR 2', backup: 'PMR 6' }, 'test');
+  G.setRadio(g.id, { scope: 'council', main: 'PMR 1', backup: 'PMR 8' }, 'test');
+  const ra = G.radioFor(A, null);
+  assert.deepEqual(ra.map((r) => [r.main, r.backup]), [['PMR 3 · CTCSS 12', 'PMR 7']]);
+  // A non vede il canale di B, né quelli degli Eletti.
+  assert.ok(!JSON.stringify(ra).includes('PMR 5') && !JSON.stringify(ra).includes('PMR 1'));
+  const re = G.radioFor(elect, q.get('SELECT * FROM players WHERE id = ?', eid));
+  assert.deepEqual(re.map((r) => r.main), ['PMR 2', 'PMR 1']);
+  // Solo i canali impostati compaiono; vuoto = tolto.
+  G.setRadio(g.id, { scope: 'team', refId: B.id, main: '' }, 'test');
+  assert.deepEqual(G.radioFor(B, null), []);
+  assert.equal(G.radioOf(g.id).teams.find((t) => t.id === A.id).backup, 'PMR 7');
+  assert.throws(() => G.setRadio(g.id, { scope: 'team', refId: elect.id, main: 'x' }, 'test'), /Coppia non trovata/);
+});

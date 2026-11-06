@@ -439,6 +439,8 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.mines = MN.electMines(req.team, req.player);
   st.mineMark = MN.coupleMark(req.team);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
+  // Canali radio: solo i propri (coppia) o quelli della squadra e del Consiglio (Eletti).
+  st.radio = G.radioFor(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
   st.openNew = !!openNew;
@@ -728,9 +730,10 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), electScores: MN.scoresOf(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), radio: G.radioOf(gameId(req)), electScores: MN.scoresOf(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
 m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
+m.put('/games/:id/radio', wrap((req) => G.setRadio(gameId(req), req.body || {}, actor(req))));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
 // Giocatore aggiunto a mano dalla regia (già accettato), con il ruolo: Legato, Temerario solitario o Eletto.

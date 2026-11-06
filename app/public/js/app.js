@@ -1162,6 +1162,19 @@ function iosInstallCard() {
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { S.iosInstallLater = true; render(); } }, 'Più tardi')));
 }
 
+// Canali radio: quelli della coppia (privati) o della squadra e del Consiglio (Eletti). Il canale SOS resta in basso.
+function radioCard(st) {
+  const list = st?.radio || [];
+  if (!list.length) return null;
+  return h('div', { class: 'card radio-card' },
+    h('div', { class: 'eyebrow' }, '📻 I vostri canali radio'),
+    h('ul', { class: 'radio-list' }, list.map((r) => h('li', null,
+      h('strong', null, r.label),
+      h('div', { class: 'radio-ch' }, r.main ? h('span', null, h('span', { class: 'tiny muted' }, 'Canale '), h('b', { class: 'mono' }, r.main)) : null,
+        r.backup ? h('span', null, h('span', { class: 'tiny muted' }, 'Riserva '), h('b', { class: 'mono' }, r.backup)) : null),
+      r.note ? h('span', { class: 'tiny muted' }, r.note) : null))));
+}
+
 function pushInvite() {
   if (isIOS && !isStandalone()) return iosInstallCard();
   if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) {
@@ -1470,6 +1483,7 @@ function viewElectHome(st) {
       c.running || c.status === 'paused' ? h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—') : h('div', { class: 'phase-big' }, c.status === 'ended' ? 'I Giochi sono finiti' : 'Al servizio del Consiglio'),
       h('p', { class: 'muted' }, 'Gli Eletti tengono in piedi i Giochi e ne difendono i luoghi. Seguite gli avvisi e i messaggi della regia.')),
     supplyCard(st),
+    radioCard(st),
     trackFlag(st),
     locationInvite(st),
     traccarOffCard(st),
@@ -1534,6 +1548,7 @@ function viewHome() {
     prepCard(st),
     PRE.includes(c.status) && st.team.members.find((m) => !m.me) ? partnerCard(st.team.members.find((m) => !m.me)) : null,
     supplyCard(st),
+    radioCard(st),
     trackFlag(st),
     locationInvite(st),
     traccarOffCard(st),
