@@ -65,6 +65,8 @@ function clockOf(g, now = Date.now()) {
     huntAtMs: g.truceMin * 60000,
     lastPhaseAtMs: (g.durationMin - C.LAST_PHASE_MIN) * 60000,
     startedAt: g.startedAt,
+    // VIA dato dalla regia: istante in cui parte la partita (conto alla rovescia anche nelle app).
+    goAt: g.status === 'circle' && g.goAt ? g.goAt : null,
   };
 }
 
@@ -1281,6 +1283,7 @@ function control(gameId, action, actor) {
       log(g.id, actor, 'game_go_countdown', { seconds: GO_COUNTDOWN_MS / 1000 });
       rt.toStaffEvent('go', { gameId: g.id, at, by: actor });
       rt.toStaff(g.id, 'go');
+      rt.toTeams(g.id, 'go', { at });
       break;
     }
     case 'go_cancel': {
@@ -1289,6 +1292,7 @@ function control(gameId, action, actor) {
       log(g.id, actor, 'game_go_cancelled');
       rt.toStaffEvent('go', { gameId: g.id, at: null, by: actor });
       rt.toStaff(g.id, 'go');
+      rt.toTeams(g.id, 'go', { at: null });
       break;
     }
     case 'start': {
@@ -1558,6 +1562,7 @@ function tickGo(now = Date.now()) {
       console.error('VIA', g.id, e.message);
       rt.toStaffEvent('go', { gameId: g.id, at: null, error: e.message });
       rt.toStaff(g.id, 'go');
+      rt.toTeams(g.id, 'go', { at: null });
     }
   }
 }
