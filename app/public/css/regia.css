@@ -1421,3 +1421,5 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .radio-emergency .input { border-color: rgba(255, 107, 94, .6); font-size: 16px; }
 
 .radio-pick-sep { margin: 6px 2px 0; }
+
+.radio-start-btn { justify-content: space-between; width: 100%; font-size: 16px; }

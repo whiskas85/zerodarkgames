@@ -5292,10 +5292,10 @@ function radioUsage() {
   return used;
 }
 // Finestra con ricerca: PMR o LPD, i canali già scelti altrove sono disabilitati (con chi li usa).
-async function pickRadioChannel(title, current, field) {
+async function pickRadioChannel(title, current, field, opts = {}) {
   const used = radioUsage();
   const mine = radioKey(current);
-  let band = mine?.startsWith('PMR') ? 'PMR' : 'LPD'; // di base LPD, salvo un canale PMR già scelto
+  let band = opts.band || (mine?.startsWith('PMR') ? 'PMR' : 'LPD'); // di base LPD, salvo un canale PMR già scelto
   let q = '';
   let picked;
   const list = h('div', { class: 'radio-pick-list', role: 'listbox' });
@@ -5323,11 +5323,11 @@ async function pickRadioChannel(title, current, field) {
       const key = `${band} ${i}`;
       const u = used.get(key);
       const isMine = key === mine && (!u || u.field === field);
-      const off = !!u && !isMine;
+      const off = !!u && !isMine && field !== '__start'; // per «Si parte da» i canali usati restano sceglibili (vengono saltati o riassegnati)
       rows.push(h('button', { type: 'button', role: 'option', class: `radio-pick ${isMine ? 'on' : ''}`, disabled: off, 'aria-selected': isMine ? 'true' : 'false',
         onclick: () => { picked = label; dlgClose(); } },
         h('strong', { class: 'mono' }, `${band} ${i}`), h('span', { class: 'mono small' }, B.f(i).toFixed(B.dec)),
-        h('span', { class: 'tiny muted grow' }, off ? `usato da ${u.who}` : isMine ? 'scelto qui' : '')));
+        h('span', { class: 'tiny muted grow' }, u && !isMine ? `usato da ${u.who}` : isMine ? 'scelto qui' : '')));
     }
     list.replaceChildren(...(rows.length ? rows : [h('p', { class: 'empty' }, 'Nessun canale con questa ricerca.')]));
   };
@@ -5335,11 +5335,11 @@ async function pickRadioChannel(title, current, field) {
   let dlgClose = () => {};
   paint();
   const res = await modal({
-    title, okLabel: 'Svuota il campo', cancelLabel: 'Chiudi', tall: true,
+    title, okLabel: field === '__start' ? 'Chiudi' : 'Svuota il campo', cancelLabel: field === '__start' ? null : 'Chiudi', tall: true,
     body: h('div', { class: 'radio-pick-body' }, tabs, search,
       h('p', { class: 'tiny muted' }, 'Grigi: già usati da un\'altra riga o dal canale d\'emergenza. Dopo la scelta puoi aggiungere a mano il tono (es. «· CTCSS 12»).'), list),
-    onOpen: (dlg) => { dlgClose = () => { dlg.querySelector('.dlg-actions .btn-ghost')?.click(); }; setTimeout(() => search.focus(), 50); },
-    onOk: async () => { picked = ''; return true; },
+    onOpen: (dlg) => { dlgClose = () => dlg.dispatchEvent(new Event('cancel')); setTimeout(() => search.focus(), 50); },
+    onOk: async () => { if (field !== '__start') picked = ''; return true; },
   });
   void res;
   return picked; // undefined = nessuna scelta, '' = svuota
@@ -5366,13 +5366,17 @@ async function autoAssignRadio() {
   const opt = { band: 'LPD', start: 1, field: 'main', groups: { emergency: false, council: true, squads: true, teams: true }, skipUsed: true };
   const preview = h('div', { class: 'radio-auto-preview' });
   const summary = h('p', { class: 'radio-auto-summary' });
-  const startSel = h('select', { class: 'input' });
-  const fillStart = () => {
-    const B = RADIO_BANDS[opt.band];
-    if (opt.start > B.n) opt.start = 1;
-    startSel.replaceChildren(...Array.from({ length: B.n }, (_, k) => h('option', { value: k + 1, selected: k + 1 === opt.start }, radioLabel(opt.band, k + 1))));
-  };
-  startSel.addEventListener('change', () => { opt.start = Number(startSel.value); calc(); });
+  // «Si parte da»: lo stesso elenco del 📻 (schede LPD/PMR e ricerca); la banda è quella del canale scelto.
+  const startLabel = h('strong', { class: 'mono' });
+  const paintStart = () => startLabel.replaceChildren(radioLabel(opt.band, opt.start));
+  const startBtn = h('button', { type: 'button', class: 'btn radio-start-btn', onclick: async () => {
+    const v = await pickRadioChannel('Si parte da', '', '__start', { band: opt.band });
+    const k = radioKey(v);
+    if (!k) return;
+    const [band, n] = k.split(' ');
+    opt.band = band; opt.start = Number(n); paintStart(); calc();
+  } }, startLabel, h('span', null, ' 📻'));
+  paintStart();
   // Il piano: per ogni riga scelta il prossimo canale libero dopo il precedente. Con «Tutti e due» la riga prende
   // il principale e subito dopo la riserva (es. Consiglio LPD 10 + LPD 11, poi la squadra LPD 12 + LPD 13).
   const fields = () => (opt.field === 'both' ? ['main', 'backup'] : [opt.field]);
@@ -5412,15 +5416,14 @@ async function autoAssignRadio() {
         opt.field === 'both' ? [cell(x, 'main'), cell(x, 'backup')] : [h('td', { class: 'mono tiny muted' }, x.r[opt.field] || '—'), cell(x, opt.field)])))));
   };
   const seg = (name, choices, get, set) => h('div', { class: 'radio-pick-tabs' }, choices.map(([v, l]) => h('button', { type: 'button', class: `btn btn-sm ${get() === v ? 'btn-primary' : ''}`,
-    onclick: (e) => { set(v); e.currentTarget.parentElement.querySelectorAll('button').forEach((b, k) => b.classList.toggle('btn-primary', choices[k][0] === v)); if (name === 'band') fillStart(); calc(); } }, l)));
+    onclick: (e) => { set(v); e.currentTarget.parentElement.querySelectorAll('button').forEach((b, k) => b.classList.toggle('btn-primary', choices[k][0] === v)); calc(); } }, l)));
   const check = (key, label) => h('label', { class: 'radio-auto-check' }, h('input', { type: 'checkbox', checked: opt.groups[key], onchange: (e) => { opt.groups[key] = e.target.checked; calc(); } }), h('span', null, label));
-  fillStart(); calc();
+  calc();
   await modal({
     title: 'Assegna i canali in automatico', okLabel: 'Assegna', tall: true,
     body: h('div', { class: 'stack-sm radio-auto-body' },
       h('div', { class: 'field' }, h('span', null, 'Quali canali'), seg('field', [['main', 'Principali'], ['backup', 'Di riserva'], ['both', 'Tutti e due']], () => opt.field, (v) => { opt.field = v; })),
-      h('div', { class: 'field' }, h('span', null, 'Banda'), seg('band', [['LPD', 'LPD433 · 69'], ['PMR', 'PMR446 · 16']], () => opt.band, (v) => { opt.band = v; })),
-      h('label', { class: 'field' }, h('span', null, 'Si parte da'), startSel),
+      h('div', { class: 'field' }, h('span', null, 'Si parte da'), startBtn),
       h('div', { class: 'field' }, h('span', null, 'A chi (in quest\'ordine)'),
         h('div', { class: 'radio-auto-checks' }, check('emergency', 'Emergenza (SOS)'), check('council', 'Consiglio'), check('squads', `Squadre di Eletti (${(rd.squads || []).length})`), check('teams', `Coppie (${(rd.teams || []).length})`))),
       h('label', { class: 'radio-auto-check' }, h('input', { type: 'checkbox', checked: opt.skipUsed, onchange: (e) => { opt.skipUsed = e.target.checked; calc(); } }),
