@@ -5338,6 +5338,84 @@ function radioInput(value, placeholder, keep, field, title, onSave) {
       onclick: async () => { const v = await pickRadioChannel(title, input.value, field); if (v === undefined) return; input.value = v; onSave(v); } }, '📻'));
 }
 
+// Assegnazione automatica: da un canale di partenza, in fila, a Consiglio, squadre e coppie (canale o riserva).
+// Salta i canali occupati da righe che non si toccano e dal canale d'emergenza; anteprima prima di salvare.
+async function autoAssignRadio() {
+  const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
+  const rows = [
+    { group: 'council', label: 'Consiglio', scope: 'council', refId: 0, r: rd.council || {} },
+    ...(rd.squads || []).map((sq) => ({ group: 'squads', label: `Squadra ${sq.name}`, scope: 'squad', refId: sq.id, r: sq })),
+    ...(rd.teams || []).map((t) => ({ group: 'teams', label: `${t.roman} · Settore ${t.sectorName}`, scope: 'team', refId: t.id, r: t })),
+  ];
+  const opt = { band: 'LPD', start: 1, field: 'main', groups: { council: true, squads: true, teams: true }, skipUsed: true };
+  const preview = h('div', { class: 'radio-auto-preview' });
+  const summary = h('p', { class: 'radio-auto-summary' });
+  const startSel = h('select', { class: 'input' });
+  const fillStart = () => {
+    const B = RADIO_BANDS[opt.band];
+    if (opt.start > B.n) opt.start = 1;
+    startSel.replaceChildren(...Array.from({ length: B.n }, (_, k) => h('option', { value: k + 1, selected: k + 1 === opt.start }, radioLabel(opt.band, k + 1))));
+  };
+  startSel.addEventListener('change', () => { opt.start = Number(startSel.value); calc(); });
+  // Il piano: per ogni riga scelta il prossimo canale libero dopo il precedente.
+  const plan = () => {
+    const B = RADIO_BANDS[opt.band];
+    const targets = rows.filter((x) => opt.groups[x.group]);
+    const touched = new Set(targets.map((x) => `${x.scope}-${x.refId}-${opt.field}`));
+    const busy = new Set();
+    if (opt.skipUsed) {
+      const add = (v, f) => { if (!touched.has(f)) { const k = radioKey(v); if (k) busy.add(k); } };
+      add(R.ms?.game?.emergencyRadioChannel, 'emergency');
+      for (const x of rows) for (const f of ['main', 'backup']) add(x.r[f], `${x.scope}-${x.refId}-${f}`);
+    }
+    let i = opt.start;
+    const out = [];
+    for (const x of targets) {
+      while (i <= B.n && busy.has(`${opt.band} ${i}`)) i++;
+      out.push({ ...x, value: i <= B.n ? radioLabel(opt.band, i) : null, n: i <= B.n ? i : null });
+      i++;
+    }
+    return out;
+  };
+  const calc = () => {
+    const p = plan();
+    const ok = p.filter((x) => x.value);
+    const missing = p.length - ok.length;
+    summary.replaceChildren(...(!p.length ? ['Scegli almeno un gruppo.']
+      : [h('span', null, `${p.length} ${p.length === 1 ? 'canale' : 'canali'} ${opt.field === 'main' ? 'principali' : 'di riserva'}: da `), h('strong', { class: 'mono' }, ok[0] ? `${opt.band} ${ok[0].n}` : '—'),
+        h('span', null, ' a '), h('strong', { class: 'mono' }, ok.length ? `${opt.band} ${ok.at(-1).n}` : '—'),
+        ok.length ? h('span', { class: 'tiny muted' }, ` (${ok.at(-1).value.split(' · ')[1].replace('.', ',')} MHz)`) : null,
+        missing ? h('span', { class: 'warn-text' }, ` · ${missing} senza canale: la banda finisce a ${opt.band} ${RADIO_BANDS[opt.band].n}`) : null]).filter(Boolean));
+    preview.replaceChildren(h('table', { class: 'radio-table' },
+      h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Adesso'), h('th', null, 'Diventa'))),
+      h('tbody', null, p.map((x) => h('tr', { class: x.value ? '' : 'radio-auto-miss' }, h('td', null, x.label), h('td', { class: 'mono tiny muted' }, x.r[opt.field] || '—'), h('td', { class: 'mono' }, x.value || 'nessuno'))))));
+  };
+  const seg = (name, choices, get, set) => h('div', { class: 'radio-pick-tabs' }, choices.map(([v, l]) => h('button', { type: 'button', class: `btn btn-sm ${get() === v ? 'btn-primary' : ''}`,
+    onclick: (e) => { set(v); e.currentTarget.parentElement.querySelectorAll('button').forEach((b, k) => b.classList.toggle('btn-primary', choices[k][0] === v)); if (name === 'band') fillStart(); calc(); } }, l)));
+  const check = (key, label) => h('label', { class: 'radio-auto-check' }, h('input', { type: 'checkbox', checked: opt.groups[key], onchange: (e) => { opt.groups[key] = e.target.checked; calc(); } }), h('span', null, label));
+  fillStart(); calc();
+  await modal({
+    title: 'Assegna i canali in automatico', okLabel: 'Assegna', tall: true,
+    body: h('div', { class: 'stack-sm radio-auto-body' },
+      h('div', { class: 'field' }, h('span', null, 'Quali canali'), seg('field', [['main', 'Principali'], ['backup', 'Di riserva']], () => opt.field, (v) => { opt.field = v; })),
+      h('div', { class: 'field' }, h('span', null, 'Banda'), seg('band', [['LPD', 'LPD433 · 69'], ['PMR', 'PMR446 · 16']], () => opt.band, (v) => { opt.band = v; })),
+      h('label', { class: 'field' }, h('span', null, 'Si parte da'), startSel),
+      h('div', { class: 'field' }, h('span', null, 'A chi (in quest\'ordine)'),
+        h('div', { class: 'radio-auto-checks' }, check('council', 'Consiglio'), check('squads', `Squadre di Eletti (${(rd.squads || []).length})`), check('teams', `Coppie (${(rd.teams || []).length})`))),
+      h('label', { class: 'radio-auto-check' }, h('input', { type: 'checkbox', checked: opt.skipUsed, onchange: (e) => { opt.skipUsed = e.target.checked; calc(); } }),
+        h('span', null, 'Salta i canali già usati altrove (emergenza e righe che non cambiano)')),
+      summary, preview),
+    onOk: async () => {
+      const p = plan().filter((x) => x.value);
+      if (!p.length) throw new Error('Nessun canale da assegnare');
+      for (const x of p) await api('PUT', G('/radio'), { scope: x.scope, refId: x.refId, [opt.field]: x.value });
+      toast(`${p.length} canali assegnati`, 'ok');
+      await load();
+      return true;
+    },
+  });
+}
+
 // Canali radio: una riga per il Consiglio, per ogni squadra di Eletti e per ogni coppia. Si salva uscendo dal campo.
 function radioSettings() {
   const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
@@ -5346,6 +5424,8 @@ function radioSettings() {
   const row = (label, who, scope, refId, r, extra = null) => h('tr', null, h('td', null, label, extra), h('td', null, inp(scope, refId, 'main', r.main, 'es. PMR 3 · CTCSS 12', who)), h('td', null, inp(scope, refId, 'backup', r.backup, 'riserva', who)));
   const table = (rows) => h('div', { class: 'table-wrap' }, h('table', { class: 'radio-table' }, h('thead', null, h('tr', null, ['', 'Canale', 'Riserva'].map((x) => h('th', null, x)))), h('tbody', null, rows)));
   return h('div', { class: 'stack' },
+    h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-primary', onclick: autoAssignRadio }, '⚡ Assegna in automatico…'),
+      h('span', { class: 'tiny muted' }, 'Da un canale di partenza, in fila, a Consiglio, squadre e coppie: canali principali o di riserva, con l\'anteprima.')),
     section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Il canale d\'emergenza (SOS) si imposta in Impostazioni → Partita. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
       table([row('Consiglio', 'Consiglio', 'council', 0, rd.council)])),
     section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
