@@ -1279,3 +1279,32 @@ html.sos-mode .zone-ring, html.sos-mode .zone-boost, html.sos-mode .noplay-scree
 .radio-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
 .radio-list li { display: grid; gap: 2px; }
 .radio-ch { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 18px; }
+
+/* Menu che sale dal basso (dal logo nella barra), sul modello del portale Zero Dark Ops. */
+button.stamp { padding: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+button.stamp-logo { background: var(--bg); }
+.sheet-menu { position: fixed; inset: 0; z-index: 1300; display: flex; align-items: flex-end; justify-content: center; }
+.sheet-veil { position: absolute; inset: 0; background: rgba(0,0,0,.7); opacity: 0; transition: opacity .26s ease-out; }
+.sheet-menu.open .sheet-veil { opacity: var(--veil, 1); }
+.sheet { position: relative; width: 100%; max-width: 640px; max-height: 85dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--paper); border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.5);
+  transform: translateY(100%); transition: transform .26s cubic-bezier(.2,.8,.2,1); }
+.sheet-menu.open .sheet { transform: translateY(0); }
+.sheet-head { flex: none; padding: 8px 16px 6px; touch-action: none; }
+.sheet-grip { display: block; width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 2px; background: var(--line); }
+.sheet-title { display: flex; align-items: center; justify-content: space-between; }
+.sheet-title strong { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+.sheet-x { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 6px; margin-right: -6px; cursor: pointer; }
+.sheet-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px calc(24px + env(safe-area-inset-bottom)); display: grid; gap: 14px; }
+.sheet-body .tile-groups { display: grid; gap: 14px; }
+.sheet-body .tile-group { padding: 0; background: none; border: 0; }
+.sheet-body .tile-group .eyebrow { font-size: 11px; padding-bottom: 6px; }
+.sheet-body .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sheet-body .tile { display: flex; min-height: 0; flex-direction: row; justify-content: flex-start; align-items: center; gap: 8px; padding: 12px; font-size: 14px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); position: relative; }
+.sheet-body .tile .tile-ico { font-size: 18px; width: 22px; display: grid; place-items: center; flex: none; }
+.sheet-body .tile .tile-ico svg { width: 18px; height: 18px; }
+.sheet-body .tile > span:not(.tile-ico):not(.badge) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body .tile .tiny { display: none; }
+.sheet-body .tile .badge { position: static; margin-left: auto; }
+.sheet-body .tile.on { border-color: var(--blood); background: var(--blood-soft); }
+.sheet-out { margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-veil { transition: none; } }
