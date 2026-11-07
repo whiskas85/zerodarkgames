@@ -571,8 +571,9 @@ function render() {
     const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
     if (view === 'messaggi' && arg === 'solo') S.msgTab = 'solo';
     const chatView = view === 'messaggi' || view === 'compagno';
-    mount($app, header(view), banners(), h('main', { class: chatView ? 'main main-chat' : 'main' }, body), view === 'home' ? partnerFab() : null, zoneHud(), radioBar());
     document.body.dataset.view = view;
+    mount($app, header(view), view === 'mappa' ? null : updateBar(), banners(), h('main', { class: chatView ? 'main main-chat' : 'main' }, body), view === 'home' ? partnerFab() : null, zoneHud(), radioBar());
+    fitTop();
     applySosMode();
     if (view === 'mappa') requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', chatView);
@@ -771,6 +772,20 @@ function phoneBanner() {
   h('span', { class: 'phone-row' }, input, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva')));
 }
 
+// Il server è stato aggiornato mentre l'app era aperta: questa versione può non capire le novità.
+// Barra sempre visibile subito sotto la testata (resta lì anche scorrendo la pagina).
+function updateBar() {
+  const st = S.state;
+  if (!S.bootVersion || !st?.appVersion || st.appVersion === S.bootVersion) return null;
+  return h('button', { type: 'button', class: 'banner banner-action banner-update', onclick: () => location.reload() },
+    h('strong', null, '⟳ Nuova versione dell\'app'), h('span', null, 'Tocca qui per aggiornare'));
+}
+function fitTop() {
+  const top = $app.querySelector('.top');
+  if (top) document.documentElement.style.setProperty('--top-h', `${top.offsetHeight}px`);
+}
+window.addEventListener('resize', () => fitTop());
+
 function banners() {
   const st = S.state;
   if (!st) return null;
@@ -785,9 +800,8 @@ function banners() {
   // Account senza telefono (obbligatorio): si chiede qui, senza bloccare il gioco.
   if (st.account?.needsPhone) out.push(phoneBanner());
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
-  // Il server è stato aggiornato mentre l'app era aperta: questa versione può non capire le novità.
-  if (S.bootVersion && st.appVersion && st.appVersion !== S.bootVersion) out.push(h('button', { type: 'button', class: 'banner banner-action banner-update', onclick: () => location.reload() },
-    h('strong', null, 'Nuova versione dell\'app'), h('span', null, 'Tocca qui per aggiornare')));
+  // Nuova versione: in mappa tra gli avvisi in alto; altrove fissa sotto la barra (updateBar).
+  if (document.body.dataset.view === 'mappa') { const u = updateBar(); if (u) out.push(u); }
   // Prima della gara: avviso ROSSO di sicurezza (EMERGENZA e ICE) finché non viene letto e compreso.
   if (['draft', 'ready', 'circle'].includes(c.status) && !safetyAcked()) out.push(h('button', { type: 'button', class: 'banner banner-safety', onclick: safetyModal },
     h('strong', null, '⚠ SICUREZZA · OFF GAME'), h('span', null, 'Prima della gara: leggete come funziona il pulsante EMERGENZA e compilate i dati ICE. Toccate qui.')));
