@@ -320,7 +320,7 @@ function liveVote(gameId) {
   const r = results(g.id);
   return { open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: closeAt(g), total: r.total,
     votes: q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).n,
-    list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score })) };
+    list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score, votes: t.votes, heavy: t.heavy })) };
 }
 
 module.exports = {

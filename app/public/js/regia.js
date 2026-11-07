@@ -4025,9 +4025,14 @@ function liveVotePanel() {
     top.length ? h('ol', { class: 'live-vote' }, v.list.map((t, i) => h('li', { style: { '--c': t.color } },
       h('span', { class: 'lv-pos' }, t.score && i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}°`),
       t.logo ? h('span', { class: 'lv-logo-wrap' }, h('img', { class: 'lv-logo', src: t.logo, alt: '' }), h('b', { class: 'lv-rb' }, t.roman)) : h('span', { class: 'lv-roman' }, t.roman),
-      h('span', { class: 'lv-name' }, h('strong', null, `${t.roman} ${name(t)}`), t.displayName ? h('span', { class: 'tiny muted' }, ` · Settore ${t.sectorName}`) : null),
-      h('span', { class: 'lv-bar' }, h('i', { style: { width: `${t.pct}%` } })),
-      h('span', { class: 'mono small' }, `${String(t.pct).replace('.', ',')}%`)))) : h('p', { class: 'empty' }, 'Ancora nessun voto.'));
+      // Nome e barra uno sotto l'altro: su telefono il nome resta leggibile (anche su due righe).
+      h('span', { class: 'lv-main' },
+        h('span', { class: 'lv-name' }, h('strong', null, name(t))),
+        t.displayName ? h('span', { class: 'tiny muted lv-sub' }, `Settore ${t.sectorName}`) : null,
+        h('span', { class: 'lv-bar' }, h('i', { style: { width: `${t.pct}%` } }))),
+      h('span', { class: 'lv-num' },
+        h('strong', { class: 'mono' }, `${String(t.pct).replace('.', ',')}%`),
+        h('span', { class: 'tiny muted', title: t.heavy ? `${t.heavy} con l'account (valgono ×3)` : null }, `${t.votes ?? 0} ${t.votes === 1 ? 'voto' : 'voti'}${t.heavy ? ` · ${t.heavy}×3` : ''}`))))) : h('p', { class: 'empty' }, 'Ancora nessun voto.'));
 }
 
 // ---------------------------------------------------------------- VOTO DEL PUBBLICO
@@ -4067,7 +4072,7 @@ function viewVote() {
     sectionActions('Voto del pubblico', [
       h('button', { type: 'button', class: `switch ${V.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': V.enabled ? 'true' : 'false', onclick: () => patch({ enabled: !V.enabled }, V.enabled ? 'Votazione spenta' : 'Votazione accesa: il link funziona') },
         h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), V.enabled ? 'ACCESA' : 'SPENTA')],
-      h('p', { class: 'muted tiny' }, 'Chiunque abbia il link vota la sua coppia preferita, solo prima della partita. Si vedono il podio e le percentuali, mai i numeri. Un voto per telefono (si può cambiare), al massimo 3 voti all\'ora dalla stessa rete, verifica anti-robot; chi vota con il proprio account vale ×3.'),
+      h('p', { class: 'muted tiny' }, 'Chiunque abbia il link vota la sua coppia preferita, solo prima della partita. Il pubblico vede il podio e le percentuali, mai i numeri (la regia sì). Un voto per telefono (si può cambiare); dalla stessa rete ogni voto nuovo aspetta 3, poi 10, poi 30 minuti; niente voti da Tor; verifica anti-robot; chi vota con il proprio account vale ×3.'),
       h('div', { class: 'url-now' }, h('span', { class: 'eyebrow' }, 'Link da condividere'), h('strong', { class: 'mono' }, url),
         h('button', { class: 'btn btn-sm', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')) }, 'Copia'),
         h('a', { class: 'btn btn-sm', href: `https://wa.me/?text=${encodeURIComponent(`Vota la tua coppia preferita ai Giochi del Buio: le prime tre ricevono un Dono! ${url}`)}`, target: '_blank', rel: 'noopener' }, 'Condividi su WhatsApp'),
