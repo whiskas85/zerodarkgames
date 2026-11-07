@@ -799,8 +799,8 @@ function banners() {
   // Emergenza aperta: resta in cima finché la Direzione non la chiude (si riapre la schermata toccando).
   if (st.emergency) out.push(h('button', { type: 'button', class: 'banner banner-sos', onclick: emergencyModal },
     h('strong', null, st.emergency.ackAt ? '🚨 EMERGENZA PRESA IN CARICO' : '🚨 EMERGENZA INVIATA'),
-    h('span', null, `Effetti di gioco sospesi finché la Direzione non chiude l'emergenza. Restate dove siete${st.game.emergencyRadioChannel ? ` · radio ${st.game.emergencyRadioChannel}` : ''}.`)));
-  if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + st.game.emergencyRadioChannel : ''}`)));
+    h('span', null, `Effetti di gioco sospesi finché la Direzione non chiude l'emergenza. Restate dove siete${st.game.emergencyRadioChannel ? ` · radio ${sosText(st.game)}` : ''}.`)));
+  if (c.status === 'paused') out.push(h('div', { class: 'banner banner-pause', role: 'alert' }, h('strong', null, 'PARTITA SOSPESA'), h('span', null, `Fermatevi e ascoltate il canale radio d'emergenza${st.game.emergencyRadioChannel ? ': ' + sosText(st.game) : ''}`)));
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
   // Account senza telefono (obbligatorio): si chiede qui, senza bloccare il gioco.
   if (st.account?.needsPhone) out.push(phoneBanner());
@@ -822,6 +822,8 @@ function banners() {
   return out.length ? h('div', { class: 'banners' }, out) : null;
 }
 
+// Canale d'emergenza con la riserva, per i testi: «PMR 8 · 446.09375 (riserva LPD 3 · 433.125)».
+const sosText = (g) => (g?.emergencyRadioChannel ? `${g.emergencyRadioChannel}${g.emergencyRadioBackup ? ` (riserva ${g.emergencyRadioBackup})` : ''}` : '');
 // In verticale è la barra in fondo; in orizzontale diventa la colonna a destra (con il menu).
 function radioBar() {
   const ch = S.state?.game.emergencyRadioChannel;
@@ -962,7 +964,7 @@ function safetyModal() {
         h('li', null, 'Premere EMERGENZA in fondo all\'app ', h('strong', null, 'non fa partire l\'emergenza'), ': apre la schermata di emergenza.'),
         h('li', null, 'Lì premete il pulsante rosso grande e confermate: solo allora la Direzione riceve chi siete, la vostra posizione e i vostri dati ICE.'),
         h('li', null, 'Lo stesso fa il pulsante SOS di Traccar Client.'),
-        ch ? h('li', null, 'Se potete, chiamate anche via radio: ', h('strong', { class: 'mono' }, ch), '.') : null),
+        ch ? h('li', null, 'Se potete, chiamate anche via radio: ', h('strong', { class: 'mono' }, sosText(S.state?.game)), '.') : null),
       h('h3', { class: 'safety-h' }, '2 · I vostri dati ICE'),
       h('p', { class: 'small' }, 'Gruppo sanguigno, patologie da conoscere, contatto di emergenza. Facoltativi, ', h('strong', null, 'non visibili in regia'), ': arrivano alla Direzione solo con l\'emergenza.'),
       acc ? h('button', { class: `btn btn-block ${filled ? '' : 'btn-ice'}`, type: 'button', onclick: showIce }, filled ? '✓ Dati ICE compilati · rivedili' : '✚ Compila i dati ICE')
@@ -993,7 +995,7 @@ const SOS_LEVELS = [['lieve', 'Lieve', 'piccolo infortunio'], ['seria', 'Seria',
 function emergencyModal() {
   const ch = S.state?.game.emergencyRadioChannel;
   if (!sosOn()) {
-    dialog({ title: 'EMERGENZA non ancora attiva', text: `Il pulsante EMERGENZA si attiva quando l'evento si avvia, all'apertura del Cerchio. Prima, per un'emergenza reale, chiamate la Direzione ${ch ? `via radio sul canale ${ch}` : 'via radio'} o al telefono.`, okLabel: 'Ho capito', cancelLabel: null });
+    dialog({ title: 'EMERGENZA non ancora attiva', text: `Il pulsante EMERGENZA si attiva quando l'evento si avvia, all'apertura del Cerchio. Prima, per un'emergenza reale, chiamate la Direzione ${ch ? `via radio sul canale ${sosText(S.state.game)}` : 'via radio'} o al telefono.`, okLabel: 'Ho capito', cancelLabel: null });
     return;
   }
   const ov = h('div', { class: 'sos-overlay sos-full', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
@@ -1030,11 +1032,11 @@ function emergencyModal() {
       const r = await api('POST', '/api/team/emergency', { ...(myPos || {}), severity, comment: comment.value });
       sent = true;
       vibrate([300, 100, 300]);
-      status.replaceChildren(h('strong', null, 'Inviata alla Direzione.'), ` Resta dove sei${ch ? ` e chiama sul canale ${ch}` : ' con la radio accesa'}.`,
+      status.replaceChildren(h('strong', null, 'Inviata alla Direzione.'), ` Resta dove sei${ch ? ` e chiama sul canale ${sosText(S.state?.game)}` : ' con la radio accesa'}.`,
         r.located ? '' : ' Ricerca del GPS…', gpsLine);
       big.textContent = 'INVIATA';
     } catch (e) {
-      status.textContent = e.offline ? 'Senza rete: chiama subito via radio' + (ch ? ` sul canale ${ch}` : '') + ' o al telefono.' : e.message;
+      status.textContent = e.offline ? 'Senza rete: chiama subito via radio' + (ch ? ` sul canale ${sosText(S.state?.game)}` : '') + ' o al telefono.' : e.message;
       big.disabled = false;
     }
   };
@@ -1050,7 +1052,7 @@ function emergencyModal() {
     h('div', { class: 'sos-main' },
       h('div', { class: 'sos-form' }, h('div', { class: 'eyebrow' }, 'Gravità'), levels, comment, update),
       h('div', { class: 'sos-action' }, big, status)),
-    ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch)) : null,
+    ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch), S.state?.game.emergencyRadioBackup ? [' · riserva ', h('strong', { class: 'mono' }, S.state.game.emergencyRadioBackup)] : null) : null,
     // La mappa in emergenza si vede normalmente (senza effetti di gioco): per orientarsi o dire dove si è.
     h('a', { class: 'btn btn-block sos-map', href: '#/mappa', onclick: close }, '🗺 Vedi la mappa'),
     offGameStripe()));
@@ -1315,7 +1317,7 @@ function viewRadio() {
       : h('p', { class: 'empty' }, 'Il Consiglio non vi ha ancora assegnato un canale radio.'),
     sos ? h('div', { class: 'card radio-page-card radio-sos' },
       h('div', { class: 'eyebrow' }, '🚨 Emergenza (SOS) · tutti'),
-      h('div', { class: 'radio-page-ch' }, radioChannel('Canale d\'emergenza', sos, true)),
+      h('div', { class: 'radio-page-ch' }, radioChannel('Canale d\'emergenza', sos, true), radioChannel('Riserva', st.game.emergencyRadioBackup, true)),
       h('p', { class: 'tiny muted' }, 'Solo per le emergenze reali (OFF GAME): lo ascoltano Direzione e Consiglio.')) : null);
 }
 
@@ -4717,7 +4719,7 @@ function viewRules() {
     h('div', { class: 'row-2' },
       h('a', { class: 'btn btn-block', href: '/regolamento.html?pdf=1', target: '_blank', rel: 'noopener' }, '⇩ Scarica PDF'),
       h('a', { class: 'btn btn-block', href: '/regolamento.html', download: 'Regolamento - I Giochi del Buio.html' }, '⇩ Scarica HTML')),
-    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Canale radio d\'emergenza'), h('div', { class: 'mono big-text' }, st?.game.emergencyRadioChannel || 'chiedete alla regia')));
+    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Canale radio d\'emergenza'), h('div', { class: 'mono big-text' }, st?.game.emergencyRadioChannel || 'chiedete alla regia'), st?.game.emergencyRadioBackup ? h('div', { class: 'mono small muted' }, `Riserva: ${st.game.emergencyRadioBackup}`) : null));
 }
 
 // ---------------------------------------------------------------- Impostazioni

@@ -5159,6 +5159,15 @@ function gameForm(g, isNew, only = null) {
   const locked = !isNew && !PRE.includes(g.status);
   const f = (key, label, type = 'text', extra = {}) => h('label', { class: 'field' }, h('span', null, label),
     h('input', { class: 'input', name: key, type, value: g?.[key] ?? extra.def ?? '', disabled: locked && extra.lock, 'data-keep': `gf-${key}`, ...extra.attrs }));
+  // Canale d'emergenza (e riserva): con 📻 si sceglie da PMR446 o LPD433; poi «Salva».
+  const emgField = (key, label, ph, field, title) => {
+    const el = f(key, label, 'text', { attrs: { placeholder: ph } });
+    const input = el.querySelector('input');
+    const pick = h('button', { type: 'button', class: 'btn btn-sm', title: 'Scegli un canale PMR o LPD', 'aria-label': `Scegli: ${title}`,
+      onclick: async () => { const v = await pickRadioChannel(title, input.value, field); if (v !== undefined) { input.value = v; toast('Ricorda di salvare', 'info', 2500); } } }, '📻');
+    input.replaceWith(h('div', { class: 'radio-field' }, input, pick));
+    return el;
+  };
   return h('form', { class: 'form-grid wide', onsubmit: async (e) => {
     e.preventDefault();
     for (const x of e.target.querySelectorAll('.dt-pair')) x._sync?.();
@@ -5175,15 +5184,8 @@ function gameForm(g, isNew, only = null) {
     const all = {
       name: () => f('name', 'Nome della partita', 'text', { attrs: { required: true, placeholder: 'Zero Dark Games – ottobre 2026' } }),
       scheduledStart: () => h('div', { class: 'field' }, h('span', null, 'Data e ora previste'), dateTimeInputs({ keep: 'gf-scheduledStart', value: g?.scheduledStart || '', defDate: '', name: 'scheduledStart' }).el),
-      emergencyRadioChannel: () => {
-        // Con 📻 si sceglie da PMR446 o LPD433 (i canali di coppie, squadre e Consiglio sono disabilitati); poi «Salva».
-        const el = f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } });
-        const input = el.querySelector('input');
-        const pick = h('button', { type: 'button', class: 'btn btn-sm', title: 'Scegli un canale PMR o LPD', 'aria-label': 'Scegli il canale d\'emergenza',
-          onclick: async () => { const v = await pickRadioChannel('Canale d\'emergenza (SOS)', input.value, 'emergency'); if (v !== undefined) { input.value = v; toast('Ricorda di salvare', 'info', 2500); } } }, '📻');
-        input.replaceWith(h('div', { class: 'radio-field' }, input, pick));
-        return el;
-      },
+      emergencyRadioChannel: () => emgField('emergencyRadioChannel', 'Canale radio d\'emergenza', 'es. PMR 8 · 446.09375', 'emergency', 'Canale d\'emergenza (SOS)'),
+      emergencyRadioBackup: () => emgField('emergencyRadioBackup', 'Riserva del canale d\'emergenza', 'es. LPD 3 · 433.125', 'emergency-backup', 'Riserva d\'emergenza (SOS)'),
       bookUrl: () => f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
       durationMin: () => f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
       truceMin: () => f('truceMin', 'Tregua iniziale (min)', 'number', { def: 5, lock: true }),
@@ -5283,6 +5285,7 @@ function radioUsage() {
   const used = new Map();
   const add = (v, who, field) => { const k = radioKey(v); if (k && !used.has(k)) used.set(k, { who, field }); };
   add(R.ms?.game?.emergencyRadioChannel, 'Emergenza (SOS)', 'emergency');
+  add(R.ms?.game?.emergencyRadioBackup, 'Emergenza (SOS) · riserva', 'emergency-backup');
   add(rd.council?.main, 'Consiglio', 'council-0-main'); add(rd.council?.backup, 'Consiglio · riserva', 'council-0-backup');
   for (const sq of rd.squads || []) { add(sq.main, `Squadra ${sq.name}`, `squad-${sq.id}-main`); add(sq.backup, `Squadra ${sq.name} · riserva`, `squad-${sq.id}-backup`); }
   for (const t of rd.teams || []) { add(t.main, `${t.roman} ${t.sectorName}`, `team-${t.id}-main`); add(t.backup, `${t.roman} ${t.sectorName} · riserva`, `team-${t.id}-backup`); }
@@ -5342,12 +5345,14 @@ function radioInput(value, placeholder, keep, field, title, onSave) {
 // Salta i canali occupati da righe che non si toccano e dal canale d'emergenza; anteprima prima di salvare.
 async function autoAssignRadio() {
   const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
+  const emg = { main: R.ms?.game?.emergencyRadioChannel || null, backup: R.ms?.game?.emergencyRadioBackup || null };
   const rows = [
+    { group: 'emergency', label: 'Emergenza (SOS)', scope: 'emergency', refId: 0, r: emg },
     { group: 'council', label: 'Consiglio', scope: 'council', refId: 0, r: rd.council || {} },
     ...(rd.squads || []).map((sq) => ({ group: 'squads', label: `Squadra ${sq.name}`, scope: 'squad', refId: sq.id, r: sq })),
     ...(rd.teams || []).map((t) => ({ group: 'teams', label: `${t.roman} · Settore ${t.sectorName}`, scope: 'team', refId: t.id, r: t })),
   ];
-  const opt = { band: 'LPD', start: 1, field: 'main', groups: { council: true, squads: true, teams: true }, skipUsed: true };
+  const opt = { band: 'LPD', start: 1, field: 'main', groups: { emergency: false, council: true, squads: true, teams: true }, skipUsed: true };
   const preview = h('div', { class: 'radio-auto-preview' });
   const summary = h('p', { class: 'radio-auto-summary' });
   const startSel = h('select', { class: 'input' });
@@ -5365,7 +5370,6 @@ async function autoAssignRadio() {
     const busy = new Set();
     if (opt.skipUsed) {
       const add = (v, f) => { if (!touched.has(f)) { const k = radioKey(v); if (k) busy.add(k); } };
-      add(R.ms?.game?.emergencyRadioChannel, 'emergency');
       for (const x of rows) for (const f of ['main', 'backup']) add(x.r[f], `${x.scope}-${x.refId}-${f}`);
     }
     let i = opt.start;
@@ -5401,14 +5405,19 @@ async function autoAssignRadio() {
       h('div', { class: 'field' }, h('span', null, 'Banda'), seg('band', [['LPD', 'LPD433 · 69'], ['PMR', 'PMR446 · 16']], () => opt.band, (v) => { opt.band = v; })),
       h('label', { class: 'field' }, h('span', null, 'Si parte da'), startSel),
       h('div', { class: 'field' }, h('span', null, 'A chi (in quest\'ordine)'),
-        h('div', { class: 'radio-auto-checks' }, check('council', 'Consiglio'), check('squads', `Squadre di Eletti (${(rd.squads || []).length})`), check('teams', `Coppie (${(rd.teams || []).length})`))),
+        h('div', { class: 'radio-auto-checks' }, check('emergency', 'Emergenza (SOS)'), check('council', 'Consiglio'), check('squads', `Squadre di Eletti (${(rd.squads || []).length})`), check('teams', `Coppie (${(rd.teams || []).length})`))),
       h('label', { class: 'radio-auto-check' }, h('input', { type: 'checkbox', checked: opt.skipUsed, onchange: (e) => { opt.skipUsed = e.target.checked; calc(); } }),
         h('span', null, 'Salta i canali già usati altrove (emergenza e righe che non cambiano)')),
       summary, preview),
     onOk: async () => {
       const p = plan().filter((x) => x.value);
       if (!p.length) throw new Error('Nessun canale da assegnare');
-      for (const x of p) await api('PUT', G('/radio'), { scope: x.scope, refId: x.refId, [opt.field]: x.value });
+      for (const x of p) {
+        if (x.scope === 'emergency') await api('PATCH', `/api/m/games/${R.gameId}`, { [opt.field === 'main' ? 'emergencyRadioChannel' : 'emergencyRadioBackup']: x.value });
+        else await api('PUT', G('/radio'), { scope: x.scope, refId: x.refId, [opt.field]: x.value });
+      }
+      // I campi della pagina conservano il valore mostrato a ogni aggiornamento: si scrivono qui i nuovi.
+      for (const x of p) { const el = $root.querySelector(`[data-keep="radio-${x.scope === 'emergency' ? 'emergency' : `${x.scope}-${x.refId}`}-${opt.field}"]`); if (el) el.value = x.value; }
       toast(`${p.length} canali assegnati`, 'ok');
       await load();
       return true;
@@ -5420,13 +5429,18 @@ async function autoAssignRadio() {
 function radioSettings() {
   const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
   const save = async (scope, refId, key, value) => { try { await api('PUT', G('/radio'), { scope, refId, [key]: value }); toast('Canale salvato', 'ok', 1500); load(); } catch (e) { toast(e.message, 'error', 6000); } };
+  const saveEmg = async (key, value) => { try { await api('PATCH', `/api/m/games/${R.gameId}`, { [key]: value }); toast('Canale d\'emergenza salvato', 'ok', 1500); load(); loadGames(); } catch (e) { toast(e.message, 'error', 6000); } };
   const inp = (scope, refId, key, value, ph, who) => radioInput(value, ph, `radio-${scope}-${refId}-${key}`, `${scope}-${refId}-${key}`, `${key === 'main' ? 'Canale' : 'Riserva'} · ${who}`, (v) => save(scope, refId, key, v));
   const row = (label, who, scope, refId, r, extra = null) => h('tr', null, h('td', null, label, extra), h('td', null, inp(scope, refId, 'main', r.main, 'es. PMR 3 · CTCSS 12', who)), h('td', null, inp(scope, refId, 'backup', r.backup, 'riserva', who)));
   const table = (rows) => h('div', { class: 'table-wrap' }, h('table', { class: 'radio-table' }, h('thead', null, h('tr', null, ['', 'Canale', 'Riserva'].map((x) => h('th', null, x)))), h('tbody', null, rows)));
   return h('div', { class: 'stack' },
     h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-primary', onclick: autoAssignRadio }, '⚡ Assegna in automatico…'),
       h('span', { class: 'tiny muted' }, 'Da un canale di partenza, in fila, a Consiglio, squadre e coppie: canali principali o di riserva, con l\'anteprima.')),
-    section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Il canale d\'emergenza (SOS) si imposta in Impostazioni → Partita. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
+    section('Emergenza (SOS) · tutti', h('p', { class: 'muted tiny' }, 'Lo vedono tutti (coppie ed Eletti) nella barra «Radio SOS», nella finestra EMERGENZA e nella pagina Canali radio. Solo per le emergenze reali (OFF GAME).'),
+      table([h('tr', null, h('td', null, 'Emergenza'),
+        h('td', null, radioInput(R.ms.game.emergencyRadioChannel, 'es. PMR 8 · 446.09375', 'radio-emergency-main', 'emergency', 'Canale · Emergenza (SOS)', (v) => saveEmg('emergencyRadioChannel', v))),
+        h('td', null, radioInput(R.ms.game.emergencyRadioBackup, 'riserva', 'radio-emergency-backup', 'emergency-backup', 'Riserva · Emergenza (SOS)', (v) => saveEmg('emergencyRadioBackup', v))))])),
+    section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
       table([row('Consiglio', 'Consiglio', 'council', 0, rd.council)])),
     section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
       rd.squads.length ? table(rd.squads.map((sq) => row(h('span', { class: 'chip squad-chip', style: { '--c': sq.color || '#d1ad62' } }, sq.name), `Squadra ${sq.name}`, 'squad', sq.id, sq))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
@@ -5766,7 +5780,7 @@ function viewSettings() {
     h('textarea', { class: 'input', rows: 2, name: k, 'data-keep': `tpl-${k}`, value: g.templates[k] })));
   const timers = () => g.timers.map((t) => h('label', { class: 'field' }, h('span', null, `${t.label} (min)`), h('input', { class: 'input', type: 'number', step: '0.5', min: 0.5, name: t.id, value: t.minutes, 'data-keep': `tm-${t.id}` })));
   const body = {
-    partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'emergencyRadioChannel', 'bookUrl'])), prepSection(g)],
+    partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'emergencyRadioChannel', 'emergencyRadioBackup', 'bookUrl'])), prepSection(g)],
     tempi: () => [section('Tempi e Sigilli', gameForm(g, false, ['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength'])),
       section('Timer delle coppie',
         h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },

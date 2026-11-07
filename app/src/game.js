@@ -129,7 +129,7 @@ function notifyState(gameId) {
 // ---------------------------------------------------------------- partite
 
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles', 'activeSlots', 'passiveSlots']);
@@ -2243,7 +2243,7 @@ function electState(team, player = null) {
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
+    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: team.id, kind: 'elect', displayName: team.displayName || 'Eletti del Consiglio', status: team.status, sector: null, members: membersOf(team.id).map((m) => ({ name: m.name, nickname: m.nickname })) },
     seal: null, fragments: [], notebook: [], visited: [],
     // I tradimenti servono solo alle coppie.
@@ -2268,7 +2268,7 @@ function lobbyState(player) {
   const partner = player.regGroup ? q.get('SELECT nickname, softairTeam FROM players WHERE gameId = ? AND regGroup = ? AND id != ?', g.id, player.regGroup, player.id) : null;
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
+    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: null, kind: 'lobby', displayName: player.requestedTeamName, status: player.status, sector: null,
       members: [player, partner].filter(Boolean).map((m) => ({ nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: m === player })) },
     player: playerInfo(player),
@@ -2387,7 +2387,7 @@ function teamStateCore(team, player = null) {
   return {
     clock: clockOf(g),
     game: {
-      id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, bookUrl: g.bookUrl || '/regolamento.html',
+      id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html',
       codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin, altarRadiusM: altarRadius(g),
       prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },
