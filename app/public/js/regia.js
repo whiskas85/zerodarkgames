@@ -2933,8 +2933,13 @@ function viewElectScores(d) {
   const g = R.ms.game;
   if (!sc) return [h('p', { class: 'empty' }, 'Caricamento…')];
   const kinds = Object.entries(sc.kinds);
-  const head = ['#', 'Nome', ...kinds.map(([, v]) => `${v.icon} ${v.label} (${v.points})`), 'Totale'];
-  const row = (x, name) => h('tr', null, h('td', { class: 'mono' }, `${x.rank}°`), h('td', null, name), ...kinds.map(([k]) => h('td', { class: 'mono' }, String(x.counts[k]))), h('td', { class: 'mono' }, h('strong', null, String(x.total))));
+  // Righe compatte (anche su telefono): posizione, nome, contatori con l'icona, totale grande a destra.
+  const legend = h('p', { class: 'score-legend tiny' }, kinds.map(([, v]) => h('span', null, `${v.icon} ${v.label} `, h('b', { class: 'mono' }, `${v.points} pt`))));
+  const row = (x, name) => h('li', { class: 'score-row', style: x.color ? { '--c': x.color } : null },
+    h('span', { class: 'score-rank mono' }, `${x.rank}°`),
+    h('span', { class: 'score-main' }, h('span', { class: 'score-name' }, name),
+      h('span', { class: 'score-counts' }, kinds.map(([k, v]) => h('span', { class: `score-count ${x.counts[k] ? 'on' : ''}`, title: `${v.label}: ${x.counts[k]} × ${v.points} pt` }, v.icon, h('b', { class: 'mono' }, String(x.counts[k])))))),
+    h('span', { class: 'score-total' }, h('strong', { class: 'mono' }, String(x.total)), h('span', { class: 'tiny muted' }, 'punti')));
   const squadName = (id) => sc.squads.find((s) => s.id === id)?.name;
   const mines = d.mines || [];
   const armed = mines.filter((m) => !m.triggeredAt);
@@ -2942,11 +2947,10 @@ function viewElectScores(d) {
   return [
     section('Classifica delle squadre',
       h('p', { class: 'muted tiny' }, 'Ogni azione riuscita vale i punti scelti qui sotto (anche per le azioni già fatte): ingaggio vinto (confermato), taglia riscossa (incarico taglia chiuso), Beacon riuscito (Altare disattivato o zona accesa), mina scattata. Gli Eletti vedono il punteggio nella loro app.'),
-      sc.squads.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))),
-        h('tbody', null, sc.squads.map((x) => row(x, h('span', { class: 'chip squad-chip', style: { '--c': x.color || '#d1ad62' } }, x.name)))))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
+      legend,
+      sc.squads.length ? h('ol', { class: 'score-list' }, sc.squads.map((x) => row(x, h('span', { class: 'chip squad-chip', style: { '--c': x.color || '#d1ad62' } }, x.name)))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
     section('Eletti',
-      sc.people.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))),
-        h('tbody', null, sc.people.map((x) => row(x, [x.name, x.squadId ? h('span', { class: 'tiny muted' }, ` · ${squadName(x.squadId) || ''}`) : null]))))) : h('p', { class: 'empty' }, 'Nessun Eletto.'),
+      sc.people.length ? h('ol', { class: 'score-list' }, sc.people.map((x) => row(x, [h('strong', null, x.name), x.squadId ? h('span', { class: 'tiny muted' }, ` · ${squadName(x.squadId) || ''}`) : null]))) : h('p', { class: 'empty' }, 'Nessun Eletto.'),
       sc.recent.length ? h('details', null, h('summary', { class: 'small' }, `Ultime azioni (${sc.recent.length})`),
         h('ul', { class: 'tiny' }, sc.recent.map((r) => h('li', null, `${fmtTime(r.at)} · ${sc.kinds[r.kind]?.icon || ''} ${r.label || sc.kinds[r.kind]?.label}${r.who ? ` · ${r.who}` : ''}${r.squadId ? ` · ${squadName(r.squadId) || ''}` : ''} · +${r.points}`)))) : null),
     section(`Mine traccianti sul campo (${armed.length} armate)`,
