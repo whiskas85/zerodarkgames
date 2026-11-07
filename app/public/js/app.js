@@ -889,7 +889,7 @@ function openSheetMenu() {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   const home = h('a', { class: 'tile', href: '#/home' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌂'), h('span', null, 'Home'));
   const content = h('div', { class: 'sheet-body' },
-    h('section', { class: 'tile-group' }, h('nav', { class: 'grid' }, home)),
+    h('section', { class: 'tile-group g-home' }, h('nav', { class: 'grid' }, home)),
     groups || null,
     h('button', { type: 'button', class: 'btn btn-ghost btn-block sheet-out', onclick: () => { close(); logout(); } }, '⏻ Esci'));
   // Voce della pagina aperta: accesa come nel portale.
