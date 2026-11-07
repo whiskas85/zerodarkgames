@@ -5373,37 +5373,43 @@ async function autoAssignRadio() {
     startSel.replaceChildren(...Array.from({ length: B.n }, (_, k) => h('option', { value: k + 1, selected: k + 1 === opt.start }, radioLabel(opt.band, k + 1))));
   };
   startSel.addEventListener('change', () => { opt.start = Number(startSel.value); calc(); });
-  // Il piano: per ogni riga scelta il prossimo canale libero dopo il precedente.
+  // Il piano: per ogni riga scelta il prossimo canale libero dopo il precedente. Con «Tutti e due» la riga prende
+  // il principale e subito dopo la riserva (es. Consiglio LPD 10 + LPD 11, poi la squadra LPD 12 + LPD 13).
+  const fields = () => (opt.field === 'both' ? ['main', 'backup'] : [opt.field]);
   const plan = () => {
     const B = RADIO_BANDS[opt.band];
     const targets = rows.filter((x) => opt.groups[x.group]);
-    const touched = new Set(targets.map((x) => `${x.scope}-${x.refId}-${opt.field}`));
+    const touched = new Set(targets.flatMap((x) => fields().map((f) => `${x.scope}-${x.refId}-${f}`)));
     const busy = new Set();
     if (opt.skipUsed) {
       const add = (v, f) => { if (!touched.has(f)) { const k = radioKey(v); if (k) busy.add(k); } };
       for (const x of rows) for (const f of ['main', 'backup']) add(x.r[f], `${x.scope}-${x.refId}-${f}`);
     }
     let i = opt.start;
-    const out = [];
-    for (const x of targets) {
-      while (i <= B.n && busy.has(`${opt.band} ${i}`)) i++;
-      out.push({ ...x, value: i <= B.n ? radioLabel(opt.band, i) : null, n: i <= B.n ? i : null });
-      i++;
-    }
-    return out;
+    const next = () => { while (i <= B.n && busy.has(`${opt.band} ${i}`)) i++; const n = i <= B.n ? i : null; i++; return n; };
+    return targets.map((x) => {
+      const set = {};
+      for (const f of fields()) { const n = next(); set[f] = n ? { n, value: radioLabel(opt.band, n) } : null; }
+      return { ...x, set };
+    });
   };
   const calc = () => {
     const p = plan();
-    const ok = p.filter((x) => x.value);
-    const missing = p.length - ok.length;
+    const all = p.flatMap((x) => fields().map((f) => x.set[f]));
+    const ok = all.filter(Boolean);
+    const missing = all.length - ok.length;
+    const what = opt.field === 'both' ? 'principali e di riserva' : opt.field === 'main' ? 'principali' : 'di riserva';
     summary.replaceChildren(...(!p.length ? ['Scegli almeno un gruppo.']
-      : [h('span', null, `${p.length} ${p.length === 1 ? 'canale' : 'canali'} ${opt.field === 'main' ? 'principali' : 'di riserva'}: da `), h('strong', { class: 'mono' }, ok[0] ? `${opt.band} ${ok[0].n}` : '—'),
+      : [h('span', null, `${all.length} ${all.length === 1 ? 'canale' : 'canali'} ${what}: da `), h('strong', { class: 'mono' }, ok[0] ? `${opt.band} ${ok[0].n}` : '—'),
         h('span', null, ' a '), h('strong', { class: 'mono' }, ok.length ? `${opt.band} ${ok.at(-1).n}` : '—'),
         ok.length ? h('span', { class: 'tiny muted' }, ` (${ok.at(-1).value.split(' · ')[1].replace('.', ',')} MHz)`) : null,
         missing ? h('span', { class: 'warn-text' }, ` · ${missing} senza canale: la banda finisce a ${opt.band} ${RADIO_BANDS[opt.band].n}`) : null]).filter(Boolean));
+    const cell = (x, f) => h('td', { class: 'mono' }, x.set[f]?.value || 'nessuno');
+    const head = opt.field === 'both' ? ['', 'Canale', 'Riserva'] : ['', 'Adesso', 'Diventa'];
     preview.replaceChildren(h('table', { class: 'radio-table' },
-      h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Adesso'), h('th', null, 'Diventa'))),
-      h('tbody', null, p.map((x) => h('tr', { class: x.value ? '' : 'radio-auto-miss' }, h('td', null, x.label), h('td', { class: 'mono tiny muted' }, x.r[opt.field] || '—'), h('td', { class: 'mono' }, x.value || 'nessuno'))))));
+      h('thead', null, h('tr', null, head.map((t) => h('th', null, t)))),
+      h('tbody', null, p.map((x) => h('tr', { class: fields().every((f) => x.set[f]) ? '' : 'radio-auto-miss' }, h('td', null, x.label),
+        opt.field === 'both' ? [cell(x, 'main'), cell(x, 'backup')] : [h('td', { class: 'mono tiny muted' }, x.r[opt.field] || '—'), cell(x, opt.field)])))));
   };
   const seg = (name, choices, get, set) => h('div', { class: 'radio-pick-tabs' }, choices.map(([v, l]) => h('button', { type: 'button', class: `btn btn-sm ${get() === v ? 'btn-primary' : ''}`,
     onclick: (e) => { set(v); e.currentTarget.parentElement.querySelectorAll('button').forEach((b, k) => b.classList.toggle('btn-primary', choices[k][0] === v)); if (name === 'band') fillStart(); calc(); } }, l)));
@@ -5412,7 +5418,7 @@ async function autoAssignRadio() {
   await modal({
     title: 'Assegna i canali in automatico', okLabel: 'Assegna', tall: true,
     body: h('div', { class: 'stack-sm radio-auto-body' },
-      h('div', { class: 'field' }, h('span', null, 'Quali canali'), seg('field', [['main', 'Principali'], ['backup', 'Di riserva']], () => opt.field, (v) => { opt.field = v; })),
+      h('div', { class: 'field' }, h('span', null, 'Quali canali'), seg('field', [['main', 'Principali'], ['backup', 'Di riserva'], ['both', 'Tutti e due']], () => opt.field, (v) => { opt.field = v; })),
       h('div', { class: 'field' }, h('span', null, 'Banda'), seg('band', [['LPD', 'LPD433 · 69'], ['PMR', 'PMR446 · 16']], () => opt.band, (v) => { opt.band = v; })),
       h('label', { class: 'field' }, h('span', null, 'Si parte da'), startSel),
       h('div', { class: 'field' }, h('span', null, 'A chi (in quest\'ordine)'),
@@ -5421,15 +5427,17 @@ async function autoAssignRadio() {
         h('span', null, 'Salta i canali già usati altrove (emergenza e righe che non cambiano)')),
       summary, preview),
     onOk: async () => {
-      const p = plan().filter((x) => x.value);
+      const p = plan().map((x) => ({ ...x, vals: Object.fromEntries(fields().filter((f) => x.set[f]).map((f) => [f, x.set[f].value])) })).filter((x) => Object.keys(x.vals).length);
       if (!p.length) throw new Error('Nessun canale da assegnare');
+      const EMG = { main: 'emergencyRadioChannel', backup: 'emergencyRadioBackup' };
       for (const x of p) {
-        if (x.scope === 'emergency') await api('PATCH', `/api/m/games/${R.gameId}`, { [opt.field === 'main' ? 'emergencyRadioChannel' : 'emergencyRadioBackup']: x.value });
-        else await api('PUT', G('/radio'), { scope: x.scope, refId: x.refId, [opt.field]: x.value });
+        if (x.scope === 'emergency') await api('PATCH', `/api/m/games/${R.gameId}`, Object.fromEntries(Object.entries(x.vals).map(([f, v]) => [EMG[f], v])));
+        else await api('PUT', G('/radio'), { scope: x.scope, refId: x.refId, ...x.vals });
       }
       // I campi della pagina conservano il valore mostrato a ogni aggiornamento: si scrivono qui i nuovi.
-      for (const x of p) { const el = $root.querySelector(`[data-keep="radio-${x.scope === 'emergency' ? 'emergency' : `${x.scope}-${x.refId}`}-${opt.field}"]`); if (el) el.value = x.value; }
-      toast(`${p.length} canali assegnati`, 'ok');
+      for (const x of p) for (const [f, v] of Object.entries(x.vals)) { const el = $root.querySelector(`[data-keep="radio-${x.scope === 'emergency' ? 'emergency' : `${x.scope}-${x.refId}`}-${f}"]`); if (el) el.value = v; }
+      const count = p.reduce((t, x) => t + Object.keys(x.vals).length, 0);
+      toast(`${count} canali assegnati`, 'ok');
       await load();
       return true;
     },
