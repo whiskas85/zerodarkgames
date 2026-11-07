@@ -797,6 +797,8 @@ addColumn('games', 'passiveSlots', 'INTEGER');
 
 // VIA con il conto alla rovescia: istante in cui parte davvero (5 secondi dopo il tasto), sincronizzato sulle regie.
 addColumn('games', 'goAt', 'INTEGER');
+// Canale radio d'emergenza di riserva (oltre a emergencyRadioChannel).
+addColumn('games', 'emergencyRadioBackup', 'TEXT');
 
 // Canali radio: canale e canale di riserva per coppia (privati: li vede solo la coppia), per squadra di Eletti e per
 // il Consiglio (regia ed Eletti). scope: 'team' | 'squad' | 'council' (refId 0).
