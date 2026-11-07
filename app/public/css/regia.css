@@ -1386,7 +1386,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Canali radio: campo + 📻, finestra con l'elenco PMR/LPD (i già usati in grigio). */
 .radio-field { display: flex; gap: 6px; align-items: center; }
 .radio-field .input { flex: 1; min-width: 0; }
-.radio-pick-list { display: grid; gap: 4px; max-height: min(52vh, 460px); overflow-y: auto; overscroll-behavior: contain; }
+.radio-pick-list { flex: 1 1 auto; min-height: 0; display: grid; gap: 4px; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.radio-pick-list::-webkit-scrollbar { display: none; }
+/* Solo l'elenco scorre (senza barra a lato): schede, ricerca e pulsanti restano fermi. */
+.dlg-fixed .dlg-body:has(.radio-pick-body) { overflow: hidden; display: flex; flex-direction: column; padding-right: 0; }
+.radio-pick-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.radio-pick-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.radio-pick-tabs .btn { justify-content: center; white-space: nowrap; }
 .radio-pick { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .radio-pick strong { min-width: 64px; }
 .radio-pick:hover:not(:disabled) { border-color: var(--brass); }

@@ -5268,8 +5268,8 @@ function soundUploads() {
 
 // ---- Canali radio: elenco PMR446 (16 canali, 12,5 kHz da 446,00625) e LPD433 (69 canali, 25 kHz da 433,075).
 const RADIO_BANDS = {
-  PMR: { label: 'PMR446', n: 16, f: (i) => 446.00625 + (i - 1) * 0.0125, dec: 5 },
   LPD: { label: 'LPD433', n: 69, f: (i) => 433.075 + (i - 1) * 0.025, dec: 3 },
+  PMR: { label: 'PMR446', n: 16, f: (i) => 446.00625 + (i - 1) * 0.0125, dec: 5 },
 };
 const radioLabel = (band, i) => `${band} ${i} · ${RADIO_BANDS[band].f(i).toFixed(RADIO_BANDS[band].dec)}`;
 // «PMR 8 · 446.09375» → «PMR 8»: la chiave con cui si riconosce un canale già usato (anche scritto a mano).
@@ -5292,14 +5292,14 @@ function radioUsage() {
 async function pickRadioChannel(title, current, field) {
   const used = radioUsage();
   const mine = radioKey(current);
-  let band = mine?.startsWith('LPD') ? 'LPD' : 'PMR';
+  let band = mine?.startsWith('PMR') ? 'PMR' : 'LPD'; // di base LPD, salvo un canale PMR già scelto
   let q = '';
   let picked;
   const list = h('div', { class: 'radio-pick-list', role: 'listbox' });
-  const tabs = h('div', { class: 'seg-choice' });
-  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca per numero o frequenza (es. 8, 446.09)', autocomplete: 'off', inputmode: 'search' });
+  const tabs = h('div', { class: 'radio-pick-tabs' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca: numero o frequenza', autocomplete: 'off', inputmode: 'search' });
   const paint = () => {
-    tabs.replaceChildren(...Object.entries(RADIO_BANDS).map(([k, b]) => h('button', { type: 'button', class: `btn btn-sm ${band === k ? 'btn-primary' : ''}`, onclick: () => { band = k; paint(); } }, `${b.label} · ${b.n} canali`)));
+    tabs.replaceChildren(...Object.entries(RADIO_BANDS).map(([k, b]) => h('button', { type: 'button', class: `btn btn-sm ${band === k ? 'btn-primary' : ''}`, onclick: () => { band = k; paint(); } }, b.label, h('span', { class: 'tiny' }, ` · ${b.n}`))));
     const B = RADIO_BANDS[band];
     const needle = q.trim().toLowerCase().replace(',', '.');
     const rows = [];
@@ -5322,7 +5322,7 @@ async function pickRadioChannel(title, current, field) {
   paint();
   const res = await modal({
     title, okLabel: 'Svuota il campo', cancelLabel: 'Chiudi', tall: true,
-    body: h('div', { class: 'stack-sm' }, tabs, search,
+    body: h('div', { class: 'radio-pick-body' }, tabs, search,
       h('p', { class: 'tiny muted' }, 'Grigi: già usati da un\'altra riga o dal canale d\'emergenza. Dopo la scelta puoi aggiungere a mano il tono (es. «· CTCSS 12»).'), list),
     onOpen: (dlg) => { dlgClose = () => { dlg.querySelector('.dlg-actions .btn-ghost')?.click(); }; setTimeout(() => search.focus(), 50); },
     onOk: async () => { picked = ''; return true; },
