@@ -5175,7 +5175,15 @@ function gameForm(g, isNew, only = null) {
     const all = {
       name: () => f('name', 'Nome della partita', 'text', { attrs: { required: true, placeholder: 'Zero Dark Games – ottobre 2026' } }),
       scheduledStart: () => h('div', { class: 'field' }, h('span', null, 'Data e ora previste'), dateTimeInputs({ keep: 'gf-scheduledStart', value: g?.scheduledStart || '', defDate: '', name: 'scheduledStart' }).el),
-      emergencyRadioChannel: () => f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } }),
+      emergencyRadioChannel: () => {
+        // Con 📻 si sceglie da PMR446 o LPD433 (i canali di coppie, squadre e Consiglio sono disabilitati); poi «Salva».
+        const el = f('emergencyRadioChannel', 'Canale radio d\'emergenza', 'text', { attrs: { placeholder: 'es. PMR 8 · 446.09375' } });
+        const input = el.querySelector('input');
+        const pick = h('button', { type: 'button', class: 'btn btn-sm', title: 'Scegli un canale PMR o LPD', 'aria-label': 'Scegli il canale d\'emergenza',
+          onclick: async () => { const v = await pickRadioChannel('Canale d\'emergenza (SOS)', input.value, 'emergency'); if (v !== undefined) { input.value = v; toast('Ricorda di salvare', 'info', 2500); } } }, '📻');
+        input.replaceWith(h('div', { class: 'radio-field' }, input, pick));
+        return el;
+      },
       bookUrl: () => f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
       durationMin: () => f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
       truceMin: () => f('truceMin', 'Tregua iniziale (min)', 'number', { def: 5, lock: true }),
@@ -5258,21 +5266,92 @@ function soundUploads() {
     })));
 }
 
+// ---- Canali radio: elenco PMR446 (16 canali, 12,5 kHz da 446,00625) e LPD433 (69 canali, 25 kHz da 433,075).
+const RADIO_BANDS = {
+  PMR: { label: 'PMR446', n: 16, f: (i) => 446.00625 + (i - 1) * 0.0125, dec: 5 },
+  LPD: { label: 'LPD433', n: 69, f: (i) => 433.075 + (i - 1) * 0.025, dec: 3 },
+};
+const radioLabel = (band, i) => `${band} ${i} · ${RADIO_BANDS[band].f(i).toFixed(RADIO_BANDS[band].dec)}`;
+// «PMR 8 · 446.09375» → «PMR 8»: la chiave con cui si riconosce un canale già usato (anche scritto a mano).
+function radioKey(v) {
+  const m = /\b(PMR|LPD)\s*(?:446|433)?\s*(?:ch\.?|canale)?\s*(\d{1,2})\b/i.exec(String(v || ''));
+  return m ? `${m[1].toUpperCase()} ${Number(m[2])}` : null;
+}
+// Chi usa già quale canale: Consiglio, squadre, coppie (canale e riserva) e il canale d'emergenza.
+function radioUsage() {
+  const rd = R.ms?.radio || { council: {}, squads: [], teams: [] };
+  const used = new Map();
+  const add = (v, who, field) => { const k = radioKey(v); if (k && !used.has(k)) used.set(k, { who, field }); };
+  add(R.ms?.game?.emergencyRadioChannel, 'Emergenza (SOS)', 'emergency');
+  add(rd.council?.main, 'Consiglio', 'council-0-main'); add(rd.council?.backup, 'Consiglio · riserva', 'council-0-backup');
+  for (const sq of rd.squads || []) { add(sq.main, `Squadra ${sq.name}`, `squad-${sq.id}-main`); add(sq.backup, `Squadra ${sq.name} · riserva`, `squad-${sq.id}-backup`); }
+  for (const t of rd.teams || []) { add(t.main, `${t.roman} ${t.sectorName}`, `team-${t.id}-main`); add(t.backup, `${t.roman} ${t.sectorName} · riserva`, `team-${t.id}-backup`); }
+  return used;
+}
+// Finestra con ricerca: PMR o LPD, i canali già scelti altrove sono disabilitati (con chi li usa).
+async function pickRadioChannel(title, current, field) {
+  const used = radioUsage();
+  const mine = radioKey(current);
+  let band = mine?.startsWith('LPD') ? 'LPD' : 'PMR';
+  let q = '';
+  let picked;
+  const list = h('div', { class: 'radio-pick-list', role: 'listbox' });
+  const tabs = h('div', { class: 'seg-choice' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca per numero o frequenza (es. 8, 446.09)', autocomplete: 'off', inputmode: 'search' });
+  const paint = () => {
+    tabs.replaceChildren(...Object.entries(RADIO_BANDS).map(([k, b]) => h('button', { type: 'button', class: `btn btn-sm ${band === k ? 'btn-primary' : ''}`, onclick: () => { band = k; paint(); } }, `${b.label} · ${b.n} canali`)));
+    const B = RADIO_BANDS[band];
+    const needle = q.trim().toLowerCase().replace(',', '.');
+    const rows = [];
+    for (let i = 1; i <= B.n; i++) {
+      const label = radioLabel(band, i);
+      if (needle && !(String(i) === needle.replace(/^(pmr|lpd)\s*/, '') || label.toLowerCase().includes(needle))) continue;
+      const key = `${band} ${i}`;
+      const u = used.get(key);
+      const isMine = key === mine && (!u || u.field === field);
+      const off = !!u && !isMine;
+      rows.push(h('button', { type: 'button', role: 'option', class: `radio-pick ${isMine ? 'on' : ''}`, disabled: off, 'aria-selected': isMine ? 'true' : 'false',
+        onclick: () => { picked = label; dlgClose(); } },
+        h('strong', { class: 'mono' }, `${band} ${i}`), h('span', { class: 'mono small' }, B.f(i).toFixed(B.dec)),
+        h('span', { class: 'tiny muted grow' }, off ? `usato da ${u.who}` : isMine ? 'scelto qui' : '')));
+    }
+    list.replaceChildren(...(rows.length ? rows : [h('p', { class: 'empty' }, 'Nessun canale con questa ricerca.')]));
+  };
+  search.addEventListener('input', () => { q = search.value; paint(); });
+  let dlgClose = () => {};
+  paint();
+  const res = await modal({
+    title, okLabel: 'Svuota il campo', cancelLabel: 'Chiudi', tall: true,
+    body: h('div', { class: 'stack-sm' }, tabs, search,
+      h('p', { class: 'tiny muted' }, 'Grigi: già usati da un\'altra riga o dal canale d\'emergenza. Dopo la scelta puoi aggiungere a mano il tono (es. «· CTCSS 12»).'), list),
+    onOpen: (dlg) => { dlgClose = () => { dlg.querySelector('.dlg-actions .btn-ghost')?.click(); }; setTimeout(() => search.focus(), 50); },
+    onOk: async () => { picked = ''; return true; },
+  });
+  void res;
+  return picked; // undefined = nessuna scelta, '' = svuota
+}
+// Campo canale con il pulsante 📻 che apre l'elenco.
+function radioInput(value, placeholder, keep, field, title, onSave) {
+  const input = h('input', { class: 'input input-sm mono', value: value || '', placeholder, maxlength: 60, 'data-keep': keep, onchange: (e) => onSave(e.target.value) });
+  return h('div', { class: 'radio-field' }, input,
+    h('button', { type: 'button', class: 'btn btn-sm', title: 'Scegli un canale PMR o LPD', 'aria-label': `Scegli il canale: ${title}`,
+      onclick: async () => { const v = await pickRadioChannel(title, input.value, field); if (v === undefined) return; input.value = v; onSave(v); } }, '📻'));
+}
+
 // Canali radio: una riga per il Consiglio, per ogni squadra di Eletti e per ogni coppia. Si salva uscendo dal campo.
 function radioSettings() {
   const rd = R.ms.radio || { council: {}, squads: [], teams: [] };
   const save = async (scope, refId, key, value) => { try { await api('PUT', G('/radio'), { scope, refId, [key]: value }); toast('Canale salvato', 'ok', 1500); load(); } catch (e) { toast(e.message, 'error', 6000); } };
-  const inp = (scope, refId, key, value, ph) => h('input', { class: 'input input-sm mono', value: value || '', placeholder: ph, maxlength: 60, 'data-keep': `radio-${scope}-${refId}-${key}`,
-    onchange: (e) => save(scope, refId, key, e.target.value) });
-  const row = (label, scope, refId, r, extra = null) => h('tr', null, h('td', null, label, extra), h('td', null, inp(scope, refId, 'main', r.main, 'es. PMR 3 · CTCSS 12')), h('td', null, inp(scope, refId, 'backup', r.backup, 'riserva')));
+  const inp = (scope, refId, key, value, ph, who) => radioInput(value, ph, `radio-${scope}-${refId}-${key}`, `${scope}-${refId}-${key}`, `${key === 'main' ? 'Canale' : 'Riserva'} · ${who}`, (v) => save(scope, refId, key, v));
+  const row = (label, who, scope, refId, r, extra = null) => h('tr', null, h('td', null, label, extra), h('td', null, inp(scope, refId, 'main', r.main, 'es. PMR 3 · CTCSS 12', who)), h('td', null, inp(scope, refId, 'backup', r.backup, 'riserva', who)));
   const table = (rows) => h('div', { class: 'table-wrap' }, h('table', { class: 'radio-table' }, h('thead', null, h('tr', null, ['', 'Canale', 'Riserva'].map((x) => h('th', null, x)))), h('tbody', null, rows)));
   return h('div', { class: 'stack' },
-    section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Il canale d\'emergenza (SOS) si imposta in Impostazioni → Partita.'),
-      table([row('Consiglio', 'council', 0, rd.council)])),
+    section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Il canale d\'emergenza (SOS) si imposta in Impostazioni → Partita. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
+      table([row('Consiglio', 'Consiglio', 'council', 0, rd.council)])),
     section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
-      rd.squads.length ? table(rd.squads.map((sq) => row(h('span', { class: 'chip squad-chip', style: { '--c': sq.color || '#d1ad62' } }, sq.name), 'squad', sq.id, sq))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
+      rd.squads.length ? table(rd.squads.map((sq) => row(h('span', { class: 'chip squad-chip', style: { '--c': sq.color || '#d1ad62' } }, sq.name), `Squadra ${sq.name}`, 'squad', sq.id, sq))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
     section('Coppie', h('p', { class: 'muted tiny' }, 'Privati: ogni coppia vede solo i suoi canali, mai quelli delle altre.'),
-      rd.teams.length ? table(rd.teams.map((t) => row(`${t.roman} · Settore ${t.sectorName}`, 'team', t.id, t, t.displayName ? h('span', { class: 'tiny muted' }, ` · ${t.displayName}`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')));
+      rd.teams.length ? table(rd.teams.map((t) => row(`${t.roman} · Settore ${t.sectorName}`, `${t.roman} ${t.sectorName}`, 'team', t.id, t, t.displayName ? h('span', { class: 'tiny muted' }, ` · ${t.displayName}`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')));
 }
 
 // ---- indirizzo usato in link e QR (localhost funziona solo sul PC: per i telefoni in Wi-Fi serve l'IP del PC)

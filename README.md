@@ -73,7 +73,7 @@ Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza A
 
 ## Canali radio
 
-In **Impostazioni → Canali radio** la regia assegna canale e riserva al **Consiglio** (regia ed Eletti), a ogni **squadra di Eletti** e a ogni **coppia**. Nell'app ognuno vede solo i suoi, nella scheda «📻 I vostri canali radio» in home: la coppia solo i propri (privati, le altre coppie non li ricevono mai), l'Eletto quelli della sua squadra e del Consiglio. Il canale d'emergenza (SOS) resta nella barra in basso e si imposta in Impostazioni → Partita.
+In **Impostazioni → Canali radio** la regia assegna canale e riserva al **Consiglio** (regia ed Eletti), a ogni **squadra di Eletti** e a ogni **coppia**. Nell'app ognuno vede solo i suoi, nella scheda «📻 I vostri canali radio» in home: la coppia solo i propri (privati, le altre coppie non li ricevono mai), l'Eletto quelli della sua squadra e del Consiglio. Il canale d'emergenza (SOS) resta nella barra in basso e si imposta in Impostazioni → Partita. Accanto a ogni campo (anche quello d'emergenza) il pulsante 📻 apre l'elenco dei canali **PMR446** (16) e **LPD433** (69) con la ricerca per numero o frequenza; i canali già assegnati altrove sono disabilitati con il nome di chi li usa. Si può sempre scrivere a mano, per esempio per aggiungere il tono CTCSS.
 
 ## Avvisi e notifiche
 

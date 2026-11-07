@@ -1382,3 +1382,14 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .del-acc { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
 .del-acc input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
 .pair-members .member-del { float: right; margin-left: 6px; padding: 2px 8px; font-size: 12px; }
+
+/* Canali radio: campo + 📻, finestra con l'elenco PMR/LPD (i già usati in grigio). */
+.radio-field { display: flex; gap: 6px; align-items: center; }
+.radio-field .input { flex: 1; min-width: 0; }
+.radio-pick-list { display: grid; gap: 4px; max-height: min(52vh, 460px); overflow-y: auto; overscroll-behavior: contain; }
+.radio-pick { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.radio-pick strong { min-width: 64px; }
+.radio-pick:hover:not(:disabled) { border-color: var(--brass); }
+.radio-pick.on { border-color: var(--blood); background: color-mix(in srgb, var(--blood) 14%, var(--paper)); }
+.radio-pick:disabled { opacity: .45; cursor: not-allowed; text-decoration: line-through; text-decoration-color: rgba(255,255,255,.25); }
+.radio-pick:disabled .tiny { text-decoration: none; }
