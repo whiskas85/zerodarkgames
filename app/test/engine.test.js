@@ -3425,3 +3425,15 @@ test('Traccar acceso quando non serve: l\'app propone di spegnerlo (non subito d
   // Quando serve (cerchio aperto) non si propone di spegnerlo.
   assert.ok(!G.trackStateOf(q.get('SELECT * FROM players WHERE id = ?', p.id), { ...g, status: 'circle' }, team).idleOn);
 });
+
+test('voto del pubblico acceso: le coppie formate dopo entrano da sole tra le votabili', () => {
+  const VO = require('../src/vote');
+  const g = G.createGame({ name: 'Voto automatico' }, 'test');
+  const add = (n) => G.addPlayer(g.id, { name: n }, { actor: 'test' });
+  const t1 = G.createTeam(g.id, { playerIds: [add('A1'), add('A2')] }, 'test');
+  assert.equal(q.get('SELECT votable FROM teams WHERE id = ?', t1).votable, 0);
+  VO.updateVote(g.id, { enabled: true }, 'test');
+  const t2 = G.createTeam(g.id, { playerIds: [add('B1'), add('B2')] }, 'test');
+  assert.equal(q.get('SELECT votable FROM teams WHERE id = ?', t2).votable, 1);
+  VO.updateVote(g.id, { enabled: false }, 'test');
+});
