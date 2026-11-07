@@ -5305,10 +5305,21 @@ async function pickRadioChannel(title, current, field) {
     tabs.replaceChildren(...Object.entries(RADIO_BANDS).map(([k, b]) => h('button', { type: 'button', class: `btn btn-sm ${band === k ? 'btn-primary' : ''}`, onclick: () => { band = k; paint(); } }, b.label, h('span', { class: 'tiny' }, ` · ${b.n}`))));
     const B = RADIO_BANDS[band];
     const needle = q.trim().toLowerCase().replace(',', '.');
-    const rows = [];
+    // Ricerca: prima il numero del canale (esatto, poi che inizia così), solo dopo la frequenza che lo contiene.
+    // «33» → LPD 33 in cima, poi le frequenze con 33 (tutte le LPD hanno 433).
+    const num = needle.replace(/^(pmr|lpd)\s*/, '');
+    const isNum = /^\d+$/.test(num);
+    const found = [];
     for (let i = 1; i <= B.n; i++) {
       const label = radioLabel(band, i);
-      if (needle && !(String(i) === needle.replace(/^(pmr|lpd)\s*/, '') || label.toLowerCase().includes(needle))) continue;
+      const score = !needle ? 0 : isNum && String(i) === num ? 0 : isNum && String(i).startsWith(num) ? 1 : label.toLowerCase().includes(needle) || B.f(i).toFixed(B.dec).includes(num) ? 2 : -1;
+      if (score >= 0) found.push([score, i]);
+    }
+    found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const rows = [];
+    for (const [score, i] of found) {
+      const label = radioLabel(band, i);
+      if (score === 2 && rows.length && isNum && !rows.sep) { rows.sep = true; rows.push(h('p', { class: 'tiny muted radio-pick-sep' }, 'Con «' + num + '» nella frequenza')); }
       const key = `${band} ${i}`;
       const u = used.get(key);
       const isMine = key === mine && (!u || u.field === field);
