@@ -430,8 +430,9 @@ function createTeam(gameId, data, actor) {
     if (!sector) throw err(409, 'Non ci sono più Settori liberi: aggiungine uno in Impostazioni → Settori e Altari');
     if (q.get('SELECT 1 FROM teams WHERE gameId = ? AND sectorId = ?', g.id, sector.id)) throw err(409, `Il Settore ${sector.name} è già assegnato`);
     const name = data.displayName?.trim() || pls[0].requestedTeamName || null;
-    const r = q.run(`INSERT INTO teams (gameId, sectorId, displayName, loginToken, accessCode, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
-      g.id, sector.id, name, randomToken(24), uniqueAccessCode(), Date.now());
+    // Voto del pubblico acceso: la coppia nuova entra subito tra quelle votabili (la regia può sempre toglierla).
+    const r = q.run(`INSERT INTO teams (gameId, sectorId, displayName, loginToken, accessCode, votable, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      g.id, sector.id, name, randomToken(24), uniqueAccessCode(), g.voteEnabled ? 1 : 0, Date.now());
     const teamId = Number(r.lastInsertRowid);
     for (const p of pls) q.run('UPDATE players SET teamId = ? WHERE id = ?', teamId, p.id);
     log(g.id, actor, 'team_created', { teamId, sector: sector.name, members: pls.map((p) => p.name) });
