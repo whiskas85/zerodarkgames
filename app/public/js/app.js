@@ -1817,10 +1817,10 @@ function viewMines() {
       h('strong', null, x.triggeredAt ? (x.team ? `${x.team.roman} · Settore ${x.team.sectorName}` : 'Scattata') : x.mine ? 'La tua mina' : `Mina di ${x.author || 'Eletti'}`),
       h('span', { class: 'tiny muted' }, x.triggeredAt
         ? `Scattata alle ${fmtTime(x.triggeredAt)}${x.markUntil ? ` · marcata fino alle ${fmtTime(x.markUntil)}` : ' · marcatura finita'}${x.mine ? ' · tua' : ` · ${x.author || ''}`}`
-        : `Posata alle ${fmtTime(x.placedAt)} · raggio ${x.radius} m${pos ? ` · a ${fmtM(geoDist(pos, x))}` : ''}`)));
+        : `Posata alle ${fmtTime(x.placedAt)}${x.expiresAt ? ` · scade alle ${fmtTime(x.expiresAt)}` : ''} · raggio ${x.radius} m${pos ? ` · a ${fmtM(geoDist(pos, x))}` : ''}`)));
   return h('div', { class: 'stack' },
     h('h2', null, 'Mine traccianti'),
-    h('p', { class: 'muted small' }, `Posate una mina dove siete: la vede solo il Consiglio. La prima coppia che passa entro ${m.radius} m viene marcata e per ${m.markMin} minuti la vedono tutti in mappa (lei lo scopre un minuto dopo). Chi è nascosto (Ombra, Cono d'Ombra) non la fa scattare.`),
+    h('p', { class: 'muted small' }, `Posate una mina dove siete: la vede solo il Consiglio. La prima coppia che passa entro ${m.radius} m viene marcata e per ${m.markMin} minuti la vedono tutti in mappa (lei lo scopre un minuto dopo). Chi è nascosto (Ombra, Cono d'Ombra) non la fa scattare.${m.lifeMin ? ` Una mina che non scatta si spegne dopo ${m.lifeMin} minuti.` : ''} Le mine si ricaricano alla Base degli Eletti, oppure ve le ricarica il Consiglio.`),
     !m.personal ? h('div', { class: 'banner banner-queue' }, h('strong', null, 'Serve il tuo accesso personale'), h('span', null, 'Le mine sono di ogni Eletto: entra con il tuo account o il tuo codice personale.')) : null,
     m.personal ? h('div', { class: 'card mine-ammo' },
       h('div', { class: 'eyebrow' }, 'Le tue mine'),

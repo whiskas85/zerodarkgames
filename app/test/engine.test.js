@@ -3071,6 +3071,20 @@ test('mine traccianti degli Eletti: si posano, marcano la coppia per 5 minuti (l
   assert.throws(() => M.reloadMines(elect, pE(), { lat: 45, lng: 9 }), /avvicinatevi/);
   assert.equal(M.reloadMines(elect, pE(), { lat: 45.1001, lng: 9 }).left, 2);
   assert.equal(M.electMines(elect, pE()).left, 2);
+  // Scadenza: una mina non scattata, passata la durata (di base 60 minuti), non scatta più e sparisce.
+  const m3 = M.placeMine(elect, pE(), { lat: 45.05, lng: 9 });
+  const row3 = q.get('SELECT * FROM elect_mines WHERE id = ?', m3.id);
+  assert.ok(Math.abs(row3.expiresAt - row3.placedAt - 60 * 60000) < 1000);
+  q.run('UPDATE elect_mines SET expiresAt = ? WHERE id = ?', Date.now() - 1, m3.id);
+  M.tickAll();
+  assert.ok(!M.minesOf(g.id).some((m) => m.id === m3.id));
+  F.recordPosition(B, null, { lat: 45.05, lng: 9, deviceId: 'devB-0001' });
+  assert.ok(!M.markedTeams(g.id).some((x) => x.teamId === B.id));
+  // Ricarica dalla regia (ovunque sia l'Eletto).
+  assert.equal(M.electMines(elect, pE()).left, 1);
+  assert.equal(M.reloadByRegia(g.id, eid, 'regia').count, 1);
+  assert.equal(M.electMines(elect, pE()).left, 2);
+  assert.equal(M.scoresOf(g.id).people.find((p) => p.id === eid).minesLeft, 2);
   // La Base la vedono gli Eletti, non le coppie.
   assert.ok(!F.teamMap(A).landmarks.some((l) => l.kind === 'base'));
   assert.ok(F.teamMap(elect).landmarks.some((l) => l.kind === 'base'));

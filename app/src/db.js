@@ -766,6 +766,10 @@ addColumn('players', 'minesReloadAt', 'INTEGER');
 addColumn('games', 'mineCount', 'INTEGER NOT NULL DEFAULT 3');
 addColumn('games', 'mineRadiusM', 'INTEGER NOT NULL DEFAULT 20');
 addColumn('games', 'mineMarkMin', 'INTEGER NOT NULL DEFAULT 5');
+// Durata di una mina dalla posa (minuti, 0 = senza scadenza): scaduta non scatta più.
+addColumn('games', 'mineLifeMin', 'INTEGER NOT NULL DEFAULT 60');
+addColumn('elect_mines', 'expiresAt', 'INTEGER');
+addColumn('elect_mines', 'expiredNotifiedAt', 'INTEGER');
 // Punteggio degli Eletti: un'azione riuscita per riga (il valore lo dà la partita, così cambiarlo vale anche per il passato).
 db.exec(`
 CREATE TABLE IF NOT EXISTS elect_scores (
