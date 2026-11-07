@@ -677,7 +677,11 @@ function header(view) {
   const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
     view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' && !upStep(view) ? 'Torna alla home' : 'Torna indietro',
-      onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); } } }, '‹') : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
+      onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); } } }, '‹')
+      // Logo della coppia al posto del timbro, con il numero romano in basso a destra (come nel voto del pubblico).
+      : st?.team.kind === 'couple' && st.team.logoAt ? h('div', { class: 'stamp stamp-logo', style: sec?.color ? { '--c': sec.color } : null },
+        h('img', { src: `/api/public/team-logo/${st.team.id}?v=${st.team.logoAt}`, alt: 'Logo della coppia' }), h('b', { class: 'stamp-rb' }, sec?.roman || '0'))
+      : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? sec.name : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')

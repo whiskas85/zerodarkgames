@@ -2384,7 +2384,7 @@ function teamStateCore(team, player = null) {
     },
     team: {
       id: team.id, kind: 'couple', displayName: team.displayName, status: team.status, finishPosition: team.finishPosition, logoAt: team.logoAt || null,
-      sector: s ? { id: s.id, name: s.name, roman: s.roman, motto: s.motto, element: s.element } : null,
+      sector: s ? { id: s.id, name: s.name, roman: s.roman, motto: s.motto, element: s.element, color: s.color || null } : null,
       // Niente nomi e cognomi nell'app delle coppie: solo soprannome (e squadra softair).
       members: membersOf(team.id).map((m) => ({ id: m.id, nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: !!player && m.id === player.id })),
     },

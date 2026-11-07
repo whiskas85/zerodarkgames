@@ -12,6 +12,11 @@ body.no-scroll { overflow: hidden; }
 .stamp { width: 48px; height: 48px; border: 3px solid var(--ink); display: grid; place-items: center; flex: none; position: relative; }
 .stamp::after { content: ""; position: absolute; inset: 3px; border: 1px solid var(--blood); }
 .stamp span { font-family: var(--f-display); font-weight: 900; font-size: 22px; }
+/* Logo della coppia nella barra, con il numero romano del Settore in basso a destra. */
+.stamp-logo { border-color: var(--c, var(--ink)); background: var(--bg); }
+.stamp-logo::after { display: none; }
+.stamp-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.stamp-rb { position: absolute; right: -7px; bottom: -7px; min-width: 20px; height: 20px; padding: 0 3px; display: grid; place-items: center; background: var(--bg); border: 1.5px solid var(--c, var(--ink)); color: var(--c, var(--ink)); font-family: var(--f-display); font-weight: 900; font-size: 12px; line-height: 1; }
 .back { width: 48px; height: 48px; display: grid; place-items: center; font-size: 40px; line-height: 1; text-decoration: none; color: var(--ink); border: 2px solid var(--line); flex: none; }
 .top-id { min-width: 0; flex: 1; }
 .top-sector { font-family: var(--f-display); font-weight: 900; font-size: 24px; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
