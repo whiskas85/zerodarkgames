@@ -679,9 +679,10 @@ function header(view) {
     view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' && !upStep(view) ? 'Torna alla home' : 'Torna indietro',
       onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); } } }, '‹')
       // Logo della coppia al posto del timbro, con il numero romano in basso a destra (come nel voto del pubblico).
-      : st?.team.kind === 'couple' && st.team.logoAt ? h('div', { class: 'stamp stamp-logo', style: sec?.color ? { '--c': sec.color } : null },
-        h('img', { src: `/api/public/team-logo/${st.team.id}?v=${st.team.logoAt}`, alt: 'Logo della coppia' }), h('b', { class: 'stamp-rb' }, sec?.roman || '0'))
-      : h('div', { class: 'stamp' }, h('span', null, sec?.roman || '0')),
+      // Il logo (o il timbro) apre il menu che sale dal basso, come nel portale Zero Dark Ops.
+      : st?.team.kind === 'couple' && st.team.logoAt ? h('button', { type: 'button', class: 'stamp stamp-logo', 'aria-label': 'Menu', 'aria-haspopup': 'dialog', style: sec?.color ? { '--c': sec.color } : null, onclick: openSheetMenu },
+        h('img', { src: `/api/public/team-logo/${st.team.id}?v=${st.team.logoAt}`, alt: '' }), h('b', { class: 'stamp-rb' }, sec?.roman || '0'))
+      : h('button', { type: 'button', class: 'stamp', 'aria-label': 'Menu', 'aria-haspopup': 'dialog', onclick: openSheetMenu }, h('span', null, sec?.roman || '0')),
     h('div', { class: 'top-id' },
       h('div', { class: 'top-sector' }, isElect() ? 'Eletti del Consiglio' : isLobby() ? (st.player?.nickname || st.player?.name || 'Anteprima') : sec ? sec.name : 'Legati'),
       h('div', { class: 'top-sub' }, isElect() ? [st.player?.nickname || st.player?.name, st.field?.squad ? `Squadra ${st.field.squad.name}` : null].filter(Boolean).join(' · ')
@@ -866,6 +867,62 @@ function openMenu() {
       groups || null));
   document.body.append(ov);
   requestAnimationFrame(() => ov.classList.add('open'));
+}
+
+// Menu che sale dal basso (come il portale Zero Dark Ops): maniglia, titolo e ✕, le voci della home a gruppi in due
+// colonne con i contatori, Esci in fondo. Si chiude tirandolo giù, toccando fuori, con Esc o scegliendo una voce.
+function openSheetMenu() {
+  if (document.querySelector('.sheet-menu')) return;
+  const groups = viewHome().querySelector?.('.tile-groups');
+  const here = location.hash || '#/home';
+  const DUR = 260;
+  let closing = false;
+  const y0 = window.scrollY;
+  const body = document.body.style;
+  const prev = { position: body.position, top: body.top, width: body.width, overflow: body.overflow };
+  const close = () => {
+    if (closing) return; closing = true;
+    ov.classList.remove('open'); sheet.style.transform = ''; sheet.style.transition = '';
+    document.removeEventListener('keydown', onKey); window.removeEventListener('hashchange', close);
+    setTimeout(() => { ov.remove(); Object.assign(body, prev); window.scrollTo(0, y0); }, DUR);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const home = h('a', { class: 'tile', href: '#/home' }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '⌂'), h('span', null, 'Home'));
+  const content = h('div', { class: 'sheet-body' },
+    h('section', { class: 'tile-group' }, h('nav', { class: 'grid' }, home)),
+    groups || null,
+    h('button', { type: 'button', class: 'btn btn-ghost btn-block sheet-out', onclick: () => { close(); logout(); } }, '⏻ Esci'));
+  // Voce della pagina aperta: accesa come nel portale.
+  content.querySelectorAll('a.tile').forEach((a) => { if (a.getAttribute('href') === here) a.classList.add('on'); });
+  const head = h('div', { class: 'sheet-head' },
+    h('span', { class: 'sheet-grip', 'aria-hidden': 'true' }),
+    h('div', { class: 'sheet-title' }, h('strong', null, 'Menu'), h('button', { type: 'button', class: 'sheet-x', 'aria-label': 'Chiudi menu', onclick: close }, '✕')));
+  const sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Menu' }, head, content);
+  const ov = h('div', { class: 'sheet-menu', onclick: (e) => { if (e.target === ov || e.target.closest('.sheet-body a, .sheet-body button:not(.sheet-out)')) close(); } }, h('div', { class: 'sheet-veil' }), sheet);
+  // Tirato giù col dito dalla testata (o dal contenuto già in cima): segue il dito, oltre la soglia si chiude.
+  let start = null; let pulled = 0;
+  const down = (e) => { const t = e.touches[0]; if (e.currentTarget === content && content.scrollTop > 0) return; start = { y: t.clientY, at: Date.now() }; pulled = 0; };
+  const move = (e) => {
+    if (!start) return;
+    pulled = Math.max(0, e.touches[0].clientY - start.y);
+    if (pulled > 0) { e.preventDefault(); sheet.style.transition = 'none'; sheet.style.transform = `translateY(${pulled}px)`; ov.style.setProperty('--veil', String(Math.max(.3, 1 - pulled / 400))); }
+  };
+  const up = () => {
+    if (!start) return;
+    const fast = pulled > 40 && Date.now() - start.at < 250;
+    start = null; sheet.style.transition = ''; ov.style.removeProperty('--veil');
+    if (pulled > 110 || fast) close(); else sheet.style.transform = '';
+  };
+  for (const el of [head, content]) {
+    el.addEventListener('touchstart', down, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', up); el.addEventListener('touchcancel', up);
+  }
+  // La pagina dietro resta ferma (anche su iPhone).
+  Object.assign(body, { position: 'fixed', top: `-${y0}px`, width: '100%', overflow: 'hidden' });
+  document.body.append(ov);
+  document.addEventListener('keydown', onKey); window.addEventListener('hashchange', close);
+  requestAnimationFrame(() => requestAnimationFrame(() => ov.classList.add('open')));
 }
 
 // Avviso di sicurezza pre-gara: come funziona EMERGENZA (con un simulacro, che non chiama nessuno) e i dati ICE.
