@@ -564,7 +564,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, installa: viewInstall, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, installa: viewInstall, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking, radio: viewRadio,
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -1271,16 +1271,52 @@ function iosInstallCard() {
 }
 
 // Canali radio: quelli della coppia (privati) o della squadra e del Consiglio (Eletti). Il canale SOS resta in basso.
+// Canali radio: «PMR 3 · 446.03125 · CTCSS 12» → banda e canale grandi, frequenza in MHz, il resto (tono) sotto.
+const RADIO_BANDS = { PMR: { n: 16, f: (i) => 446.00625 + (i - 1) * 0.0125, dec: 5 }, LPD: { n: 69, f: (i) => 433.075 + (i - 1) * 0.025, dec: 3 } };
+function parseRadio(v) {
+  const raw = String(v || '').trim();
+  const m = /\b(PMR|LPD)\s*(?:446|433)?\s*(?:ch\.?|canale)?\s*(\d{1,2})\b/i.exec(raw);
+  if (!m) return { raw };
+  const band = m[1].toUpperCase(); const n = Number(m[2]); const B = RADIO_BANDS[band];
+  if (!B || n < 1 || n > B.n) return { raw };
+  const freq = B.f(n).toFixed(B.dec);
+  const extra = raw.replace(m[0], '').replace(new RegExp(`\\b${freq.replace('.', '[.,]')}\\b\\s*(MHz)?`, 'i'), '').replace(/^[\s·,|-]+|[\s·,|-]+$/g, '').replace(/\s*·\s*·\s*/g, ' · ');
+  return { band, n, freq, extra };
+}
+function radioChannel(label, v, big = false) {
+  if (!v) return null;
+  const r = parseRadio(v);
+  return h('div', { class: `rch ${big ? 'rch-big' : ''}` },
+    h('span', { class: 'rch-label tiny muted' }, label),
+    r.band ? [h('b', { class: 'rch-name' }, `${r.band} ${r.n}`), h('span', { class: 'rch-freq mono' }, `${r.freq.replace('.', ',')} MHz`), r.extra ? h('span', { class: 'rch-extra mono small' }, r.extra) : null]
+      : h('b', { class: 'rch-name mono' }, r.raw));
+}
 function radioCard(st) {
   const list = st?.radio || [];
   if (!list.length) return null;
-  return h('div', { class: 'card radio-card' },
+  return h('a', { class: 'card radio-card', href: '#/radio' },
     h('div', { class: 'eyebrow' }, '📻 I vostri canali radio'),
     h('ul', { class: 'radio-list' }, list.map((r) => h('li', null,
       h('strong', null, r.label),
-      h('div', { class: 'radio-ch' }, r.main ? h('span', null, h('span', { class: 'tiny muted' }, 'Canale '), h('b', { class: 'mono' }, r.main)) : null,
-        r.backup ? h('span', null, h('span', { class: 'tiny muted' }, 'Riserva '), h('b', { class: 'mono' }, r.backup)) : null),
-      r.note ? h('span', { class: 'tiny muted' }, r.note) : null))));
+      h('div', { class: 'radio-ch' }, radioChannel('Canale', r.main), radioChannel('Riserva', r.backup))))));
+}
+// Pagina «Canali radio» (Info e impostazioni): i vostri canali, con banda, numero e frequenza, e quello d'emergenza.
+function viewRadio() {
+  const st = S.state;
+  const list = st?.radio || [];
+  const sos = st?.game?.emergencyRadioChannel;
+  return h('div', { class: 'stack' },
+    h('h2', null, 'Canali radio'),
+    h('p', { class: 'muted small' }, 'Impostate la radio su questi canali. PMR446 e LPD433: banda, numero del canale e frequenza.'),
+    list.length ? list.map((r) => h('div', { class: 'card radio-page-card' },
+      h('div', { class: 'eyebrow' }, r.label),
+      h('div', { class: 'radio-page-ch' }, radioChannel('Canale', r.main, true), radioChannel('Riserva', r.backup, true)),
+      r.note ? h('p', { class: 'tiny muted' }, r.note) : null))
+      : h('p', { class: 'empty' }, 'Il Consiglio non vi ha ancora assegnato un canale radio.'),
+    sos ? h('div', { class: 'card radio-page-card radio-sos' },
+      h('div', { class: 'eyebrow' }, '🚨 Emergenza (SOS) · tutti'),
+      h('div', { class: 'radio-page-ch' }, radioChannel('Canale d\'emergenza', sos, true)),
+      h('p', { class: 'tiny muted' }, 'Solo per le emergenze reali (OFF GAME): lo ascoltano Direzione e Consiglio.')) : null);
 }
 
 function pushInvite() {
@@ -1717,6 +1753,7 @@ const comTiles = (unreadNot, unreadAnn, unreadMsg) => [
 const infoTiles = () => [
   tile('#/regolamento', 'Regolamento', mdi('fileDocument', 28)),
   tile('#/zone', 'Zone e legenda', mdi('map', 28), (S.state?.zones?.list || []).length || null),
+  tile('#/radio', 'Canali radio', '📻', (S.state?.radio || []).length || null),
   tile('#/impostazioni', 'Impostazioni', '⚙'),
   S.state?.council ? tile('/consiglio', 'Consiglio Zero', '◈') : null,
   iceTile()];
