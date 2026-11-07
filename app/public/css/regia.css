@@ -1411,3 +1411,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .radio-auto-preview td.mono { white-space: nowrap; }
 .dlg-fixed .dlg-body:has(.radio-auto-body) { scrollbar-width: none; }
 .dlg-fixed .dlg-body:has(.radio-auto-body)::-webkit-scrollbar { display: none; }
+
+/* Canale d'emergenza: sezione rossa in cima a Canali radio. */
+.radio-emergency { border: 2px solid #d0021b; background: linear-gradient(135deg, rgba(208, 2, 27, .16), transparent 70%); display: grid; gap: 12px; }
+.radio-emergency-head { display: flex; gap: 12px; align-items: flex-start; }
+.radio-emergency-ico { font-size: 30px; line-height: 1; }
+.radio-emergency h2 { color: #ff6b5e; margin: 0 0 4px; }
+.radio-emergency-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.radio-emergency .input { border-color: rgba(255, 107, 94, .6); font-size: 16px; }

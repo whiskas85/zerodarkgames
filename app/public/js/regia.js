@@ -5436,10 +5436,14 @@ function radioSettings() {
   return h('div', { class: 'stack' },
     h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-primary', onclick: autoAssignRadio }, '⚡ Assegna in automatico…'),
       h('span', { class: 'tiny muted' }, 'Da un canale di partenza, in fila, a Consiglio, squadre e coppie: canali principali o di riserva, con l\'anteprima.')),
-    section('Emergenza (SOS) · tutti', h('p', { class: 'muted tiny' }, 'Lo vedono tutti (coppie ed Eletti) nella barra «Radio SOS», nella finestra EMERGENZA e nella pagina Canali radio. Solo per le emergenze reali (OFF GAME).'),
-      table([h('tr', null, h('td', null, 'Emergenza'),
-        h('td', null, radioInput(R.ms.game.emergencyRadioChannel, 'es. PMR 8 · 446.09375', 'radio-emergency-main', 'emergency', 'Canale · Emergenza (SOS)', (v) => saveEmg('emergencyRadioChannel', v))),
-        h('td', null, radioInput(R.ms.game.emergencyRadioBackup, 'riserva', 'radio-emergency-backup', 'emergency-backup', 'Riserva · Emergenza (SOS)', (v) => saveEmg('emergencyRadioBackup', v))))])),
+    // Emergenza: in cima e in rosso, distinta dai canali di gioco.
+    h('section', { class: 'card radio-emergency' },
+      h('div', { class: 'radio-emergency-head' }, h('span', { class: 'radio-emergency-ico', 'aria-hidden': 'true' }, '🚨'),
+        h('div', null, h('h2', null, 'Canale d\'emergenza (SOS)'), h('p', { class: 'small' }, 'Solo per le emergenze reali (OFF GAME). Lo vedono tutti, coppie ed Eletti: nella barra «Radio SOS», nella finestra EMERGENZA e nella pagina Canali radio dell\'app. Lo ascoltano Direzione e Consiglio.'))),
+      h('div', { class: 'radio-emergency-fields' },
+        h('label', { class: 'field' }, h('span', null, 'Canale d\'emergenza'), radioInput(R.ms.game.emergencyRadioChannel, 'es. PMR 8 · 446.09375', 'radio-emergency-main', 'emergency', 'Canale · Emergenza (SOS)', (v) => saveEmg('emergencyRadioChannel', v))),
+        h('label', { class: 'field' }, h('span', null, 'Riserva'), radioInput(R.ms.game.emergencyRadioBackup, 'es. LPD 3 · 433.125', 'radio-emergency-backup', 'emergency-backup', 'Riserva · Emergenza (SOS)', (v) => saveEmg('emergencyRadioBackup', v)))),
+      R.ms.game.emergencyRadioChannel ? null : h('p', { class: 'small warn-text' }, '⚠ Non impostato: la partita lo segnala tra i controlli prima del via.')),
     section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
       table([row('Consiglio', 'Consiglio', 'council', 0, rd.council)])),
     section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
@@ -5780,7 +5784,8 @@ function viewSettings() {
     h('textarea', { class: 'input', rows: 2, name: k, 'data-keep': `tpl-${k}`, value: g.templates[k] })));
   const timers = () => g.timers.map((t) => h('label', { class: 'field' }, h('span', null, `${t.label} (min)`), h('input', { class: 'input', type: 'number', step: '0.5', min: 0.5, name: t.id, value: t.minutes, 'data-keep': `tm-${t.id}` })));
   const body = {
-    partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'emergencyRadioChannel', 'emergencyRadioBackup', 'bookUrl'])), prepSection(g)],
+    partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'bookUrl']),
+      h('p', { class: 'small' }, '🚨 Il canale radio d\'emergenza e la sua riserva si impostano in ', h('a', { href: '#impostazioni/radio' }, 'Impostazioni → Canali radio'), '.')), prepSection(g)],
     tempi: () => [section('Tempi e Sigilli', gameForm(g, false, ['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength'])),
       section('Timer delle coppie',
         h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },
