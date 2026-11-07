@@ -55,7 +55,7 @@ const baseOf = (gameId) => q.get("SELECT * FROM landmarks WHERE gameId = ? AND k
 
 // Mine posate da questa persona dopo l'ultima ricarica (scattate o no: una mina posata è spesa).
 function minesLeft(player, g = G.getGame(player.gameId)) {
-  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND placedAt > ?', player.id, g.id, player.minesReloadAt || 0).n;
+  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND placedAt >= ?', player.id, g.id, player.minesReloadAt || 0).n;
   return Math.max(0, cfg(g).count - used);
 }
 
