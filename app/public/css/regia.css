@@ -1399,3 +1399,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .radio-pick.on { border-color: var(--blood); background: color-mix(in srgb, var(--blood) 14%, var(--paper)); }
 .radio-pick:disabled { opacity: .45; cursor: not-allowed; text-decoration: line-through; text-decoration-color: rgba(255,255,255,.25); }
 .radio-pick:disabled .tiny { text-decoration: none; }
+
+.radio-auto-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.radio-auto-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.radio-auto-check input { width: 18px; height: 18px; flex: none; }
+.radio-auto-summary { margin: 4px 0 0; }
+.radio-auto-preview { overflow-x: auto; }
+.radio-auto-preview td { padding: 4px 8px; }
+.radio-auto-miss td { color: var(--danger, #e0603f); }
+
+.radio-auto-preview td.mono { white-space: nowrap; }
+.dlg-fixed .dlg-body:has(.radio-auto-body) { scrollbar-width: none; }
+.dlg-fixed .dlg-body:has(.radio-auto-body)::-webkit-scrollbar { display: none; }
