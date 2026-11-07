@@ -830,7 +830,7 @@ function radioBar() {
   return h('footer', { class: 'radio' },
     S.state ? h('button', { class: 'rail-menu', type: 'button', 'aria-label': 'Menu', onclick: openMenu }, '☰') : null,
     h('span', { class: 'eyebrow' }, 'Radio SOS'), h('strong', { class: 'mono', title: ch || '' }, ch || 'chiedete alla regia'),
-    S.state ? h('button', { class: `btn-sos ${sosOn() ? '' : 'off'}`, type: 'button', 'aria-disabled': sosOn() ? null : 'true', onclick: emergencyModal }, 'EMERGENZA') : null);
+    S.state ? h('button', { class: `btn-sos ${sosOn() ? '' : 'off'}`, type: 'button', title: sosOn() ? null : 'Non ancora attivo: tocca per provare la pagina', onclick: emergencyModal }, 'EMERGENZA') : null);
 }
 
 // Il pulsante EMERGENZA si attiva quando l'evento si avvia (dall'apertura del Cerchio); prima resta spento.
@@ -994,10 +994,9 @@ function safetyModal() {
 const SOS_LEVELS = [['lieve', 'Lieve', 'piccolo infortunio'], ['seria', 'Seria', 'serve aiuto'], ['grave', 'Grave', 'pericolo di vita']];
 function emergencyModal() {
   const ch = S.state?.game.emergencyRadioChannel;
-  if (!sosOn()) {
-    dialog({ title: 'EMERGENZA non ancora attiva', text: `Il pulsante EMERGENZA si attiva quando l'evento si avvia, all'apertura del Cerchio. Prima, per un'emergenza reale, chiamate la Direzione ${ch ? `via radio sul canale ${sosText(S.state.game)}` : 'via radio'} o al telefono.`, okLabel: 'Ho capito', cancelLabel: null });
-    return;
-  }
+  // Prima dell'avvio la pagina si apre lo stesso, per prendere dimestichezza: gravità e commento si provano, il
+  // pulsante d'invio resta spento finché l'evento non parte (da lì in poi è una chiamata reale alla Direzione).
+  const live = sosOn();
   const ov = h('div', { class: 'sos-overlay sos-full', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Emergenza' });
   // Finché è aperta la pagina sotto non scorre.
   document.documentElement.classList.add('sos-open');
@@ -1040,7 +1039,11 @@ function emergencyModal() {
       big.disabled = false;
     }
   };
-  const big = h('button', { class: 'sos-big', type: 'button', onclick: send }, 'EMERGENZA');
+  const big = h('button', { class: `sos-big ${live ? '' : 'off'}`, type: 'button', disabled: !live, 'aria-disabled': live ? null : 'true', onclick: live ? send : null }, 'EMERGENZA');
+  const practice = live ? null : h('div', { class: 'sos-practice', role: 'note' },
+    h('strong', null, 'EMERGENZA non ancora attiva'),
+    h('span', null, `Il pulsante EMERGENZA si attiva quando l'evento si avvia, all'apertura del Cerchio. Prima, per un'emergenza reale, chiamate la Direzione ${ch ? `via radio sul canale ${sosText(S.state.game)}` : 'via radio'} o al telefono.`),
+    h('span', null, 'Intanto potete provare questa pagina (gravità e commento) per prendere dimestichezza. ', h('b', null, 'Attenzione: dall\'avvio dell\'evento, da qui parte una chiamata reale alla Direzione.')));
   const iceOk = S.state?.account?.ice && Object.values(S.state.account.ice).some(Boolean);
   ov.append(h('div', { class: 'sos-box' },
     offGameStripe(),
@@ -1049,6 +1052,7 @@ function emergencyModal() {
       h('button', { class: 'btn btn-sm btn-ghost sos-x', type: 'button', 'aria-label': 'Chiudi', onclick: close }, '✕')),
     h('p', { class: 'small sos-lede' }, 'Infortunio, malore, pericolo reale: la Direzione riceve chi sei e dove sei. ',
       iceOk ? 'Arrivano anche i tuoi dati ICE.' : ['Nessun dato ICE: ', h('a', { href: '#/ice', onclick: close }, 'compilali'), '.']),
+    practice,
     h('div', { class: 'sos-main' },
       h('div', { class: 'sos-form' }, h('div', { class: 'eyebrow' }, 'Gravità'), levels, comment, update),
       h('div', { class: 'sos-action' }, big, status)),
