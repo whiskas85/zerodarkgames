@@ -217,11 +217,20 @@ const TRACK_SOON_MS = 10 * 60000;
 const TRACK_LIVE_MS = 10 * 60000;
 const TRACK_ON_PINGS = 2;
 const TRACK_PINGS_WINDOW_MS = 30 * 60000;
+// Traccar «acceso senza motivo»: segnali negli ultimi 10 minuti mentre la partita non lo richiede.
+const TRACK_IDLE_MS = 10 * 60000;
 function trackStateOf(player, game, team) {
   const soon = !!team && ['ready', 'circle'].includes(game.status);
   const live = !!team && (team.kind === 'elect' ? !['created', 'draft', 'ended'].includes(game.status) && !soon : [...C.ACTIVE, 'paused'].includes(game.status) && team.status !== 'withdrawn');
   const verified = !!player.trackVerifiedAt;
-  if (!soon && !live) return { state: verified ? 'ok' : 'none', soon, live, prompt: false };
+  if (!soon && !live) {
+    // Traccar acceso quando non serve (prima del cerchio, a partita finita, senza coppia): l'app propone di spegnerlo.
+    // Non subito dopo la prova di verifica, che lo accende apposta.
+    const now = Date.now();
+    const idleOn = !!player.trackSeenAt && now - player.trackSeenAt < TRACK_IDLE_MS && !(player.trackVerifiedAt && now - player.trackVerifiedAt < TRACK_IDLE_MS)
+      && q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, now - TRACK_IDLE_MS).n >= TRACK_ON_PINGS;
+    return { state: verified ? 'ok' : 'none', soon, live, prompt: false, idleOn };
+  }
   // Traccar acceso: almeno 2 segnali (nell'ultima mezz'ora) e l'ultimo recente.
   const recent = player.trackSeenAt && Date.now() - player.trackSeenAt < (soon ? TRACK_SOON_MS : TRACK_LIVE_MS)
     && q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, Date.now() - TRACK_PINGS_WINDOW_MS).n >= TRACK_ON_PINGS;
