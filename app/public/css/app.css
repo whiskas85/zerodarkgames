@@ -626,6 +626,8 @@ button.fx-icons { background: none; border: 0; padding: 2px 0; width: 100%; colo
 @keyframes sword-r { from { transform: translateX(40px) rotate(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mastery-banner, .mastery-swords span { animation: none; } }
 button.banner-update { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
+/* Nuova versione: fissa sotto la testata, anche scorrendo. */
+body:not([data-view="mappa"]) .banner-update { position: sticky; top: var(--top-h, 64px); z-index: 9; background: #2e9d52; border-bottom: 2px solid #1f7a3a; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 /* Chiave Maestra dentro l'Altare */
 .btn-key { background: linear-gradient(135deg, #e0b04f, #b07d1f); color: #1a1206; border: 0; font-weight: 800; box-shadow: 0 0 16px rgba(224, 176, 79, .45); }
 /* Alleanza rotta da Velenoso */

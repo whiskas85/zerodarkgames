@@ -330,6 +330,7 @@ function fitShell() {
   if (!tb || !shell) return;
   const st = document.documentElement.style;
   st.setProperty('--top-h', `${tb.offsetHeight}px`);
+  st.setProperty('--upd-h', `${$root.querySelector('.update-banner')?.offsetHeight || 0}px`);
   st.setProperty('--shell-top', `${shell.getBoundingClientRect().top + window.scrollY}px`);
 }
 window.addEventListener('resize', () => fitShell());
