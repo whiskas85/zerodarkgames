@@ -1423,3 +1423,16 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .radio-pick-sep { margin: 6px 2px 0; }
 
 .radio-start-btn { justify-content: space-between; width: 100%; font-size: 16px; }
+
+/* Punteggio degli Eletti: righe compatte, leggibili anche su telefono. */
+.score-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); }
+.score-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.score-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--line); border-left: 4px solid var(--c, var(--line)); border-radius: 8px; background: var(--paper); }
+.score-rank { font-size: 18px; font-weight: 700; text-align: center; }
+.score-main { min-width: 0; display: grid; gap: 6px; }
+.score-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.score-count { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; opacity: .55; }
+.score-count.on { opacity: 1; border-color: var(--brass); }
+.score-total { display: grid; justify-items: end; line-height: 1; gap: 2px; }
+.score-total strong { font-size: 26px; }
