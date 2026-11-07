@@ -1298,13 +1298,17 @@ button.stamp-logo { background: var(--bg); }
 .sheet-body .tile-groups { display: grid; gap: 14px; }
 .sheet-body .tile-group { padding: 0; background: none; border: 0; }
 .sheet-body .tile-group .eyebrow { font-size: 11px; padding-bottom: 6px; }
-.sheet-body .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sheet-body .tile { display: flex; min-height: 0; flex-direction: row; justify-content: flex-start; align-items: center; gap: 8px; padding: 12px; font-size: 14px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); position: relative; }
-.sheet-body .tile .tile-ico { font-size: 18px; width: 22px; display: grid; place-items: center; flex: none; }
-.sheet-body .tile .tile-ico svg { width: 18px; height: 18px; }
-.sheet-body .tile > span:not(.tile-ico):not(.badge) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Le voci sono i pulsanti della home (bordi e sfumature del loro gruppo), più compatti. */
+.sheet-body .tile { min-height: 76px; padding: 10px 6px; gap: 5px; font-size: 13px; line-height: 1.15; }
+.sheet-body .tile .tile-ico { font-size: 22px; }
+.sheet-body .tile .tile-ico svg { width: 22px; height: 22px; }
+.sheet-body .tile > span:not(.tile-ico):not(.badge) { max-width: 100%; overflow-wrap: anywhere; }
 .sheet-body .tile .tiny { display: none; }
-.sheet-body .tile .badge { position: static; margin-left: auto; }
-.sheet-body .tile.on { border-color: var(--blood); background: var(--blood-soft); }
+.sheet-body .tile .badge { top: 4px; right: 4px; font-size: 11px; padding: 0 6px; }
+.sheet-body .tile.on { box-shadow: 0 0 0 2px var(--blood) inset; }
+.sheet-body .g-home .tile { border-color: var(--blood); background: linear-gradient(135deg, rgba(224, 96, 63, .22), transparent); }
+.sheet-body .g-home .tile-ico { color: var(--blood); }
+@media (max-width: 360px) { .sheet-body .grid { grid-template-columns: 1fr 1fr; } }
 .sheet-out { margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) { .sheet, .sheet-veil { transition: none; } }
