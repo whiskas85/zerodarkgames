@@ -1327,3 +1327,9 @@ a.radio-card { display: block; color: inherit; text-decoration: none; }
 .radio-page-card { display: grid; gap: 10px; }
 .radio-page-ch { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; align-items: start; }
 .radio-sos { border-color: var(--danger, #d0021b); }
+
+/* EMERGENZA prima dell'avvio: la pagina si prova, il pulsante d'invio è spento. */
+.sos-big.off, .sos-big:disabled.off { background: #4a4a4a; border-color: #777; color: #bbb; box-shadow: none; cursor: not-allowed; animation: none; }
+.sos-practice { display: grid; gap: 4px; padding: 10px 12px; border: 2px dashed #e9c75a; border-radius: 8px; background: rgba(233, 199, 90, .12); font-size: 14px; }
+.sos-practice strong { color: #e9c75a; text-transform: uppercase; letter-spacing: .04em; }
+.sos-practice b { color: #ff8a7a; }
