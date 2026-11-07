@@ -211,7 +211,59 @@ async function gifts(g, base, sel) {
   };
 }
 
-const GROUPS = { altari: altars, doni: gifts, uscita: exitSign, credenziali: credentials };
+// Postazioni nel Cerchio: un cartello A4 per Settore, dove la coppia lascia il suo armamentario.
+// Tutti i Settori attivi (anche senza coppia, così i cartelli valgono per più partite); il nome della coppia,
+// se c'è già, è scritto piccolo.
+const sectorList = () => G.sectors().filter((s) => !s.archived);
+const sectorColor = (s) => (/^#[0-9a-f]{3,8}$/i.test(s.color || '') ? s.color : '#8E2A1F');
+function sectorEmblem(s, size = 60) {
+  const c = sectorColor(s);
+  const fs = s.roman.length > 3 ? 22 : s.roman.length > 2 ? 26 : 32;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}"><circle cx="50" cy="50" r="46" fill="#1C211E"/><circle cx="50" cy="50" r="38" fill="none" stroke="${c}" stroke-width="5"/><text x="50" y="52" text-anchor="middle" dominant-baseline="middle" font-family="Impact, 'Arial Narrow', sans-serif" font-weight="900" font-size="${fs}" fill="#ECEAE2">${esc(s.roman)}</text></svg>`;
+}
+async function stations(g, _base, sel) {
+  const lg = logoTag();
+  const teams = Object.fromEntries(G.teamsOf(g.id).filter((t) => t.sectorId).map((t) => [t.sectorId, t]));
+  const list = sectorList().filter((s) => pick(sel, `s${s.id}`));
+  const sheets = list.map((s) => {
+    const c = sectorColor(s);
+    const t = teams[s.id];
+    return `<section class="sheet station" style="--c:${c}">
+    <div class="band"></div>
+    <div class="frame">
+      <div class="head">${lg}<div class="top mono">Consiglio Zero · Il Cerchio · ${esc(g.name)}</div></div>
+      <div class="label mono">Postazione</div>
+      <div class="roman display">${esc(s.roman)}</div>
+      <h1 class="display">Settore ${esc(s.name)}</h1>
+      <div class="element mono">${esc(s.element)}</div>
+      <div class="motto display">«${esc(s.motto)}»</div>
+      <p class="how">Qui la coppia del Settore ${esc(s.name)} lascia il suo armamentario prima di entrare nel Cerchio.</p>
+      ${t?.displayName ? `<div class="team mono">${esc(t.displayName)}</div>` : ''}
+    </div>
+    <div class="band"></div>
+  </section>`;
+  });
+  return {
+    title: 'Postazioni nel Cerchio', count: list.length, note: 'Un cartello per Settore: dove ogni coppia lascia il suo armamentario.', empty: 'Nessun Settore attivo.', sheets,
+    css: `
+.station{display:flex;flex-direction:column}
+.station .band{height:16mm;background:var(--c);flex:none}
+.station .frame{flex:1;margin:8mm 12mm;border:3mm solid #1C211E;outline:.8mm solid var(--c);outline-offset:-5mm;padding:10mm 12mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4mm}
+.station .head{display:flex;flex-direction:column;align-items:center;gap:2mm}
+.station .plogo{width:20mm;height:20mm}
+.station .top{font-size:9pt;letter-spacing:.14em;text-transform:uppercase;color:#5B615A}
+.station .label{font-size:14pt;letter-spacing:.3em;text-transform:uppercase;color:#1C211E;background:var(--c);padding:1.5mm 6mm;font-weight:600;margin-top:4mm}
+.station .roman{font-size:95mm;line-height:.8;font-weight:900;color:#1C211E;-webkit-text-stroke:1.2mm var(--c)}
+.station h1{font-size:24mm;line-height:.9;margin:0;font-weight:900}
+.station .element{font-size:14pt;color:#1C211E;font-weight:600;text-transform:uppercase;letter-spacing:.12em;border-bottom:1.2mm solid var(--c);padding-bottom:1mm}
+.station .motto{font-size:11mm;font-weight:800;color:#5B615A}
+.station .how{font-size:12pt;max-width:150mm;margin:auto 0 0}
+.station .team{font-size:11pt;color:#5B615A;border-top:.4mm solid #1C211E;padding-top:2mm}
+@media print{.station,.station *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`,
+  };
+}
+
+const GROUPS = { settori: stations, altari: altars, doni: gifts, uscita: exitSign, credenziali: credentials };
 
 function doc(g, parts, title) {
   const count = parts.reduce((n, p) => n + p.count, 0);
@@ -248,6 +300,7 @@ async function catalog(g, base) {
   return {
     logo: { custom: logo().custom },
     groups: [
+      { kind: 'settori', title: 'Postazioni nel Cerchio', hint: 'Un cartello A4 per Settore (tutti i Settori attivi): dove ogni coppia lascia il suo armamentario nel Cerchio.', items: sectorList().map((s) => { const t = G.teamsOf(g.id).find((x) => x.sectorId === s.id); return { key: `s${s.id}`, title: `${s.roman} Settore ${s.name}`, sub: t ? (t.displayName || 'Coppia formata') : 'Postazione', svg: sectorEmblem(s, 100) }; }) },
       { kind: 'altari', title: 'Altari', hint: 'Un cartello A4 per Altare, con «Non rimuovere».', items: await Promise.all(altarsList.map((p) => item(`a${p.id}`, p.label, `Settore ${p.s.roman} · ${p.s.name}`, `${base}/a/${p.qrToken}`))) },
       { kind: 'doni', title: 'Doni', hint: 'Quattro cartelli per foglio. Il tipo del dono non è stampato.', items: await Promise.all(giftRows(g).map((d) => item(`g${d.id}`, d.label, d.removeSign === 0 ? 'Non rimuovere il cartello' : 'Da rimuovere dopo la scansione', `${base}/d/${d.qrToken}`))) },
       { kind: 'uscita', title: 'Soglia', hint: 'Il codice di uscita da appendere alla Soglia.', items: soglia ? [await item(`u${soglia.id}`, 'Codice di uscita', 'La Soglia', `${base}/u/${soglia.exitToken}`)] : [] },
