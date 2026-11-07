@@ -32,7 +32,11 @@ const cfg = (g) => ({
   count: Number(g.mineCount) >= 0 ? Number(g.mineCount) : 3,
   radius: Number(g.mineRadiusM) > 0 ? Number(g.mineRadiusM) : 20,
   markMin: Number(g.mineMarkMin) > 0 ? Number(g.mineMarkMin) : 5,
+  // Durata dalla posa (0 = senza scadenza).
+  lifeMin: Number.isFinite(Number(g.mineLifeMin)) && g.mineLifeMin != null ? Math.max(0, Number(g.mineLifeMin)) : 60,
 });
+// Mina armata: non scattata, non tolta, non scaduta.
+const ARMED = '(triggeredAt IS NULL AND removedAt IS NULL AND (expiresAt IS NULL OR expiresAt > ?))';
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'Europe/Rome' });
 const electName = (p) => (p ? p.nickname || p.name : 'Eletti');
 const teamOf = (id) => q.get('SELECT t.*, s.name AS sectorName, s.roman, s.color AS sectorColor FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', id);
@@ -72,10 +76,10 @@ function placeMine(team, player, body) {
   if (pos.acc != null && pos.acc > 50) throw err(409, `GPS troppo impreciso (±${pos.acc} m): aspettate qualche secondo all'aperto e riprovate`);
   const pl = q.get('SELECT * FROM players WHERE id = ?', player.id);
   if (!minesLeft(pl, g)) throw err(409, baseOf(g.id) ? 'Mine finite: ricaricatele alla Base degli Eletti' : 'Mine finite: la Base degli Eletti non è ancora sulla mappa, chiedete alla regia');
-  const { radius } = cfg(g);
+  const { radius, lifeMin } = cfg(g);
   const now = Date.now();
-  const id = Number(q.run('INSERT INTO elect_mines (gameId, squadId, playerId, author, lat, lng, radiusM, placedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    g.id, pl.squadId || null, pl.id, electName(pl), pos.lat, pos.lng, radius, now).lastInsertRowid);
+  const id = Number(q.run('INSERT INTO elect_mines (gameId, squadId, playerId, author, lat, lng, radiusM, placedAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, pl.squadId || null, pl.id, electName(pl), pos.lat, pos.lng, radius, now, lifeMin ? now + lifeMin * MIN : null).lastInsertRowid);
   G.log(g.id, `giocatore:${pl.id}`, 'mine_placed', { by: electName(pl), radius, lat: pos.lat, lng: pos.lng });
   changed(g.id);
   return { ok: true, id, left: minesLeft(pl, g), radius };
@@ -98,6 +102,22 @@ function reloadMines(team, player, body) {
   return { ok: true, left: cfg(g).count, before };
 }
 
+// Ricarica dalla regia: un Eletto (playerId) o tutti gli Eletti della partita, ovunque siano.
+function reloadByRegia(gameId, playerId, actor) {
+  const g = G.getGame(gameId);
+  const list = playerId
+    ? q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.id = ? AND p.gameId = ? AND t.kind = 'elect'", Number(playerId), g.id)
+    : q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.gameId = ? AND t.kind = 'elect'", g.id);
+  if (!list.length) throw err(404, playerId ? 'Eletto non trovato' : 'Nessun Eletto');
+  const now = Date.now();
+  for (const p of list) q.run('UPDATE players SET minesReloadAt = ? WHERE id = ?', now, p.id);
+  G.log(g.id, actor, 'mines_reloaded', { by: actor, who: playerId ? electName(list[0]) : 'tutti gli Eletti', to: cfg(g).count });
+  const push = { title: '💣 Mine ricaricate', body: `Il Consiglio vi ha ricaricato le mine: ne avete ${cfg(g).count}.`, tag: 'mines-reload', url: '/#/mine' };
+  rt.pushSubs(q.all(`SELECT * FROM push_subs WHERE playerId IN (${list.map(() => '?').join(',')})`, ...list.map((p) => p.id)), push);
+  changed(g.id);
+  return { ok: true, count: list.length, mines: cfg(g).count };
+}
+
 function removeMine(gameId, mineId, actor) {
   const m = q.get('SELECT * FROM elect_mines WHERE id = ? AND gameId = ?', Number(mineId), Number(gameId));
   if (!m) throw err(404, 'Mina non trovata');
@@ -116,7 +136,7 @@ function onPosition(team, pos, now = Date.now()) {
   if (!team || team.kind !== 'couple' || team.status !== 'active') return;
   const g = G.getGame(team.gameId);
   if (!C.ACTIVE.includes(g.status)) return;
-  const armed = q.all('SELECT * FROM elect_mines WHERE gameId = ? AND triggeredAt IS NULL AND removedAt IS NULL', g.id);
+  const armed = q.all(`SELECT * FROM elect_mines WHERE gameId = ? AND ${ARMED}`, g.id, now);
   if (!armed.length) return;
   const S = SK();
   const hit = armed.map((m) => ({ m, d: S.distM(pos, m) })).filter((x) => x.d <= x.m.radiusM).sort((a, b) => a.d - b.d)[0];
@@ -156,6 +176,10 @@ function tickAll(now = Date.now()) {
   const ended = q.all('SELECT * FROM elect_mines WHERE markUntil IS NOT NULL AND markUntil <= ? AND endedNotifiedAt IS NULL', now);
   for (const m of ended) q.run('UPDATE elect_mines SET endedNotifiedAt = ? WHERE id = ?', now, m.id);
   for (const gameId of new Set(ended.map((m) => m.gameId))) { rt.toTeams(gameId, 'state', {}); rt.toStaff(gameId, 'mines'); }
+  // Mine scadute senza scattare: spariscono dalle mappe di regia ed Eletti.
+  const expired = q.all('SELECT * FROM elect_mines WHERE expiresAt IS NOT NULL AND expiresAt <= ? AND triggeredAt IS NULL AND removedAt IS NULL AND expiredNotifiedAt IS NULL', now);
+  for (const m of expired) q.run('UPDATE elect_mines SET expiredNotifiedAt = ? WHERE id = ?', now, m.id);
+  for (const gameId of new Set(expired.map((m) => m.gameId))) changed(gameId);
 }
 
 // ---------------------------------------------------------------- viste
@@ -182,7 +206,7 @@ function coupleMark(team, now = Date.now()) {
 const mineOut = (m, now = Date.now()) => {
   const t = m.teamId ? teamOf(m.teamId) : null;
   return {
-    id: m.id, lat: m.lat, lng: m.lng, radius: m.radiusM, placedAt: m.placedAt, author: m.author, squadId: m.squadId, playerId: m.playerId,
+    id: m.id, lat: m.lat, lng: m.lng, radius: m.radiusM, placedAt: m.placedAt, expiresAt: m.expiresAt || null, author: m.author, squadId: m.squadId, playerId: m.playerId,
     triggeredAt: m.triggeredAt || null, markUntil: m.markUntil && m.markUntil > now ? m.markUntil : null,
     team: t ? { teamId: t.id, roman: t.roman, sectorName: t.sectorName, color: t.sectorColor } : null,
   };
@@ -190,7 +214,7 @@ const mineOut = (m, now = Date.now()) => {
 
 // Le mine per il Consiglio (regia ed Eletti): armate e scattate da poco.
 function minesOf(gameId, now = Date.now()) {
-  return q.all('SELECT * FROM elect_mines WHERE gameId = ? AND removedAt IS NULL AND (triggeredAt IS NULL OR triggeredAt > ? OR markUntil > ?) ORDER BY id', gameId, now - TRIGGERED_SHOW_MS, now)
+  return q.all(`SELECT * FROM elect_mines WHERE gameId = ? AND removedAt IS NULL AND (${ARMED} OR (triggeredAt IS NOT NULL AND (triggeredAt > ? OR markUntil > ?))) ORDER BY id`, gameId, now, now - TRIGGERED_SHOW_MS, now)
     .map((m) => mineOut(m, now));
 }
 
@@ -202,7 +226,7 @@ function electMines(team, player) {
   const pl = player ? q.get('SELECT * FROM players WHERE id = ?', player.id) : null;
   const base = baseOf(g.id);
   return {
-    count: c.count, radius: c.radius, markMin: c.markMin, left: pl ? minesLeft(pl, g) : 0, personal: !!pl,
+    count: c.count, radius: c.radius, markMin: c.markMin, lifeMin: c.lifeMin, left: pl ? minesLeft(pl, g) : 0, personal: !!pl,
     canPlace: PLACE_STATUSES.includes(g.status),
     base: base ? { lat: base.lat, lng: base.lng, radius: BASE_RADIUS_M, label: base.label } : null,
     list: minesOf(g.id).map((m) => ({ ...m, mine: !!pl && m.playerId === pl.id, squad: !!pl?.squadId && m.squadId === pl.squadId })),
@@ -248,8 +272,10 @@ function scoresOf(gameId) {
   const sum = (list) => { const counts = zero(); for (const r of list) counts[r.kind] += 1; return { counts, total: Object.entries(counts).reduce((a, [k, n]) => a + n * val[k], 0) }; };
   const rank = (list) => list.sort((a, b) => b.total - a.total || a.id - b.id).map((x, i, arr) => ({ ...x, rank: arr.filter((y) => y.total > x.total).length + 1, _i: i }));
   const squadList = rank(squads.map((s) => ({ ...s, ...sum(rows.filter((r) => r.squadId === s.id)) })));
-  const personList = rank(people.map((p) => ({ id: p.id, name: p.nickname || p.name, squadId: p.squadId, ...sum(rows.filter((r) => r.playerId === p.id)) })));
+  const full = Object.fromEntries(q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.gameId = ? AND t.kind = 'elect'", g.id).map((p) => [p.id, p]));
+  const personList = rank(people.map((p) => ({ id: p.id, name: p.nickname || p.name, squadId: p.squadId, minesLeft: full[p.id] ? minesLeft(full[p.id], g) : 0, ...sum(rows.filter((r) => r.playerId === p.id)) })));
   return {
+    mineCount: cfg(g).count,
     values: val,
     kinds: Object.fromEntries(Object.entries(SCORE_KINDS).map(([k, v]) => [k, { label: v.label, icon: v.icon, points: val[k] }])),
     squads: squadList.map(({ _i, ...x }) => x),
@@ -279,6 +305,6 @@ function resetGame(gameId) {
 }
 
 module.exports = {
-  BASE_RADIUS_M, SCORE_KINDS, placeMine, reloadMines, removeMine, onPosition, tickAll, markedTeams, coupleMark, minesOf, minesLeft, electMines,
+  BASE_RADIUS_M, SCORE_KINDS, placeMine, reloadMines, reloadByRegia, removeMine, onPosition, tickAll, markedTeams, coupleMark, minesOf, minesLeft, electMines,
   addScore, removeScore, scoresOf, electScore, resetGame,
 };

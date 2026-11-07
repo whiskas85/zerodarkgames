@@ -1436,3 +1436,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .score-count.on { opacity: 1; border-color: var(--brass); }
 .score-total { display: grid; justify-items: end; line-height: 1; gap: 2px; }
 .score-total strong { font-size: 26px; }
+
+.score-mines { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.score-name { white-space: normal; }
