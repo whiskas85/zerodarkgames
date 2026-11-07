@@ -1391,7 +1391,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Solo l'elenco scorre (senza barra a lato): schede, ricerca e pulsanti restano fermi. */
 .dlg-fixed .dlg-body:has(.radio-pick-body) { overflow: hidden; display: flex; flex-direction: column; padding-right: 0; }
 .radio-pick-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.radio-pick-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.radio-pick-tabs { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 6px; }
 .radio-pick-tabs .btn { justify-content: center; white-space: nowrap; }
 .radio-pick { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .radio-pick strong { min-width: 64px; }
