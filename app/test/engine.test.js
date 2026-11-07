@@ -3392,3 +3392,22 @@ test('Persone → Elimina: dalla coppia (che si scioglie se resta vuota), dagli 
   const other = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", id);
   assert.throws(() => A.deletePerson(other.id, false, 'test'), /Ritira/);
 });
+
+test('Traccar acceso quando non serve: l\'app propone di spegnerlo (non subito dopo la prova)', () => {
+  const id = G.createDemo(2, 'test');
+  q.run("UPDATE games SET status = 'draft' WHERE id = ?", id);
+  const g = G.getGame(id);
+  const p = q.get("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE t.gameId = ? AND t.kind = 'couple' LIMIT 1", id);
+  const team = q.get('SELECT * FROM teams WHERE id = ?', p.teamId);
+  const now = Date.now();
+  const ping = (at) => q.run('INSERT INTO track_pings (playerId, at) VALUES (?, ?)', p.id, at);
+  const state = () => G.trackStateOf(q.get('SELECT * FROM players WHERE id = ?', p.id), g, team);
+  assert.equal(state().idleOn, false); // nessun segnale
+  ping(now - 120000); ping(now - 30000);
+  q.run('UPDATE players SET trackSeenAt = ?, trackVerifiedAt = ? WHERE id = ?', now - 30000, now - 60000, p.id);
+  assert.equal(state().idleOn, false); // appena verificato: è la prova
+  q.run('UPDATE players SET trackVerifiedAt = ? WHERE id = ?', now - 3600000, p.id);
+  assert.equal(state().idleOn, true);
+  // Quando serve (cerchio aperto) non si propone di spegnerlo.
+  assert.ok(!G.trackStateOf(q.get('SELECT * FROM players WHERE id = ?', p.id), { ...g, status: 'circle' }, team).idleOn);
+});

@@ -812,6 +812,8 @@ function banners() {
     h('strong', null, '⚠ SICUREZZA · OFF GAME'), h('span', null, 'Prima della gara: leggete come funziona il pulsante EMERGENZA e compilate i dati ICE. Toccate qui.')));
   const trkOn = traccarPrompt(st);
   if (trkOn) out.push(trkOn);
+  const trkIdle = traccarIdleBanner(st);
+  if (trkIdle) out.push(trkIdle);
   if (!S.online) out.push(h('div', { class: 'banner banner-offline' }, h('span', null, 'Senza rete: l\'app funziona, i dati si aggiornano al ritorno del segnale.')));
   if (S.queue.length) out.push(h('div', { class: 'banner banner-queue' }, h('strong', null, `${S.queue.length} in attesa di rete`), h('span', null, S.queue.map((q) => q.label).join(' · '))));
   if (st.openNew) out.push(h('a', { class: 'banner banner-action', href: '/iscrizione#scelta' }, h('strong', null, 'Nuova partita aperta'), h('span', null, 'Iscriviti ai prossimi Giochi del Buio')));
@@ -4786,6 +4788,24 @@ function traccarPrompt(st) {
       setup ? null : h('a', { class: 'btn btn-sm btn-ghost', href: '#/traccar' }, 'Aiuto')),
     // Cosa riceve il server, per capire subito se Traccar manda (e con l'identificativo giusto).
     t.deviceId ? h('span', { class: 'tiny mono' }, `Identificativo: ${t.deviceId} · segnali ultima mezz'ora: ${t.pings || 0}${t.lastAt ? ` · ultimo alle ${fmtTime(t.lastAt)}` : ' · nessun segnale'}`) : null);
+}
+
+// Traccar manda la posizione ma adesso non serve (prima del cerchio, a partita finita): si può spegnere.
+// Si mostra a ogni apertura dell'app; «Ok» lo nasconde fino alla prossima.
+let trkIdleHidden = false;
+function traccarIdleBanner(st) {
+  const t = st?.tracking;
+  if (!st?.player || !t?.idleOn || trkIdleHidden || route().view === 'traccar') return null;
+  // A partita finita c'è già la scheda «Spegnete Traccar Client» in home.
+  if (st.clock?.status === 'ended' && !store.get(`zdg_trk_off_${st.game?.id}`, false)) return null;
+  const ended = st.clock?.status === 'ended';
+  return h('div', { class: 'banner banner-traccar banner-traccar-idle', role: 'status' },
+    h('strong', null, '📍 Traccar è acceso: potete spegnerlo'),
+    h('span', null, ended ? 'La partita è finita: fermate il tracciamento in Traccar Client e risparmiate batteria.'
+      : 'Adesso il Consiglio non usa la vostra posizione. Fermate il tracciamento in Traccar Client per risparmiare batteria: vi avviseremo noi quando riaccenderlo, prima del via.'),
+    h('span', { class: 'trk-actions' },
+      h('a', { class: 'btn btn-sm btn-primary', href: traccarOpenUrl(), rel: 'noopener' }, PLATFORM === 'android' ? 'Apri Traccar' : 'Apri Traccar (App Store)'),
+      h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { trkIdleHidden = true; render(); } }, 'Ok')));
 }
 
 // Mentre una Skill o un Dono vi mostra altre coppie, le posizioni si aggiornano ogni 8 secondi (e spariscono subito

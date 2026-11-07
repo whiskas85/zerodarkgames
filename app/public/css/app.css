@@ -1312,3 +1312,6 @@ button.stamp-logo { background: var(--bg); }
 @media (max-width: 360px) { .sheet-body .grid { grid-template-columns: 1fr 1fr; } }
 .sheet-out { margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) { .sheet, .sheet-veil { transition: none; } }
+/* Traccar acceso quando non serve: avviso tranquillo (verde), non un allarme. */
+.banner-traccar-idle { background: color-mix(in srgb, #2e9d52 14%, var(--paper)); border-left-color: #2e9d52; }
+.banner-traccar-idle strong { color: #5fd08a; }
