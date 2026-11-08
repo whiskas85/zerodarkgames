@@ -859,6 +859,9 @@ addColumn('food_payments', 'closes', 'INTEGER NOT NULL DEFAULT 0');
 // Pagamento in anticipo dichiarato da chi ha ordinato (Satispay, PayPal): resta «pending» finché la cassa non lo
 // conferma (confirmedAt) o lo dà per non arrivato (rejectedAt, con cancelledAt).
 addColumn('food_payments', 'pending', 'INTEGER NOT NULL DEFAULT 0');
+// Una richiesta d'ordine accettata diventa un ordine (fromRequest ricorda da dove viene).
+addColumn('food_orders', 'fromRequest', 'INTEGER NOT NULL DEFAULT 0');
+db.exec("UPDATE food_orders SET kind = 'order', status = 'active', fromRequest = 1 WHERE kind = 'request' AND status = 'accepted'");
 addColumn('food_payments', 'confirmedAt', 'INTEGER');
 addColumn('food_payments', 'confirmedBy', 'TEXT');
 addColumn('food_payments', 'rejectedAt', 'INTEGER');

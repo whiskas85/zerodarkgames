@@ -92,7 +92,7 @@ const summaryOf = (lines) => lines.map((l) => `${l.qty}× ${l.title}`).join(', '
 const orderOut = (o) => {
   const lines = linesOf(o.id);
   const total = lines.reduce((t, l) => t + (l.price || 0) * l.qty, 0);
-  return { id: o.id, kind: o.kind, status: o.status, note: o.note || '', owner: { key: o.ownerKey, name: o.ownerName, kind: o.ownerKind, sub: o.ownerSub },
+  return { id: o.id, kind: o.kind, status: o.status, fromRequest: !!o.fromRequest, note: o.note || '', owner: { key: o.ownerKey, name: o.ownerName, kind: o.ownerKind, sub: o.ownerSub },
     lines, total: Math.round(total * 100) / 100, items: lines.reduce((t, l) => t + l.qty, 0), delivered: lines.reduce((t, l) => t + l.delivered, 0),
     createdAt: o.createdAt, updatedAt: o.updatedAt, cancelledAt: o.cancelledAt, decidedAt: o.decidedAt, decidedBy: o.decidedBy, log: logOf(o.id) };
 };
@@ -186,20 +186,23 @@ function cancelOrder(owner, orderId) {
 const ownerSubs = (key) => (key.startsWith('p') ? q.all('SELECT * FROM push_subs WHERE playerId = ?', Number(key.slice(1)))
   : key.startsWith('t') ? q.all('SELECT * FROM push_subs WHERE teamId = ?', Number(key.slice(1))) : []);
 
-// L'addetto accetta o rifiuta una richiesta arrivata dopo l'ora limite.
+// L'addetto accetta o rifiuta una richiesta arrivata dopo l'ora limite. Accettata, diventa un ordine.
+// Una rifiutata si può rimettere in attesa.
 function decideRequest(gameId, orderId, decision, actor) {
   const o = q.get("SELECT * FROM food_orders WHERE id = ? AND gameId = ? AND kind = 'request'", Number(orderId), Number(gameId));
   if (!o) throw err(404, 'Richiesta non trovata');
   if (o.status === 'cancelled') throw err(409, 'Richiesta annullata da chi l\'aveva fatta');
   if (!['accept', 'reject', 'pending'].includes(decision)) throw err(400, 'Decisione non valida');
-  if (decision !== 'accept' && q.get('SELECT 1 AS x FROM food_order_lines WHERE orderId = ? AND delivered > 0', o.id)) throw err(409, 'Già consegnata (anche solo in parte): prima annulla la consegna');
+  if (decision === 'pending' && o.status !== 'rejected') throw err(409, 'Si rimette in attesa solo una richiesta rifiutata');
+  if (decision === 'reject' && o.status === 'rejected') throw err(409, 'Già rifiutata');
   const status = decision === 'accept' ? 'accepted' : decision === 'reject' ? 'rejected' : 'pending';
   const now = Date.now();
-  q.run('UPDATE food_orders SET status = ?, decidedAt = ?, decidedBy = ?, updatedAt = ? WHERE id = ?', status, status === 'pending' ? null : now, status === 'pending' ? null : actor, now, o.id);
+  if (status === 'accepted') q.run("UPDATE food_orders SET kind = 'order', status = 'active', fromRequest = 1, decidedAt = ?, decidedBy = ?, updatedAt = ? WHERE id = ?", now, actor, now, o.id);
+  else q.run('UPDATE food_orders SET status = ?, decidedAt = ?, decidedBy = ?, updatedAt = ? WHERE id = ?', status, status === 'pending' ? null : now, status === 'pending' ? null : actor, now, o.id);
   addLog(o.id, status === 'accepted' ? 'accepted' : status === 'rejected' ? 'rejected' : 'reopened', actor, null);
   G.log(o.gameId, actor, 'food_request_decided', { owner: o.ownerName, status });
   const subs = ownerSubs(o.ownerKey);
-  if (status !== 'pending' && subs.length) rt.pushSubs(subs, { title: status === 'accepted' ? '🥪 Richiesta accettata' : '🥪 Richiesta rifiutata', body: status === 'accepted' ? 'Il Consiglio ha accettato la vostra richiesta d\'ordine.' : 'Il Consiglio non può accettare la vostra richiesta d\'ordine.', tag: `food-${o.id}`, url: '/#/ristoro' });
+  if (status !== 'pending' && subs.length) rt.pushSubs(subs, { title: status === 'accepted' ? '🥪 Richiesta accettata' : '🥪 Richiesta rifiutata', body: status === 'accepted' ? 'Il Consiglio ha accettato la vostra richiesta: ora è un ordine.' : 'Il Consiglio non può accettare la vostra richiesta d\'ordine.', tag: `food-${o.id}`, url: '/#/ristoro' });
   changed(o.gameId);
   return orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', o.id));
 }
@@ -210,7 +213,7 @@ const METHODS = { contanti: 'Contanti', satispay: 'Satispay', paypal: 'PayPal' }
 const paymentOut = (p) => (p ? { id: p.id, method: p.method, methodLabel: METHODS[p.method] || p.method, amount: p.amount, note: p.note || '', at: p.at, by: p.by, closes: !!p.closes,
   pending: !!p.pending && !p.cancelledAt, rejected: !!p.rejectedAt, confirmedAt: p.confirmedAt || null, confirmedBy: p.confirmedBy || null } : null);
 // Da consegnare: ordini attivi e richieste accettate.
-const deliverable = (o) => (o.kind === 'order' && o.status === 'active') || (o.kind === 'request' && o.status === 'accepted');
+const deliverable = (o) => o.kind === 'order' && o.status === 'active';
 const payLinks = (g) => ({ paypal: g.foodPaypal || null, satispay: g.foodSatispay || null });
 
 function setPayLinks(gameId, data, actor) {
@@ -448,12 +451,12 @@ function forStaff(gameId) {
     return [...m.values()].sort((a, b) => b.qty - a.qty);
   };
   const live = orders.filter((o) => o.status === 'active');
-  const accepted = requests.filter((o) => o.status === 'accepted');
+  const accepted = live.filter((o) => o.fromRequest);
   return {
     gameId: g.id, gameName: g.name, deadline: g.foodDeadline || null, open: isOpen(g), serverNow: Date.now(),
     items: q.all('SELECT * FROM food_items WHERE gameId = ? ORDER BY archivedAt IS NOT NULL, ord, id', g.id).map(itemOut),
     orders, requests,
-    totals: { orders: count(live), accepted: count(accepted), all: count([...live, ...accepted]) },
+    totals: { orders: count(live), accepted: count(accepted), all: count(live) },
     counts: { orders: live.length, pending: requests.filter((o) => o.status === 'pending').length, accepted: accepted.length, payPending: q.get('SELECT COUNT(*) AS n FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL AND pending = 1', g.id).n },
     delivery: deliveryOf(g.id, all), payLinks: payLinks(g),
     payments: q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL AND pending = 0 ORDER BY at', g.id).map(paymentOut),

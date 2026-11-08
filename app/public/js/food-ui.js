@@ -15,12 +15,11 @@ const STATUS = {
   'order:active': ['Ordine', 'food-st-ok'],
   'order:cancelled': ['Ordine annullato', 'food-st-off'],
   'request:pending': ['Richiesta d\'ordine · in attesa', 'food-st-wait'],
-  'request:accepted': ['Richiesta d\'ordine · accettata', 'food-st-ok'],
   'request:rejected': ['Richiesta d\'ordine · rifiutata', 'food-st-no'],
   'request:cancelled': ['Richiesta annullata', 'food-st-off'],
 };
-const LOG = { created: 'Ordine inviato', requested: 'Richiesta d\'ordine inviata', updated: 'Modificato', cancelled: 'Annullato', accepted: 'Richiesta accettata', rejected: 'Richiesta rifiutata', reopened: 'Rimessa in attesa', paid: 'Consegnato e pagato', unpaid: 'Pagamento annullato', delivered: 'Consegnato', undelivered: 'Consegna annullata' };
-const statusChip = (o) => { const [label, cls] = STATUS[`${o.kind}:${o.status}`] || [o.status, '']; return h('span', { class: `food-st ${cls}` }, label); };
+const LOG = { created: 'Ordine inviato', requested: 'Richiesta d\'ordine inviata', updated: 'Modificato', cancelled: 'Annullato', accepted: 'Richiesta accettata: diventa un ordine', rejected: 'Richiesta rifiutata', reopened: 'Rimessa in attesa', paid: 'Consegnato e pagato', unpaid: 'Pagamento annullato', delivered: 'Consegnato', undelivered: 'Consegna annullata' };
+const statusChip = (o) => { const [label, cls] = STATUS[`${o.kind}:${o.status}`] || [o.status, '']; return h('span', { class: `food-st ${cls}` }, o.fromRequest && o.kind === 'order' ? `${label} · da richiesta accettata` : label); };
 const linesList = (o) => h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', null, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title}`, l.price != null ? h('span', { class: 'tiny muted' }, ` · ${euro(l.price)}`) : null,
   l.delivered ? h('span', { class: `food-ld ${l.delivered >= l.qty ? 'ok' : 'part'}` }, l.delivered >= l.qty ? ' ✓ consegnato' : ` ${l.delivered} di ${l.qty} consegnati`) : null)));
 const accRow = (k, v, strong) => h('div', { class: `food-acc-row ${strong ? 'strong' : ''}` }, h('span', null, k), h('b', null, v));
@@ -153,7 +152,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
         d.orders.length ? h('ul', { class: 'food-orders' }, d.orders.map((o) => h('li', { class: `food-order ${o.status === 'cancelled' ? 'off' : ''} ${o.kind}` },
           h('div', { class: 'food-order-head' }, statusChip(o), o.total ? h('span', { class: 'tiny muted' }, `offerta indicativa ${euro(o.total)}`) : null),
           linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null, dates(o),
-          o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.status === 'accepted' ? 'Accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}`) : null,
+          o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Richiesta accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}`) : null,
           o.delivered ? h('div', { class: o.delivered >= o.items ? 'food-paid' : 'food-part' }, o.delivered >= o.items ? '✓ Consegnato' : `Consegnato in parte: ${o.delivered} di ${o.items}`) : null,
           history(o),
           canEdit(o) && !d.ended ? h('div', { class: 'row-actions' },
@@ -216,10 +215,10 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
   const orderCard = (o) => h('li', { class: `food-order ${o.status === 'cancelled' || o.status === 'rejected' ? 'off' : ''} ${o.kind}` },
     h('div', { class: 'food-order-head' }, who(o), statusChip(o)),
     linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null, dates(o),
-    o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.status === 'accepted' ? 'Accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}${o.decidedBy ? ` da ${o.decidedBy}` : ''}`) : null,
+    o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Richiesta accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}${o.decidedBy ? ` da ${o.decidedBy}` : ''}`) : null,
     history(o),
     o.kind === 'request' && o.status !== 'cancelled' ? h('div', { class: 'row-actions' },
-      o.status !== 'accepted' ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'accept' }, 'Richiesta accettata') }, 'Accetta') : null,
+      h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'accept' }, 'Richiesta accettata: ora è un ordine') }, 'Accetta'),
       o.status !== 'rejected' ? h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'reject' }, 'Richiesta rifiutata') }, 'Rifiuta') : null,
       o.status !== 'pending' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'pending' }, 'Rimessa in attesa') }, 'Rimetti in attesa') : null) : null);
   const totalsTable = (list) => (list.length ? h('table', { class: 'food-totals' }, h('tbody', null, list.map((x) => h('tr', null, h('td', { class: 'mono' }, `${x.qty}×`), h('td', null, x.title), h('td', { class: 'tiny muted' }, x.offer ? euro(x.offer) : ''))))) : h('p', { class: 'tiny muted' }, 'Niente.'));
@@ -278,7 +277,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       const n = h('b', { class: 'mono' }, String(left));
       const set = (v) => { r.qty = Math.max(0, Math.min(left, v)); n.textContent = String(r.qty); };
       r.el = h('li', { class: 'food-deliver-row' },
-        h('div', { class: 'food-item-main' }, h('strong', null, l.title), h('span', { class: 'tiny muted' }, `${o.kind === 'request' ? 'Richiesta' : 'Ordine'} · ne mancano ${left}${l.delivered ? ` (già dati ${l.delivered})` : ''}`)),
+        h('div', { class: 'food-item-main' }, h('strong', null, l.title), h('span', { class: 'tiny muted' }, `${o.fromRequest ? 'Ordine da richiesta' : 'Ordine'} · ne mancano ${left}${l.delivered ? ` (già dati ${l.delivered})` : ''}`)),
         h('div', { class: 'food-qty' }, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => set(r.qty - 1) }, '−'), n, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => set(r.qty + 1) }, '+')));
       rows.push(r);
     }
@@ -347,7 +346,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
             h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => confirmDialog(p, x) }, '✓ Arrivato'),
             h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: async () => { if (await dialog({ title: 'Pagamento non arrivato?', text: `${p.owner.name}: ${x.methodLabel} ${euro(x.amount)}. Riceverà un avviso di passare alla cassa.`, okLabel: 'Non arrivato', cancelLabel: 'No', danger: true })) call('POST', `/payments/${x.id}/reject`, {}, 'Segnato come non arrivato'); } }, 'Non arrivato'))))) : null,
         h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', null,
-          h('div', { class: 'tiny muted' }, `${o.kind === 'request' ? 'Richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`),
+          h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Ordine da richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`),
           h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', { class: l.delivered >= l.qty ? 'got' : '' }, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title} `, lineDone(l)))),
           o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null))),
         hist.length ? h('details', { class: 'food-log' }, h('summary', { class: 'tiny' }, `Consegne e pagamenti (${hist.length})`), h('ul', { class: 'food-hist' }, hist)) : null,
@@ -430,15 +429,14 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       // Filtro: ordini (entro l'ora limite) o richieste d'ordine (dopo), con quante aspettano una risposta.
       h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
       S.tab === 'richieste' ? h('section', { class: 'stack-sm food-sec-req' },
-        h('p', { class: 'food-hint req' }, 'Arrivate DOPO l\'ora limite: non sono ordini finché non le accetti.'),
+        h('p', { class: 'food-hint req' }, 'Arrivate DOPO l\'ora limite: non sono ordini finché non le accetti. Accettata, una richiesta diventa un ordine e la trovi in «Ordini».'),
         d.requests.length ? h('ul', { class: 'food-orders' }, [...d.requests].sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.createdAt - a.createdAt).map(orderCard)) : h('p', { class: 'empty' }, 'Nessuna richiesta.'),
-        h('h3', null, 'Richieste accettate: da preparare'), totalsTable(d.totals.accepted))
+        null)
       : h('section', { class: 'stack-sm food-sec-ord' },
-        h('p', { class: 'food-hint ord' }, 'Fatti entro l\'ora limite.'),
+        h('p', { class: 'food-hint ord' }, 'Fatti entro l\'ora limite, più le richieste accettate.'),
         // Da preparare: in cima il totale (ordini + richieste accettate); il dettaglio si apre a richiesta.
         h('div', { class: 'food-sum' }, h('h3', null, 'Da preparare'), totalsTable(d.totals.all),
-          d.counts.accepted ? h('details', { class: 'food-sum-detail' }, h('summary', { class: 'small' }, `Dettaglio: ${d.counts.orders} ordini + ${d.counts.accepted} richieste accettate`),
-            h('div', { class: 'eyebrow' }, 'Ordini'), totalsTable(d.totals.orders), h('div', { class: 'eyebrow' }, 'Richieste accettate'), totalsTable(d.totals.accepted)) : null),
+          d.counts.accepted ? h('p', { class: 'tiny muted' }, `${d.counts.orders} ordini, di cui ${d.counts.accepted} da richieste accettate.`) : null),
         activeOrders.length ? h('ul', { class: 'food-orders' }, [...activeOrders].reverse().map(orderCard)) : h('p', { class: 'empty' }, 'Nessun ordine.'),
         offOrders.length ? h('details', null, h('summary', { class: 'small' }, `Annullati (${offOrders.length})`), h('ul', { class: 'food-orders' }, offOrders.map(orderCard))) : null));
   }
