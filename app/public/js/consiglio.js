@@ -1,5 +1,6 @@
 // Consiglio Zero: chi entra con Zero Dark Ops chiede l'accesso; chi è dentro vede solo le azioni che il master gli ha aperto.
 import { h, mount, api, toast, dialog, fmtTime, store, STATUS_LABELS } from './lib.js';
+import { createFoodOrder, createFoodAdmin } from './food-ui.js';
 
 const $root = document.getElementById('root');
 const C = { me: null, status: null, games: [], gameId: store.get('zdg_consiglio_game'), gifts: null, busy: false };
@@ -15,11 +16,14 @@ const ACTIONS = [
   { key: 'doni', label: 'Lancio doni', hint: 'Fai comparire i doni', ico: '✦', href: () => '#doni' },
   { key: 'comunicazioni', label: 'Annunci', hint: 'Un annuncio a tutte le coppie', ico: '✉', href: () => '#annunci' },
 ];
-// Ristoro: tutti nel Consiglio possono ordinare per sé; l'addetto (permesso «Ristoro») gestisce menù e ordini.
-const RISTORO = () => ({ key: '_ristoro', label: 'Ristoro', hint: C.me?.role === 'master' || C.me?.perms?.includes('ristoro') ? 'Menù, ordini e richieste · ordina per te' : 'Ordina panini e bevande', ico: '🥪', href: () => `/ristoro${C.gameId ? `?g=${C.gameId}` : ''}${C.me?.role === 'master' || C.me?.perms?.includes('ristoro') ? '#gestione' : ''}` });
-const allowed = () => [...(C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) => C.me?.perms?.includes(a.key))), RISTORO()];
+const allowed = () => (C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) => C.me?.perms?.includes(a.key)));
+// Ristoro: tutti nel Consiglio ordinano per sé; l'addetto (permesso «Ristoro») gestisce menù, ordini e richieste.
+const canFood = () => C.me?.role === 'master' || C.me?.perms?.includes('ristoro');
+const foodOrder = createFoodOrder({ base: '/api/v/food', query: () => `?g=${C.gameId}`, rerender: () => render() });
+const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render() });
+setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (tab() === 'ristoro-gestione') foodAdmin.load(); }, 20000);
 const tab = () => location.hash.slice(1);
-window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); });
+window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); window.scrollTo(0, 0); });
 
 (async function boot() {
   try { C.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
@@ -41,16 +45,48 @@ async function loadTab() {
 }
 
 const logout = async () => { await api('POST', '/api/auth/logout').catch(() => {}); location.href = '/'; };
-const header = (sub) => h('header', { class: 'topbar soglia-top' },
-  h('div', { class: 'brand' }, h('div', { class: 'emblem sm' }, h('span', null, '0')), h('div', null, h('div', { class: 'brand-t' }, 'Consiglio Zero'), h('div', { class: 'eyebrow' }, sub))),
-  h('div', { class: 'top-actions' }, C.me || C.status ? h('button', { class: 'btn btn-sm btn-ghost', onclick: logout }, 'Esci') : null));
+// Testata come nelle app: emblema, chi sei e l'avatar con il suo menu (Esci compreso).
+function meInfo() {
+  const name = C.me?.displayName || C.me?.username || 'Consiglio';
+  const words = String(name).trim().split(/\s+/).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+  return { name, initials, picture: C.me?.picture || null };
+}
+const avatarFace = (me, cls = '') => h('span', { class: `avatar ${cls}`, 'aria-hidden': 'true' },
+  me.picture ? h('img', { src: me.picture, alt: '', referrerpolicy: 'no-referrer', onerror: (e) => { e.target.replaceWith(document.createTextNode(me.initials)); } }) : me.initials);
+function openAvatarMenu(anchor) {
+  const old = document.querySelector('.avatar-menu');
+  if (old) { old.remove(); return; }
+  const me = meInfo();
+  const item = (href, icon, label, attrs = {}) => h(href ? 'a' : 'button', { class: 'am-item', role: 'menuitem', ...(href ? { href } : { type: 'button' }), ...attrs }, h('span', { class: 'am-ico', 'aria-hidden': 'true' }, icon), h('span', null, label));
+  const menu = h('div', { class: 'avatar-menu', role: 'menu' },
+    h('div', { class: 'am-head' }, avatarFace(me, 'lg'), h('div', null, h('strong', null, me.name), h('div', { class: 'tiny muted' }, [C.me?.username ? `@${C.me.username}` : null, C.me?.role === 'master' ? 'Regia' : 'Consiglio Zero'].filter(Boolean).join(' · ')))),
+    item('#', '⌂', 'Home'),
+    item('#ristoro', '🥪', 'Ristoro: ordina'),
+    C.me?.role === 'master' ? item('/regia', '◉', 'Regia') : null,
+    item(null, '⏻', 'Esci', { class: 'am-item am-out', onclick: logout }));
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  const close = (ev) => { if (ev && ((menu.contains(ev.target) && !ev.target.closest('a, button')) || ev.target.closest?.('.avatar-btn'))) return; menu.remove(); document.removeEventListener('click', close, true); window.removeEventListener('hashchange', close); };
+  setTimeout(() => { document.addEventListener('click', close, true); window.addEventListener('hashchange', close); }, 0);
+  document.body.append(menu);
+}
+const header = (sub) => h('header', { class: 'topbar council-top' },
+  tab() ? h('a', { class: 'council-back', href: '#', 'aria-label': 'Torna alla home' }, '‹') : h('div', { class: 'emblem sm' }, h('span', null, '0')),
+  h('div', { class: 'council-id' }, h('div', { class: 'brand-t' }, 'Consiglio Zero'), h('div', { class: 'eyebrow' }, sub)),
+  C.me ? h('button', { type: 'button', class: 'avatar-btn', 'aria-label': `Menu di ${meInfo().name}`, 'aria-haspopup': 'menu', onclick: (e) => { e.stopPropagation(); openAvatarMenu(e.currentTarget); } }, avatarFace(meInfo()))
+    : C.status ? h('button', { class: 'btn btn-sm btn-ghost', onclick: logout }, 'Esci') : null);
 
 function render() {
   if (!C.me) return mount($root, header('Organizzazione dei Giochi'), h('main', { class: 'content council' }, outside()));
   const t = tab();
   const body = t === 'doni' && C.me && allowed().some((a) => a.key === 'doni') ? viewGifts()
-    : t === 'annunci' && allowed().some((a) => a.key === 'comunicazioni') ? viewAnnounce() : viewHome();
-  mount($root, header(`${C.me.displayName || C.me.username}${C.me.role === 'master' ? ' · regia' : ''}`), h('main', { class: 'content council' }, body));
+    : t === 'annunci' && allowed().some((a) => a.key === 'comunicazioni') ? viewAnnounce()
+    : t === 'ristoro' ? [C.games.length > 1 ? gameSelect() : null, foodOrder.view()]
+    : t === 'ristoro-gestione' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view()] : viewHome();
+  const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro', 'ristoro-gestione': 'Gestione ristoro' }[t] || (C.me.displayName || C.me.username);
+  mount($root, header(sub), h('main', { class: 'content council' }, body));
 }
 
 // Fuori dall'organizzazione: la richiesta (solo per chi è entrato con Zero Dark Ops).
@@ -79,22 +115,26 @@ function outside() {
     h('button', { class: 'btn btn-primary btn-block', onclick: () => send('POST') }, 'Chiedi di entrare'));
 }
 
+// Home come nelle app: le azioni aperte dal master (oro) e, a parte, il Ristoro (arancio).
+const ctile = (a) => h('a', { class: 'tile', href: a.href() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, a.ico), h('span', null, a.label), h('span', { class: 'tiny muted' }, a.hint));
 function viewHome() {
   const acts = allowed();
-  return [
-    acts.length ? h('div', { class: 'council-grid' }, acts.map((a) => h('a', { class: 'council-tile', href: a.href() },
-      h('span', { class: 'ico', 'aria-hidden': 'true' }, a.ico), h('span', null, a.label), h('span', { class: 'tiny muted' }, a.hint))))
-      : h('div', { class: 'card stack' }, h('h2', null, 'Sei nel Consiglio Zero'), h('p', null, 'Il master non ti ha ancora aperto nessuna azione: quando lo farà le troverai qui.'),
-        h('button', { class: 'btn', onclick: () => location.reload() }, 'Aggiorna')),
-    h('p', { class: 'muted small' }, h('a', { href: '/#/home' }, 'Vai all\'app dei Giochi')),
-  ];
+  const food = [
+    { label: 'Panini e bevande', hint: 'Ordina per te', ico: '🥪', href: () => '#ristoro' },
+    canFood() ? { label: 'Gestione ristoro', hint: 'Menù, ordini e richieste', ico: '🧾', href: () => '#ristoro-gestione' } : null,
+  ].filter(Boolean);
+  return h('div', { class: 'tile-groups' },
+    C.games.length > 1 ? gameSelect() : null,
+    acts.length ? h('section', { class: 'tile-group g-game' }, h('div', { class: 'eyebrow' }, 'Le tue azioni'), h('nav', { class: 'grid' }, acts.map(ctile)))
+      : h('div', { class: 'card stack-sm' }, h('strong', null, 'Sei nel Consiglio Zero'), h('p', { class: 'small muted' }, 'Il master non ti ha ancora aperto azioni di gioco: quando lo farà le troverai qui.')),
+    h('section', { class: 'tile-group g-food' }, h('div', { class: 'eyebrow' }, 'Ristoro'), h('nav', { class: 'grid' }, food.map(ctile))));
 }
 
 function gameSelect() {
-  return h('select', { class: 'input', onchange: (e) => { C.gameId = Number(e.target.value); store.set('zdg_consiglio_game', C.gameId); C.gifts = null; render(); loadTab(); } },
+  return h('select', { class: 'input', onchange: (e) => { C.gameId = Number(e.target.value); store.set('zdg_consiglio_game', C.gameId); C.gifts = null; foodOrder.load(); foodAdmin.load(); render(); loadTab(); } },
     C.games.map((g) => h('option', { value: g.id, selected: g.id === C.gameId }, `${g.name} · ${STATUS_LABELS[g.status] || g.status}`)));
 }
-const back = () => h('a', { class: 'btn btn-sm btn-ghost', href: '#' }, '‹ Le mie azioni');
+const back = () => null;
 
 const GIFT_STATE = { draft: 'da piazzare', placed: 'piazzato · pronto', revealed: 'comparso', claimed: 'preso', expired: 'svanito' };
 function viewGifts() {

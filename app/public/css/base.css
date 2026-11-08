@@ -393,4 +393,12 @@ body.no-scroll { overflow: hidden; }
 .food-sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .food-totals { border-collapse: collapse; width: 100%; }
 .food-totals td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
-.food-tabs { margin-top: 2px; }
+.food-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; border: 2px solid var(--line); border-radius: 10px; overflow: hidden; }
+.food-tabs button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 6px; border: 0; border-left: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
+.food-tabs button:first-child { border-left: 0; }
+.food-tabs button.on { background: color-mix(in srgb, var(--brass) 20%, var(--paper)); box-shadow: inset 0 -3px 0 var(--brass); }
+.food-tab-n { min-width: 22px; padding: 0 6px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 12px; line-height: 18px; }
+.food-tab-n.alert { background: var(--warn); border-color: var(--warn); color: #1c211e; }
+.food-totals { table-layout: fixed; }
+.food-totals td:first-child { width: 44px; }
+.food-totals td:last-child { width: 76px; text-align: right; }

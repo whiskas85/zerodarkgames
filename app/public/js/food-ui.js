@@ -171,7 +171,7 @@ export function createFoodAdmin({ gameId, rerender }) {
     load();
     const d = S.data;
     const live = d.items.filter((i) => !i.archived);
-    const tabs = [['ordini', `Ordini (${d.counts.orders})`], ['richieste', `Richieste d'ordine (${d.counts.pending} in attesa)`], ['menu', `Menù (${live.length})`]];
+    const tabs = [['ordini', 'Ordini', d.counts.orders, false], ['richieste', 'Richieste', d.counts.pending, d.counts.pending > 0], ['menu', 'Menù', live.length, false]];
     const activeOrders = d.orders.filter((o) => o.status === 'active');
     const offOrders = d.orders.filter((o) => o.status !== 'active');
     return h('div', { class: 'food food-admin stack' },
@@ -181,7 +181,8 @@ export function createFoodAdmin({ gameId, rerender }) {
           h('button', { class: 'btn btn-sm', type: 'button', onclick: deadlineDialog }, d.deadline ? 'Cambia l\'ora limite' : 'Fissa l\'ora limite'),
           d.deadline ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('PUT', '/deadline', { deadline: null }, 'Ora limite tolta: ordini aperti') }, 'Togli') : null,
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => load(true) }, '↻ Aggiorna'))),
-      h('nav', { class: 'settings-nav food-tabs' }, tabs.map(([k, l]) => h('a', { href: '#', class: S.tab === k ? 'on' : '', onclick: (e) => { e.preventDefault(); S.tab = k; rerender(); } }, l))),
+      // Tre schede su una riga: Ordini, Richieste (con quante aspettano una risposta) e Menù.
+      h('nav', { class: 'food-tabs', role: 'tablist' }, tabs.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
       S.tab === 'menu' ? h('section', { class: 'stack-sm' },
         h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => itemDialog() }, '＋ Aggiungi una voce')),
         h('p', { class: 'tiny muted' }, 'Titolo, descrizione e prezzo indicativo: chi ordina vede sempre «offerta libera». Una voce già ordinata, se la togli, esce dal menù ma resta negli ordini.'),

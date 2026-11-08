@@ -136,7 +136,7 @@ function placeOrder(owner, data) {
     return oid;
   });
   G.log(g.id, owner.name, kind === 'order' ? 'food_order' : 'food_request', { items: summaryOf(lines) });
-  if (kind === 'request') rt.pushMasters({ title: '🥪 Richiesta d\'ordine', body: `${owner.name}: ${summaryOf(lines)} (dopo l'ora limite)`, url: '/ristoro#gestione' });
+  if (kind === 'request') rt.pushMasters({ title: '🥪 Richiesta d\'ordine', body: `${owner.name}: ${summaryOf(lines)} (dopo l'ora limite)`, url: '/regia#ristoro' });
   changed(g.id);
   return orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', id));
 }
