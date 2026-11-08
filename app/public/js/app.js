@@ -3130,10 +3130,18 @@ function zoneHud() {
   // Conquista: dal telefono (sparisce appena si esce); il tempo è quello del server se lui vi sa dentro, se no da quando
   // il telefono vi ha visti entrare (uscendo si azzera).
   const cqZone = hereZones().find((z) => z.kind === 'conquista' && !z.winnerTeamId);
-  const srv = cqZone ? (zs?.here || []).find((x) => x.id === cqZone.id && x.holdUntil) : null;
-  const since = srv ? srv.enteredAt : LZ.get(cqZone?.id)?.since;
-  const cq = cqZone && since ? { enteredAt: since, holdUntil: srv ? srv.holdUntil : since + (cqZone.holdMin || 3) * 60000, holdMin: cqZone.holdMin || 3 } : null;
+  const srv = cqZone ? (zs?.here || []).find((x) => x.id === cqZone.id && x.holdMs) : null;
   const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', rateText(zs.recharge)) : null;
+  // Contesa (un'altra coppia dentro): l'anello si ferma, cambia colore e pulsa finché una delle due non perde lo scontro.
+  if (srv && (srv.beaten || srv.contested || !srv.runSince)) {
+    const p = Math.round(Math.min(1, (srv.heldMs || 0) / srv.holdMs) * 100);
+    return [h('a', { class: `zone-ring ${srv.beaten ? 'zr-beaten' : 'zr-contested'}`, href: '#/mappa', style: `--p:${srv.beaten ? 0 : p}%`,
+      title: srv.beaten ? 'Avete perso lo scontro: uscite e rientrate per tornare in gara' : 'Zona contesa: il tempo è fermo finché non sconfiggete l\'altra coppia' },
+      h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, srv.beaten ? '✖' : '⚔️'),
+      h('span', { class: 'mono zr-time' }, srv.beaten ? 'FUORI' : 'CONTESA')), boost];
+  }
+  const since = srv ? srv.runSince - (srv.heldMs || 0) : LZ.get(cqZone?.id)?.since;
+  const cq = cqZone && since ? { enteredAt: since, holdUntil: srv ? srv.holdUntil : since + (cqZone.holdMin || 3) * 60000, holdMin: cqZone.holdMin || 3 } : null;
   if (!cq) return boost;
   return [h('a', { class: 'zone-ring', href: '#/mappa', 'data-from': cq.enteredAt, 'data-to': cq.holdUntil, title: `Conquista: restate dentro ${cq.holdMin} minuti di fila` },
     h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, '👑'),
@@ -3150,6 +3158,16 @@ function zoneEvents(prev, st) {
   for (const z of entered.slice(-1)) {
     const info = zs.list.find((x) => x.id === z.id);
     if (info) showZoneEnter(info);
+  }
+  // Conquista contesa: inizio e fine (con vibrazione).
+  if (prev) {
+    for (const z of zs.here.filter((x) => x.kind === 'conquista')) {
+      const was = (prev.zones?.here || []).find((x) => x.id === z.id);
+      if (!was) continue;
+      if (z.contested && !was.contested) { vibrate([200, 100, 200, 100, 200]); toast(`⚔️ «${z.name}» è contesa: il tempo si ferma finché non sconfiggete l'altra coppia`, 'error', 8000); }
+      else if (was.contested && !z.contested && !z.beaten) { vibrate([120, 60, 300]); toast(`👑 «${z.name}»: il conteggio riparte`, 'ok', 6000); }
+      if (z.beaten && !was.beaten) toast(`✖ Avete perso lo scontro: per «${z.name}» uscite e rientrate`, 'error', 8000);
+    }
   }
   for (const w of zs.won || []) {
     if (seenZoneWins.has(w.id)) continue;

@@ -680,6 +680,12 @@ addColumn('games', 'altarBeaconMin', 'INTEGER NOT NULL DEFAULT 15');
 addColumn('points', 'disabledUntil', 'INTEGER');
 addColumn('points', 'disabledBy', 'TEXT');
 addColumn('zone_presence', 'outsideSince', 'INTEGER');
+// Conquista contesa: il tempo dentro si accumula (heldMs) e corre da runSince; con due coppie dentro si ferma
+// (runSince NULL) finché una non sconfigge l'altra (beaten: sconfitta, non conta finché non esce e rientra).
+addColumn('zone_presence', 'heldMs', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('zone_presence', 'runSince', 'INTEGER');
+addColumn('zone_presence', 'beaten', 'INTEGER NOT NULL DEFAULT 0');
+if (!getSetting('zone_hold_v1')) { db.exec('UPDATE zone_presence SET runSince = enteredAt WHERE inside = 1 AND runSince IS NULL'); setSetting('zone_hold_v1', '1'); }
 addColumn('map_zones', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
 // Accesa da un Beacon: resta accesa beaconOnMin minuti (NULL = finché non la spegne la regia), fino ad activeUntil.
 addColumn('map_zones', 'beaconOnMin', 'INTEGER');

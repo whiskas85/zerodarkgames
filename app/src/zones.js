@@ -170,7 +170,7 @@ function markImmune(z, immune = true) {
   const poly = pointsOf(z);
   for (const t of G.teamsOf(z.gameId)) {
     const p = teamPos(t.id);
-    if (p && inside(p, poly)) q.run('INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt) VALUES (?, ?, 1, ?, ?)', z.id, t.id, immune ? 1 : 0, Date.now());
+    if (p && inside(p, poly)) q.run('INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, runSince) VALUES (?, ?, 1, ?, ?, ?)', z.id, t.id, immune ? 1 : 0, Date.now(), Date.now());
   }
 }
 
@@ -201,8 +201,8 @@ function onPosition(team, pos, now = Date.now(), player = null) {
     const depth = Math.max(...devs.map((d) => edgeDepth(d, poly)));
     const pr = q.get('SELECT * FROM zone_presence WHERE zoneId = ? AND teamId = ?', z.id, team.id);
     if (!pr?.inside && depth >= ENTER_M) {
-      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt, outsideSince) VALUES (?, ?, 1, 0, ?, NULL, NULL)
-             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL, outsideSince = NULL`, z.id, team.id, now);
+      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt, outsideSince, heldMs, runSince, beaten) VALUES (?, ?, 1, 0, ?, NULL, NULL, 0, ?, 0)
+             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL, outsideSince = NULL, heldMs = 0, runSince = excluded.runSince, beaten = 0`, z.id, team.id, now, now);
       G.log(g.id, `coppia:${team.id}`, 'zone_enter', { teamId: team.id, zone: z.name, kind: z.kind, lat: pos.lat, lng: pos.lng });
       any = true;
     } else if (pr?.inside && depth >= 0) {
@@ -216,7 +216,10 @@ function onPosition(team, pos, now = Date.now(), player = null) {
       any = true;
     }
   }
-  if (any) { rt.toTeams(g.id, 'state', {}, team.id); rt.toStaff(g.id, 'zones'); }
+  if (any) {
+    for (const z of zonesOf(g.id)) if (z.kind === 'conquista') contest(z, now);
+    rt.toTeams(g.id, 'state', {}, team.id); rt.toStaff(g.id, 'zones');
+  }
   noplayCheck(g, team, null, (poly) => Math.max(...devs.map((d) => edgeDepth(d, poly))), pos, now);
 }
 
@@ -278,7 +281,7 @@ function noplayOf(t, player) {
 
 // Zone che agiscono su una coppia adesso (dentro e non immune), dalla priorità più bassa alla più alta.
 function appliedZones(teamId) {
-  return q.all(`SELECT z.*, p.enteredAt FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id
+  return q.all(`SELECT z.*, p.enteredAt, p.heldMs, p.runSince, p.beaten FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id
                 WHERE p.teamId = ? AND p.inside = 1 AND p.immune = 0 AND z.active = 1 AND z.enabled = 1 ORDER BY z.layer, z.id`, teamId);
 }
 
@@ -314,8 +317,44 @@ function tickAll(now = Date.now()) {
       }
     }
     for (const z of q.all("SELECT * FROM map_zones WHERE gameId = ? AND active = 1 AND enabled = 1 AND kind = 'conquista' AND winnerTeamId IS NULL", gameId)) {
-      const best = q.get('SELECT teamId, enteredAt FROM zone_presence WHERE zoneId = ? AND inside = 1 AND immune = 0 AND enteredAt <= ? ORDER BY enteredAt LIMIT 1', z.id, now - z.holdMin * 60000);
+      contest(z, now);
+      // Vince chi ha accumulato il tempo (contando solo quando la zona non era contesa).
+      const best = contenders(z.id).filter((p) => p.runSince && heldOf(p, now) >= z.holdMin * 60000).sort((a, b) => heldOf(b, now) - heldOf(a, now))[0];
       if (best) conquer(z, best.teamId, now);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- Conquista contesa
+
+// Chi conta in una Conquista: dentro, non immune, non sconfitto.
+const contenders = (zoneId) => q.all('SELECT * FROM zone_presence WHERE zoneId = ? AND inside = 1 AND immune = 0 AND beaten = 0', zoneId);
+const heldOf = (p, now) => (p.heldMs || 0) + (p.runSince ? now - p.runSince : 0);
+// Due o più coppie dentro: il tempo di tutte si ferma (la zona è contesa). Ne resta una sola: il suo tempo riparte.
+function contest(z, now = Date.now()) {
+  if (z.kind !== 'conquista' || !z.active || z.winnerTeamId) return;
+  const list = contenders(z.id);
+  const touched = [];
+  if (list.length >= 2) {
+    for (const p of list) if (p.runSince) { q.run('UPDATE zone_presence SET heldMs = ?, runSince = NULL WHERE zoneId = ? AND teamId = ?', heldOf(p, now), z.id, p.teamId); touched.push(p.teamId); }
+    if (touched.length) G.log(z.gameId, 'sistema', 'zone_contested', { zone: z.name, teams: list.map((p) => p.teamId) });
+  } else if (list.length === 1 && !list[0].runSince) {
+    q.run('UPDATE zone_presence SET runSince = ? WHERE zoneId = ? AND teamId = ?', now, z.id, list[0].teamId);
+    touched.push(list[0].teamId);
+    G.log(z.gameId, 'sistema', 'zone_contest_over', { zone: z.name, teamId: list[0].teamId });
+  }
+  // Tutte le coppie dentro (anche le sconfitte) vedono subito il cambio.
+  if (touched.length) { for (const p of q.all('SELECT teamId FROM zone_presence WHERE zoneId = ? AND inside = 1', z.id)) rt.toTeams(z.gameId, 'state', {}, p.teamId); rt.toStaff(z.gameId, 'zones'); }
+}
+// Scontro perso: la coppia sconfitta esce dalla contesa delle Conquiste in cui è dentro (il suo tempo si azzera;
+// conta di nuovo solo se esce e rientra) e il tempo di chi resta riparte.
+function onDefeated(teamIds, now = Date.now()) {
+  for (const teamId of teamIds) {
+    for (const z of q.all("SELECT z.* FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id WHERE p.teamId = ? AND p.inside = 1 AND p.beaten = 0 AND z.kind = 'conquista' AND z.active = 1 AND z.winnerTeamId IS NULL", teamId)) {
+      q.run('UPDATE zone_presence SET beaten = 1, heldMs = 0, runSince = NULL WHERE zoneId = ? AND teamId = ?', z.id, teamId);
+      G.log(z.gameId, 'sistema', 'zone_contest_lost', { zone: z.name, teamId });
+      rt.toTeams(z.gameId, 'state', {}, teamId);
+      contest(z, now);
     }
   }
 }
@@ -469,7 +508,7 @@ function zoneOut(z) {
 
 function masterZones(gameId) {
   return { kinds: KINDS, list: zonesOf(gameId, false).map((z) => ({ ...zoneOut(z),
-    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id),
+    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt, p.heldMs, p.runSince, p.beaten FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id),
     violations: z.kind === 'noplay' ? q.all('SELECT * FROM noplay_hits WHERE zoneId = ? AND (leftAt IS NULL OR leftAt > ?) ORDER BY id DESC LIMIT 20', z.id, Date.now() - 3 * 3600000)
       .map((h) => ({ id: h.id, who: hitWho(h), teamId: h.teamId, playerId: h.playerId, enteredAt: h.enteredAt, alertedAt: h.alertedAt, leftAt: h.leftAt, lat: h.lat, lng: h.lng })) : [] })) };
 }
@@ -491,8 +530,15 @@ function teamZones(t, player = null) {
   return {
     // Le zone abilitate, anche spente (in grigio: si possono accendere con un Beacon degli Eletti).
     list: q.all('SELECT * FROM map_zones WHERE gameId = ? AND enabled = 1 ORDER BY layer, id', t.gameId).map(zoneOut),
-    here: mine.map((z) => ({ id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,
-      holdUntil: z.kind === 'conquista' && !z.winnerTeamId ? z.enteredAt + z.holdMin * 60000 : null })),
+    here: mine.map((z) => {
+      const cq = z.kind === 'conquista' && !z.winnerTeamId;
+      // Conquista: tempo accumulato; corre (runSince) o è fermo perché contesa; «beaten»: sconfitti, fuori dalla contesa.
+      const rivals = cq ? q.get('SELECT COUNT(*) AS n FROM zone_presence WHERE zoneId = ? AND teamId <> ? AND inside = 1 AND immune = 0 AND beaten = 0', z.id, t.id).n : 0;
+      return { id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,
+        holdUntil: cq && z.runSince && !z.beaten ? z.runSince - (z.heldMs || 0) + z.holdMin * 60000 : null,
+        heldMs: cq ? heldOf(z, now) : null, runSince: cq ? z.runSince : null, holdMs: cq ? z.holdMin * 60000 : null,
+        contested: cq && !z.beaten && rivals > 0, beaten: cq && !!z.beaten };
+    }),
     visibility: visibilityOf(t.id),
     // La regia sceglie se mostrare sulla mappa quanto manca allo spegnimento delle zone a tempo.
     countdown: !!g.zoneCountdown,
@@ -507,4 +553,4 @@ function teamZones(t, player = null) {
   };
 }
 
-module.exports = { NOPLAY_GRACE_MS, KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
+module.exports = { onDefeated, contest, NOPLAY_GRACE_MS, KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
