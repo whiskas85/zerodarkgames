@@ -363,6 +363,8 @@ function applyEngagement(e, by) {
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
     const mastery = e.skill === 'maestria' ? ' ⚔ Maestria delle repliche' : '';
     for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${mastery}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
+    // Zone di Conquista contese: chi perde esce dalla contesa e il tempo di chi resta riparte.
+    require('./zones').onDefeated(losers);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
   if (e.result === 'draw') {

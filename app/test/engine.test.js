@@ -2288,12 +2288,29 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   Z.tickAll(Date.now() + 121000);
   assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, Cc.id);
   assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Conquista%'", Cc.id));
-  assert.equal(Z.masterZones(g.id).list.length, 6);
+  // Contesa: entra un'altra coppia, il tempo di tutte e due si ferma; sconfitta l'altra, il conteggio riparte.
+  const cq2 = Z.createZone(g.id, { kind: 'conquista', points: sq(46, 9.06), holdMin: 2 }, 'test');
+  go(Cc, 46, 9.06);
+  go(B, 46, 9.06);
+  let here = Z.teamZones(Cc).here.find((x) => x.id === cq2.id);
+  assert.equal(here.contested, true);
+  assert.equal(here.runSince, null);
+  assert.equal(Z.teamZones(B).here.find((x) => x.id === cq2.id).contested, true);
+  Z.tickAll(Date.now() + 300000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq2.id).winnerTeamId, null);
+  Z.onDefeated([B.id]);
+  here = Z.teamZones(Cc).here.find((x) => x.id === cq2.id);
+  assert.equal(here.contested, false);
+  assert.ok(here.runSince);
+  assert.equal(Z.teamZones(B).here.find((x) => x.id === cq2.id).beaten, true);
+  Z.tickAll(Date.now() + 121000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq2.id).winnerTeamId, Cc.id);
+  assert.equal(Z.masterZones(g.id).list.length, 7);
   // Ordine trascinando: la prima dell'elenco va in cima.
   const ids = Z.masterZones(g.id).list.map((z) => z.id);
   Z.reorderZones(g.id, [ombra.id, ...ids.filter((x) => x !== ombra.id)], 'test');
   const lv = Object.fromEntries(Z.masterZones(g.id).list.map((z) => [z.id, z.layer]));
-  assert.equal(lv[ombra.id], 6);
+  assert.equal(lv[ombra.id], 7);
   assert.ok(lv[luce.id] < lv[ombra.id]);
   assert.throws(() => Z.reorderZones(g.id, [999999], 'test'), /non valido/);
 });
