@@ -402,3 +402,9 @@ body.no-scroll { overflow: hidden; }
 .food-totals { table-layout: fixed; }
 .food-totals td:first-child { width: 44px; }
 .food-totals td:last-child { width: 76px; text-align: right; }
+/* Gestione del menù: testo a tutta larghezza, pulsanti sotto su una riga (↑ ↓ a sinistra, Modifica e Togli a destra). */
+.food-admin-item { display: grid; gap: 10px; }
+.food-admin-item .food-item-main strong { font-size: 18px; }
+.food-admin-actions { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.food-admin-actions .btn { min-width: 40px; }
+.food-admin-actions .btn:nth-child(3) { margin-left: auto; }
