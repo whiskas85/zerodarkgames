@@ -115,7 +115,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
 // ---------------------------------------------------------------- addetto
 
 // gameId(): la partita; tutto passa da /api/v/games/:id/food (permesso «ristoro» o master).
-export function createFoodAdmin({ gameId, rerender }) {
+export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
   const S = { data: null, gid: null, loading: false, at: 0, tab: 'ordini' };
   const pending = () => S.data?.counts?.pending || 0;
   const base = () => `/api/v/games/${gameId()}/food`;
@@ -186,7 +186,7 @@ export function createFoodAdmin({ gameId, rerender }) {
       const svg = d.qr?.[method];
       if (method === 'contanti') qrBox.replaceChildren();
       else if (svg) { const el = h('div', { class: 'food-qr-img' }); el.innerHTML = svg; qrBox.replaceChildren(h('p', { class: 'tiny muted' }, `Fai inquadrare il QR di ${method === 'paypal' ? 'PayPal' : 'Satispay'}:`), el, h('a', { class: 'tiny', href: d.payLinks[method], target: '_blank', rel: 'noopener' }, d.payLinks[method])); }
-      else qrBox.replaceChildren(h('p', { class: 'small warn-text' }, `Nessun link ${method === 'paypal' ? 'PayPal' : 'Satispay'} impostato: aggiungilo in «Link per pagare».`));
+      else qrBox.replaceChildren(h('p', { class: 'small warn-text' }, `Nessun link ${method === 'paypal' ? 'PayPal' : 'Satispay'} impostato: aggiungilo in «Metodi di pagamento».`));
     };
     paint();
     await modal({
@@ -202,16 +202,27 @@ export function createFoodAdmin({ gameId, rerender }) {
       },
     });
   }
-  async function linksDialog() {
-    const d = S.data;
-    const sat = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.satispay || '', placeholder: 'https://… (link Satispay)' });
-    const pp = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.paypal || '', placeholder: 'https://paypal.me/…' });
-    await modal({
-      title: 'Link per pagare', okLabel: 'Salva',
-      body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Satispay'), sat), h('label', { class: 'field' }, h('span', null, 'PayPal'), pp),
-        h('p', { class: 'tiny muted' }, 'Alla consegna, scegliendo Satispay o PayPal compare il QR da far inquadrare. Chi ordina vede i link nella pagina del Ristoro.')),
-      onOk: async () => { await api('PUT', `${base()}/paylinks`, { satispay: sat.value, paypal: pp.value }); toast('Link salvati', 'ok'); load(true); return true; },
-    });
+  // Pagina a sé: i metodi di pagamento (contanti sempre; Satispay e PayPal con il loro link e il QR).
+  function methodsView(d) {
+    const sat = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.satispay || '', placeholder: 'https://… (link Satispay)', 'data-keep': 'food-sat' });
+    const pp = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.paypal || '', placeholder: 'https://paypal.me/…', 'data-keep': 'food-pp' });
+    const qr = (k) => {
+      if (!d.qr?.[k]) return h('p', { class: 'tiny muted' }, 'Nessun link: alla consegna non compare il QR.');
+      const el = h('div', { class: 'food-qr-img' }); el.innerHTML = d.qr[k];
+      return h('div', { class: 'food-qr' }, el, h('a', { class: 'tiny', href: d.payLinks[k], target: '_blank', rel: 'noopener' }, d.payLinks[k]));
+    };
+    const card = (ico, title, txt, input, k) => h('li', { class: 'food-item food-method' },
+      h('div', { class: 'food-admin-top' }, h('div', { class: 'food-item-main' }, h('strong', null, `${ico} ${title}`), h('span', { class: 'small muted' }, txt)),
+        h('span', { class: `food-st ${k === 'contanti' || d.payLinks[k] ? 'food-st-ok' : ''}` }, k === 'contanti' || d.payLinks[k] ? 'Attivo' : 'Da impostare')),
+      input ? h('label', { class: 'field' }, h('span', null, 'Link'), input) : null, input ? qr(k) : null);
+    const save = async () => { await call('PUT', '/paylinks', { satispay: sat.value, paypal: pp.value }, 'Metodi di pagamento salvati'); };
+    return h('div', { class: 'food food-admin stack' },
+      h('p', { class: 'tiny muted' }, 'Come si può pagare al ritiro. Chi ordina vede i link nella pagina del Ristoro; al ritiro, scegliendo Satispay o PayPal, compare il QR da far inquadrare.'),
+      h('ul', { class: 'food-menu' },
+        card('💶', 'Contanti', 'Sempre disponibile.', null, 'contanti'),
+        card('📱', 'Satispay', 'Il link del negozio o del profilo Satispay.', sat, 'satispay'),
+        card('🅿️', 'PayPal', 'Il link paypal.me o di pagamento.', pp, 'paypal')),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: save }, 'Salva i metodi di pagamento'));
   }
   function deliveryView(d) {
     const people = d.delivery;
@@ -235,9 +246,9 @@ export function createFoodAdmin({ gameId, rerender }) {
     return h('div', { class: 'food food-admin stack' },
       h('div', { class: 'food-cash' }, h('div', null, h('div', { class: 'eyebrow' }, 'Incassato'), h('strong', null, euro(cashed) || '0,00 €')),
         h('div', { class: 'tiny muted' }, Object.entries(byMethod).map(([k, v]) => `${k} ${euro(v)}`).join(' · ') || 'Ancora niente'),
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: linksDialog }, d.payLinks.satispay || d.payLinks.paypal ? '🔗 Link per pagare' : '🔗 Aggiungi i link Satispay e PayPal')),
+        methodsHref && !d.payLinks.satispay && !d.payLinks.paypal ? h('a', { class: 'btn btn-sm', href: methodsHref }, '💳 Imposta Satispay e PayPal') : null),
       h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', class: S.dtab === k ? 'on' : '', onclick: () => { S.dtab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
-      shown.length ? h('ul', { class: 'food-people' }, shown.map(personCard)) : h('p', { class: 'empty' }, S.dtab === 'fatti' ? 'Nessuno ha ancora pagato.' : 'Nessuno da servire.'));
+      shown.length ? h('ul', { class: 'food-people' }, shown.map(personCard)) : h('p', { class: 'empty' }, S.dtab === 'fatti' ? 'Nessuno ha ancora pagato.' : 'Nessuno da servire al ritiro.'));
   }
 
   // Due pagine distinte: 'menu' (le voci) e 'orders' (ordini e richieste, con il filtro tra i due).
@@ -248,6 +259,7 @@ export function createFoodAdmin({ gameId, rerender }) {
     const d = S.data;
     const live = d.items.filter((i) => !i.archived);
     if (mode === 'delivery') return deliveryView(d);
+    if (mode === 'methods') return methodsView(d);
     if (mode === 'menu') {
       return h('div', { class: 'food food-admin stack' },
         h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => itemDialog() }, '＋ Aggiungi una voce')),
