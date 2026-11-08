@@ -143,7 +143,7 @@ async function checkTurnstile(token, ip) {
 }
 
 // Voto (o cambio di voto: lo stesso dispositivo, o lo stesso account, ha un voto solo).
-async function castVote({ teamId, token, device, account, ip, ua }, now = Date.now()) {
+async function castVote({ teamId, token, device, account, ip, ua, fp }, now = Date.now()) {
   const g = voteGame();
   if (!g) throw err(404, 'Nessuna votazione in corso');
   if (!isOpen(g, now)) throw err(409, g.votePrizedAt || !PRE.includes(g.status) || (closeAt(g) && closeAt(g) <= now) ? 'Votazione chiusa' : 'La votazione non è aperta in questo momento');
@@ -153,8 +153,22 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
   // Dal browser Tor (o da un programma che passa da Tor) non si vota.
   if (isTor(ip)) throw err(403, 'Dalla rete Tor non si vota: usa una connessione normale (Wi-Fi o dati del telefono)');
   const net = netHash(ip);
+  // Impronta del browser (schermo, lingua, fuso, processore…): la navigazione privata cambia il cookie ma non questa.
+  // Stessa rete e stessa impronta = stesso telefono: il voto si cambia, non se ne aggiunge uno.
+  const print = /^[a-f0-9]{16,64}$/i.test(String(fp || '')) ? String(fp).toLowerCase().slice(0, 32) : null;
   const existing = (account && q.get('SELECT * FROM votes WHERE gameId = ? AND accountId = ? AND annulledAt IS NULL', g.id, account.id))
-    || q.get('SELECT * FROM votes WHERE gameId = ? AND device = ? AND annulledAt IS NULL', g.id, device);
+    || q.get('SELECT * FROM votes WHERE gameId = ? AND device = ? AND annulledAt IS NULL', g.id, device)
+    || (print && q.get('SELECT * FROM votes WHERE gameId = ? AND net = ? AND fp = ? AND annulledAt IS NULL AND accountId IS NULL ORDER BY id DESC LIMIT 1', g.id, net, print));
+  // Tetto giornaliero: al massimo N voti nuovi in 24 ore dalla stessa rete (chi ha l'account non ha tetto).
+  const cap = Number(g.voteNetDailyMax) || 0;
+  if (!existing && !account && cap > 0) {
+    const day = q.get('SELECT COUNT(*) AS n, MIN(createdAt) AS first FROM votes WHERE gameId = ? AND net = ? AND createdAt > ?', g.id, net, now - 86400000);
+    if (day.n >= cap) {
+      const e = err(429, `Da questa connessione sono già arrivati ${day.n} voti nelle ultime 24 ore: il limite è ${cap}. Se siete in tanti sulla stessa rete, votate con l'account dei Giochi o dai dati del telefono.`);
+      e.extra = { waitUntil: day.first + 86400000, serverNow: now };
+      throw e;
+    }
+  }
   // Limite per rete: solo per i voti nuovi (cambiare il proprio voto è sempre permesso).
   const wait = existing ? null : netWaitUntil(g.id, net, now);
   if (wait) {
@@ -166,7 +180,7 @@ async function castVote({ teamId, token, device, account, ip, ua }, now = Date.n
   const weight = account ? VERIFIED_WEIGHT : 1;
   tx(() => {
     if (existing) q.run('UPDATE votes SET teamId = ?, weight = MAX(weight, ?), accountId = COALESCE(accountId, ?), updatedAt = ? WHERE id = ?', t.id, weight, account?.id ?? null, now, existing.id);
-    else q.run('INSERT INTO votes (gameId, teamId, device, net, accountId, weight, ua, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', g.id, t.id, device, net, account?.id ?? null, weight, String(ua || '').slice(0, 160), now);
+    else q.run('INSERT INTO votes (gameId, teamId, device, net, accountId, weight, ua, createdAt, fp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', g.id, t.id, device, net, account?.id ?? null, weight, String(ua || '').slice(0, 160), now, print);
   });
   rt.toStaff(g.id, 'vote');
   return publicState(device, account, ip, now);
@@ -210,6 +224,7 @@ function masterVote(gameId) {
   const r = results(g.id);
   return {
     enabled: !!g.voteEnabled, open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, title: g.voteTitle || '',
+    netDailyMax: g.voteNetDailyMax ?? 3,
     prizes: [g.votePrize1 || null, g.votePrize2 || null, g.votePrize3 || null], prizedAt: g.votePrizedAt || null,
     turnstile: !!turnstile().secret && !!turnstile().siteKey, turnstileSiteKey: turnstile().siteKey || '', turnstileFromEnv: !!process.env.TURNSTILE_SECRET,
     giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon, color: x.color || null,
@@ -245,6 +260,7 @@ function updateVote(gameId, data, actor) {
   }
   if (data.opensAt !== undefined) q.run('UPDATE games SET voteOpensAt = ? WHERE id = ?', clampTs(data.opensAt), g.id);
   if (data.closesAt !== undefined) q.run('UPDATE games SET voteClosesAt = ? WHERE id = ?', clampTs(data.closesAt), g.id);
+  if (data.netDailyMax !== undefined) q.run('UPDATE games SET voteNetDailyMax = ? WHERE id = ?', Math.max(0, Math.min(100, Math.round(Number(data.netDailyMax)) || 0)), g.id);
   if (data.title !== undefined) q.run('UPDATE games SET voteTitle = ? WHERE id = ?', String(data.title || '').trim().slice(0, 80) || null, g.id);
   // Chiavi di Cloudflare Turnstile (verifica anti-robot), se non sono nel file .env.
   if (data.turnstileSiteKey !== undefined) setSetting('turnstileSiteKey', String(data.turnstileSiteKey || '').trim().slice(0, 120));
@@ -273,6 +289,60 @@ function annulVotes(gameId, ids, actor) {
   G.log(Number(gameId), actor, 'vote_annulled', { count: n });
   rt.toStaff(Number(gameId), 'vote');
   return { annulled: n };
+}
+
+// ---------------------------------------------------------------- pulizia dei voti a ripetizione
+
+// Come cambierebbero le percentuali annullando quei voti: prima e dopo, coppia per coppia.
+function simulate(gameId, ids) {
+  const drop = new Set((ids || []).map(Number));
+  const teams = votableTeams(gameId);
+  const rows = q.all('SELECT id, teamId, weight FROM votes WHERE gameId = ? AND annulledAt IS NULL', gameId);
+  const tally = (list) => { const m = {}; for (const v of list) { const x = (m[v.teamId] ||= { score: 0, votes: 0 }); x.score += v.weight || 1; x.votes += 1; } return m; };
+  const before = tally(rows);
+  const after = tally(rows.filter((v) => !drop.has(v.id)));
+  const tot = (m) => teams.reduce((a, t) => a + (m[t.id]?.score || 0), 0);
+  const tb = tot(before); const ta = tot(after);
+  const pct = (m, t, T) => (T ? Math.round(((m[t.id]?.score || 0) / T) * 1000) / 10 : 0);
+  const list = teams.map((t) => ({ id: t.id, label: `${t.roman} ${t.sectorName}`, name: t.displayName || null,
+    before: { pct: pct(before, t, tb), votes: before[t.id]?.votes || 0, score: before[t.id]?.score || 0 },
+    after: { pct: pct(after, t, ta), votes: after[t.id]?.votes || 0, score: after[t.id]?.score || 0 } }));
+  const rank = (k) => [...list].sort((a, b) => b[k].score - a[k].score || a.id - b.id).map((x) => x.id);
+  const rb = rank('before'); const ra = rank('after');
+  for (const x of list) { x.before.rank = rb.indexOf(x.id) + 1; x.after.rank = ra.indexOf(x.id) + 1; }
+  return { removed: rows.filter((v) => drop.has(v.id)).length, list: list.sort((a, b) => a.after.rank - b.after.rank) };
+}
+
+// Voti a ripetizione: più voti dalla stessa rete alla stessa coppia. Se ne tiene uno (il verificato, o il primo)
+// e si propongono da annullare gli altri. level 'strong' = solo reti con almeno 4 voti alla coppia; 'all' = da 2 in su.
+function suspicious(gameId, { teamId = null, level = 'strong' } = {}) {
+  const min = level === 'all' ? 2 : 4;
+  const rows = q.all('SELECT * FROM votes WHERE gameId = ? AND annulledAt IS NULL ORDER BY createdAt', gameId);
+  const groups = new Map();
+  for (const v of rows) {
+    if (teamId && v.teamId !== Number(teamId)) continue;
+    const k = `${v.teamId}|${v.net}`;
+    (groups.get(k) || groups.set(k, []).get(k)).push(v);
+  }
+  const teams = Object.fromEntries(votableTeams(gameId).map((t) => [t.id, `${t.roman} ${t.sectorName}`]));
+  const out = [];
+  for (const list of groups.values()) {
+    if (list.length < min) continue;
+    const verified = list.filter((v) => v.accountId);
+    const keep = verified.length ? verified : [list[0]];
+    const drop = list.filter((v) => !keep.includes(v));
+    if (!drop.length) continue;
+    const devices = new Set(list.map((v) => v.device)).size;
+    const burst = list.slice(1).some((v, i) => v.createdAt - list[i].createdAt <= 3 * 60000);
+    const uas = new Set(list.map((v) => uaShort(v.ua)));
+    const why = [`${list.length} voti dalla stessa rete`, devices === list.length ? 'ogni volta un dispositivo nuovo (cookie cancellati o navigazione privata)' : `${devices} dispositivi`,
+      burst ? 'voti a pochi minuti l\'uno dall\'altro' : null, uas.size === 1 ? `sempre ${[...uas][0]}` : null].filter(Boolean).join(' · ');
+    out.push({ teamId: list[0].teamId, team: teams[list[0].teamId] || '?', net: list[0].net.slice(0, 8), votes: list.length, keep: keep.length, annul: drop.map((v) => v.id), why,
+      strong: list.length >= 4 && devices === list.length });
+  }
+  out.sort((a, b) => b.annul.length - a.annul.length);
+  const ids = out.flatMap((x) => x.annul);
+  return { level, teamId: teamId ? Number(teamId) : null, groups: out, ids, preview: simulate(gameId, ids) };
 }
 
 // Premi: un Dono alla prima, alla seconda e alla terza coppia (quelli scelti dalla regia, o a caso), annuncio a tutti.
@@ -373,4 +443,4 @@ function voteAnalysis(gameId, teamId) {
 }
 
 module.exports = {
-  voteAnalysis, uaShort, netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+  simulate, suspicious, voteAnalysis, uaShort, netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

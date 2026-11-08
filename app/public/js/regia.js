@@ -4153,6 +4153,67 @@ async function loadVote() {
   try { voteState = await api('GET', G('/vote')); voteGameId = R.gameId; } catch (e) { toast(e.message, 'error'); }
   if (tab() === 'voto') render();
 }
+// Percentuali prima e dopo: tabella per la conferma di un annullamento.
+function votePreviewTable(pv) {
+  const f = (n) => `${String(n).replace('.', ',')}%`;
+  return h('div', { class: 'table-wrap' }, h('table', { class: 'vp-table' },
+    h('thead', null, h('tr', null, ['', 'Coppia', 'Prima', 'Dopo', 'Voti'].map((x) => h('th', null, x)))),
+    h('tbody', null, pv.list.map((t) => {
+      const d = Math.round((t.after.pct - t.before.pct) * 10) / 10;
+      const moved = t.after.rank - t.before.rank;
+      return h('tr', { class: t.after.votes < t.before.votes ? 'vp-hit' : '' },
+        h('td', { class: 'mono' }, `${t.after.rank}°${moved ? ` ${moved < 0 ? '▲' : '▼'}${Math.abs(moved)}` : ''}`),
+        h('td', null, h('strong', null, t.label), t.name ? h('span', { class: 'tiny muted' }, ` ${t.name}`) : null),
+        h('td', { class: 'mono' }, f(t.before.pct), h('span', { class: 'tiny muted' }, ` (${t.before.rank}°)`)),
+        h('td', { class: 'mono' }, h('strong', null, f(t.after.pct)), d ? h('span', { class: `tiny ${d < 0 ? 'bad' : 'ok-text'}` }, ` ${d > 0 ? '+' : ''}${String(d).replace('.', ',')}`) : null),
+        h('td', { class: 'mono tiny' }, t.after.votes < t.before.votes ? `${t.before.votes} → ${t.after.votes}` : String(t.before.votes)));
+    }))));
+}
+// Prima di annullare: quanti voti e come cambiano percentuali e podio. Torna true se annullati.
+async function annulWithPreview(ids, what, extra = null) {
+  if (!ids?.length) return toast('Nessun voto da annullare', 'info');
+  let pv;
+  try { pv = await api('POST', G('/vote/preview'), { ids }); } catch (e) { return toast(e.message, 'error'); }
+  const ok = await modal({
+    title: `Annullare ${what}?`, okLabel: `Annulla ${pv.removed} ${pv.removed === 1 ? 'voto' : 'voti'}`, wide: true,
+    body: h('div', { class: 'stack-sm' }, extra, h('p', { class: 'small' }, `${pv.removed} ${pv.removed === 1 ? 'voto non conterà' : 'voti non conteranno'} più. Ecco come cambiano le percentuali:`), votePreviewTable(pv)),
+    onOk: async () => { await api('POST', G('/vote/annul'), { ids }); toast(`${pv.removed} voti annullati`, 'ok'); return true; },
+  });
+  if (ok) await loadVote();
+  return !!ok;
+}
+// Pulizia dei voti a ripetizione (una coppia o tutte): per ogni rete che ha votato più volte la stessa coppia
+// si tiene un voto (il verificato, o il primo) e si annullano gli altri.
+async function voteCleanupDialog(teamId = null) {
+  let level = 'strong';
+  const box = h('div', { class: 'stack-sm' });
+  let data = null;
+  const load = async () => {
+    try { data = await api('POST', G('/vote/suspicious'), { teamId, level }); } catch (e) { toast(e.message, 'error'); return; }
+    const byTeam = {};
+    for (const g of data.groups) (byTeam[g.team] ||= []).push(g);
+    box.replaceChildren(
+      h('div', { class: 'food-tabs' }, [['strong', 'Solo i casi evidenti (4+ voti dalla stessa rete)'], ['all', 'Tutte le ripetizioni (2+ voti)']].map(([k, l]) => h('button', { type: 'button', class: level === k ? 'on' : '', onclick: () => { level = k; load(); } }, l))),
+      h('p', { class: 'tiny muted' }, 'Per ogni rete che ha votato più volte la stessa coppia si tiene un voto (quello con l\'account, se c\'è, altrimenti il primo) e si annullano gli altri. Le reti condivise (stesso Wi-Fi, stesso operatore) possono essere persone diverse: «Solo i casi evidenti» prende le reti con tanti voti e ogni volta un dispositivo nuovo.'),
+      data.groups.length ? h('div', { class: 'vc-groups' }, Object.entries(byTeam).map(([team, gs]) => h('details', { class: 'vc-team', open: !!teamId || Object.keys(byTeam).length <= 3 },
+        h('summary', null, h('strong', null, team), ` · ${gs.reduce((a, g) => a + g.annul.length, 0)} voti da annullare da ${gs.length} ${gs.length === 1 ? 'rete' : 'reti'}`),
+        h('ul', { class: 'vc-list' }, gs.map((g) => h('li', { class: g.strong ? 'strong' : '' }, h('span', { class: 'mono' }, g.net), ` ${g.votes} voti → tieni ${g.keep}, annulla ${g.annul.length}`, h('div', { class: 'tiny muted' }, g.why))))))) : h('p', { class: 'empty' }, 'Nessun voto a ripetizione con questo criterio.'),
+      ...(data.ids.length ? [h('h3', null, 'Come cambiano le percentuali'), votePreviewTable(data.preview)] : []));
+  };
+  await load();
+  const ok = await modal({
+    title: teamId ? '🧹 Pulizia dei voti di questa coppia' : '🧹 Pulizia dei voti a ripetizione · tutte le coppie', okLabel: 'Annulla i voti indicati', wide: true, tall: true, body: box,
+    onOk: async () => {
+      if (!data?.ids.length) throw new Error('Nessun voto da annullare');
+      await api('POST', G('/vote/annul'), { ids: data.ids });
+      toast(`${data.ids.length} voti annullati`, 'ok');
+      return true;
+    },
+  });
+  if (ok) await loadVote();
+  return !!ok;
+}
+
 // Analisi dei voti di una coppia: reti (impronta), dispositivi, browser, ritmo; i voti sospetti si annullano da qui.
 async function voteAnalysisDialog(teamId) {
   let a;
@@ -4165,20 +4226,21 @@ async function voteAnalysisDialog(teamId) {
   const bots = a.byUa.find((x) => x.key.startsWith('🤖'));
   if (bots) flags.push(['bad', `${bots.n} voti da programmi automatici (non da un browser).`]);
   if (T.votes >= 8 && a.byUa[0] && pctOf(a.byUa[0].n) >= 80) flags.push(['warn', `${pctOf(a.byUa[0].n)}% dei voti dallo stesso tipo di telefono e browser (${a.byUa[0].key}).`]);
-  if (T.medianGapMin != null && T.votes >= 8) flags.push(['info', `Un voto ogni ${String(T.medianGapMin).replace('.', ',')} minuti circa (mediana). Il limite per rete impone 3, poi 10, poi 30 minuti tra voti nuovi dalla stessa rete: un ritmo fisso vicino a quei valori fa pensare a una persona sola che vota a ripetizione.`]);
+  if (T.medianGapMin != null && T.votes >= 8) flags.push(['info', `In tutto, un voto ogni ${String(T.medianGapMin).replace('.', ',')} minuti circa (mediana, tutte le reti insieme): dice quanto spesso arrivano voti, non chi li manda.`]);
+  const fast = a.byNet.filter((n) => n.toTeam >= 3 && !n.others);
+  if (fast.length) flags.push(['bad', `${fast.length} ${fast.length === 1 ? 'rete ha' : 'reti hanno'} votato solo questa coppia 3 o più volte (${fast.reduce((x, n) => x + n.toTeam, 0)} voti): tipico di chi rivota in navigazione privata.`]);
   if (!flags.some((f) => f[0] === 'bad')) flags.push(['ok', 'Nessun segnale forte di voti gonfiati: reti e dispositivi sono vari.']);
   const max = Math.max(1, ...a.byHour.map((x) => x.n));
   const idsOfNet = (net) => a.votes.filter((v) => v.net === net && !v.annulled).map((v) => v.id);
-  const annul = async (ids, what) => {
-    if (!ids.length) return;
-    if (!(await dialog({ title: `Annullare ${what}?`, text: `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}: non contano più nelle percentuali.`, okLabel: 'Annulla i voti', danger: true }))) return;
-    try { await api('POST', G('/vote/annul'), { ids }); toast('Voti annullati', 'ok'); document.querySelector('dialog.dlg')?.remove(); await loadVote(); voteAnalysisDialog(teamId); } catch (e) { toast(e.message, 'error'); }
-  };
+  // Annullando da qui: anteprima delle percentuali, poi l'analisi si riapre aggiornata.
+  const reopen = () => { document.querySelectorAll('dialog.dlg').forEach((d) => d.remove()); voteAnalysisDialog(teamId); };
+  const annul = async (ids, what) => { if (await annulWithPreview(ids, what)) reopen(); };
   const stat = (n, label) => h('div', { class: 'va-stat' }, h('strong', null, String(n)), h('span', { class: 'tiny muted' }, label));
   await modal({
     title: `🔍 Voti di ${a.team.label}${a.team.name ? ` · ${a.team.name}` : ''}`, okLabel: 'Chiudi', cancelLabel: null, wide: true, tall: true,
     body: h('div', { class: 'stack' },
       h('p', { class: 'tiny muted' }, 'Del voto il server conserva l\'impronta della rete (non l\'indirizzo vero), un codice del dispositivo (cookie), il tipo di telefono e browser, l\'account se si è votato verificati. Stessa impronta = stessa connessione (stesso Wi-Fi o stesso indirizzo dei dati mobili).'),
+      h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: async () => { if (await voteCleanupDialog(teamId)) reopen(); } }, '🧹 Pulisci i voti a ripetizione di questa coppia')),
       h('div', { class: 'va-stats' }, stat(T.votes, 'voti validi'), stat(T.nets, 'reti diverse'), stat(T.devices, 'dispositivi'), stat(T.verified, 'verificati'), stat(T.annulled, 'annullati'), stat(T.changed, 'voti cambiati')),
       h('ul', { class: 'va-flags' }, flags.map(([k, txt]) => h('li', { class: `va-${k}` }, txt))),
       h('h3', null, 'Quando'),
@@ -4211,10 +4273,7 @@ function viewVote() {
   const voteCount = (n, heavy = 0, points = null) => `${n} ${n === 1 ? 'voto' : 'voti'}${heavy ? ` · ${heavy} ×${V.weight || 3}` : ''}${points != null && points !== n ? ` = ${points} punti` : ''}`;
   const wOf = (weights, tid, ids) => weights?.[tid] || { votes: ids.length, heavy: 0, points: ids.length };
   const teamLabel = (tid) => { const t = V.teams.find((y) => y.id === Number(tid)); return t ? `${t.roman} ${t.sectorName}` : '?'; };
-  const annulBtn = (ids, what, label = 'Annulla') => h('button', { class: 'btn btn-sm btn-danger', onclick: async () => {
-    if (!(await dialog({ title: `Annullare ${what}?`, text: 'Non contano più nelle percentuali.', okLabel: 'Annulla i voti', danger: true }))) return;
-    try { await api('POST', G('/vote/annul'), { ids }); toast('Voti annullati', 'ok'); await loadVote(); } catch (e) { toast(e.message, 'error'); }
-  } }, label);
+  const annulBtn = (ids, what, label = 'Annulla') => h('button', { class: 'btn btn-sm btn-danger', onclick: () => annulWithPreview(ids, what) }, label);
   if (!voteState || voteGameId !== R.gameId) { loadVote(); return h('p', { class: 'empty' }, 'Caricamento…'); }
   const V = voteState;
   const url = `${R.baseUrl || location.origin}/vota`;
@@ -4254,6 +4313,14 @@ function viewVote() {
         h('strong', null, `${t.roman} Settore ${t.sectorName}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
         h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small', title: `${t.score} punti: ogni voto con l'account vale ×${V.weight || 3}` }, `${String(t.pct).replace('.', ',')}% · ${voteCount(t.votes, t.heavy, t.score)}`) : null,
         t.votes ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Da dove arrivano i voti di questa coppia', onclick: () => voteAnalysisDialog(t.id) }, '🔍 Analizza') : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
+    section('Voti a ripetizione',
+      h('p', { class: 'muted tiny' }, 'Chi rivota cancellando i cookie o in navigazione privata risulta ogni volta un «dispositivo» nuovo, ma dalla stessa rete. La pulizia tiene un voto per rete e per coppia (quello con l\'account, se c\'è) e annulla gli altri; prima di confermare mostri come cambiano percentuali e podio. Con «🔍 Analizza» accanto a una coppia vedi il dettaglio e puoi pulire solo quella.'),
+      h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-danger', type: 'button', onclick: () => voteCleanupDialog(null) }, '🧹 Pulizia di tutte le coppie…')),
+      h('h3', null, 'Blocco'),
+      h('ul', { class: 'small vote-blocks' },
+        h('li', null, 'Stesso telefono: il voto da navigazione privata viene riconosciuto dall\'impronta del browser (schermo, lingua, fuso, processore) sulla stessa rete e conta come cambio di voto, non come voto nuovo.'),
+        h('li', null, 'Stessa rete: dopo il primo voto, 3, poi 10, poi 30 minuti di attesa tra voti nuovi.'),
+        h('li', null, 'Tetto giornaliero: al massimo ', h('input', { class: 'input input-sm vote-cap', type: 'number', min: 0, max: 100, value: V.netDailyMax ?? 3, onchange: (e) => patch({ netDailyMax: Number(e.target.value) }, 'Tetto salvato') }), ' voti nuovi in 24 ore dalla stessa rete (0 = senza tetto). Chi vota con l\'account non ha tetto.'))),
     section('Premi',
       h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude.'),
       h('div', { class: 'row-actions' }, [0, 1, 2].map(prizeBtn)),
