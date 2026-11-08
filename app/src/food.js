@@ -94,7 +94,8 @@ const orderOut = (o) => {
   const total = lines.reduce((t, l) => t + (l.price || 0) * l.qty, 0);
   return { id: o.id, kind: o.kind, status: o.status, note: o.note || '', owner: { key: o.ownerKey, name: o.ownerName, kind: o.ownerKind, sub: o.ownerSub },
     lines, total: Math.round(total * 100) / 100, items: lines.reduce((t, l) => t + l.qty, 0),
-    createdAt: o.createdAt, updatedAt: o.updatedAt, cancelledAt: o.cancelledAt, decidedAt: o.decidedAt, decidedBy: o.decidedBy, log: logOf(o.id) };
+    createdAt: o.createdAt, updatedAt: o.updatedAt, cancelledAt: o.cancelledAt, decidedAt: o.decidedAt, decidedBy: o.decidedBy, log: logOf(o.id),
+    payment: o.paymentId ? paymentOut(q.get('SELECT * FROM food_payments WHERE id = ? AND cancelledAt IS NULL', o.paymentId)) : null };
 };
 
 // Le righe: solo voci del menù di questa partita, quantità da 1 a 20.
@@ -149,6 +150,7 @@ function ownOrder(owner, orderId) {
 // Si modifica o annulla: l'ordine fino all'ora limite, la richiesta finché l'addetto non ha deciso.
 function editable(o, g, now = Date.now()) {
   if (o.status === 'cancelled') throw err(409, 'Già annullato');
+  if (o.paymentId) throw err(409, 'Già consegnato e pagato: per cambiarlo parla con il Consiglio');
   if (o.kind === 'order' && !isOpen(g, now)) throw err(409, 'L\'ora limite è passata: l\'ordine non si cambia più. Per modifiche parla con il Consiglio, oppure manda una nuova richiesta d\'ordine.');
   if (o.kind === 'request' && o.status !== 'pending') throw err(409, `La richiesta è già stata ${o.status === 'accepted' ? 'accettata' : 'rifiutata'} dal Consiglio`);
 }
@@ -199,6 +201,88 @@ function decideRequest(gameId, orderId, decision, actor) {
   return orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', o.id));
 }
 
+// ---------------------------------------------------------------- consegna e pagamento
+
+const METHODS = { contanti: 'Contanti', satispay: 'Satispay', paypal: 'PayPal' };
+const paymentOut = (p) => (p ? { id: p.id, method: p.method, methodLabel: METHODS[p.method] || p.method, amount: p.amount, note: p.note || '', at: p.at, by: p.by } : null);
+// Da consegnare: ordini attivi e richieste accettate.
+const deliverable = (o) => (o.kind === 'order' && o.status === 'active') || (o.kind === 'request' && o.status === 'accepted');
+const payLinks = (g) => ({ paypal: g.foodPaypal || null, satispay: g.foodSatispay || null });
+
+function setPayLinks(gameId, data, actor) {
+  const g = G.getGame(gameId);
+  const url = (v) => {
+    const s = clean(v, 300);
+    if (!s) return null;
+    if (!/^https:\/\/[^\s"'<>]+$/i.test(s)) throw err(400, 'Il link deve iniziare con https://');
+    return s;
+  };
+  const paypal = data.paypal !== undefined ? url(data.paypal) : g.foodPaypal;
+  const satispay = data.satispay !== undefined ? url(data.satispay) : g.foodSatispay;
+  q.run('UPDATE games SET foodPaypal = ?, foodSatispay = ? WHERE id = ?', paypal, satispay, g.id);
+  G.log(g.id, actor, 'food_pay_links', { paypal: !!paypal, satispay: !!satispay });
+  changed(g.id);
+  return payLinks({ foodPaypal: paypal, foodSatispay: satispay });
+}
+
+// Paga (e consegna): copre tutti gli ordini da consegnare di quella persona non ancora pagati.
+function pay(gameId, ownerKey, data, actor) {
+  const g = G.getGame(gameId);
+  const method = String(data.method || '');
+  if (!METHODS[method]) throw err(400, 'Scegli come ha pagato');
+  const amount = Number(String(data.amount ?? '').replace(',', '.'));
+  if (!Number.isFinite(amount) || amount < 0 || amount > 10000) throw err(400, 'Importo non valido');
+  const list = q.all('SELECT * FROM food_orders WHERE gameId = ? AND ownerKey = ? AND paymentId IS NULL', g.id, String(ownerKey)).filter(deliverable);
+  if (!list.length) throw err(409, 'Niente da pagare per questa persona');
+  const now = Date.now();
+  const id = tx(() => {
+    const pid = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      g.id, list[0].ownerKey, list[0].ownerName, method, Math.round(amount * 100) / 100, clean(data.note, 200) || null, now, actor).lastInsertRowid);
+    for (const o of list) {
+      q.run('UPDATE food_orders SET paymentId = ?, updatedAt = ? WHERE id = ?', pid, now, o.id);
+      addLog(o.id, 'paid', actor, `${METHODS[method]} · ${amount.toFixed(2)} €`);
+    }
+    return pid;
+  });
+  G.log(g.id, actor, 'food_paid', { owner: list[0].ownerName, method, amount });
+  changed(g.id);
+  return paymentOut(q.get('SELECT * FROM food_payments WHERE id = ?', id));
+}
+
+function unpay(gameId, paymentId, actor) {
+  const p = q.get('SELECT * FROM food_payments WHERE id = ? AND gameId = ? AND cancelledAt IS NULL', Number(paymentId), Number(gameId));
+  if (!p) throw err(404, 'Pagamento non trovato');
+  const now = Date.now();
+  tx(() => {
+    q.run('UPDATE food_payments SET cancelledAt = ?, cancelledBy = ? WHERE id = ?', now, actor, p.id);
+    for (const o of q.all('SELECT id FROM food_orders WHERE paymentId = ?', p.id)) {
+      q.run('UPDATE food_orders SET paymentId = NULL, updatedAt = ? WHERE id = ?', now, o.id);
+      addLog(o.id, 'unpaid', actor, null);
+    }
+  });
+  G.log(p.gameId, actor, 'food_unpaid', { owner: p.ownerName });
+  changed(p.gameId);
+  return { ok: true };
+}
+
+// Persone da servire: chi ha ordini da consegnare, con gli ordini divisi, il totale indicativo e il pagamento.
+function deliveryOf(orders) {
+  const people = new Map();
+  for (const o of orders.filter(deliverable)) {
+    const k = o.owner.key;
+    const p = people.get(k) || { key: k, owner: o.owner, orders: [], toPay: [], paid: [], total: 0, toPayTotal: 0, firstAt: o.createdAt };
+    p.orders.push(o);
+    p.total += o.total;
+    if (o.payment) p.paid.push(o); else { p.toPay.push(o); p.toPayTotal += o.total; }
+    p.firstAt = Math.min(p.firstAt, o.createdAt);
+    people.set(k, p);
+  }
+  return [...people.values()].map((p) => {
+    const payments = [...new Map(p.paid.map((o) => [o.payment.id, o.payment])).values()];
+    return { ...p, total: Math.round(p.total * 100) / 100, toPayTotal: Math.round(p.toPayTotal * 100) / 100, payments, done: !p.toPay.length };
+  }).sort((a, b) => a.done - b.done || a.owner.name.localeCompare(b.owner.name));
+}
+
 // ---------------------------------------------------------------- viste
 
 // Per chi ordina: menù, ora limite e i propri ordini e richieste.
@@ -206,7 +290,7 @@ function forOwner(owner) {
   const g = G.getGame(owner.gameId);
   return {
     gameId: g.id, gameName: g.name, deadline: g.foodDeadline || null, open: isOpen(g), ended: g.status === 'ended', serverNow: Date.now(),
-    menu: menuOf(g.id),
+    menu: menuOf(g.id), payLinks: payLinks(g),
     orders: q.all('SELECT * FROM food_orders WHERE gameId = ? AND ownerKey = ? ORDER BY id DESC', g.id, owner.key).map(orderOut),
     me: { name: owner.name, kind: owner.kind, sub: owner.sub || null },
   };
@@ -242,7 +326,19 @@ function forStaff(gameId) {
     orders, requests,
     totals: { orders: count(live), accepted: count(accepted), all: count([...live, ...accepted]) },
     counts: { orders: live.length, pending: requests.filter((o) => o.status === 'pending').length, accepted: accepted.length },
+    delivery: deliveryOf(all), payLinks: payLinks(g),
+    payments: q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL ORDER BY at', g.id).map(paymentOut),
   };
 }
 
-module.exports = { saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };
+// QR dei link per pagare, da mostrare alla consegna.
+async function payQr(gameId) {
+  const QRCode = require('qrcode');
+  const l = payLinks(G.getGame(gameId));
+  const out = {};
+  for (const k of ['paypal', 'satispay']) if (l[k]) out[k] = await QRCode.toString(l[k], { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  return out;
+}
+
+module.exports = {
+  setPayLinks, pay, unpay, payQr, METHODS, saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };

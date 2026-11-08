@@ -3480,4 +3480,22 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   assert.equal(FD.removeItem(g.id, birra.id, 'addetto').archived, true);
   assert.equal(FD.forOwner(me).menu.length, 1);
   assert.equal(FD.forStaff(g.id).requests[0].lines[0].title, 'Birra');
+  // Consegna e pagamento: per persona, con i suoi ordini (ordine + richiesta accettata) e il totale indicativo.
+  let del = FD.forStaff(g.id).delivery;
+  assert.equal(del.length, 1);
+  assert.equal(del[0].orders.length, 2);
+  assert.equal(del[0].toPayTotal, 22);
+  assert.throws(() => FD.pay(g.id, 'p1', { method: 'bitcoin', amount: 10 }, 'addetto'), /Scegli/);
+  const pay = FD.pay(g.id, 'p1', { method: 'satispay', amount: '20' }, 'addetto');
+  assert.equal(pay.methodLabel, 'Satispay');
+  del = FD.forStaff(g.id).delivery;
+  assert.equal(del[0].done, true);
+  assert.equal(del[0].payments[0].amount, 20);
+  assert.throws(() => FD.pay(g.id, 'p1', { method: 'contanti', amount: 1 }, 'addetto'), /Niente da pagare/);
+  FD.unpay(g.id, pay.id, 'addetto');
+  assert.equal(FD.forStaff(g.id).delivery[0].done, false);
+  // Link per pagare: solo https.
+  assert.throws(() => FD.setPayLinks(g.id, { paypal: 'paypal.me/x' }, 'addetto'), /https/);
+  assert.deepEqual(FD.setPayLinks(g.id, { paypal: 'https://paypal.me/zdt', satispay: '' }, 'addetto'), { paypal: 'https://paypal.me/zdt', satispay: null });
+  assert.equal(FD.forOwner(me).payLinks.paypal, 'https://paypal.me/zdt');
 });
