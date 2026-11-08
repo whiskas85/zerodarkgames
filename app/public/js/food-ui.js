@@ -148,7 +148,10 @@ export function createFoodAdmin({ gameId, rerender }) {
     const input = h('input', { class: 'input', type: 'datetime-local', value: toLocal(d.deadline) });
     await modal({
       title: 'Ora limite per ordinare', okLabel: 'Salva',
-      body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Fino a quando si ordina'), input),
+      body: h('div', { class: 'stack-sm' },
+        // Scorciatoie da telefono: da adesso in avanti.
+        h('div', { class: 'food-quick' }, [[30, 'Tra 30 min'], [60, 'Tra 1 ora'], [120, 'Tra 2 ore'], [0, 'Chiudi adesso']].map(([min, label]) => h('button', { type: 'button', class: `btn btn-sm ${min ? '' : 'btn-warn'}`, onclick: () => { const t = Date.now() + min * 60000; input.value = toLocal(Math.ceil(t / 60000) * 60000); } }, label))),
+        h('label', { class: 'field' }, h('span', null, 'Fino a quando si ordina'), input),
         h('p', { class: 'tiny muted' }, 'Dopo quest\'ora non si fanno più ordini: si possono solo mandare RICHIESTE d\'ordine, che accetti o rifiuti tu. Gli ordini già fatti non si modificano più.')),
       onOk: async () => { if (!input.value) throw new Error('Scegli data e ora'); await call('PUT', '/deadline', { deadline: new Date(input.value).getTime() }, 'Ora limite salvata'); return true; },
     });
@@ -199,16 +202,15 @@ export function createFoodAdmin({ gameId, rerender }) {
       // Filtro: ordini (entro l'ora limite) o richieste d'ordine (dopo), con quante aspettano una risposta.
       h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
       S.tab === 'richieste' ? h('section', { class: 'stack-sm food-sec-req' },
-        h('div', { class: 'food-sec-title req' }, h('strong', null, 'RICHIESTE D\'ORDINE'), h('span', { class: 'small' }, 'Arrivate DOPO l\'ora limite: non sono ordini finché non le accetti.')),
+        h('p', { class: 'food-hint req' }, 'Arrivate DOPO l\'ora limite: non sono ordini finché non le accetti.'),
         d.requests.length ? h('ul', { class: 'food-orders' }, [...d.requests].sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.createdAt - a.createdAt).map(orderCard)) : h('p', { class: 'empty' }, 'Nessuna richiesta.'),
         h('h3', null, 'Richieste accettate: da preparare'), totalsTable(d.totals.accepted))
       : h('section', { class: 'stack-sm food-sec-ord' },
-        h('div', { class: 'food-sec-title ord' }, h('strong', null, 'ORDINI'), h('span', { class: 'small' }, 'Fatti entro l\'ora limite.')),
-        h('div', { class: 'food-sum' }, h('h3', null, 'Da preparare'),
-          h('div', { class: 'food-sum-grid' },
-            h('div', null, h('div', { class: 'eyebrow' }, `Ordini (${d.counts.orders})`), totalsTable(d.totals.orders)),
-            h('div', null, h('div', { class: 'eyebrow' }, `+ richieste accettate (${d.counts.accepted})`), totalsTable(d.totals.accepted)),
-            h('div', null, h('div', { class: 'eyebrow' }, 'Totale'), totalsTable(d.totals.all)))),
+        h('p', { class: 'food-hint ord' }, 'Fatti entro l\'ora limite.'),
+        // Da preparare: in cima il totale (ordini + richieste accettate); il dettaglio si apre a richiesta.
+        h('div', { class: 'food-sum' }, h('h3', null, 'Da preparare'), totalsTable(d.totals.all),
+          d.counts.accepted ? h('details', { class: 'food-sum-detail' }, h('summary', { class: 'small' }, `Dettaglio: ${d.counts.orders} ordini + ${d.counts.accepted} richieste accettate`),
+            h('div', { class: 'eyebrow' }, 'Ordini'), totalsTable(d.totals.orders), h('div', { class: 'eyebrow' }, 'Richieste accettate'), totalsTable(d.totals.accepted)) : null),
         activeOrders.length ? h('ul', { class: 'food-orders' }, [...activeOrders].reverse().map(orderCard)) : h('p', { class: 'empty' }, 'Nessun ordine.'),
         offOrders.length ? h('details', null, h('summary', { class: 'small' }, `Annullati (${offOrders.length})`), h('ul', { class: 'food-orders' }, offOrders.map(orderCard))) : null));
   }

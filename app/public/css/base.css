@@ -408,3 +408,12 @@ body.no-scroll { overflow: hidden; }
 .food-admin-actions { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .food-admin-actions .btn { min-width: 40px; }
 .food-admin-actions .btn:nth-child(3) { margin-left: auto; }
+
+.food-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.food-hint { margin: -4px 2px 0; font-size: 13px; color: var(--muted); }
+.food-hint.req { color: var(--warn); }
+.food-sum h3 { margin: 0 0 6px; }
+.food-sum .food-totals td { font-size: 17px; padding: 6px; }
+.food-sum-detail { margin-top: 8px; }
+.food-sum-detail summary { cursor: pointer; color: var(--muted); }
+.food-sum-detail .eyebrow { margin-top: 8px; }
