@@ -3475,11 +3475,17 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   FD.decideRequest(g.id, r.id, 'accept', 'addetto');
   s = FD.forStaff(g.id);
   assert.deepEqual(s.totals.all.map((x) => [x.title, x.qty]), [['Panino porchetta', 3], ['Birra', 2]]);
-  assert.throws(() => FD.updateOrder(me, r.id, { lines: [{ itemId: birra.id, qty: 1 }] }), /accettata/);
+  assert.throws(() => FD.updateOrder(me, r.id, { lines: [{ itemId: birra.id, qty: 1 }] }), /ora limite/);
+  // Accettata, la richiesta è diventata un ordine (da richiesta).
+  assert.equal(s.requests.length, 0);
+  assert.equal(s.orders.find((x) => x.id === r.id).fromRequest, true);
+  assert.equal(s.orders.find((x) => x.id === r.id).kind, 'order');
+  assert.equal(s.counts.accepted, 1);
+  assert.throws(() => FD.decideRequest(g.id, r.id, 'reject', 'addetto'), /non trovata/);
   // Una voce già ordinata esce dal menù ma gli ordini restano.
   assert.equal(FD.removeItem(g.id, birra.id, 'addetto').archived, true);
   assert.equal(FD.forOwner(me).menu.length, 1);
-  assert.equal(FD.forStaff(g.id).requests[0].lines[0].title, 'Birra');
+  assert.equal(FD.forStaff(g.id).orders.find((x) => x.id === r.id).lines[0].title, 'Birra');
   // Ritiro e pagamento separati: per persona, con i suoi ordini (ordine + richiesta accettata) e il totale indicativo.
   let del = FD.forStaff(g.id).delivery;
   assert.equal(del.length, 1);
