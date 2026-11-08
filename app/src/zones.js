@@ -10,6 +10,7 @@ const { HttpError } = require('./util');
 
 const err = (status, msg) => new HttpError(status, msg);
 const SK = () => require('./skills');
+const MG = () => require('./minigames');
 
 const KINDS = {
   ombra: { label: 'Cono d\'Ombra', icon: '🌑', color: '#5b4b8a', effect: 'Finché restate dentro nessuna coppia vi vede sulla mappa, qualunque Skill o Dono usi (la regia sì).' },
@@ -406,7 +407,13 @@ function launchBeacon(team, player, body) {
   if (want && !pick) throw err(409, 'Non siete più nel raggio di quel bersaglio: rilanciate il Beacon');
   if (!pick) return { choose: true, targets };
   // Vicino a un Altare (entro il suo raggio di lettura): l'Altare si disattiva subito per altarBeaconMin minuti.
-  if (pick.kind === 'altar') return disableAltar(team, player, q.get('SELECT * FROM points WHERE id = ?', pick.id), pos);
+  if (pick.kind === 'altar') {
+    // Minigioco della regia per i Beacon: va superato prima di spegnere l'Altare.
+    const mg = MG().gate({ g: G.getGame(team.gameId), ref: `beacon:point:${pick.id}`, teamId: team.id, playerId: player.id });
+    if (mg?.minigame) return { minigame: mg.minigame, target: pick };
+    MG().use(mg?.passed);
+    return disableAltar(team, player, q.get('SELECT * FROM points WHERE id = ?', pick.id), pos);
+  }
   const z = getZone(pick.id);
   const now = Date.now();
   if (!(z.beaconEndsAt && z.beaconEndsAt > now - 60000)) {
@@ -455,6 +462,10 @@ function completeBeacon(team, player, zoneId, body) {
     rt.toStaff(z.gameId, 'zones');
     throw err(409, 'Siete usciti dall\'area: Beacon interrotto');
   }
+  // Minigioco della regia per i Beacon: alla fine della sequenza, prima che la zona si accenda.
+  const mg = MG().gate({ g: G.getGame(z.gameId), ref: `beacon:zone:${z.id}`, teamId: team.id, playerId: player.id });
+  if (mg?.minigame) return { ok: false, minigame: mg.minigame, zone: beaconOut(z) };
+  MG().use(mg?.passed);
   updateZone(z.id, { active: true }, `eletti:${electName(player)}`);
   // Accesa dal Beacon: resta accesa per i minuti impostati dalla regia (o per sempre), poi si spegne da sola.
   const until = z.beaconOnMin ? Date.now() + z.beaconOnMin * 60000 : null;

@@ -134,7 +134,7 @@ function emgOut(g) {
   return { emergencyRadioChannel: swap ? g.emergencyRadioBackup : g.emergencyRadioChannel, emergencyRadioBackup: (swap ? g.emergencyRadioChannel : g.emergencyRadioBackup) || null, emergencyRadioOnBackup: swap };
 }
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'emergencyRadioOnBackup', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'emergencyRadioOnBackup', 'altarMinigame', 'beaconMinigame', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles', 'activeSlots', 'passiveSlots']);
@@ -174,6 +174,7 @@ function updateGame(id, data, actor) {
     }
     if (f === 'registrationOpen' || f === 'altarCheckOn' || f === 'zoneCountdown' || f === 'emergencyRadioOnBackup') v = v && v !== '0' && v !== 'false' ? 1 : 0;
     if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
+    if (f === 'altarMinigame' || f === 'beaconMinigame') v = require('./minigames').cleanMode(v);
     sets.push(`${f} = ?`);
     vals.push(v === '' ? null : v);
   }
@@ -1779,6 +1780,9 @@ function unlock(team, qrToken, code) {
   if (guardedUntil) {
     return { ok: false, label: p.label, guarded: true, guardedUntil, message: `Sigillo del Settore ${s.name} custodito da un'altra coppia (Skill Custode): l'Altare non si apre fino alle ${new Date(guardedUntil).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' })}.` };
   }
+  // Minigioco della regia (se abilitato per questo Altare): va superato dopo la scansione, prima del Sigillo.
+  const mg = require('./minigames').gate({ g, ref: `altar:${p.id}`, teamId: team.id, since: v.visitedAt });
+  if (mg?.minigame) return { ok: false, label: p.label, minigame: mg.minigame };
   if (!sc || normCode(code) !== sc.code) {
     log(g.id, `coppia:${team.id}`, 'unlock_failed', { teamId: team.id, point: p.label, attempt: normCode(code).slice(0, 12) });
     return { ok: false, label: p.label, message: `Sigillo non valido per questo Altare (${s.name})` };

@@ -3640,3 +3640,49 @@ test('Dono a caso: rarità e probabilità (doppia estrazione), peso 0 = mai', ()
   o = S.setGiftOdds(g.id, { reset: true }, 'test');
   assert.equal(o.tiers.find((r) => r.id === 'comune').pct, 60);
 });
+
+test('minigiochi: sblocco dell\'Altare dopo il minigioco (con attesa dopo un errore) e Beacon degli Eletti', () => {
+  const MG = require('../src/minigames');
+  const g = setupGame(2);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const [A, B] = teamsOf(g.id);
+  const pB = pointOf(g.id, B.sectorId);
+  const code = codeOf(g.id, B.sectorId);
+  // Senza minigioco: come prima.
+  assert.equal(MG.modeFor(G.getGame(g.id), `altar:${pB.id}`), 'off');
+  // Ricorda il codice per tutti gli Altari: dopo la scansione serve il minigioco, prima del Sigillo.
+  G.updateGame(g.id, { altarMinigame: 'memoria' }, 'test');
+  G.visitPoint(A, pB.qrToken);
+  let r = G.unlock(A, pB.qrToken, code);
+  assert.equal(r.ok, false);
+  assert.equal(r.minigame.game, 'memoria');
+  // La stessa sfida finché non si gioca.
+  assert.equal(G.unlock(A, pB.qrToken, code).minigame.id, r.minigame.id);
+  // Risposta sbagliata: non superato; la nuova sfida si gioca solo dopo l'attesa.
+  assert.equal(MG.done(A, null, r.minigame.id, { answer: '00000x' === r.minigame.params.code ? '11111' : 'x' }).ok, false);
+  const r2 = G.unlock(A, pB.qrToken, code);
+  assert.notEqual(r2.minigame.id, r.minigame.id);
+  assert.ok(r2.minigame.notBefore > Date.now());
+  assert.throws(() => MG.done(A, null, r2.minigame.id, { answer: r2.minigame.params.code }), /Aspettate/);
+  q.run('UPDATE minigame_runs SET notBefore = NULL WHERE id = ?', r2.minigame.id);
+  assert.throws(() => MG.done(B, null, r2.minigame.id, { answer: r2.minigame.params.code }), /non trovato/);
+  assert.equal(MG.done(A, null, r2.minigame.id, { answer: r2.minigame.params.code }).ok, true);
+  assert.equal(G.unlock(A, pB.qrToken, code).ok, true);
+  // Il singolo Altare può avere il suo minigioco (o nessuno).
+  const pA = pointOf(g.id, A.sectorId);
+  q.run("UPDATE points SET minigame = 'off' WHERE id = ?", pA.id);
+  G.visitPoint(B, pA.qrToken);
+  assert.equal(G.unlock(B, pA.qrToken, codeOf(g.id, A.sectorId)).ok, true);
+  // Ripeti il segnale: la risposta è la sequenza.
+  G.updateGame(g.id, { beaconMinigame: 'simon' }, 'test');
+  const run = MG.gate({ g: G.getGame(g.id), ref: 'beacon:zone:1', teamId: A.id, playerId: 99 }).minigame;
+  assert.equal(run.game, 'simon');
+  assert.equal(run.params.seq.length, 5);
+  // Un minigioco superato per il Beacon vale una volta.
+  q.run('UPDATE minigame_runs SET passedAt = ?, doneAt = ? WHERE id = ?', Date.now(), Date.now(), run.id);
+  const ok = MG.gate({ g: G.getGame(g.id), ref: 'beacon:zone:1', teamId: A.id, playerId: 99 });
+  assert.ok(ok.passed);
+  MG.use(ok.passed);
+  assert.ok(MG.gate({ g: G.getGame(g.id), ref: 'beacon:zone:1', teamId: A.id, playerId: 99 }).minigame);
+  assert.equal(MG.cleanMode('xyz'), 'off');
+});

@@ -566,6 +566,7 @@ app.post('/api/team/skill/:id/use', needTeam, teamRateLimit, wrap((req) => S.use
 app.get('/api/team/point/:qrToken', needTeam, wrap((req) => G.visitPoint(req.team, req.params.qrToken, req.query.at,
   req.query.lat != null ? { lat: req.query.lat, lng: req.query.lng, acc: req.query.acc } : null)));
 app.post('/api/team/unlock', needTeam, teamRateLimit, wrap((req) => G.unlock(req.team, req.body.qrToken, req.body.code)));
+app.post('/api/team/minigame/:id/done', needTeam, teamRateLimit, wrap((req) => require('./minigames').done(req.team, req.player, req.params.id, req.body || {})));
 app.post('/api/team/fragment', needTeam, teamRateLimit, wrap((req) => G.addManualFragment(req.team, req.body.text)));
 app.post('/api/team/note', needTeam, teamRateLimit, wrap((req) => G.addCodeNote(req.team, req.body.sectorId, req.body.code)));
 // Gli Eletti scrivono a tutti gli Eletti (con la regia) oppure solo nella conversazione della propria squadra.
@@ -889,6 +890,14 @@ m.post('/games/:id/codes', wrap((req) => { G.generateCodes(gameId(req), actor(re
 m.post('/games/:id/never', wrap((req) => { G.extractNeverRevealed(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
 m.post('/games/:id/calendar', wrap((req) => { G.buildCalendar(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
 m.post('/games/:id/points', wrap((req) => { G.ensurePoints(G.getGame(gameId(req)), actor(req)); return { ok: true }; }));
+m.put('/games/:id/points/:pid/minigame', wrap((req) => {
+  const p = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(req.params.pid), gameId(req));
+  if (!p) throw new HttpError(404, 'Altare non trovato');
+  const v = req.body?.minigame == null || req.body.minigame === '' ? null : require('./minigames').cleanMode(req.body.minigame);
+  q.run('UPDATE points SET minigame = ? WHERE id = ?', v, p.id);
+  G.log(p.gameId, actor(req), 'point_minigame', { label: p.label, minigame: v });
+  return { ok: true, minigame: v };
+}));
 m.post('/games/:id/points/free', wrap((req) => G.addFreePoints(gameId(req), req.body || {}, actor(req))));
 m.delete('/points/:pid', wrap((req) => { G.deletePoint(Number(req.params.pid), actor(req)); return { ok: true }; }));
 m.post('/games/:id/phrase', wrap((req) => { G.setPhrase(gameId(req), req.body.phrase, actor(req)); return { ok: true }; }));
