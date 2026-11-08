@@ -21,7 +21,7 @@ const allowed = () => (C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) =>
 const canFood = () => C.me?.role === 'master' || C.me?.perms?.includes('ristoro');
 const foodOrder = createFoodOrder({ base: '/api/v/food', query: () => `?g=${C.gameId}`, rerender: () => render() });
 const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render(), methodsHref: '#ristoro-pagamenti' });
-setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (['ristoro-gestione', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti'].includes(tab())) foodAdmin.load(); }, 20000);
+setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (['ristoro-gestione', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti'].includes(tab()) || (!tab() && canFood())) foodAdmin.load(); }, 20000);
 const tab = () => location.hash.slice(1);
 window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); window.scrollTo(0, 0); });
 
@@ -150,9 +150,12 @@ function viewHome() {
   ].filter(Boolean);
   return h('div', { class: 'tile-groups' },
     C.games.length > 1 ? gameSelect() : null,
+    // Chi gestisce la cucina vede prima il Ristoro, con il cruscotto; le azioni di gioco solo se il master le ha aperte.
+    canFood() ? h('section', { class: 'tile-group g-food' }, h('div', { class: 'eyebrow' }, 'Ristoro'),
+      foodAdmin.dashboard((page) => (page === 'orders' ? '#ristoro-gestione' : '#ristoro-consegna')), h('nav', { class: 'grid' }, food.map(ctile))) : null,
     acts.length ? h('section', { class: 'tile-group g-game' }, h('div', { class: 'eyebrow' }, 'Le tue azioni'), h('nav', { class: 'grid' }, acts.map(ctile)))
-      : h('div', { class: 'card stack-sm' }, h('strong', null, 'Sei nel Consiglio Zero'), h('p', { class: 'small muted' }, 'Il master non ti ha ancora aperto azioni di gioco: quando lo farà le troverai qui.')),
-    h('section', { class: 'tile-group g-food' }, h('div', { class: 'eyebrow' }, 'Ristoro'), h('nav', { class: 'grid' }, food.map(ctile))));
+      : canFood() ? null : h('div', { class: 'card stack-sm' }, h('strong', null, 'Sei nel Consiglio Zero'), h('p', { class: 'small muted' }, 'Il master non ti ha ancora aperto azioni di gioco: quando lo farà le troverai qui.')),
+    canFood() ? null : h('section', { class: 'tile-group g-food' }, h('div', { class: 'eyebrow' }, 'Ristoro'), h('nav', { class: 'grid' }, food.map(ctile))));
 }
 
 function gameSelect() {

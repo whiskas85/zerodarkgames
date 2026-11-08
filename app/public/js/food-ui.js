@@ -391,6 +391,37 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       search, tabs, list, empty);
   }
 
+  // Mini cruscotto per chi gestisce la cucina: ordini aperti, evasi, da chiudere; incassi attesi, pagati, ricevuti.
+  // href(page, filtro): dove portano le caselle (la pagina Ritiro si apre sul filtro giusto).
+  function dashboard(href) {
+    if (!gameId()) return null;
+    if (!S.data || S.gid !== gameId()) { load(); return h('p', { class: 'empty' }, 'Caricamento del Ristoro…'); }
+    load();
+    const d = S.data;
+    const live = d.orders.filter((o) => o.status === 'active');
+    const open = live.filter((o) => o.delivered < o.items).length;
+    const done = live.filter((o) => o.items && o.delivered >= o.items).length;
+    const toClose = d.delivery.filter((p) => p.deliveredAll && !p.paidAll).length;
+    const expected = d.delivery.reduce((t, p) => t + p.total, 0);
+    const declared = d.delivery.reduce((t, p) => t + p.pendingAmount, 0);
+    const received = d.payments.reduce((t, x) => t + x.amount, 0);
+    const cell = (n, label, hint, go, cls = '') => h('a', { class: `food-dash-cell ${cls}`, href: go.page, onclick: () => { if (go.tab) S.dtab = go.tab; } },
+      h('strong', null, n), h('span', null, label), hint ? h('span', { class: 'tiny muted' }, hint) : null);
+    return h('div', { class: 'food-dash' },
+      d.counts.pending ? h('a', { class: 'food-pend-alert', href: href('orders') }, `🧾 ${d.counts.pending} ${d.counts.pending === 1 ? 'richiesta d\'ordine da decidere' : 'richieste d\'ordine da decidere'}`) : null,
+      d.counts.payPending ? h('a', { class: 'food-pend-alert', href: href('delivery'), onclick: () => { S.dtab = 'dapagare'; } }, `⏳ ${d.counts.payPending} ${d.counts.payPending === 1 ? 'pagamento in anticipo da verificare' : 'pagamenti in anticipo da verificare'}`) : null,
+      h('div', { class: 'eyebrow' }, 'Ordini'),
+      h('div', { class: 'food-dash-row' },
+        cell(String(open), 'Aperti', 'da consegnare', { page: href('delivery'), tab: 'dacons' }, open ? 'warn' : ''),
+        cell(String(done), 'Evasi', 'consegnati', { page: href('delivery'), tab: 'fatti' }),
+        cell(String(toClose), 'Da chiudere', 'consegnati, non pagati', { page: href('delivery'), tab: 'dapagare' }, toClose ? 'warn' : '')),
+      h('div', { class: 'eyebrow' }, 'Incassi'),
+      h('div', { class: 'food-dash-row' },
+        cell(euro(expected) || '0 €', 'Attesi', 'totale indicativo', { page: href('delivery'), tab: 'dapagare' }),
+        cell(euro(declared) || '0 €', 'Pagati', 'in anticipo, da verificare', { page: href('delivery'), tab: 'dapagare' }, declared ? 'warn' : ''),
+        cell(euro(received) || '0 €', 'Ricevuti', 'in cassa', { page: href('delivery'), tab: 'fatti' }, 'ok')));
+  }
+
   // Due pagine distinte: 'menu' (le voci) e 'orders' (ordini e richieste, con il filtro tra i due).
   function view(mode = 'orders') {
     if (!gameId()) return h('p', { class: 'empty' }, 'Scegli la partita.');
@@ -440,5 +471,5 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
         activeOrders.length ? h('ul', { class: 'food-orders' }, [...activeOrders].reverse().map(orderCard)) : h('p', { class: 'empty' }, 'Nessun ordine.'),
         offOrders.length ? h('details', null, h('summary', { class: 'small' }, `Annullati (${offOrders.length})`), h('ul', { class: 'food-orders' }, offOrders.map(orderCard))) : null));
   }
-  return { view, load: () => load(true), pending };
+  return { view, dashboard, load: () => load(true), pending };
 }

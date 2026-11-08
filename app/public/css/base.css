@@ -448,6 +448,16 @@ body.no-scroll { overflow: hidden; }
 .food-acc { display: grid; gap: 4px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--paper); }
 .food-acc-row { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
 .food-acc-row.strong b { font-size: 20px; color: var(--brass); }
+.food-dash { display: grid; gap: 8px; }
+.food-dash > .eyebrow { margin-top: 2px; }
+.food-dash-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.food-dash-cell { display: grid; align-content: start; gap: 2px; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); text-decoration: none; min-width: 0; }
+.food-dash-cell strong { font-size: 22px; line-height: 1.1; overflow-wrap: anywhere; }
+.food-dash-cell > span:not(.tiny) { font-weight: 700; font-size: 14px; }
+.food-dash-cell.warn { border-color: var(--warn); }
+.food-dash-cell.warn strong { color: var(--warn); }
+.food-dash-cell.ok strong { color: var(--ok); }
+a.food-pend-alert { display: block; text-decoration: none; }
 .food-pend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .food-pend > li { display: grid; gap: 6px; padding: 8px 10px; border: 2px dashed var(--warn); border-radius: 8px; color: var(--warn); }
 .food-pend-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
