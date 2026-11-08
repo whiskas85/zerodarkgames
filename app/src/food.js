@@ -150,6 +150,7 @@ function ownOrder(owner, orderId) {
 function editable(o, g, now = Date.now()) {
   if (o.status === 'cancelled') throw err(409, 'Già annullato');
   if (q.get('SELECT 1 AS x FROM food_order_lines WHERE orderId = ? AND delivered > 0', o.id)) throw err(409, 'Già consegnato (anche solo in parte): per cambiarlo parla con il Consiglio');
+  if (coveredIds(o.gameId, o.ownerKey).has(o.id)) throw err(409, 'Già pagato: per cambiarlo annulla prima il pagamento in attesa, o parla con il Consiglio');
   if (o.kind === 'order' && !isOpen(g, now)) throw err(409, 'L\'ora limite è passata: l\'ordine non si cambia più. Per modifiche parla con il Consiglio, oppure manda una nuova richiesta d\'ordine.');
   if (o.kind === 'request' && o.status !== 'pending') throw err(409, `La richiesta è già stata ${o.status === 'accepted' ? 'accettata' : 'rifiutata'} dal Consiglio`);
 }
@@ -211,7 +212,7 @@ function decideRequest(gameId, orderId, decision, actor) {
 
 const METHODS = { contanti: 'Contanti', satispay: 'Satispay', paypal: 'PayPal' };
 const paymentOut = (p) => (p ? { id: p.id, method: p.method, methodLabel: METHODS[p.method] || p.method, amount: p.amount, note: p.note || '', at: p.at, by: p.by, closes: !!p.closes,
-  pending: !!p.pending && !p.cancelledAt, rejected: !!p.rejectedAt, confirmedAt: p.confirmedAt || null, confirmedBy: p.confirmedBy || null } : null);
+  pending: !!p.pending && !p.cancelledAt, rejected: !!p.rejectedAt, orderIds: p.orderIds ? JSON.parse(p.orderIds) : [], confirmedAt: p.confirmedAt || null, confirmedBy: p.confirmedBy || null } : null);
 // Da consegnare: ordini attivi e richieste accettate.
 const deliverable = (o) => o.kind === 'order' && o.status === 'active';
 const payLinks = (g) => ({ paypal: g.foodPaypal || null, satispay: g.foodSatispay || null });
@@ -300,6 +301,25 @@ function undeliver(gameId, deliveryId, actor) {
   return { ok: true };
 }
 
+// Ordini già coperti da un pagamento valido (confermato o in attesa di conferma).
+function coveredIds(gameId, ownerKey) {
+  const ids = new Set();
+  for (const p of q.all('SELECT orderIds FROM food_payments WHERE gameId = ? AND ownerKey = ? AND cancelledAt IS NULL AND orderIds IS NOT NULL', gameId, ownerKey)) for (const id of JSON.parse(p.orderIds)) ids.add(id);
+  return ids;
+}
+// Gli ordini da coprire: quelli indicati (devono essere suoi, attivi e non ancora pagati) o tutti quelli non pagati.
+function ordersToCover(gameId, ownerKey, orders, wanted) {
+  const covered = coveredIds(gameId, ownerKey);
+  const free = orders.filter((o) => !covered.has(o.id));
+  if (!Array.isArray(wanted) || !wanted.length) return free.map((o) => o.id);
+  const ids = [...new Set(wanted.map(Number))];
+  for (const id of ids) {
+    if (!orders.some((o) => o.id === id)) throw err(404, 'Ordine non trovato');
+    if (covered.has(id)) throw err(409, 'Questo ordine risulta già pagato');
+  }
+  return ids;
+}
+
 // Pagamento della persona (prima o dopo il ritiro, anche a rate). «closes»: offerta libera, il resto non è dovuto.
 function pay(gameId, ownerKey, data, actor) {
   const g = G.getGame(gameId);
@@ -311,8 +331,9 @@ function pay(gameId, ownerKey, data, actor) {
   const { orders } = openLines(g.id, ownerKey);
   if (!orders.length) throw err(409, 'Nessun ordine per questa persona');
   const o = orders[0];
-  const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, closes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    g.id, o.ownerKey, o.ownerName, method, amount, clean(data.note, 200) || null, Date.now(), actor, closes ? 1 : 0).lastInsertRowid);
+  const ids = ordersToCover(g.id, ownerKey, orders, data.orderIds);
+  const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, closes, orderIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    g.id, o.ownerKey, o.ownerName, method, amount, clean(data.note, 200) || null, Date.now(), actor, closes ? 1 : 0, ids.length ? JSON.stringify(ids) : null).lastInsertRowid);
   G.log(g.id, actor, 'food_paid', { owner: o.ownerName, method, amount, closes });
   changed(g.id);
   return paymentOut(q.get('SELECT * FROM food_payments WHERE id = ?', id));
@@ -329,9 +350,11 @@ function declarePayment(owner, data) {
   if (!amount) throw err(400, 'Scrivi quanto hai pagato');
   const { orders } = openLines(g.id, owner.key);
   if (!orders.length) throw err(409, 'Non hai ordini da pagare');
+  const ids = ordersToCover(g.id, owner.key, orders, data.orderIds);
+  if (!ids.length) throw err(409, 'I tuoi ordini risultano già pagati');
   if (q.get('SELECT COUNT(*) AS n FROM food_payments WHERE gameId = ? AND ownerKey = ? AND pending = 1 AND cancelledAt IS NULL', g.id, owner.key).n >= 5) throw err(429, 'Hai già troppi pagamenti in attesa di conferma');
-  const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
-    g.id, owner.key, owner.name, method, amount, clean(data.note, 200) || null, Date.now(), owner.name).lastInsertRowid);
+  const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, pending, orderIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)',
+    g.id, owner.key, owner.name, method, amount, clean(data.note, 200) || null, Date.now(), owner.name, JSON.stringify(ids)).lastInsertRowid);
   G.log(g.id, owner.name, 'food_pay_declared', { method, amount });
   rt.pushMasters({ title: '💶 Pagamento da verificare', body: `${owner.name}: ${METHODS[method]} ${amount.toFixed(2)} € (in anticipo)`, url: '/regia#ristoro-consegna' });
   changed(g.id);
@@ -423,9 +446,15 @@ function forOwner(owner) {
   return {
     gameId: g.id, gameName: g.name, deadline: g.foodDeadline || null, open: isOpen(g), ended: g.status === 'ended', serverNow: Date.now(),
     menu: menuOf(g.id), payLinks: payLinks(g),
-    orders, payments, account: accountOf(orders.filter(deliverable), payments),
+    orders: withPay(orders, payments), payments, account: accountOf(orders.filter(deliverable), payments),
     me: { name: owner.name, kind: owner.kind, sub: owner.sub || null },
   };
+}
+
+// A ogni ordine il pagamento che lo copre (in attesa o confermato), se c'è.
+function withPay(orders, payments) {
+  const live = payments.filter((x) => !x.rejected);
+  return orders.map((o) => ({ ...o, pay: live.filter((x) => x.orderIds.includes(o.id)).pop() || null }));
 }
 
 // Per l'app: quante voci ha il menù e se si ordina ancora (la sezione Ristoro c'è sempre).
@@ -438,7 +467,7 @@ function teamSummary(gameId) {
 // Per l'addetto: menù (anche le voci tolte), ora limite, ordini e richieste separati, quantità da preparare.
 function forStaff(gameId) {
   const g = G.getGame(gameId);
-  const all = q.all('SELECT * FROM food_orders WHERE gameId = ? ORDER BY createdAt', g.id).map(orderOut);
+  const all = withPay(q.all('SELECT * FROM food_orders WHERE gameId = ? ORDER BY createdAt', g.id).map(orderOut), q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL ORDER BY at', g.id).map(paymentOut));
   const orders = all.filter((o) => o.kind === 'order');
   const requests = all.filter((o) => o.kind === 'request');
   const count = (list) => {

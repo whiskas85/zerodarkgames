@@ -63,7 +63,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
       try { S.data = await api('GET', url()); S.at = Date.now(); } catch { /* resta quello che c'è */ }
       rerender();
       // Ordine appena fatto: si può pagare subito in anticipo (o al ritiro).
-      if (placed?.kind === 'order' && canPay() && await dialog({ title: 'Ordine inviato', text: 'Vuoi pagarlo adesso in anticipo con Satispay o PayPal? Puoi anche pagare alla cassa al ritiro.', okLabel: '💳 Paga adesso', cancelLabel: 'Pago al ritiro' })) prepay(placed.total);
+      if (placed?.kind === 'order' && canPayOrder(S.data.orders.find((x) => x.id === placed.id) || placed) && await dialog({ title: 'Ordine inviato', text: 'Vuoi pagarlo adesso in anticipo con Satispay o PayPal? Puoi anche pagare alla cassa al ritiro.', okLabel: '💳 Paga adesso', cancelLabel: 'Pago al ritiro' })) prepay([placed.id]);
     } catch (e) { toast(e.message, 'error', 7000); load(true); }
   }
   async function cancel(o) {
@@ -72,12 +72,17 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
   }
   // Paga in anticipo: Satispay o PayPal si aprono fuori dall'app; poi «Ho pagato» e la cassa conferma.
   // Si può pagare in anticipo se c'è un link (Satispay o PayPal) e resta qualcosa da pagare non già dichiarato.
-  const canPay = () => { const d = S.data; const a = d?.account; return !!a && !d.ended && !a.closed && a.toPay > a.pendingAmount && !!(d.payLinks?.satispay || d.payLinks?.paypal); };
-  async function prepay(suggest) {
+  // Il pagamento è legato agli ordini che paga: un ordine pagato (anche in attesa di conferma) non si ripaga.
+  const payable = () => { const d = S.data; return !!d && !d.ended && !d.account?.closed && !!(d.payLinks?.satispay || d.payLinks?.paypal); };
+  const canPayOrder = (o) => payable() && o.kind === 'order' && o.status === 'active' && !o.pay;
+  const unpaidOrders = () => (S.data?.orders || []).filter(canPayOrder);
+  const canPay = () => unpaidOrders().length > 0;
+  async function prepay(ids) {
     const d = S.data;
-    const acc = d.account;
-    const left = Math.max(0, Math.round((acc.toPay - acc.pendingAmount) * 100) / 100);
-    const def = suggest > 0 ? Math.min(suggest, left) : left;
+    const list = (ids ? d.orders.filter((o) => ids.includes(o.id)) : unpaidOrders()).filter(canPayOrder);
+    if (!list.length) return toast('Risulta già pagato', 'ok');
+    const total = Math.round(list.reduce((t, o) => t + o.total, 0) * 100) / 100;
+    const def = total;
     const opts = [['satispay', '📱 Satispay'], ['paypal', '🅿️ PayPal']].filter(([k]) => d.payLinks?.[k]);
     let method = opts[0]?.[0];
     let opened = false;
@@ -92,9 +97,10 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     };
     paint();
     await modal({
-      title: 'Paga in anticipo', okLabel: '✓ Ho pagato', tall: true,
+      title: list.length === 1 ? 'Paga l\'ordine' : `Paga ${list.length} ordini`, okLabel: '✓ Ho pagato', tall: true,
       body: h('div', { class: 'stack-sm' },
-        h('div', { class: 'food-acc' }, accRow('Totale indicativo', euro(acc.total) || 'offerta libera'), accRow('Già pagato', euro(acc.paid) || '0,00 €'), acc.pendingAmount ? accRow('In attesa di conferma', euro(acc.pendingAmount)) : null, accRow('Resta', euro(acc.toPay) || '0,00 €', true)),
+        h('div', { class: 'food-acc' }, list.map((o) => accRow(`Ordine del ${fmtDT(o.createdAt)} · ${o.lines.map((l) => `${l.qty}× ${l.title}`).join(', ')}`, euro(o.total) || 'offerta libera')),
+          list.length > 1 ? accRow('Totale', euro(total) || 'offerta libera', true) : null),
         h('p', { class: 'tiny muted' }, 'Offerta libera: il totale è solo indicativo. I contanti si danno alla cassa al ritiro.'),
         h('div', { class: 'field' }, h('span', null, 'Come paghi'), seg),
         h('label', { class: 'field' }, h('span', null, 'Quanto paghi (€)'), amount),
@@ -102,7 +108,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
         go),
       onOk: async () => {
         if (!opened && !(await dialog({ title: 'Hai già pagato?', text: 'Non hai aperto il link di pagamento da qui. Confermi di aver già pagato?', okLabel: 'Sì, ho pagato', cancelLabel: 'No' }))) return false;
-        await api('POST', url('/payments'), { method, amount: amount.value });
+        await api('POST', url('/payments'), { method, amount: amount.value, orderIds: list.map((o) => o.id) });
         toast('Pagamento inviato: in attesa di conferma dalla cassa', 'ok'); load(true); return true;
       },
     });
@@ -119,7 +125,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     const total = menu.reduce((t, m) => t + (m.price || 0) * (S.cart.get(m.id) || 0), 0);
     const count = [...S.cart.values()].reduce((a, b) => a + b, 0);
     const isRequest = S.editing ? S.editing.kind === 'request' : !d.open;
-    const canEdit = (o) => o.status !== 'cancelled' && !o.delivered && (o.kind === 'order' ? d.open : o.status === 'pending');
+    const canEdit = (o) => o.status !== 'cancelled' && !o.delivered && !o.pay && (o.kind === 'order' ? d.open : o.status === 'pending');
     const acc = d.account;
     return h('div', { class: 'food stack' },
       h('div', { class: 'food-head' }, h('h2', null, '🥪 Ristoro'), h('p', { class: 'small muted' }, 'Panini e bevande dei Giochi.')),
@@ -150,23 +156,24 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
           S.editing ? 'Salva la modifica' : isRequest ? 'Manda la richiesta d\'ordine' : 'Invia l\'ordine')) : null,
       acc && (acc.items || acc.paid) ? h('div', { class: 'food-acc' }, h('div', { class: 'eyebrow' }, 'Il tuo conto'),
         accRow('Totale indicativo', euro(acc.total) || 'offerta libera'), accRow('Pagato', euro(acc.paid) || '0,00 €'),
-        accRow(acc.closed ? 'Conto chiuso' : 'Resta da pagare', acc.closed ? '✓' : euro(acc.toPay) || '0,00 €', true),
-        accRow('Ritirato', acc.deliveredAll ? '✓ tutto' : `${acc.delivered} di ${acc.items}`),
         acc.pendingAmount ? accRow('In attesa di conferma', euro(acc.pendingAmount)) : null,
+        accRow(acc.closed ? 'Conto chiuso' : 'Resta da pagare', acc.closed ? '✓' : euro(Math.max(0, acc.toPay - acc.pendingAmount)) || '0,00 €', true),
+        accRow('Ritirato', acc.deliveredAll ? '✓ tutto' : `${acc.delivered} di ${acc.items}`),
         d.payments?.length ? h('ul', { class: 'food-hist food-my-pays' }, d.payments.map((x) => h('li', { class: x.pending ? 'wait' : x.rejected ? 'no' : '' },
           h('span', null, `${x.pending ? '⏳' : x.rejected ? '✗' : '💶'} ${fmtDT(x.at)} · ${x.methodLabel} ${euro(x.amount)}${x.pending ? ' · in attesa che la cassa confermi' : x.rejected ? ' · non arrivato: passa alla cassa' : ' · confermato'}`),
           x.pending ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => cancelPay(x) }, 'Annulla') : null)))
           : null,
-        canPay() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => prepay() }, '💳 Paga in anticipo') : null) : null,
+        unpaidOrders().length > 1 ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => prepay() }, `💳 Paga tutti gli ordini · ${euro(unpaidOrders().reduce((t, o) => t + o.total, 0))}`) : null) : null,
       h('section', { class: 'stack-sm' }, h('h3', null, 'I tuoi ordini e richieste'),
         d.orders.length ? h('ul', { class: 'food-orders' }, d.orders.map((o) => h('li', { class: `food-order ${o.status === 'cancelled' ? 'off' : ''} ${o.kind}` },
           h('div', { class: 'food-order-head' }, statusChip(o), o.total ? h('span', { class: 'tiny muted' }, `offerta indicativa ${euro(o.total)}`) : null),
           linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null, dates(o),
           o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Richiesta accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}`) : null,
           o.delivered ? h('div', { class: o.delivered >= o.items ? 'food-paid' : 'food-part' }, o.delivered >= o.items ? '✓ Consegnato' : `Consegnato in parte: ${o.delivered} di ${o.items}`) : null,
+          o.pay ? h('div', { class: o.pay.pending ? 'food-part' : 'food-paid' }, o.pay.pending ? `⏳ Pagato ${euro(o.pay.amount)} con ${o.pay.methodLabel} · in attesa che la cassa confermi` : `✓ Pagato ${euro(o.pay.amount)} · ${o.pay.methodLabel}`) : null,
           history(o),
-          (canEdit(o) && !d.ended) || (o.kind === 'order' && o.status === 'active' && canPay()) ? h('div', { class: 'row-actions' },
-            o.kind === 'order' && o.status === 'active' && canPay() ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => prepay(o.total) }, `💳 Paga${o.total ? ` ${euro(Math.min(o.total, Math.max(0, d.account.toPay - d.account.pendingAmount)))}` : ''}`) : null,
+          (canEdit(o) && !d.ended) || canPayOrder(o) ? h('div', { class: 'row-actions' },
+            canPayOrder(o) ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => prepay([o.id]) }, `💳 Paga${o.total ? ` ${euro(o.total)}` : ''}`) : null,
             canEdit(o) && !d.ended ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => edit(o) }, 'Modifica') : null,
             canEdit(o) && !d.ended ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => cancel(o) }, 'Annulla') : null) : null))) : h('p', { class: 'empty' }, 'Non hai ancora ordinato niente.')));
   }
@@ -358,12 +365,14 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
           p.deliveredAll ? h('span', { class: 'food-st food-st-ok' }, '📦 Consegnato tutto') : h('span', { class: 'food-st food-st-wait' }, `📦 Da consegnare ${p.toDeliver} di ${p.items}`),
           p.paid ? h('span', { class: `food-st ${p.paidAll ? 'food-st-ok' : 'food-st-wait'}` }, `💶 Pagato ${euro(p.paid)}${p.total ? ` di ${euro(p.total)}` : ''}${p.closed ? ' · chiuso' : ''}`) : h('span', { class: 'food-st' }, '💶 Non ha pagato')),
         p.pendingPayments.length ? h('ul', { class: 'food-pend' }, p.pendingPayments.map((x) => h('li', null,
-          h('div', null, h('strong', null, `⏳ ${x.methodLabel} ${euro(x.amount)}`), h('span', { class: 'tiny' }, ` · pagato in anticipo ${fmtDT(x.at)} · da verificare`)),
+          h('div', null, h('strong', null, `⏳ ${x.methodLabel} ${euro(x.amount)}`), h('span', { class: 'tiny' }, ` · pagato in anticipo ${fmtDT(x.at)} · da verificare`),
+            x.orderIds.length ? h('div', { class: 'tiny' }, `per ${x.orderIds.map((id) => { const o = p.orders.find((y) => y.id === id); return o ? `l'ordine del ${fmtDT(o.createdAt)}${o.total ? ` (${euro(o.total)})` : ''}` : 'un ordine'; }).join(', ')}`) : null),
           h('div', { class: 'food-pend-actions' },
             h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => confirmDialog(p, x) }, '✓ Arrivato'),
             h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: async () => { if (await dialog({ title: 'Pagamento non arrivato?', text: `${p.owner.name}: ${x.methodLabel} ${euro(x.amount)}. Riceverà un avviso di passare alla cassa.`, okLabel: 'Non arrivato', cancelLabel: 'No', danger: true })) call('POST', `/payments/${x.id}/reject`, {}, 'Segnato come non arrivato'); } }, 'Non arrivato'))))) : null,
         h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', null,
-          h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Ordine da richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`),
+          h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Ordine da richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`,
+            o.pay ? h('span', { class: `food-ld ${o.pay.pending ? 'part' : 'ok'}` }, o.pay.pending ? ` · ⏳ pagato ${euro(o.pay.amount)}, da verificare` : ` · ✓ pagato ${euro(o.pay.amount)}`) : null),
           h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', { class: l.delivered >= l.qty ? 'got' : '' }, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title} `, lineDone(l)))),
           o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null))),
         hist.length ? h('details', { class: 'food-log' }, h('summary', { class: 'tiny' }, `Consegne e pagamenti (${hist.length})`), h('ul', { class: 'food-hist' }, hist)) : null,

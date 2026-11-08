@@ -863,6 +863,15 @@ addColumn('food_payments', 'pending', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('food_orders', 'fromRequest', 'INTEGER NOT NULL DEFAULT 0');
 db.exec("UPDATE food_orders SET kind = 'order', status = 'active', fromRequest = 1 WHERE kind = 'request' AND status = 'accepted'");
 addColumn('food_payments', 'confirmedAt', 'INTEGER');
+// Gli ordini che un pagamento copre (JSON di id): un ordine pagato risulta pagato, gli altri no.
+addColumn('food_payments', 'orderIds', 'TEXT');
+// Pagamenti di prima (senza ordini collegati): coprono gli ordini attivi di quella persona fatti fino a quel momento.
+for (const p of q.all('SELECT * FROM food_payments WHERE orderIds IS NULL AND cancelledAt IS NULL ORDER BY at')) {
+  const taken = new Set();
+  for (const x of q.all('SELECT orderIds FROM food_payments WHERE gameId = ? AND ownerKey = ? AND orderIds IS NOT NULL AND cancelledAt IS NULL', p.gameId, p.ownerKey)) for (const id of JSON.parse(x.orderIds)) taken.add(id);
+  const ids = q.all("SELECT id FROM food_orders WHERE gameId = ? AND ownerKey = ? AND kind = 'order' AND status = 'active' AND createdAt <= ?", p.gameId, p.ownerKey, p.at).map((o) => o.id).filter((id) => !taken.has(id));
+  q.run('UPDATE food_payments SET orderIds = ? WHERE id = ?', JSON.stringify(ids), p.id);
+}
 addColumn('food_payments', 'confirmedBy', 'TEXT');
 addColumn('food_payments', 'rejectedAt', 'INTEGER');
 db.exec(`
