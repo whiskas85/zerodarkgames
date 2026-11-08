@@ -856,6 +856,12 @@ addColumn('games', 'foodSatispay', 'TEXT');
 // food_deliveries per ogni consegna) e si paga anche a rate (food_payments per persona; «closes» chiude il conto).
 addColumn('food_order_lines', 'delivered', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('food_payments', 'closes', 'INTEGER NOT NULL DEFAULT 0');
+// Pagamento in anticipo dichiarato da chi ha ordinato (Satispay, PayPal): resta «pending» finché la cassa non lo
+// conferma (confirmedAt) o lo dà per non arrivato (rejectedAt, con cancelledAt).
+addColumn('food_payments', 'pending', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('food_payments', 'confirmedAt', 'INTEGER');
+addColumn('food_payments', 'confirmedBy', 'TEXT');
+addColumn('food_payments', 'rejectedAt', 'INTEGER');
 db.exec(`
 CREATE TABLE IF NOT EXISTS food_deliveries (
   id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,

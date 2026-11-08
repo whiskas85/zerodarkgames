@@ -550,6 +550,8 @@ app.get('/api/food', needMember, wrap((req) => FD.forOwner(foodOwnerApp(req))));
 app.post('/api/food/orders', needMember, teamRateLimit, wrap((req) => FD.placeOrder(foodOwnerApp(req), req.body || {})));
 app.put('/api/food/orders/:oid', needMember, teamRateLimit, wrap((req) => FD.updateOrder(foodOwnerApp(req), req.params.oid, req.body || {})));
 app.delete('/api/food/orders/:oid', needMember, teamRateLimit, wrap((req) => FD.cancelOrder(foodOwnerApp(req), req.params.oid)));
+app.post('/api/food/payments', needMember, teamRateLimit, wrap((req) => FD.declarePayment(foodOwnerApp(req), req.body || {})));
+app.delete('/api/food/payments/:pid', needMember, teamRateLimit, wrap((req) => FD.cancelDeclared(foodOwnerApp(req), req.params.pid)));
 app.post('/api/team/beacon/:zid/complete', needTeam, wrap((req) => Z.completeBeacon(req.team, req.player, Number(req.params.zid), req.body || {})));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
@@ -1050,11 +1052,15 @@ v.get('/food', wrap((req) => FD.forOwner(foodOwnerStaff(req))));
 v.post('/food/orders', wrap((req) => FD.placeOrder(foodOwnerStaff(req), req.body || {})));
 v.put('/food/orders/:oid', wrap((req) => FD.updateOrder(foodOwnerStaff(req), req.params.oid, req.body || {})));
 v.delete('/food/orders/:oid', wrap((req) => FD.cancelOrder(foodOwnerStaff(req), req.params.oid)));
+v.post('/food/payments', wrap((req) => FD.declarePayment(foodOwnerStaff(req), req.body || {})));
+v.delete('/food/payments/:pid', wrap((req) => FD.cancelDeclared(foodOwnerStaff(req), req.params.pid)));
 // Addetto al ristoro (permesso «ristoro», o il master): menù, ora limite, ordini e richieste.
 v.get('/games/:id/food', needPerm('ristoro'), wrap(async (req) => ({ ...FD.forStaff(Number(req.params.id)), qr: await FD.payQr(Number(req.params.id)) })));
 v.put('/games/:id/food/paylinks', needPerm('ristoro'), wrap((req) => FD.setPayLinks(Number(req.params.id), req.body || {}, sActor(req))));
 v.post('/games/:id/food/pay', needPerm('ristoro'), wrap((req) => FD.pay(Number(req.params.id), req.body?.ownerKey, req.body || {}, sActor(req))));
 v.delete('/games/:id/food/payments/:pid', needPerm('ristoro'), wrap((req) => FD.unpay(Number(req.params.id), req.params.pid, sActor(req))));
+v.post('/games/:id/food/payments/:pid/confirm', needPerm('ristoro'), wrap((req) => FD.confirmPayment(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));
+v.post('/games/:id/food/payments/:pid/reject', needPerm('ristoro'), wrap((req) => FD.rejectPayment(Number(req.params.id), req.params.pid, sActor(req))));
 v.post('/games/:id/food/deliver', needPerm('ristoro'), wrap((req) => FD.deliver(Number(req.params.id), req.body?.ownerKey, req.body || {}, sActor(req))));
 v.delete('/games/:id/food/deliveries/:did', needPerm('ristoro'), wrap((req) => FD.undeliver(Number(req.params.id), req.params.did, sActor(req))));
 v.post('/games/:id/food/items', needPerm('ristoro'), wrap((req) => FD.saveItem(Number(req.params.id), req.body || {}, sActor(req))));
