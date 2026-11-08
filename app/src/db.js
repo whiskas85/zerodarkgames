@@ -865,12 +865,32 @@ db.exec("UPDATE food_orders SET kind = 'order', status = 'active', fromRequest =
 addColumn('food_payments', 'confirmedAt', 'INTEGER');
 // Gli ordini che un pagamento copre (JSON di id): un ordine pagato risulta pagato, gli altri no.
 addColumn('food_payments', 'orderIds', 'TEXT');
-// Pagamenti di prima (senza ordini collegati): coprono gli ordini attivi di quella persona fatti fino a quel momento.
-for (const p of q.all('SELECT * FROM food_payments WHERE orderIds IS NULL AND cancelledAt IS NULL ORDER BY at')) {
+// Pagamenti di prima (senza ordini collegati). Quelli dichiarati da chi ha ordinato (in anticipo) coprono l'ordine
+// con lo stesso importo, altrimenti i più vecchi fino all'importo; quelli registrati alla cassa coprono tutti gli
+// ordini attivi fatti fino a quel momento.
+const orderTotal = (id) => q.all('SELECT price, qty FROM food_order_lines WHERE orderId = ?', id).reduce((t, l) => t + (l.price || 0) * l.qty, 0);
+function coverOf(p) {
   const taken = new Set();
-  for (const x of q.all('SELECT orderIds FROM food_payments WHERE gameId = ? AND ownerKey = ? AND orderIds IS NOT NULL AND cancelledAt IS NULL', p.gameId, p.ownerKey)) for (const id of JSON.parse(x.orderIds)) taken.add(id);
-  const ids = q.all("SELECT id FROM food_orders WHERE gameId = ? AND ownerKey = ? AND kind = 'order' AND status = 'active' AND createdAt <= ?", p.gameId, p.ownerKey, p.at).map((o) => o.id).filter((id) => !taken.has(id));
-  q.run('UPDATE food_payments SET orderIds = ? WHERE id = ?', JSON.stringify(ids), p.id);
+  for (const x of q.all('SELECT orderIds FROM food_payments WHERE gameId = ? AND ownerKey = ? AND id <> ? AND orderIds IS NOT NULL AND cancelledAt IS NULL', p.gameId, p.ownerKey, p.id)) for (const id of JSON.parse(x.orderIds)) taken.add(id);
+  const free = q.all("SELECT id FROM food_orders WHERE gameId = ? AND ownerKey = ? AND kind = 'order' AND status = 'active' AND createdAt <= ? ORDER BY createdAt", p.gameId, p.ownerKey, p.at)
+    .map((o) => ({ id: o.id, total: Math.round(orderTotal(o.id) * 100) / 100 })).filter((o) => !taken.has(o.id));
+  if (!(p.pending || p.confirmedAt)) return free.map((o) => o.id);
+  const exact = free.find((o) => Math.abs(o.total - p.amount) < 0.005);
+  if (exact) return [exact.id];
+  const ids = [];
+  let sum = 0;
+  for (const o of free) { if (sum >= p.amount - 0.005 && ids.length) break; ids.push(o.id); sum += o.total; }
+  return ids;
+}
+for (const p of q.all('SELECT * FROM food_payments WHERE orderIds IS NULL AND cancelledAt IS NULL ORDER BY at')) q.run('UPDATE food_payments SET orderIds = ? WHERE id = ?', JSON.stringify(coverOf(p)), p.id);
+// Correzione una tantum: la prima conversione legava un pagamento in anticipo a tutti gli ordini fatti fino a quel momento.
+if (!getSetting('food_pay_orders_v2')) {
+  tx(() => {
+    const wide = q.all('SELECT * FROM food_payments WHERE cancelledAt IS NULL AND (pending = 1 OR confirmedAt IS NOT NULL) AND orderIds IS NOT NULL ORDER BY at').filter((p) => JSON.parse(p.orderIds).length > 1);
+    for (const p of wide) q.run('UPDATE food_payments SET orderIds = NULL WHERE id = ?', p.id);
+    for (const p of wide) q.run('UPDATE food_payments SET orderIds = ? WHERE id = ?', JSON.stringify(coverOf(p)), p.id);
+    setSetting('food_pay_orders_v2', String(Date.now()));
+  });
 }
 addColumn('food_payments', 'confirmedBy', 'TEXT');
 addColumn('food_payments', 'rejectedAt', 'INTEGER');
