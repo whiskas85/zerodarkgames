@@ -21,7 +21,7 @@ const allowed = () => (C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) =>
 const canFood = () => C.me?.role === 'master' || C.me?.perms?.includes('ristoro');
 const foodOrder = createFoodOrder({ base: '/api/v/food', query: () => `?g=${C.gameId}`, rerender: () => render() });
 const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render() });
-setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (tab() === 'ristoro-gestione') foodAdmin.load(); }, 20000);
+setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (tab() === 'ristoro-gestione' || tab() === 'ristoro-menu') foodAdmin.load(); }, 20000);
 const tab = () => location.hash.slice(1);
 window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); window.scrollTo(0, 0); });
 
@@ -84,8 +84,9 @@ function render() {
   const body = t === 'doni' && C.me && allowed().some((a) => a.key === 'doni') ? viewGifts()
     : t === 'annunci' && allowed().some((a) => a.key === 'comunicazioni') ? viewAnnounce()
     : t === 'ristoro' ? [C.games.length > 1 ? gameSelect() : null, foodOrder.view()]
-    : t === 'ristoro-gestione' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view()] : viewHome();
-  const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro', 'ristoro-gestione': 'Gestione ristoro' }[t] || (C.me.displayName || C.me.username);
+    : t === 'ristoro-gestione' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('orders')]
+    : t === 'ristoro-menu' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('menu')] : viewHome();
+  const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro · ordina', 'ristoro-gestione': 'Ristoro · ordini e richieste', 'ristoro-menu': 'Ristoro · menù' }[t] || (C.me.displayName || C.me.username);
   mount($root, header(sub), h('main', { class: 'content council' }, body));
 }
 
@@ -121,7 +122,8 @@ function viewHome() {
   const acts = allowed();
   const food = [
     { label: 'Panini e bevande', hint: 'Ordina per te', ico: '🥪', href: () => '#ristoro' },
-    canFood() ? { label: 'Gestione ristoro', hint: 'Menù, ordini e richieste', ico: '🧾', href: () => '#ristoro-gestione' } : null,
+    canFood() ? { label: 'Menù', hint: 'Voci e prezzi indicativi', ico: '📋', href: () => '#ristoro-menu' } : null,
+    canFood() ? { label: 'Ordini e richieste', hint: 'Ora limite e da preparare', ico: '🧾', href: () => '#ristoro-gestione' } : null,
   ].filter(Boolean);
   return h('div', { class: 'tile-groups' },
     C.games.length > 1 ? gameSelect() : null,
