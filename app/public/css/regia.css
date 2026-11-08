@@ -1439,3 +1439,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 
 .score-mines { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .score-name { white-space: normal; }
+
+/* Menù: gruppi di voci (es. Ristoro) con intestazione apribile */
+.nav-group > summary { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; color: var(--ink); font-weight: 600; cursor: pointer; list-style: none; border-left: 4px solid transparent; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after { content: '▸'; color: var(--muted); margin-left: auto; padding-left: 8px; transition: transform .15s; }
+.nav-group[open] > summary::after { transform: rotate(90deg); }
+.nav-group > summary .badge { margin-left: 8px; }
+.nav-group > summary:hover { background: var(--paper); }
+.nav-group.here > summary { color: var(--ink); }
+.nav-group-items { display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--line); margin-left: 18px; }
+.nav-group-items a, .nav-group-items span.off { padding-top: 8px; padding-bottom: 8px; font-size: 14px; }
+@media (max-width: 760px) and (min-width: 0px) { .sidebar > .nav-group { flex: none; } }
