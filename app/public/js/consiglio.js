@@ -78,8 +78,27 @@ const header = (sub) => h('header', { class: 'topbar council-top' },
   C.me ? h('button', { type: 'button', class: 'avatar-btn', 'aria-label': `Menu di ${meInfo().name}`, 'aria-haspopup': 'menu', onclick: (e) => { e.stopPropagation(); openAvatarMenu(e.currentTarget); } }, avatarFace(meInfo()))
     : C.status ? h('button', { class: 'btn btn-sm btn-ghost', onclick: logout }, 'Esci') : null);
 
+// Nuova versione: si controlla all'avvio, ogni minuto e quando si torna sull'app; la barra verde resta sotto la testata.
+async function checkVersion() {
+  try {
+    const v = (await api('GET', '/api/version')).version;
+    if (!v) return;
+    if (!C.bootVersion) C.bootVersion = v;
+    else if (v !== C.bootVersion && !C.newVersion) { C.newVersion = true; render(); }
+  } catch { /* senza rete */ }
+}
+checkVersion();
+setInterval(() => { if (!document.hidden) checkVersion(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+const updateBar = () => (C.newVersion ? h('button', { type: 'button', class: 'update-banner', onclick: () => location.reload() }, h('strong', null, '⟳ Nuova versione dell\'app'), h('span', null, ' · tocca qui per aggiornare')) : null);
+function fitTop() { const tb = $root.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--top-h', `${tb.offsetHeight}px`); }
+
 function render() {
-  if (!C.me) return mount($root, header('Organizzazione dei Giochi'), h('main', { class: 'content council' }, outside()));
+  _render();
+  fitTop();
+}
+function _render() {
+  if (!C.me) return mount($root, header('Organizzazione dei Giochi'), updateBar(), h('main', { class: 'content council' }, outside()));
   const t = tab();
   const body = t === 'doni' && C.me && allowed().some((a) => a.key === 'doni') ? viewGifts()
     : t === 'annunci' && allowed().some((a) => a.key === 'comunicazioni') ? viewAnnounce()
@@ -88,7 +107,7 @@ function render() {
     : t === 'ristoro-menu' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('menu')]
     : t === 'ristoro-consegna' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('delivery')] : viewHome();
   const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro · ordina', 'ristoro-gestione': 'Ristoro · ordini e richieste', 'ristoro-menu': 'Ristoro · menù', 'ristoro-consegna': 'Ristoro · consegna e pagamenti' }[t] || (C.me.displayName || C.me.username);
-  mount($root, header(sub), h('main', { class: 'content council' }, body));
+  mount($root, header(sub), updateBar(), h('main', { class: 'content council' }, body));
 }
 
 // Fuori dall'organizzazione: la richiesta (solo per chi è entrato con Zero Dark Ops).
