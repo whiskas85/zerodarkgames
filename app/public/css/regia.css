@@ -1478,3 +1478,16 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .mg-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
 .mg-altar { display: flex; align-items: center; gap: 8px; }
 .mg-altar .mg-select { flex: 1; }
+
+/* Analisi dei voti di una coppia */
+.va-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.va-stat { display: grid; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.va-stat strong { font-size: 22px; }
+.va-flags { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.va-flags li { padding: 8px 10px; border-radius: 8px; border-left: 4px solid var(--line); background: var(--paper); font-size: 14px; }
+.va-flags .va-bad { border-color: var(--danger, #e5484d); } .va-flags .va-warn { border-color: var(--warn, #f0a020); } .va-flags .va-ok { border-color: var(--ok, #3fb950); } .va-flags .va-info { border-color: #5aa0e0; }
+.va-hours { display: grid; gap: 3px; }
+.va-hour { display: grid; grid-template-columns: 90px 1fr 34px; align-items: center; gap: 8px; }
+.va-hour i { display: block; height: 10px; border-radius: 4px; background: var(--brass, #d1ad62); min-width: 2px; }
+.va-row-bad td { background: color-mix(in srgb, var(--danger, #e5484d) 12%, transparent); }
+.va-off td { opacity: .45; text-decoration: line-through; }

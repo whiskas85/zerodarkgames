@@ -323,5 +323,54 @@ function liveVote(gameId) {
     list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score, votes: t.votes, heavy: t.heavy })) };
 }
 
+// Browser e sistema da user agent (per riconoscere a colpo d'occhio voti tutti uguali o automatici).
+function uaShort(ua) {
+  const u = String(ua || '');
+  if (!u) return 'sconosciuto';
+  if (/headless|phantom|puppeteer|playwright|selenium|curl|wget|python|node-fetch|axios|go-http|java\//i.test(u)) return '🤖 automatico';
+  const os = /iPhone|iPad/.test(u) ? 'iPhone' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : /Mac OS X/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'altro';
+  const br = /Instagram/.test(u) ? 'Instagram' : /FBAN|FBAV/.test(u) ? 'Facebook' : /WhatsApp/.test(u) ? 'WhatsApp' : /SamsungBrowser/.test(u) ? 'Samsung' : /EdgA?\//.test(u) ? 'Edge'
+    : /Firefox|FxiOS/.test(u) ? 'Firefox' : /CriOS|Chrome/.test(u) ? 'Chrome' : /Safari/.test(u) ? 'Safari' : 'altro';
+  return `${os} · ${br}`;
+}
+
+// Analisi dei voti di una coppia: da quali reti (impronta, non l'indirizzo), con quali dispositivi e browser, a che ritmo.
+// Serve a capire se una crescita costante viene da tanta gente o da pochi che votano a ripetizione.
+function voteAnalysis(gameId, teamId) {
+  const g = G.getGame(gameId);
+  const t = q.get("SELECT t.id, t.displayName, s.name AS sectorName, s.roman FROM teams t JOIN sectors s ON s.id = t.sectorId WHERE t.id = ? AND t.gameId = ?", Number(teamId), g.id);
+  if (!t) throw err(404, 'Coppia non trovata');
+  const all = q.all('SELECT v.*, a.name AS accountName, a.username FROM votes v LEFT JOIN accounts a ON a.id = v.accountId WHERE v.gameId = ? ORDER BY v.createdAt', g.id);
+  const mine = all.filter((v) => v.teamId === t.id);
+  const live = mine.filter((v) => !v.annulledAt);
+  // Per rete: quanti voti in tutto, quanti a questa coppia, quanti ad altre.
+  const nets = new Map();
+  for (const v of all.filter((x) => !x.annulledAt)) {
+    const n = nets.get(v.net) || { net: v.net, total: 0, toTeam: 0, first: v.createdAt, last: v.createdAt, devices: new Set() };
+    n.total++; if (v.teamId === t.id) n.toTeam++; n.last = v.createdAt; n.devices.add(v.device);
+    nets.set(v.net, n);
+  }
+  const byNet = [...nets.values()].filter((n) => n.toTeam).map((n) => ({ net: n.net.slice(0, 8), toTeam: n.toTeam, others: n.total - n.toTeam, devices: n.devices.size, first: n.first, last: n.last }))
+    .sort((a, b) => b.toTeam - a.toTeam);
+  const count = (key) => { const m = new Map(); for (const v of live) { const k = key(v); m.set(k, (m.get(k) || 0) + 1); } return [...m].map(([k, n]) => ({ key: k, n })).sort((a, b) => b.n - a.n); };
+  // Ritmo: intervalli tra un voto e l'altro (molto regolari = sospetto di voti a ripetizione).
+  const gaps = live.slice(1).map((v, i) => v.createdAt - live[i].createdAt).sort((a, b) => a - b);
+  const median = gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+  const byHour = count((v) => new Date(v.createdAt).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit' }));
+  const lonely = byNet.filter((n) => !n.others).reduce((a, n) => a + n.toTeam, 0);
+  return {
+    team: { id: t.id, label: `${t.roman} ${t.sectorName}`, name: t.displayName || null },
+    totals: { votes: live.length, annulled: mine.length - live.length, verified: live.filter((v) => v.accountId).length, nets: byNet.length,
+      devices: new Set(live.map((v) => v.device)).size, changed: live.filter((v) => v.updatedAt).length,
+      // Voti da reti che hanno votato solo questa coppia (più di uno dalla stessa rete).
+      sameNetRepeat: byNet.filter((n) => n.toTeam > 1).reduce((a, n) => a + n.toTeam, 0), onlyThisTeam: lonely,
+      medianGapMin: median != null ? Math.round(median / 6000) / 10 : null },
+    byNet, byUa: count((v) => uaShort(v.ua)), byHour: byHour.sort((a, b) => a.key.localeCompare(b.key)),
+    votes: mine.slice().reverse().map((v) => ({ id: v.id, at: v.createdAt, changedAt: v.updatedAt || null, net: v.net.slice(0, 8), device: String(v.device).slice(0, 8),
+      verified: !!v.accountId, account: v.accountName ? `${v.accountName}${v.username ? ` (@${v.username})` : ''}` : null, weight: v.weight, ua: uaShort(v.ua), uaFull: v.ua || '',
+      netVotes: nets.get(v.net)?.total || 0, annulled: !!v.annulledAt })),
+  };
+}
+
 module.exports = {
-  netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+  voteAnalysis, uaShort, netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

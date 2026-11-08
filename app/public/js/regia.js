@@ -4153,6 +4153,58 @@ async function loadVote() {
   try { voteState = await api('GET', G('/vote')); voteGameId = R.gameId; } catch (e) { toast(e.message, 'error'); }
   if (tab() === 'voto') render();
 }
+// Analisi dei voti di una coppia: reti (impronta), dispositivi, browser, ritmo; i voti sospetti si annullano da qui.
+async function voteAnalysisDialog(teamId) {
+  let a;
+  try { a = await api('GET', G(`/vote/team/${teamId}`)); } catch (e) { return toast(e.message, 'error'); }
+  const T = a.totals;
+  const pctOf = (n) => (T.votes ? Math.round((n / T.votes) * 100) : 0);
+  const flags = [];
+  if (T.votes >= 5 && pctOf(T.sameNetRepeat) >= 40) flags.push(['bad', `${pctOf(T.sameNetRepeat)}% dei voti arriva da reti che l'hanno votata più volte: pochi che votano a ripetizione (cambiando dispositivo o cancellando i cookie).`]);
+  if (T.votes >= 5 && T.nets <= Math.ceil(T.votes / 4)) flags.push(['bad', `Solo ${T.nets} reti diverse per ${T.votes} voti.`]);
+  const bots = a.byUa.find((x) => x.key.startsWith('🤖'));
+  if (bots) flags.push(['bad', `${bots.n} voti da programmi automatici (non da un browser).`]);
+  if (T.votes >= 8 && a.byUa[0] && pctOf(a.byUa[0].n) >= 80) flags.push(['warn', `${pctOf(a.byUa[0].n)}% dei voti dallo stesso tipo di telefono e browser (${a.byUa[0].key}).`]);
+  if (T.medianGapMin != null && T.votes >= 8) flags.push(['info', `Un voto ogni ${String(T.medianGapMin).replace('.', ',')} minuti circa (mediana). Il limite per rete impone 3, poi 10, poi 30 minuti tra voti nuovi dalla stessa rete: un ritmo fisso vicino a quei valori fa pensare a una persona sola che vota a ripetizione.`]);
+  if (!flags.some((f) => f[0] === 'bad')) flags.push(['ok', 'Nessun segnale forte di voti gonfiati: reti e dispositivi sono vari.']);
+  const max = Math.max(1, ...a.byHour.map((x) => x.n));
+  const idsOfNet = (net) => a.votes.filter((v) => v.net === net && !v.annulled).map((v) => v.id);
+  const annul = async (ids, what) => {
+    if (!ids.length) return;
+    if (!(await dialog({ title: `Annullare ${what}?`, text: `${ids.length} ${ids.length === 1 ? 'voto' : 'voti'}: non contano più nelle percentuali.`, okLabel: 'Annulla i voti', danger: true }))) return;
+    try { await api('POST', G('/vote/annul'), { ids }); toast('Voti annullati', 'ok'); document.querySelector('dialog.dlg')?.remove(); await loadVote(); voteAnalysisDialog(teamId); } catch (e) { toast(e.message, 'error'); }
+  };
+  const stat = (n, label) => h('div', { class: 'va-stat' }, h('strong', null, String(n)), h('span', { class: 'tiny muted' }, label));
+  await modal({
+    title: `🔍 Voti di ${a.team.label}${a.team.name ? ` · ${a.team.name}` : ''}`, okLabel: 'Chiudi', cancelLabel: null, wide: true, tall: true,
+    body: h('div', { class: 'stack' },
+      h('p', { class: 'tiny muted' }, 'Del voto il server conserva l\'impronta della rete (non l\'indirizzo vero), un codice del dispositivo (cookie), il tipo di telefono e browser, l\'account se si è votato verificati. Stessa impronta = stessa connessione (stesso Wi-Fi o stesso indirizzo dei dati mobili).'),
+      h('div', { class: 'va-stats' }, stat(T.votes, 'voti validi'), stat(T.nets, 'reti diverse'), stat(T.devices, 'dispositivi'), stat(T.verified, 'verificati'), stat(T.annulled, 'annullati'), stat(T.changed, 'voti cambiati')),
+      h('ul', { class: 'va-flags' }, flags.map(([k, txt]) => h('li', { class: `va-${k}` }, txt))),
+      h('h3', null, 'Quando'),
+      h('div', { class: 'va-hours' }, a.byHour.map((x) => h('div', { class: 'va-hour' }, h('span', { class: 'mono tiny' }, `${x.key}h`), h('i', { style: { width: `${(x.n / max) * 100}%` } }), h('b', { class: 'mono tiny' }, String(x.n))))),
+      h('h3', null, `Reti (${a.byNet.length})`),
+      h('div', { class: 'table-wrap' }, h('table', null,
+        h('thead', null, h('tr', null, ['Rete', 'A questa coppia', 'Ad altre', 'Dispositivi', 'Primo', 'Ultimo', ''].map((x) => h('th', null, x)))),
+        h('tbody', null, a.byNet.slice(0, 60).map((n) => h('tr', { class: n.toTeam > 2 ? 'va-row-bad' : '' },
+          h('td', { class: 'mono' }, n.net), h('td', null, h('strong', null, String(n.toTeam))), h('td', null, String(n.others)), h('td', null, String(n.devices)),
+          h('td', { class: 'tiny' }, fmtTime(n.first)), h('td', { class: 'tiny' }, fmtTime(n.last)),
+          h('td', null, n.toTeam > 1 ? h('button', { class: 'btn btn-xs btn-danger', type: 'button', onclick: () => annul(idsOfNet(n.net), `i voti della rete ${n.net}`) }, 'Annulla') : null)))))),
+      h('h3', null, 'Telefono e browser'),
+      h('div', { class: 'row-actions' }, a.byUa.map((x) => h('span', { class: `chip ${x.key.startsWith('🤖') ? 'chip-blood' : ''}` }, `${x.key} · ${x.n}`))),
+      h('h3', null, `Tutti i voti (${a.votes.length})`),
+      h('div', { class: 'table-wrap' }, h('table', null,
+        h('thead', null, h('tr', null, ['Ora', 'Rete', 'Dispositivo', 'Telefono e browser', 'Account', ''].map((x) => h('th', null, x)))),
+        h('tbody', null, a.votes.slice(0, 400).map((v) => h('tr', { class: v.annulled ? 'va-off' : '' },
+          h('td', { class: 'tiny' }, `${new Date(v.at).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${v.changedAt ? ' · cambiato' : ''}`),
+          h('td', { class: 'mono tiny' }, v.net, v.netVotes > 1 ? h('span', { class: 'warn-text' }, ` ×${v.netVotes}`) : null),
+          h('td', { class: 'mono tiny' }, v.device),
+          h('td', { class: 'tiny', title: v.uaFull }, v.ua),
+          h('td', { class: 'tiny' }, v.verified ? `✓ ${v.account || 'verificato'}` : '—'),
+          h('td', null, v.annulled ? h('span', { class: 'tiny muted' }, 'annullato') : h('button', { class: 'btn btn-xs btn-ghost', type: 'button', onclick: () => annul([v.id], 'questo voto') }, 'Annulla')))))))),
+  });
+}
+
 function viewVote() {
   // Voti sospetti: nome della coppia e pulsante per annullare un gruppo di voti.
   // Quanti voti, quanti ×3 (con l'account) e quanti punti valgono.
@@ -4200,7 +4252,8 @@ function viewVote() {
         h('button', { type: 'button', class: `switch switch-sm ${t.votable ? 'on' : ''}`, role: 'switch', 'aria-checked': t.votable ? 'true' : 'false', onclick: async () => { try { await api('POST', `/api/m/teams/${t.id}/votable`, { on: !t.votable }); await loadVote(); } catch (e) { toast(e.message, 'error'); } } },
           h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), t.votable ? 'IN VOTO' : 'NO'),
         h('strong', null, `${t.roman} Settore ${t.sectorName}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
-        h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small', title: `${t.score} punti: ogni voto con l'account vale ×${V.weight || 3}` }, `${String(t.pct).replace('.', ',')}% · ${voteCount(t.votes, t.heavy, t.score)}`) : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
+        h('span', { class: 'grow' }), t.votable ? h('span', { class: 'mono small', title: `${t.score} punti: ogni voto con l'account vale ×${V.weight || 3}` }, `${String(t.pct).replace('.', ',')}% · ${voteCount(t.votes, t.heavy, t.score)}`) : null,
+        t.votes ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Da dove arrivano i voti di questa coppia', onclick: () => voteAnalysisDialog(t.id) }, '🔍 Analizza') : null))) : h('p', { class: 'empty' }, 'Nessuna coppia formata.')),
     section('Premi',
       h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude.'),
       h('div', { class: 'row-actions' }, [0, 1, 2].map(prizeBtn)),

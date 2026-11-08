@@ -877,6 +877,7 @@ m.post('/teams/:tid/logo', rawImage, wrap((req) => G.setTeamLogo(req.params.tid,
 m.delete('/teams/:tid/logo', wrap((req) => { G.clearTeamLogo(req.params.tid, actor(req)); return { ok: true }; }));
 m.patch('/games/:id/vote', wrap((req) => VO.updateVote(gameId(req), req.body || {}, actor(req))));
 m.post('/teams/:tid/votable', wrap((req) => { VO.setVotable(req.params.tid, !!req.body?.on, actor(req)); return { ok: true }; }));
+m.get('/games/:id/vote/team/:tid', wrap((req) => VO.voteAnalysis(gameId(req), req.params.tid)));
 m.post('/games/:id/vote/annul', wrap((req) => VO.annulVotes(gameId(req), req.body?.ids, actor(req))));
 m.post('/games/:id/vote/award', wrap((req) => VO.awardPrizes(gameId(req), actor(req))));
 m.post('/teams/:tid/read', wrap((req) => {
