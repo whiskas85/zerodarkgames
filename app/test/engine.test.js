@@ -3536,6 +3536,10 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   // Pagamento in anticipo dichiarato da chi ha ordinato: in attesa finché la cassa non conferma.
   assert.throws(() => FD.declarePayment(me, { method: 'contanti', amount: 5 }), /Satispay o PayPal/);
   assert.throws(() => FD.declarePayment(me, { method: 'satispay', amount: 5 }), /non è attivo/);
+  // Il conto di prima è chiuso: si paga in anticipo un ordine nuovo.
+  assert.throws(() => FD.declarePayment(me, { method: 'paypal', amount: 5 }), /già pagati/);
+  FD.setDeadline(g.id, null, 'addetto');
+  FD.placeOrder(me, { lines: [{ itemId: panino.id, qty: 1 }] });
   const dp = FD.declarePayment(me, { method: 'paypal', amount: '6,5' });
   assert.equal(dp.pending, true);
   let acc2 = FD.forOwner(me).account;
@@ -3572,5 +3576,16 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   assert.throws(() => FD.declarePayment(me, { method: 'paypal', amount: 5, orderIds: [ob.id] }), /già pagato/);
   assert.throws(() => FD.updateOrder(me, ob.id, { lines: [{ itemId: panino.id, qty: 3 }] }), /Già pagato/);
   FD.rejectPayment(g.id, dp4.id, 'addetto');
+  // Ordine pagato a metà: resta il resto da pagare (non perde il pulsante); «chiudi» salda solo i suoi ordini.
+  const half = FD.pay(g.id, 'p1', { method: 'contanti', amount: 4, orderIds: [oc.id] }, 'addetto');
+  let st = FD.forOwner(me).orders.find((x) => x.id === oc.id);
+  assert.equal(st.paid, 4); assert.equal(st.rest, 6); assert.equal(st.payable, true);
+  FD.declarePayment(me, { method: 'paypal', amount: 6, orderIds: [oc.id] });
+  st = FD.forOwner(me).orders.find((x) => x.id === oc.id);
+  assert.equal(st.rest, 0); assert.equal(st.payable, false);
+  FD.unpay(g.id, half.id, 'addetto');
+  const cl = FD.pay(g.id, 'p1', { method: 'contanti', amount: 3, orderIds: [ob.id], closes: true }, 'addetto');
+  assert.equal(FD.forOwner(me).orders.find((x) => x.id === ob.id).settled, true);
+  FD.unpay(g.id, cl.id, 'addetto');
   assert.equal(FD.forOwner(me).orders.find((x) => x.id === ob.id).pay, null);
 });

@@ -22,6 +22,10 @@ const LOG = { created: 'Ordine inviato', requested: 'Richiesta d\'ordine inviata
 const statusChip = (o) => { const [label, cls] = STATUS[`${o.kind}:${o.status}`] || [o.status, '']; return h('span', { class: `food-st ${cls}` }, o.fromRequest && o.kind === 'order' ? `${label} · da richiesta accettata` : label); };
 const linesList = (o) => h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', null, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title}`, l.price != null ? h('span', { class: 'tiny muted' }, ` · ${euro(l.price)}`) : null,
   l.delivered ? h('span', { class: `food-ld ${l.delivered >= l.qty ? 'ok' : 'part'}` }, l.delivered >= l.qty ? ' ✓ consegnato' : ` ${l.delivered} di ${l.qty} consegnati`) : null)));
+// Pagamento di un ordine: saldato, in attesa, pagato in parte (quanto resta) o da pagare.
+const payText = (o) => (o.settled ? `✓ Pagato ${euro(o.paid)}` : o.pending ? `⏳ ${euro(o.pending)} in attesa di conferma${o.paid ? ` · già pagati ${euro(o.paid)}` : ''}${o.rest ? ` · restano ${euro(o.rest)}` : ''}`
+  : o.paid ? `Pagato ${euro(o.paid)} di ${euro(o.total)} · restano ${euro(o.rest)}` : '');
+const payLabel = (o, first, rest) => (o.paid || o.pending ? `${rest} ${euro(o.rest)}` : `${first}${o.total ? ` ${euro(o.total)}` : ''}`);
 const accRow = (k, v, strong) => h('div', { class: `food-acc-row ${strong ? 'strong' : ''}` }, h('span', null, k), h('b', null, v));
 const dates = (o) => h('div', { class: 'tiny muted' }, `Inviato ${fmtDT(o.createdAt)}`, o.updatedAt > o.createdAt + 1000 ? ` · ultima modifica ${fmtDT(o.updatedAt)}` : '');
 const history = (o) => (o.log?.length > 1 ? h('details', { class: 'food-log' }, h('summary', { class: 'tiny' }, `Storico (${o.log.length})`),
@@ -74,14 +78,14 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
   // Si può pagare in anticipo se c'è un link (Satispay o PayPal) e resta qualcosa da pagare non già dichiarato.
   // Il pagamento è legato agli ordini che paga: un ordine pagato (anche in attesa di conferma) non si ripaga.
   const payable = () => { const d = S.data; return !!d && !d.ended && !d.account?.closed && !!(d.payLinks?.satispay || d.payLinks?.paypal); };
-  const canPayOrder = (o) => payable() && o.kind === 'order' && o.status === 'active' && !o.pay;
+  const canPayOrder = (o) => payable() && o.kind === 'order' && o.status === 'active' && o.payable;
   const unpaidOrders = () => (S.data?.orders || []).filter(canPayOrder);
   const canPay = () => unpaidOrders().length > 0;
   async function prepay(ids) {
     const d = S.data;
     const list = (ids ? d.orders.filter((o) => ids.includes(o.id)) : unpaidOrders()).filter(canPayOrder);
     if (!list.length) return toast('Risulta già pagato', 'ok');
-    const total = Math.round(list.reduce((t, o) => t + o.total, 0) * 100) / 100;
+    const total = Math.round(list.reduce((t, o) => t + (o.rest || 0), 0) * 100) / 100;
     const def = total;
     const opts = [['satispay', '📱 Satispay'], ['paypal', '🅿️ PayPal']].filter(([k]) => d.payLinks?.[k]);
     let method = opts[0]?.[0];
@@ -99,7 +103,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     await modal({
       title: list.length === 1 ? 'Paga l\'ordine' : `Paga ${list.length} ordini`, okLabel: '✓ Ho pagato', tall: true,
       body: h('div', { class: 'stack-sm' },
-        h('div', { class: 'food-acc' }, list.map((o) => accRow(`Ordine del ${fmtDT(o.createdAt)} · ${o.lines.map((l) => `${l.qty}× ${l.title}`).join(', ')}`, euro(o.total) || 'offerta libera')),
+        h('div', { class: 'food-acc' }, list.map((o) => accRow(`Ordine del ${fmtDT(o.createdAt)} · ${o.lines.map((l) => `${l.qty}× ${l.title}`).join(', ')}${o.paid || o.pending ? ` (resto di ${euro(o.total)})` : ''}`, euro(o.rest) || 'offerta libera')),
           list.length > 1 ? accRow('Totale', euro(total) || 'offerta libera', true) : null),
         h('p', { class: 'tiny muted' }, 'Offerta libera: il totale è solo indicativo. I contanti si danno alla cassa al ritiro.'),
         h('div', { class: 'field' }, h('span', null, 'Come paghi'), seg),
@@ -125,7 +129,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     const total = menu.reduce((t, m) => t + (m.price || 0) * (S.cart.get(m.id) || 0), 0);
     const count = [...S.cart.values()].reduce((a, b) => a + b, 0);
     const isRequest = S.editing ? S.editing.kind === 'request' : !d.open;
-    const canEdit = (o) => o.status !== 'cancelled' && !o.delivered && !o.pay && (o.kind === 'order' ? d.open : o.status === 'pending');
+    const canEdit = (o) => o.status !== 'cancelled' && !o.delivered && !o.paid && !o.pending && (o.kind === 'order' ? d.open : o.status === 'pending');
     const acc = d.account;
     return h('div', { class: 'food stack' },
       h('div', { class: 'food-head' }, h('h2', null, '🥪 Ristoro'), h('p', { class: 'small muted' }, 'Panini e bevande dei Giochi.')),
@@ -157,7 +161,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
       acc && (acc.items || acc.paid) ? h('div', { class: 'food-acc' }, h('div', { class: 'eyebrow' }, 'Il tuo conto'),
         accRow('Totale indicativo', euro(acc.total) || 'offerta libera'), accRow('Pagato', euro(acc.paid) || '0,00 €'),
         acc.pendingAmount ? accRow('In attesa di conferma', euro(acc.pendingAmount)) : null,
-        accRow(acc.closed ? 'Conto chiuso' : 'Resta da pagare', acc.closed ? '✓' : euro(Math.max(0, acc.toPay - acc.pendingAmount)) || '0,00 €', true),
+        accRow(acc.closed ? 'Conto chiuso' : 'Resta da pagare', acc.closed ? '✓' : euro(acc.toPay) || '0,00 €', true),
         accRow('Ritirato', acc.deliveredAll ? '✓ tutto' : `${acc.delivered} di ${acc.items}`),
         d.payments?.length ? h('ul', { class: 'food-hist food-my-pays' }, d.payments.map((x) => h('li', { class: x.pending ? 'wait' : x.rejected ? 'no' : '' },
           h('span', null, `${x.pending ? '⏳' : x.rejected ? '✗' : '💶'} ${fmtDT(x.at)} · ${x.methodLabel} ${euro(x.amount)}${x.pending ? ' · in attesa che la cassa confermi' : x.rejected ? ' · non arrivato: passa alla cassa' : ' · confermato'}`),
@@ -170,10 +174,10 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
           linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null, dates(o),
           o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Richiesta accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}`) : null,
           o.delivered ? h('div', { class: o.delivered >= o.items ? 'food-paid' : 'food-part' }, o.delivered >= o.items ? '✓ Consegnato' : `Consegnato in parte: ${o.delivered} di ${o.items}`) : null,
-          o.pay ? h('div', { class: o.pay.pending ? 'food-part' : 'food-paid' }, o.pay.pending ? `⏳ Pagato ${euro(o.pay.amount)} con ${o.pay.methodLabel} · in attesa che la cassa confermi` : `✓ Pagato ${euro(o.pay.amount)} · ${o.pay.methodLabel}`) : null,
+          payText(o) ? h('div', { class: o.settled ? 'food-paid' : 'food-part' }, payText(o)) : null,
           history(o),
           (canEdit(o) && !d.ended) || canPayOrder(o) ? h('div', { class: 'row-actions' },
-            canPayOrder(o) ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => prepay([o.id]) }, `💳 Paga${o.total ? ` ${euro(o.total)}` : ''}`) : null,
+            canPayOrder(o) ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => prepay([o.id]) }, `💳 ${payLabel(o, 'Paga', 'Paga il resto')}`) : null,
             canEdit(o) && !d.ended ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => edit(o) }, 'Modifica') : null,
             canEdit(o) && !d.ended ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => cancel(o) }, 'Annulla') : null) : null))) : h('p', { class: 'empty' }, 'Non hai ancora ordinato niente.')));
   }
@@ -244,10 +248,12 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
   const totalsTable = (list) => (list.length ? h('table', { class: 'food-totals' }, h('tbody', null, list.map((x) => h('tr', null, h('td', { class: 'mono' }, `${x.qty}×`), h('td', null, x.title), h('td', { class: 'tiny muted' }, x.offer ? euro(x.offer) : ''))))) : h('p', { class: 'tiny muted' }, 'Niente.'));
 
   // Paga: come ha pagato (contanti, Satispay, PayPal, con il QR da far inquadrare) e quanto. Prima o dopo il ritiro, anche a rate.
-  async function payDialog(p) {
+  // orders: gli ordini che paga (uno solo, o tutti quelli non pagati per «Paga tutto»).
+  async function payDialog(p, orders = p.orders.filter((o) => o.payable)) {
     const d = S.data;
     let method = 'contanti';
-    const amount = h('input', { class: 'input food-amount', inputmode: 'decimal', value: p.toPay ? String(p.toPay).replace('.', ',') : '', placeholder: 'es. 10' });
+    const sum = Math.round(orders.reduce((t, o) => t + (o.rest || 0), 0) * 100) / 100;
+    const amount = h('input', { class: 'input food-amount', inputmode: 'decimal', value: (orders.length ? sum : p.toPay) ? String(orders.length ? sum : p.toPay).replace('.', ',') : '', placeholder: 'es. 10' });
     const closes = h('input', { type: 'checkbox' });
     const note = h('input', { class: 'input', maxlength: 200, placeholder: 'Nota (facoltativa)' });
     const qrBox = h('div', { class: 'food-qr' });
@@ -263,13 +269,15 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
     await modal({
       title: `Paga · ${p.owner.name}`, okLabel: 'Registra il pagamento', tall: true,
       body: h('div', { class: 'stack-sm' },
-        h('div', { class: 'food-acc' }, accRow('Totale indicativo', euro(p.total) || 'offerta libera'), accRow('Già pagato', euro(p.paid) || '0,00 €'), accRow('Resta', euro(p.toPay) || '0,00 €', true)),
-        h('p', { class: 'tiny muted' }, p.deliveredAll ? 'Ha già ritirato tutto.' : p.delivered ? `Ha ritirato ${p.delivered} di ${p.items}: il pagamento è a parte, si può pagare prima o dopo.` : 'Non ha ancora ritirato niente: si può pagare prima o dopo.'),
+        h('div', { class: 'food-acc' }, orders.length
+          ? [...orders.map((o) => accRow(`Ordine del ${fmtDT(o.createdAt)} · ${o.lines.map((l) => `${l.qty}× ${l.title}`).join(', ')}${o.paid || o.pending ? ` (resto di ${euro(o.total)})` : ''}`, euro(o.rest) || 'offerta libera')), orders.length > 1 ? accRow('Totale', euro(sum) || 'offerta libera', true) : null]
+          : [accRow('Totale indicativo', euro(p.total) || 'offerta libera'), accRow('Già pagato', euro(p.paid) || '0,00 €'), accRow('Resta', euro(p.toPay) || '0,00 €', true)]),
+        h('p', { class: 'tiny muted' }, 'Il pagamento è a parte dalla consegna: si può pagare prima o dopo.'),
         h('div', { class: 'field' }, h('span', null, 'Come ha pagato'), seg), qrBox,
         h('label', { class: 'field' }, h('span', null, 'Quanto ha pagato adesso (€)'), amount),
-        h('label', { class: 'check' }, closes, h('span', null, 'Chiudi il conto: offerta libera, il resto non è dovuto')), note),
+        h('label', { class: 'check' }, closes, h('span', null, orders.length ? `Salda ${orders.length === 1 ? 'l\'ordine' : 'gli ordini'}: offerta libera, il resto non è dovuto` : 'Chiudi il conto: offerta libera, il resto non è dovuto')), note),
       onOk: async () => {
-        await api('POST', `${base()}/pay`, { ownerKey: p.key, method, amount: amount.value, closes: closes.checked, note: note.value });
+        await api('POST', `${base()}/pay`, { ownerKey: p.key, method, amount: amount.value, closes: closes.checked, note: note.value, orderIds: orders.map((o) => o.id) });
         toast(`${p.owner.name}: pagamento registrato`, 'ok'); load(true); return true;
       },
     });
@@ -283,14 +291,14 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       body: h('div', { class: 'stack-sm' },
         h('p', { class: 'small' }, `Controlla su ${x.methodLabel} che siano arrivati i soldi.`),
         h('label', { class: 'field' }, h('span', null, 'Importo arrivato (€)'), amount),
-        h('label', { class: 'check' }, closes, h('span', null, 'Chiudi il conto: offerta libera, il resto non è dovuto'))),
+        h('label', { class: 'check' }, closes, h('span', null, 'Salda l\'ordine: offerta libera, il resto non è dovuto'))),
       onOk: async () => { await api('POST', `${base()}/payments/${x.id}/confirm`, { amount: amount.value, closes: closes.checked }); toast(`${p.owner.name}: pagamento confermato`, 'ok'); load(true); return true; },
     });
   }
   // Consegna: tutto quello che manca, oppure solo una parte (quantità per voce).
-  async function deliverDialog(p) {
+  async function deliverDialog(p, orders = p.orders) {
     const rows = [];
-    for (const o of p.orders) for (const l of o.lines) {
+    for (const o of orders) for (const l of o.lines) {
       const left = l.qty - l.delivered;
       if (left <= 0) continue;
       const r = { lineId: l.id, left, qty: left };
@@ -302,7 +310,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       rows.push(r);
     }
     await modal({
-      title: `Consegna · ${p.owner.name}`, okLabel: 'Consegnato', tall: true,
+      title: orders.length === 1 && p.orders.length > 1 ? `Consegna · ordine del ${fmtDT(orders[0].createdAt)}` : `Consegna · ${p.owner.name}`, okLabel: 'Consegnato', tall: true,
       body: h('div', { class: 'stack-sm' }, h('p', { class: 'tiny muted' }, 'Lascia le quantità che consegni adesso: quello che resta si consegna dopo. Il pagamento è a parte.'), h('ul', { class: 'food-deliver' }, rows.map((r) => r.el))),
       onOk: async () => {
         const lines = rows.filter((r) => r.qty > 0).map((r) => ({ lineId: r.lineId, qty: r.qty }));
@@ -370,15 +378,24 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
           h('div', { class: 'food-pend-actions' },
             h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => confirmDialog(p, x) }, '✓ Arrivato'),
             h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: async () => { if (await dialog({ title: 'Pagamento non arrivato?', text: `${p.owner.name}: ${x.methodLabel} ${euro(x.amount)}. Riceverà un avviso di passare alla cassa.`, okLabel: 'Non arrivato', cancelLabel: 'No', danger: true })) call('POST', `/payments/${x.id}/reject`, {}, 'Segnato come non arrivato'); } }, 'Non arrivato'))))) : null,
-        h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', null,
+        h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', { class: 'food-porder' },
           h('div', { class: 'tiny muted' }, `${o.fromRequest ? 'Ordine da richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`,
-            o.pay ? h('span', { class: `food-ld ${o.pay.pending ? 'part' : 'ok'}` }, o.pay.pending ? ` · ⏳ pagato ${euro(o.pay.amount)}, da verificare` : ` · ✓ pagato ${euro(o.pay.amount)}`) : null),
+            null),
           h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', { class: l.delivered >= l.qty ? 'got' : '' }, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title} `, lineDone(l)))),
-          o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null))),
+          o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null,
+          // Ogni ordine si consegna e si paga per conto suo.
+          h('div', { class: 'food-porder-state' },
+            o.delivered >= o.items ? h('span', { class: 'food-st food-st-ok' }, '📦 Consegnato') : h('span', { class: 'food-st food-st-wait' }, `📦 ${o.delivered ? `${o.delivered} di ${o.items} consegnati` : 'Da consegnare'}`),
+            h('span', { class: `food-st ${o.settled ? 'food-st-ok' : o.paid || o.pending ? 'food-st-wait' : ''}` }, `💶 ${payText(o) || `Da pagare${o.total ? ` ${euro(o.total)}` : ''}`}`)),
+          o.delivered < o.items || (o.payable && !p.closed) ? h('div', { class: 'food-porder-actions' },
+            o.delivered < o.items ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => deliverDialog(p, [o]) }, '📦 Consegna') : null,
+            o.payable && !p.closed ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => payDialog(p, [o]) }, `💶 ${payLabel(o, 'Paga', 'Ricevi il resto')}`) : null) : null))),
         hist.length ? h('details', { class: 'food-log' }, h('summary', { class: 'tiny' }, `Consegne e pagamenti (${hist.length})`), h('ul', { class: 'food-hist' }, hist)) : null,
         h('div', { class: 'food-person-actions' },
-          p.toDeliver > 0 ? h('button', { class: 'btn btn-primary food-pay-btn', type: 'button', onclick: () => deliverDialog(p) }, `📦 Consegna${p.delivered ? ' il resto' : ''}`) : null,
-          !p.paidAll ? h('button', { class: `btn ${p.toDeliver > 0 ? '' : 'btn-primary'} food-pay-btn`, type: 'button', onclick: () => payDialog(p) }, `💶 Paga${p.toPay ? ` · ${euro(p.toPay)}` : ''}`) : null));
+          // Per il totale: tutto quello che manca, di tutti gli ordini.
+          p.orders.filter((o) => o.delivered < o.items).length > 1 ? h('button', { class: 'btn btn-primary food-pay-btn', type: 'button', onclick: () => deliverDialog(p) }, '📦 Consegna tutto') : null,
+          p.orders.filter((o) => o.payable).length > 1 && !p.closed ? h('button', { class: 'btn food-pay-btn', type: 'button', onclick: () => payDialog(p) }, `💶 Paga tutto · ${euro(p.orders.filter((o) => o.payable).reduce((t, o) => t + o.rest, 0))}`) : null,
+          !p.paidAll && !p.orders.some((o) => o.payable) && !p.pendingPayments.length ? h('button', { class: 'btn food-pay-btn', type: 'button', onclick: () => payDialog(p, []) }, `💶 Incassa il resto${p.toPay ? ` · ${euro(p.toPay)}` : ''}`) : null));
     };
     const filters = [['dacons', 'Da consegnare'], ['dapagare', 'Da pagare'], ['fatti', 'Fatti']];
     if (!filters.some(([k]) => k === S.dtab)) S.dtab = 'dacons';
