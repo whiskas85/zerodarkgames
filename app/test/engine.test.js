@@ -3480,20 +3480,49 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   assert.equal(FD.removeItem(g.id, birra.id, 'addetto').archived, true);
   assert.equal(FD.forOwner(me).menu.length, 1);
   assert.equal(FD.forStaff(g.id).requests[0].lines[0].title, 'Birra');
-  // Consegna e pagamento: per persona, con i suoi ordini (ordine + richiesta accettata) e il totale indicativo.
+  // Ritiro e pagamento separati: per persona, con i suoi ordini (ordine + richiesta accettata) e il totale indicativo.
   let del = FD.forStaff(g.id).delivery;
   assert.equal(del.length, 1);
   assert.equal(del[0].orders.length, 2);
-  assert.equal(del[0].toPayTotal, 22);
+  assert.equal(del[0].total, 22);
+  assert.equal(del[0].toPay, 22);
+  assert.equal(del[0].toDeliver, 5);
+  // Paga prima del ritiro, a rate.
   assert.throws(() => FD.pay(g.id, 'p1', { method: 'bitcoin', amount: 10 }, 'addetto'), /Scegli/);
-  const pay = FD.pay(g.id, 'p1', { method: 'satispay', amount: '20' }, 'addetto');
+  assert.throws(() => FD.pay(g.id, 'p1', { method: 'contanti', amount: 0 }, 'addetto'), /quanto/);
+  const pay = FD.pay(g.id, 'p1', { method: 'satispay', amount: '10' }, 'addetto');
   assert.equal(pay.methodLabel, 'Satispay');
   del = FD.forStaff(g.id).delivery;
+  assert.equal(del[0].paid, 10);
+  assert.equal(del[0].toPay, 12);
+  assert.equal(del[0].paidAll, false);
+  // Consegna parziale: una porchetta; l'ordine non si cambia più.
+  const porLine = del[0].orders.find((o) => o.kind === 'order').lines[0];
+  assert.throws(() => FD.deliver(g.id, 'p1', { lines: [{ lineId: porLine.id, qty: 9 }] }, 'addetto'), /mancano solo/);
+  const d1 = FD.deliver(g.id, 'p1', { lines: [{ lineId: porLine.id, qty: 1 }] }, 'addetto');
+  del = FD.forStaff(g.id).delivery;
+  assert.equal(del[0].delivered, 1);
+  assert.equal(del[0].toDeliver, 4);
+  assert.equal(del[0].deliveries.length, 1);
+  // Annulla la consegna e poi consegna tutto.
+  FD.undeliver(g.id, d1.id, 'addetto');
+  assert.equal(FD.forStaff(g.id).delivery[0].delivered, 0);
+  FD.deliver(g.id, 'p1', { all: true }, 'addetto');
+  del = FD.forStaff(g.id).delivery;
+  assert.equal(del[0].deliveredAll, true);
+  assert.equal(del[0].done, false);
+  assert.throws(() => FD.deliver(g.id, 'p1', { all: true }, 'addetto'), /Niente/);
+  // Il resto dopo il ritiro: offerta libera, lascia 8 e il conto si chiude.
+  FD.pay(g.id, 'p1', { method: 'contanti', amount: 8, closes: true }, 'addetto');
+  del = FD.forStaff(g.id).delivery;
+  assert.equal(del[0].paid, 18);
+  assert.equal(del[0].toPay, 0);
   assert.equal(del[0].done, true);
-  assert.equal(del[0].payments[0].amount, 20);
-  assert.throws(() => FD.pay(g.id, 'p1', { method: 'contanti', amount: 1 }, 'addetto'), /Niente da pagare/);
+  const acc = FD.forOwner(me).account;
+  assert.equal(acc.paid, 18);
+  assert.equal(acc.deliveredAll, true);
   FD.unpay(g.id, pay.id, 'addetto');
-  assert.equal(FD.forStaff(g.id).delivery[0].done, false);
+  assert.equal(FD.forStaff(g.id).delivery[0].paid, 8);
   // Link per pagare: solo https.
   assert.throws(() => FD.setPayLinks(g.id, { paypal: 'paypal.me/x' }, 'addetto'), /https/);
   assert.deepEqual(FD.setPayLinks(g.id, { paypal: 'https://paypal.me/zdt', satispay: '' }, 'addetto'), { paypal: 'https://paypal.me/zdt', satispay: null });

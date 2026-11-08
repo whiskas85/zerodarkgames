@@ -425,7 +425,31 @@ body.no-scroll { overflow: hidden; }
 .food-cash { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 10px 12px; border: 2px solid var(--ok); border-radius: 10px; background: var(--ok-soft); }
 .food-cash strong { font-size: 24px; }
 .food-cash .tiny { grid-column: 1 / -1; }
-.food-cash .btn { grid-column: 2; grid-row: 1; }
+.food-cash-owed { text-align: right; }
+.food-cash-owed strong { color: var(--brass); }
+.food-cash .food-cash-link { grid-column: 1 / -1; justify-self: start; }
+.food-search { font-size: 16px; }
+.food-person[hidden], .food-admin .empty[hidden] { display: none; }
+.food-person .food-order-head { flex-wrap: nowrap; }
+.food-person .food-who { flex: 1; min-width: 0; }
+.food-hist > li .btn { flex: none; white-space: nowrap; }
+.food-tabs-ritiro button { flex-wrap: wrap; gap: 4px; padding: 8px 4px; font-size: 13px; line-height: 1.15; text-align: center; }
+.food-person-state { display: flex; flex-wrap: wrap; gap: 6px; }
+.food-person-state .food-st { text-transform: none; letter-spacing: 0; font-size: 13px; }
+.food-owed { display: grid; justify-items: end; line-height: 1.1; }
+.food-person-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.food-lines li.got { opacity: .65; }
+.food-ld { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.food-ld.ok { color: var(--ok); }
+.food-ld.part { color: var(--warn); }
+.food-part { padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--warn); color: var(--warn); font-weight: 600; font-size: 14px; }
+.food-hist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.food-hist > li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.food-acc { display: grid; gap: 4px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--paper); }
+.food-acc-row { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.food-acc-row.strong b { font-size: 20px; color: var(--brass); }
+.food-deliver { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.food-deliver-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; }
 .food-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .food-person { display: grid; gap: 8px; padding: 12px; border: 2px solid var(--brass); border-radius: 10px; background: var(--paper); }
 .food-person.done { border-color: var(--line); opacity: .8; }
