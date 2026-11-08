@@ -20,8 +20,8 @@ const allowed = () => (C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) =>
 // Ristoro: tutti nel Consiglio ordinano per sé; l'addetto (permesso «Ristoro») gestisce menù, ordini e richieste.
 const canFood = () => C.me?.role === 'master' || C.me?.perms?.includes('ristoro');
 const foodOrder = createFoodOrder({ base: '/api/v/food', query: () => `?g=${C.gameId}`, rerender: () => render() });
-const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render() });
-setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (['ristoro-gestione', 'ristoro-menu', 'ristoro-consegna'].includes(tab())) foodAdmin.load(); }, 20000);
+const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render(), methodsHref: '#ristoro-pagamenti' });
+setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (['ristoro-gestione', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti'].includes(tab())) foodAdmin.load(); }, 20000);
 const tab = () => location.hash.slice(1);
 window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); window.scrollTo(0, 0); });
 
@@ -105,8 +105,9 @@ function _render() {
     : t === 'ristoro' ? [C.games.length > 1 ? gameSelect() : null, foodOrder.view()]
     : t === 'ristoro-gestione' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('orders')]
     : t === 'ristoro-menu' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('menu')]
-    : t === 'ristoro-consegna' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('delivery')] : viewHome();
-  const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro · ordina', 'ristoro-gestione': 'Ristoro · ordini e richieste', 'ristoro-menu': 'Ristoro · menù', 'ristoro-consegna': 'Ristoro · consegna e pagamenti' }[t] || (C.me.displayName || C.me.username);
+    : t === 'ristoro-consegna' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('delivery')]
+    : t === 'ristoro-pagamenti' && canFood() ? [C.games.length > 1 ? gameSelect() : null, foodAdmin.view('methods')] : viewHome();
+  const sub = { doni: 'Lancio doni', annunci: 'Annunci', ristoro: 'Ristoro · ordina', 'ristoro-gestione': 'Ristoro · ordini e richieste', 'ristoro-menu': 'Ristoro · menù', 'ristoro-consegna': 'Ristoro · ritiro', 'ristoro-pagamenti': 'Ristoro · metodi di pagamento' }[t] || (C.me.displayName || C.me.username);
   mount($root, header(sub), updateBar(), h('main', { class: 'content council' }, body));
 }
 
@@ -144,7 +145,8 @@ function viewHome() {
     { label: 'Panini e bevande', hint: 'Ordina per te', ico: '🥪', href: () => '#ristoro' },
     canFood() ? { label: 'Menù', hint: 'Voci e prezzi indicativi', ico: '📋', href: () => '#ristoro-menu' } : null,
     canFood() ? { label: 'Ordini e richieste', hint: 'Ora limite e da preparare', ico: '🧾', href: () => '#ristoro-gestione' } : null,
-    canFood() ? { label: 'Consegna e pagamenti', hint: 'Chi ha ordinato, paga', ico: '💶', href: () => '#ristoro-consegna' } : null,
+    canFood() ? { label: 'Ritiro', hint: 'Chi ha ordinato, consegna e paga', ico: '💶', href: () => '#ristoro-consegna' } : null,
+    canFood() ? { label: 'Metodi di pagamento', hint: 'Contanti, Satispay, PayPal', ico: '💳', href: () => '#ristoro-pagamenti' } : null,
   ].filter(Boolean);
   return h('div', { class: 'tile-groups' },
     C.games.length > 1 ? gameSelect() : null,

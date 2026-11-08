@@ -405,6 +405,9 @@ body.no-scroll { overflow: hidden; }
 /* Gestione del menù: testo a tutta larghezza, pulsanti sotto su una riga (↑ ↓ a sinistra, Modifica e Togli a destra). */
 .food-admin-item { display: grid; gap: 10px; }
 .food-admin-item .food-item-main strong { font-size: 18px; }
+.food-method { display: grid; gap: 10px; align-items: stretch; }
+.food-method .food-item-main strong { font-size: 18px; }
+.food-method .food-st { flex: none; }
 .food-admin-actions { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .food-admin-actions .btn { min-width: 40px; }
 .food-admin-actions .btn:nth-child(3) { margin-left: auto; }
