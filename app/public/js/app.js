@@ -4,6 +4,7 @@ import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
+import { createFoodOrder } from './food-ui.js';
 import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS, deviceIdOf } from './lib.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
@@ -274,6 +275,8 @@ function connect() {
     proximity: () => { vibrate([80]); toast('Presenza rilevata nelle vicinanze', 'info', 6000); refresh(); },
     // Segugio: la coppia seguita ha conquistato un Altare. Avviso a tutto schermo.
     hound: (x) => { showHound(x); refresh(); },
+    // Ristoro: menù, ora limite o una richiesta decisa dal Consiglio.
+    food: () => { if (route().view === 'ristoro') foodOrder.load(); },
     announcement: (a) => {
       vibrate([220, 100, 220, 100, 220]);
       beep();
@@ -564,7 +567,7 @@ function render() {
     const bodyFn = ({
       home: viewHome, altari: viewAltars, altare: () => viewAltar(arg, query), frammenti: viewFragments, codici: viewNotebook,
       timer: viewTimers, annunci: viewAnnouncements, messaggi: viewMessages, regolamento: viewRules, impostazioni: viewSettings, traccar: viewTraccar,
-      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, installa: viewInstall, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking, radio: viewRadio,
+      avvisi: viewNotices, ice: viewIce, profilo: viewProfile, statoarmi: viewTestArmi, indicazioni: viewGuide, testarmi: viewTestArmi, accettazione: viewAcceptance, mappa: isElect() ? viewElectMap : () => viewMap(arg), campo: viewElectField, incarichi: viewElectTasks, dono: () => viewGift(arg), doni: viewMyGifts, uscita: () => viewExit(arg), skill: () => (arg ? viewSkillDetail(arg) : viewSkills()), scontri: viewCombat, alleanze: viewAlliances, eventi: () => viewEvents(arg), beacon: viewBeacon, installa: viewInstall, mine: viewMines, punteggio: viewElectScore, zone: viewZonesInfo, compagno: viewPartner, voto: viewVoteRanking, radio: viewRadio, ristoro: () => foodOrder.view(),
     }[view] || viewHome);
     // Gioco iniziato senza essere stati accettati all'arrivo: non si partecipa (restano regolamento, ICE, profilo).
     const body = S.state?.notAccepted && !['regolamento', 'impostazioni', 'ice', 'profilo', 'accettazione', 'avvisi', 'annunci'].includes(view) ? viewNotAccepted() : bodyFn();
@@ -1615,6 +1618,7 @@ function viewLobbyHome(st) {
       ['Prima del via', 'g-prep', prepTiles()],
       ['Gioco', 'g-game', [tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', [tile('#/avvisi', 'Avvisi', mdi('bell', 28), unreadNot || null, unreadNot), tile('#/annunci', 'Annunci', '✉', unreadAnn || null, unreadAnn)]],
+      foodGroup(),
       ['Info e impostazioni', 'g-info', [...infoTiles(), h('button', { class: 'tile', onclick: () => openTour() }, h('span', { class: 'tile-ico', 'aria-hidden': 'true' }, '▶'), h('span', null, 'Il tour dell\'app'))]]),
     pl.accessCode ? h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Il tuo codice personale'), h('div', { class: 'mono big-text' }, pl.accessCode),
       h('p', { class: 'muted small' }, 'Serve per entrare da un altro telefono. Tenetelo per voi.')) : null);
@@ -1664,6 +1668,7 @@ function viewElectHome(st) {
         tile('#/mappa', 'Mappa del campo', mdi('map', 28)),
         tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
+      foodGroup(),
       ['Info e impostazioni', 'g-info', infoTiles()]),
     h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, `Gli Eletti (${st.team.members.length})`),
       h('ul', { class: 'elect-members' }, st.team.members.map((m) => h('li', null, m.name, m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null)))));
@@ -1742,9 +1747,13 @@ function viewHome() {
       tile('#/frammenti', 'Frammenti', '❖', `${owned}/${total || '?'}`),
       tile('#/timer', 'Timer', '◷', S.timers.filter((t) => !t.done).length || null)]],
       ['Comunicazioni', 'g-com', comTiles(unreadNot, unreadAnn, unreadMsg)],
+      foodGroup(),
       ['Info e impostazioni', 'g-info', infoTiles()]));
 }
 
+// Ristoro: sezione a parte (panini e bevande, offerta libera); compare quando il Consiglio ha preparato il menù.
+const foodOrder = createFoodOrder({ base: '/api/food', rerender: () => render() });
+const foodGroup = () => (S.state?.food ? ['Ristoro', 'g-food', [tile('#/ristoro', 'Panini e bevande', '🥪', S.state.food.open ? null : 'solo richieste')]] : ['', '', []]);
 // La home a gruppi: prima del via (blu), gioco (giallo), comunicazioni, info e impostazioni. I gruppi vuoti spariscono.
 function tileGroups(...groups) {
   return h('div', { class: 'tile-groups' }, groups.map(([title, cls, tiles]) => {

@@ -15,7 +15,9 @@ const ACTIONS = [
   { key: 'doni', label: 'Lancio doni', hint: 'Fai comparire i doni', ico: '✦', href: () => '#doni' },
   { key: 'comunicazioni', label: 'Annunci', hint: 'Un annuncio a tutte le coppie', ico: '✉', href: () => '#annunci' },
 ];
-const allowed = () => (C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) => C.me?.perms?.includes(a.key)));
+// Ristoro: tutti nel Consiglio possono ordinare per sé; l'addetto (permesso «Ristoro») gestisce menù e ordini.
+const RISTORO = () => ({ key: '_ristoro', label: 'Ristoro', hint: C.me?.role === 'master' || C.me?.perms?.includes('ristoro') ? 'Menù, ordini e richieste · ordina per te' : 'Ordina panini e bevande', ico: '🥪', href: () => `/ristoro${C.gameId ? `?g=${C.gameId}` : ''}${C.me?.role === 'master' || C.me?.perms?.includes('ristoro') ? '#gestione' : ''}` });
+const allowed = () => [...(C.me?.role === 'master' ? ACTIONS : ACTIONS.filter((a) => C.me?.perms?.includes(a.key))), RISTORO()];
 const tab = () => location.hash.slice(1);
 window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); });
 

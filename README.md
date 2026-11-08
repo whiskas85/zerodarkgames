@@ -71,6 +71,22 @@ Un gruppo per partita con un numero qualsiasi di persone, divise in **squadre**.
 **Spostamenti tra Eletti e Settori:** in *Squadre Eletti* «↔ Settore…» porta un Eletto in una coppia (in una incompleta, o al posto di un Legato che diventa Eletto nella stessa squadra); nelle schede delle coppie «→ Eletti…» fa il contrario, da solo o in scambio. L'accesso personale segue la persona.
 Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza Altari e Doni** (con scanner, GPS e foto), mappa del campo, messaggi con la regia (a tutti gli Eletti o solo alla propria squadra), avvisi, annunci, timer e regolamento. Non hanno Sigillo, non usano gli Altari e non entrano in classifica.
 
+## Ristoro (panini e bevande)
+
+Il Consiglio prepara un menù di panini e bevande e coppie, Eletti e Consiglio ordinano dall'app. I prezzi sono solo **un'offerta indicativa: si paga in offerta libera**, e l'app lo dice sempre.
+
+- **Addetto**: in Consiglio Zero il master dà il permesso **Ristoro**. L'addetto, e il master, gestisce tutto dalla pagina `/ristoro` (scheda Gestione) o dalla regia (voce **Ristoro**):
+  - le voci del menù (titolo, descrizione, prezzo indicativo, ordine);
+  - l'**ora limite** per ordinare;
+  - gli ordini e le richieste d'ordine, in due schede separate, con il riepilogo «da preparare».
+- **Chi ordina**:
+  - Coppie ed Eletti: nell'app, sezione **Ristoro** in home e nel menu.
+  - Consiglio: pagina `/ristoro`, scheda «Ordina per te».
+  - Si sceglie quante ne vuoi di ogni voce, si aggiunge una nota e si invia.
+  - I propri ordini si vedono, si modificano e si annullano fino all'ora limite.
+- **Dopo l'ora limite** non si ordina più: si può solo mandare una **richiesta d'ordine**, segnalata come tale a chi la manda e all'addetto. L'addetto la accetta o la rifiuta, e la risposta arriva con una notifica. Gli ordini già fatti da quel momento non si cambiano più.
+- **Storico**: ogni ordine e ogni richiesta tengono la data dell'invio e dell'ultima modifica, più lo storico di ogni passaggio (inviato, modificato, annullato, accettato, rifiutato).
+
 ## Canali radio
 
 In **Impostazioni → Canali radio** la regia assegna canale e riserva al **Consiglio** (regia ed Eletti), a ogni **squadra di Eletti** e a ogni **coppia**. Nell'app ognuno vede solo i suoi, nella scheda «📻 I vostri canali radio» in home e nella pagina **Canali radio** (Info e impostazioni, anche dal menu) con banda e numero in grande (es. «LPD 12»), la frequenza in MHz, l'eventuale tono e il canale d'emergenza: la coppia solo i propri (privati, le altre coppie non li ricevono mai), l'Eletto quelli della sua squadra e del Consiglio. Il canale d'emergenza (SOS), con la sua **riserva**, resta nella barra in basso: si imposta solo qui, nella sezione rossa in cima («Canale d'emergenza (SOS)»), e la riserva compare nella finestra EMERGENZA, negli avvisi e nella pagina Canali radio dell'app. Accanto a ogni campo (anche quello d'emergenza) il pulsante 📻 apre l'elenco dei canali **PMR446** (16) e **LPD433** (69) con la ricerca per numero o frequenza; i canali già assegnati altrove sono disabilitati con il nome di chi li usa. Si può sempre scrivere a mano, per esempio per aggiungere il tono CTCSS. Il pulsante **⚡ Assegna in automatico…** assegna i canali in fila da un canale di partenza (LPD di base o PMR) a Consiglio, squadre di Eletti e coppie (e, se spuntata, all'emergenza), scegliendo se principali, di riserva o tutti e due (in quel caso principale e riserva di ogni riga sono uno dopo l'altro); salta i canali già usati altrove e mostra prima l'anteprima e su quale canale si arriva.

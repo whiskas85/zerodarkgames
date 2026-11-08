@@ -3437,3 +3437,47 @@ test('voto del pubblico acceso: le coppie formate dopo entrano da sole tra le vo
   assert.equal(q.get('SELECT votable FROM teams WHERE id = ?', t2).votable, 1);
   VO.updateVote(g.id, { enabled: false }, 'test');
 });
+
+test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta dopo, storico delle modifiche', () => {
+  const FD = require('../src/food');
+  const g = G.createGame({ name: 'Ristoro' }, 'test');
+  const panino = FD.saveItem(g.id, { title: 'Panino porchetta', description: 'Con salsa verde', price: '5' }, 'addetto');
+  const birra = FD.saveItem(g.id, { title: 'Birra', price: '3,5' }, 'addetto');
+  assert.equal(birra.price, 3.5);
+  assert.throws(() => FD.saveItem(g.id, { title: '' }, 'addetto'), /nome/);
+  const me = { key: 'p1', name: 'Lince', kind: 'legato', sub: 'X Settore Ombra', gameId: g.id };
+  assert.equal(FD.forOwner(me).menu.length, 2);
+  // Prima dell'ora limite: ordine, modificabile e annullabile; ogni passaggio resta nello storico.
+  const o = FD.placeOrder(me, { lines: [{ itemId: panino.id, qty: 2 }, { itemId: birra.id, qty: 1 }], note: 'senza cipolla' });
+  assert.equal(o.kind, 'order');
+  assert.equal(o.status, 'active');
+  assert.equal(o.total, 13.5);
+  assert.throws(() => FD.placeOrder(me, { lines: [] }), /vuoto/);
+  const o2 = FD.updateOrder(me, o.id, { lines: [{ itemId: panino.id, qty: 3 }] });
+  assert.equal(o2.items, 3);
+  assert.deepEqual(o2.log.map((x) => x.action), ['created', 'updated']);
+  assert.ok(o2.updatedAt >= o2.createdAt);
+  // Gli ordini degli altri non si toccano.
+  assert.throws(() => FD.updateOrder({ ...me, key: 'p2' }, o.id, { lines: [{ itemId: birra.id, qty: 1 }] }), /non trovato/);
+  // Passata l'ora limite: l'ordine è bloccato e un nuovo invio è una richiesta d'ordine.
+  FD.setDeadline(g.id, Date.now() - 1000, 'addetto');
+  assert.throws(() => FD.cancelOrder(me, o.id), /ora limite/);
+  const r = FD.placeOrder(me, { lines: [{ itemId: birra.id, qty: 2 }] });
+  assert.equal(r.kind, 'request');
+  assert.equal(r.status, 'pending');
+  // L'addetto vede ordini e richieste separati, con le quantità da preparare.
+  let s = FD.forStaff(g.id);
+  assert.equal(s.orders.length, 1);
+  assert.equal(s.requests.length, 1);
+  assert.equal(s.counts.pending, 1);
+  assert.deepEqual(s.totals.orders.map((x) => [x.title, x.qty]), [['Panino porchetta', 3]]);
+  // Accettata, la richiesta entra nel totale; poi non si modifica più.
+  FD.decideRequest(g.id, r.id, 'accept', 'addetto');
+  s = FD.forStaff(g.id);
+  assert.deepEqual(s.totals.all.map((x) => [x.title, x.qty]), [['Panino porchetta', 3], ['Birra', 2]]);
+  assert.throws(() => FD.updateOrder(me, r.id, { lines: [{ itemId: birra.id, qty: 1 }] }), /accettata/);
+  // Una voce già ordinata esce dal menù ma gli ordini restano.
+  assert.equal(FD.removeItem(g.id, birra.id, 'addetto').archived, true);
+  assert.equal(FD.forOwner(me).menu.length, 1);
+  assert.equal(FD.forStaff(g.id).requests[0].lines[0].title, 'Birra');
+});

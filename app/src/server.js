@@ -25,6 +25,7 @@ const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
 const MN = require('./mines');
+const FD = require('./food');
 const SND = require('./sounds');
 
 const PORT = Number(process.env.PORT || 8080);
@@ -421,7 +422,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   // Partita finita e una nuova aperta alle iscrizioni: l'app invita a iscriversi.
   const openNew = req.account && G.getGame(req.player?.gameId ?? req.team.gameId).status === 'ended'
     && q.get("SELECT 1 FROM games g WHERE g.registrationOpen = 1 AND g.status = 'draft' AND NOT EXISTS (SELECT 1 FROM players p WHERE p.gameId = g.id AND p.accountId = ?)", req.account.id);
-  if (!req.team) return { ...G.lobbyState(req.player), guide: F.teamGuide(req.player.gameId), account: A.publicAccount(req.account), council: councilFlag(req), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)) };
+  if (!req.team) return { ...G.lobbyState(req.player), guide: F.teamGuide(req.player.gameId), account: A.publicAccount(req.account), council: councilFlag(req), openNew: !!openNew, tracking: F.trackingStatus(q.get('SELECT * FROM players WHERE id = ?', req.player.id)), food: FD.teamSummary(req.player.gameId) };
   const st = G.teamState(req.team, req.player);
   st.map = F.teamMap(req.team);
   st.guide = st.map?.guide || [];
@@ -444,6 +445,7 @@ app.get('/api/team/state', needMember, wrap((req) => {
   st.mineMark = MN.coupleMark(req.team);
   if (req.team.kind === 'elect') st.field = F.electSummary(req.team, req.player);
   // Canali radio: solo i propri (coppia) o quelli della squadra e del Consiglio (Eletti).
+  st.food = FD.teamSummary(req.team.gameId);
   st.radio = G.radioFor(req.team, req.player ? q.get('SELECT * FROM players WHERE id = ?', req.player.id) : null);
   st.account = A.publicAccount(req.account);
   st.appVersion = APP_VERSION;
@@ -528,6 +530,24 @@ app.post('/api/team/beacon', needTeam, wrap((req) => Z.launchBeacon(req.team, re
 // Mine traccianti degli Eletti: si posano dove si è, si ricaricano alla Base.
 app.post('/api/team/mines', needTeam, teamRateLimit, wrap((req) => MN.placeMine(req.team, req.player, req.body || {})));
 app.post('/api/team/mines/reload', needTeam, teamRateLimit, wrap((req) => MN.reloadMines(req.team, req.player, req.body || {})));
+// Ristoro (coppie ed Eletti): chi ordina è la persona (accesso personale) o, con il codice della coppia, la coppia.
+function foodOwnerApp(req) {
+  if (req.player) {
+    const t = req.player.teamId ? q.get('SELECT t.kind, s.name AS sectorName, s.roman FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', req.player.teamId) : null;
+    const sq = req.player.squadId ? q.get('SELECT name FROM elect_squads WHERE id = ?', req.player.squadId) : null;
+    return { key: `p${req.player.id}`, name: req.player.nickname || req.player.name, gameId: req.player.gameId,
+      kind: t?.kind === 'elect' ? 'eletto' : 'legato', sub: t?.kind === 'elect' ? `Eletti${sq ? ` · Squadra ${sq.name}` : ''}` : t?.sectorName ? `${t.roman} Settore ${t.sectorName}` : 'Legato' };
+  }
+  if (req.team) {
+    const t = q.get('SELECT t.*, s.name AS sectorName, s.roman FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', req.team.id);
+    return { key: `t${t.id}`, name: t.kind === 'elect' ? 'Eletti del Consiglio' : `Coppia ${t.roman || ''} ${t.sectorName || ''}`.trim(), gameId: t.gameId, kind: t.kind === 'elect' ? 'eletto' : 'legato', sub: t.displayName || null };
+  }
+  throw new HttpError(401, 'Accesso richiesto');
+}
+app.get('/api/food', needMember, wrap((req) => FD.forOwner(foodOwnerApp(req))));
+app.post('/api/food/orders', needMember, teamRateLimit, wrap((req) => FD.placeOrder(foodOwnerApp(req), req.body || {})));
+app.put('/api/food/orders/:oid', needMember, teamRateLimit, wrap((req) => FD.updateOrder(foodOwnerApp(req), req.params.oid, req.body || {})));
+app.delete('/api/food/orders/:oid', needMember, teamRateLimit, wrap((req) => FD.cancelOrder(foodOwnerApp(req), req.params.oid)));
 app.post('/api/team/beacon/:zid/complete', needTeam, wrap((req) => Z.completeBeacon(req.team, req.player, Number(req.params.zid), req.body || {})));
 app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
@@ -1018,6 +1038,24 @@ app.use('/api/m', m);
 const v = express.Router();
 v.use(needStaff);
 // Le partite «Creata» restano solo in regia: le app di campo (Soglia, Test repliche, Consiglio) non le vedono.
+// Ristoro per il Consiglio: ognuno ordina per sé (persona dell'organizzazione) nella partita scelta.
+const foodOwnerStaff = (req) => {
+  const gameId = Number(req.query.g || req.body?.gameId);
+  if (!gameId || !q.get('SELECT 1 FROM games WHERE id = ?', gameId)) throw new HttpError(400, 'Scegli la partita');
+  return { key: `u${req.user.id}`, name: req.user.displayName || req.user.username, gameId, kind: 'consiglio', sub: req.user.role === 'master' ? 'Regia' : 'Consiglio Zero' };
+};
+v.get('/food', wrap((req) => FD.forOwner(foodOwnerStaff(req))));
+v.post('/food/orders', wrap((req) => FD.placeOrder(foodOwnerStaff(req), req.body || {})));
+v.put('/food/orders/:oid', wrap((req) => FD.updateOrder(foodOwnerStaff(req), req.params.oid, req.body || {})));
+v.delete('/food/orders/:oid', wrap((req) => FD.cancelOrder(foodOwnerStaff(req), req.params.oid)));
+// Addetto al ristoro (permesso «ristoro», o il master): menù, ora limite, ordini e richieste.
+v.get('/games/:id/food', needPerm('ristoro'), wrap((req) => FD.forStaff(Number(req.params.id))));
+v.post('/games/:id/food/items', needPerm('ristoro'), wrap((req) => FD.saveItem(Number(req.params.id), req.body || {}, sActor(req))));
+v.put('/games/:id/food/items/:iid', needPerm('ristoro'), wrap((req) => FD.saveItem(Number(req.params.id), req.body || {}, sActor(req), req.params.iid)));
+v.delete('/games/:id/food/items/:iid', needPerm('ristoro'), wrap((req) => FD.removeItem(Number(req.params.id), req.params.iid, sActor(req))));
+v.post('/games/:id/food/items/:iid/move', needPerm('ristoro'), wrap((req) => FD.moveItem(Number(req.params.id), req.params.iid, Number(req.body?.dir) || 1)));
+v.put('/games/:id/food/deadline', needPerm('ristoro'), wrap((req) => FD.setDeadline(Number(req.params.id), req.body?.deadline ?? null, sActor(req))));
+v.post('/games/:id/food/orders/:oid/decision', needPerm('ristoro'), wrap((req) => FD.decideRequest(Number(req.params.id), req.params.oid, req.body?.decision, sActor(req))));
 v.get('/games', (req, res) => res.json(q.all(`SELECT id, name, status FROM games${req.user.role === 'master' ? '' : " WHERE status != 'created'"} ORDER BY id DESC`)));
 v.get('/games/:id/teams', needPerm('soglia'), wrap(async (req) => {
   const g = G.getGame(Number(req.params.id));
@@ -1088,6 +1126,7 @@ app.get('/soglia', sendPage('soglia.html'));
 app.get('/armi', sendPage('armi.html'));
 app.get('/accettazione', sendPage('armi.html'));
 app.get('/consiglio', sendPage('consiglio.html'));
+app.get('/ristoro', sendPage('ristoro.html'));
 app.get('/iscrizione', sendPage('iscrizione.html'));
 app.get('/tabellone', sendPage('tabellone.html'));
 app.get('/vota', sendPage('vota.html'));
