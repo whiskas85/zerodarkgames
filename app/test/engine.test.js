@@ -857,6 +857,11 @@ test('Altari senza coppia: creati subito, Sigillo solo dal tradimento e ultimo i
   const revs = q.all('SELECT * FROM revelations WHERE gameId = ? ORDER BY scheduledMin', g0.id);
   assert.equal(revs.length, 3);
   assert.ok(freeSectors.has(revs.at(-1).sectorId));
+  // Il Sigillo di un Settore senza coppia non si può conquistare: il suo tradimento non salta mai,
+  // ed è in calendario prima dell'ultima mezz'ora (lì i tradimenti rimasti si saltano).
+  const gg = G.getGame(g0.id);
+  assert.ok(revs.every((r) => r.scheduledMin <= gg.durationMin - 30));
+  assert.throws(() => G.skipRevelation(revs.at(-1).id, 'test'), /senza coppia/);
   assert.ok(G.readiness(G.getGame(g0.id)).ok, JSON.stringify(G.readiness(G.getGame(g0.id)).issues));
   // Taccuino: gli Altari senza coppia compaiono solo dal via; la mappa delle coppie è vuota fino al via.
   const [A] = teamsOf(g0.id);
