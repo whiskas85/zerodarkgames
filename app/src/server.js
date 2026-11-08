@@ -212,6 +212,8 @@ app.get('/tiles/:z/:x/:y.png', async (req, res) => {
   } catch (e) { res.status(e.status || 504).end(); }
 });
 app.get('/api/health', (_req, res) => { res.set('Access-Control-Allow-Origin', '*'); res.json({ ok: true, env: process.env.ZDG_ENV || 'production' }); });
+// Versione in uso: le pagine senza stato in tempo reale (app del Consiglio) la controllano per proporre l'aggiornamento.
+app.get('/api/version', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ version: APP_VERSION }); });
 app.get('/api/time', (_req, res) => res.json({ now: Date.now() }));
 
 // ---- autenticazione staff
