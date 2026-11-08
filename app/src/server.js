@@ -964,6 +964,7 @@ m.delete('/tasks/:tid', wrap((req) => { F.deleteTask(req.params.tid, actor(req))
 m.get('/gift-types', (_req, res) => res.json(F.giftTypes()));
 // Testi e tempi di Skill e Doni della partita: modificabili solo in preparazione.
 m.get('/games/:id/catalog', wrap((req) => S.editableCatalog(gameId(req))));
+m.put('/games/:id/gift-odds', wrap((req) => S.setGiftOdds(gameId(req), req.body || {}, actor(req))));
 m.put('/games/:id/catalog/:kind/:item', wrap((req) => S.editCatalog(gameId(req), req.params.kind, req.params.item, req.body || {}, actor(req))));
 m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || {}, actor(req))));
 m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || {}, actor(req)); return { ok: true }; }));

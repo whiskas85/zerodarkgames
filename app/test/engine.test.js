@@ -3611,3 +3611,32 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   FD.unpay(g.id, cl.id, 'addetto');
   assert.equal(FD.forOwner(me).orders.find((x) => x.id === ob.id).pay, null);
 });
+
+test('Dono a caso: rarità e probabilità (doppia estrazione), peso 0 = mai', () => {
+  const S = require('../src/skills');
+  const g = G.createGame({ name: 'Probabilità' }, 'test');
+  let o = S.giftOdds(G.getGame(g.id));
+  // Le probabilità effettive sommano al 100%; i comuni sono i più probabili, i leggendari i meno.
+  assert.ok(Math.abs(o.gifts.reduce((t, x) => t + x.pct, 0) - 100) < 0.1);
+  const pctOf = (id) => o.gifts.find((x) => x.id === id).pct;
+  assert.ok(pctOf('chiave') > pctOf('maestro'));
+  assert.ok(pctOf('maestro') > pctOf('furto'));
+  assert.equal(o.gifts.find((x) => x.id === 'frammento').tier, 'leggendario');
+  // Peso 0: non esce mai; rarità a 0: nessuno dei suoi doni esce.
+  o = S.setGiftOdds(g.id, { gifts: { chiave: { weight: 0 } }, tiers: { leggendario: 0 } }, 'test');
+  assert.equal(pctOf.call(null, 'chiave'), pctOf('chiave'));
+  assert.equal(o.gifts.find((x) => x.id === 'chiave').pct, 0);
+  assert.equal(o.gifts.find((x) => x.id === 'furto').pct, 0);
+  const seen = new Map();
+  for (let i = 0; i < 3000; i++) { const t = S.drawGift(G.getGame(g.id)).id; seen.set(t, (seen.get(t) || 0) + 1); }
+  assert.ok(!seen.has('chiave'));
+  assert.ok(!seen.has('furto') && !seen.has('archivio') && !seen.has('frammento'));
+  assert.ok(seen.get('seconda') > (seen.get('sovraccarico') || 0));
+  assert.throws(() => S.setGiftOdds(g.id, { tiers: { comune: 150 } }, 'test'), /non valida/);
+  assert.throws(() => S.setGiftOdds(g.id, { gifts: { seconda: { tier: 'mitico' } } }, 'test'), /Rarità/);
+  // Tutto a zero: si torna a un dono qualsiasi; reset: valori predefiniti.
+  S.setGiftOdds(g.id, { tiers: { comune: 0, raro: 0, epico: 0, leggendario: 0 } }, 'test');
+  assert.ok(S.drawGift(G.getGame(g.id)).id);
+  o = S.setGiftOdds(g.id, { reset: true }, 'test');
+  assert.equal(o.tiers.find((r) => r.id === 'comune').pct, 60);
+});
