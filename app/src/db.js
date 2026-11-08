@@ -813,6 +813,18 @@ addColumn('games', 'emergencyRadioBackup', 'TEXT');
 addColumn('games', 'emergencyRadioOnBackup', 'INTEGER NOT NULL DEFAULT 0');
 // Probabilità del Dono a caso (rarità e peso di ogni dono), per partita: JSON { tiers, gifts }.
 addColumn('games', 'giftOdds', 'TEXT');
+// Minigiochi per sbloccare gli Altari e completare i Beacon: per partita ('off', 'random' o un gioco) e per Altare.
+addColumn('games', 'altarMinigame', "TEXT NOT NULL DEFAULT 'off'");
+addColumn('games', 'beaconMinigame', "TEXT NOT NULL DEFAULT 'off'");
+addColumn('points', 'minigame', 'TEXT');
+db.exec(`
+CREATE TABLE IF NOT EXISTS minigame_runs (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE, ref TEXT NOT NULL,
+  teamId INTEGER, playerId INTEGER, game TEXT NOT NULL, params TEXT NOT NULL, answer TEXT,
+  createdAt INTEGER NOT NULL, notBefore INTEGER, doneAt INTEGER, passedAt INTEGER, usedAt INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_minigame_runs ON minigame_runs(gameId, ref);
+`);
 
 // Canali radio: canale e canale di riserva per coppia (privati: li vede solo la coppia), per squadra di Eletti e per
 // il Consiglio (regia ed Eletti). scope: 'team' | 'squad' | 'council' (refId 0).

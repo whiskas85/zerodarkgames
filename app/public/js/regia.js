@@ -1953,6 +1953,21 @@ async function assignDialog(kind, item, move) {
   if (ok) { toast(move ? 'Spostamento assegnato: la squadra è stata avvisata' : 'Incarico assegnato: la squadra è stata avvisata', 'ok'); load(); loadField(false); }
 }
 
+// Minigiochi per sbloccare gli Altari (coppie) e completare i Beacon (Eletti).
+const MG_OPTS = [['off', 'Nessun minigioco'], ['random', '🎲 A caso'], ['simon', 'Ripeti il segnale'], ['memoria', 'Ricorda il codice'], ['tempo', 'Ferma al momento giusto'], ['ordine', 'Tocca in ordine']];
+const mgSelect = (value, onchange, inherit = null) => h('select', { class: 'input input-sm mg-select', onchange: (e) => onchange(e.target.value) },
+  inherit ? h('option', { value: '', selected: !value }, `Come la partita (${(MG_OPTS.find((o) => o[0] === inherit) || MG_OPTS[0])[1]})`) : null,
+  MG_OPTS.map(([v, l]) => h('option', { value: v, selected: value === v }, l)));
+function minigameCard(ms) {
+  const g = ms.game;
+  const save = (key, v) => call('PATCH', `/api/m/games/${R.gameId}`, { [key]: v }, 'Minigioco salvato');
+  return section('Minigiochi',
+    h('p', { class: 'muted tiny' }, 'Prova veloce sul telefono prima di aprire un Altare (dopo la scansione, prima del Sigillo) o prima di completare un Beacon degli Eletti. «A caso» ne sceglie uno ogni volta. Chi sbaglia riprova dopo 10 secondi. Ogni Altare può avere il suo minigioco (qui sotto, nella sua scheda).'),
+    h('div', { class: 'mg-settings' },
+      h('label', { class: 'field' }, h('span', null, '⛬ Sblocco degli Altari'), mgSelect(g.altarMinigame || 'off', (v) => save('altarMinigame', v))),
+      h('label', { class: 'field' }, h('span', null, '📡 Beacon degli Eletti'), mgSelect(g.beaconMinigame || 'off', (v) => save('beaconMinigame', v)))));
+}
+
 function viewAltars() {
   const ms = R.ms;
   const pre = PRE.includes(ms.clock.status);
@@ -1983,6 +1998,7 @@ function viewAltars() {
             l.kind === 'soglia' ? h('a', { class: 'btn btn-sm btn-primary', href: `/regia/stampa/uscita/${R.gameId}`, target: '_blank' }, 'Stampa QR di uscita') : null),
           l.kind === 'soglia' ? h('p', { class: 'tiny muted' }, 'Il QR di uscita va appeso alla Soglia: una coppia con la Parola intera e senza alleati lo inquadra ed esfiltra da sola (il suo Sigillo viene rivelato a tutti). Resta valida anche la verifica dell\'Ufficiale.') : null))))),
 
+    minigameCard(ms),
     sectionActions(`Altari (${ms.points.length}) · piazzati ${placed}/${ms.points.length}`, [
       h('button', { class: 'btn btn-sm', disabled: !pre, onclick: () => call('POST', G('/points'), {}, 'Altari allineati alle coppie') }, 'Allinea alle coppie'),
       h('a', { class: 'btn btn-sm', href: '#mappa' }, 'Vedi in mappa'),
@@ -2002,6 +2018,7 @@ function viewAltars() {
           h('div', { class: 'eyebrow' }, `${p.roman} · Settore ${p.sectorName}`),
           p.free ? h('span', { class: 'chip chip-warn', title: 'Nessuna coppia custodisce questo Sigillo: arriva solo dal tradimento' }, 'Senza coppia') : null,
           placementChips(p, isPlaced),
+          h('label', { class: 'field mg-altar' }, h('span', { class: 'tiny' }, '🎲 Minigioco'), mgSelect(p.minigame || '', (v) => call('PUT', `/api/m/games/${R.gameId}/points/${p.id}/minigame`, { minigame: v }, 'Minigioco dell\'Altare salvato'), ms.game.altarMinigame || 'off')),
           h('input', { class: 'input input-sm', 'data-keep': `pl-${p.id}`, value: p.label, onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { label: e.target.value }, 'Nome aggiornato') }),
           h('input', { class: 'input input-sm', 'data-keep': `pn-${p.id}`, value: p.locationNote || '', placeholder: 'Posizione nel bosco (solo regia)', onchange: (e) => call('PATCH', `/api/m/points/${p.id}`, { locationNote: e.target.value }, 'Posizione salvata') }),
           p.fragmentId ? h('div', { class: 'frag-edit' },

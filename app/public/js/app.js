@@ -6,6 +6,7 @@ import { createField } from './field-ui.js';
 import { omnibar, matches } from './omnibar.js';
 import { createFoodOrder } from './food-ui.js';
 import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS, deviceIdOf } from './lib.js';
+import { withMinigame, playMinigame } from './minigame-ui.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -439,6 +440,8 @@ function handleResult(item, res, fromQueue) {
     return;
   }
   if (item.kind === 'unlock') {
+    // Il Consiglio chiede prima un minigioco: lo gioca chi ha premuto (vedi unlockWith), qui niente esito.
+    if (res.minigame) return;
     S.altarResults[item.payload.qrToken] = { ok: res.ok, message: res.message, fragment: res.fragment, expired: res.expired, at: Date.now() };
     store.set('zdg_altar_results', S.altarResults);
     if (res.label) rememberVisit(item.payload.qrToken, { label: res.label });
@@ -2040,7 +2043,7 @@ async function launchBeacon() {
   T.line('> zone --match polygon');
   await sleep(250);
   let z;
-  try { z = await api('POST', '/api/team/beacon', pos); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, /all'interno/.test(e.message || '')); }
+  try { z = await withMinigame(() => api('POST', '/api/team/beacon', pos)); if (!z) return beaconFail(T, 'Minigioco annullato: Beacon non lanciato'); } catch (e) { return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message, /all'interno/.test(e.message || '')); }
   if (z.choose) return beaconChoose(z.targets, pos, T);
   beaconStart(z, T);
 }
@@ -2071,7 +2074,7 @@ async function beaconChoose(targets, pos, T) {
     for (const b of T.choices.querySelectorAll('button')) b.disabled = true;
     T.line(`> beacon --target ${t.kind}:${t.id}`);
     let z;
-    try { z = await api('POST', '/api/team/beacon', { ...pos, target: { kind: t.kind, id: t.id } }); } catch (e) { T.choices.hidden = true; return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message); }
+    try { z = await withMinigame(() => api('POST', '/api/team/beacon', { ...pos, target: { kind: t.kind, id: t.id } })); if (!z) { T.choices.hidden = true; return beaconFail(T, 'Minigioco annullato: Beacon non lanciato'); } } catch (e) { T.choices.hidden = true; return beaconFail(T, e.offline ? 'Serve la rete per lanciare il Beacon' : e.message); }
     T.choices.hidden = true;
     T.status.textContent = '';
     beaconStart(z, T);
@@ -2132,7 +2135,8 @@ async function beaconSequence(z, T = beaconTerminal()) {
   try { pos = await getGps(); } catch (e) { return beaconFail(T, e.message); }
   let res;
   try {
-    res = await api('POST', `/api/team/beacon/${z.id}/complete`, pos);
+    res = await withMinigame(() => api('POST', `/api/team/beacon/${z.id}/complete`, pos));
+    if (!res) return beaconFail(T, 'Minigioco annullato: zona non accesa', false);
   } catch (e) { return beaconFail(T, e.message, false); }
   vibrate([120, 60, 120, 60, 400]);
   T.line(`>> ZONA ATTIVA: ${z.name.toUpperCase()}`, 'bt-good');
@@ -3975,6 +3979,8 @@ function viewAltar(token, query) {
 
   const unlockWith = async (code) => {
     const res = await act('unlock', { qrToken: token, code }, `Sigillo per ${v.label || 'Altare'}`);
+    // Minigioco della regia: superato, si pronuncia di nuovo il Sigillo (in automatico).
+    if (res?.minigame) { if (await playMinigame(res.minigame)) return unlockWith(code); render(); return; }
     if (res?.ok) manualAltar.delete(token);
     render();
   };
