@@ -4425,6 +4425,52 @@ const onlineDot = (o) => h('span', { class: `online-dot ${o || 'off'}`, title: o
 // La tabella si aggiorna da sola mentre la pagina è aperta (e a ogni cambiamento che arriva dal server).
 setInterval(() => { if (tab() === 'notifiche' && !document.hidden && R.gameId && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }, 15000);
 
+// Tasto destro su una persona: menù con «Copia per WhatsApp» (stato in grassetto con emoji, pronto da incollare).
+function readyText(p, current) {
+  const best = (p.devices || []).find((d) => !d.unknown);
+  const app = best ? { installed: best.installed, version: best.version, os: best.os } : p.app;
+  const OS = { ios: 'iPhone', android: 'Android', desktop: 'computer' };
+  const old = app && current && app.version && app.version !== current;
+  const appLine = !app ? '❌ non ancora aperta' : `${app.installed ? '✅ installata' : '⚠️ aperta dal browser, non installata'}${OS[app.os] ? ` (${OS[app.os]})` : ''}${old ? ' · ⚠️ versione vecchia: chiudila e riaprila' : ''}`;
+  const push = { on: '✅ attive', shared: '⚠️ solo sul telefono della coppia', off: '❌ non attive' }[p.state] || '❌ non attive';
+  const trk = { ok: '✅ verificato', stale: '❌ non manda la posizione', off: '⚠️ spento', none: '❌ da attivare' }[p.traccar] || '❌ da attivare';
+  const ice = p.ice == null ? '➖ (accesso senza account)' : p.ice ? '✅ compilato' : '❌ non compilato';
+  const safety = p.safetyAckAt ? '✅ letto' : '❌ non letto';
+  const todo = [];
+  if (!app || !app.installed) todo.push('📲 Installa l\'app sulla schermata Home');
+  if (old) todo.push('🔄 Chiudi e riapri l\'app per avere l\'ultima versione');
+  if (p.state !== 'on') todo.push('🔔 Nell\'app premi «Attiva le notifiche»');
+  if (['couple', 'elect'].includes(p.group) && p.traccar !== 'ok') todo.push('📡 Attiva Traccar e fai la prova dalla pagina Traccar dell\'app');
+  if (p.ice === false) todo.push('🆘 Compila i dati ICE (contatto di emergenza)');
+  if (!p.safetyAckAt) todo.push('⚠️ Leggi l\'avviso di sicurezza e premi «Ho letto e compreso»');
+  return [
+    `*🎯 Pronti per la gara · ${p.name}${p.nickname ? ` «${p.nickname}»` : ''}*${p.where ? `\n_${p.where}_` : ''}`,
+    '',
+    `📱 *App:* ${appLine}`,
+    `🔔 *Notifiche:* ${push}`,
+    ['couple', 'elect'].includes(p.group) ? `📡 *Traccar:* ${trk}` : null,
+    `🆘 *ICE:* ${ice}`,
+    `🛡️ *Avviso di sicurezza:* ${safety}`,
+    '',
+    todo.length ? `*Da sistemare:*\n${todo.map((t) => `• ${t}`).join('\n')}` : '*✅ Tutto a posto, sei pronto!* 💪',
+    todo.length ? `\n👉 ${R.baseUrl || location.origin}` : null,
+  ].filter((x) => x != null).join('\n');
+}
+function rowMenu(e, items) {
+  e.preventDefault();
+  document.querySelector('.ctx-menu')?.remove();
+  const close = () => { menu.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esc); window.removeEventListener('scroll', close, true); };
+  const away = (ev) => { if (!menu.contains(ev.target)) close(); };
+  const esc = (ev) => { if (ev.key === 'Escape') close(); };
+  const menu = h('div', { class: 'ctx-menu', role: 'menu' }, items.map(([label, fn]) => h('button', { type: 'button', role: 'menuitem', onclick: () => { close(); fn(); } }, label)));
+  document.body.append(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8))}px`;
+  setTimeout(() => { document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', esc); window.addEventListener('scroll', close, true); });
+}
+const copyText = (text, ok) => navigator.clipboard?.writeText(text).then(() => toast(ok, 'ok'), () => toast('Copia non riuscita', 'error'));
+
 function viewPushReport() {
   const rep = R.pushRep;
   if (!rep || rep.gameId !== R.gameId || Date.now() - rep.at > 15000) { if (!R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } }
@@ -4448,7 +4494,8 @@ function viewPushReport() {
     h('tbody', null, list.flatMap((p) => (staff
       ? h('tr', null, h('td', null, onlineDot(p.online), ' ', h('strong', null, p.displayName || p.username), h('span', { class: 'tiny muted' }, ` @${p.username}`)), h('td', null, p.role === 'master' ? 'master' : 'validatore'), h('td', null, PUSH_STATE[p.state](p)))
       // Verde: tutto a posto. Verdino: app installata, notifiche e Traccar ok, manca solo sicurezza (o ICE).
-      : [h('tr', { class: p.ready ? 'row-ready' : p.almost ? 'row-almost' : '' },
+      : [h('tr', { class: p.ready ? 'row-ready' : p.almost ? 'row-almost' : '', title: 'Tasto destro: copia lo stato per WhatsApp',
+        oncontextmenu: (e) => rowMenu(e, [['💬 Copia per WhatsApp', () => copyText(readyText(p, rep.currentVersion), `Stato di ${p.name} copiato: incollalo su WhatsApp`)]]) },
         h('td', null, p.ready ? h('span', { class: 'chip chip-ok', title: 'Tutto a posto' }, '✓')
           : p.almost ? h('span', { class: 'chip chip-almost', title: `Essenziali a posto (app, notifiche, Traccar). Manca: ${p.todo.join(', ')}` }, `✓ manca ${p.todo.join(' e ')}`)
             : h('span', { class: 'chip chip-warn', title: `Da sistemare: ${p.todo.join(', ')}` }, p.must.length)),
