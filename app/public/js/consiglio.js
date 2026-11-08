@@ -93,8 +93,24 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 const updateBar = () => (C.newVersion ? h('button', { type: 'button', class: 'update-banner', onclick: () => location.reload() }, h('strong', null, '⟳ Nuova versione dell\'app'), h('span', null, ' · tocca qui per aggiornare')) : null);
 function fitTop() { const tb = $root.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--top-h', `${tb.offsetHeight}px`); }
 
+// Ridisegnare (aggiornamento ogni 20 s, nuova versione…) non deve cancellare quello che si sta scrivendo:
+// i campi con data-keep tengono valore, focus e cursore.
 function render() {
+  const keep = {};
+  for (const el of $root.querySelectorAll('[data-keep]')) keep[el.dataset.keep] = el.value;
+  const a = document.activeElement;
+  const focus = a?.dataset?.keep || null;
+  let sel = null;
+  try { sel = focus ? [a.selectionStart, a.selectionEnd] : null; } catch { /* select */ }
+  const page = location.hash;
+  const same = render.page === page;
+  render.page = page;
   _render();
+  if (same) {
+    for (const el of $root.querySelectorAll('[data-keep]')) if (keep[el.dataset.keep] != null && !el.dataset.fresh) el.value = keep[el.dataset.keep];
+    const el = focus && $root.querySelector(`[data-keep="${focus}"]`);
+    if (el) { el.focus({ preventScroll: true }); try { if (sel) el.setSelectionRange(...sel); } catch { /* select */ } }
+  }
   fitTop();
 }
 function _render() {
@@ -181,11 +197,11 @@ function viewGifts() {
 }
 
 function viewAnnounce() {
-  const text = h('textarea', { class: 'input', rows: 5, maxlength: 500, placeholder: 'Il testo arriva a tutte le coppie della partita' });
+  const text = h('textarea', { class: 'input', rows: 5, maxlength: 500, placeholder: 'Il testo arriva a tutte le coppie della partita', 'data-keep': 'announce', value: C.announce || '', oninput: (e) => { C.announce = e.target.value; } });
   const send = async () => {
     if (!text.value.trim()) return toast('Scrivi il testo', 'error');
     if (!await dialog({ title: 'Mandare l\'annuncio?', text: text.value.trim(), okLabel: 'Manda' })) return;
-    try { await api('POST', `/api/v/games/${C.gameId}/announce`, { text: text.value }); toast('Annuncio mandato', 'ok'); text.value = ''; } catch (e) { toast(e.message, 'error'); }
+    try { await api('POST', `/api/v/games/${C.gameId}/announce`, { text: text.value }); toast('Annuncio mandato', 'ok'); text.value = ''; C.announce = ''; } catch (e) { toast(e.message, 'error'); }
   };
   return [back(), h('h2', null, 'Annunci'), gameSelect(), text, h('button', { class: 'btn btn-primary btn-block', onclick: send }, 'Manda a tutti')];
 }
