@@ -3686,3 +3686,41 @@ test('minigiochi: sblocco dell\'Altare dopo il minigioco (con attesa dopo un err
   assert.ok(MG.gate({ g: G.getGame(g.id), ref: 'beacon:zone:1', teamId: A.id, playerId: 99 }).minigame);
   assert.equal(MG.cleanMode('xyz'), 'off');
 });
+
+test('voto del pubblico: blocco della navigazione privata (impronta), tetto giornaliero per rete, pulizia con anteprima', async () => {
+  const VO = require('../src/vote');
+  const g = setupGame(3);
+  const [A, B] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  VO.updateVote(g.id, { enabled: true }, 'test');
+  for (const t of [A, B]) VO.setVotable(t.id, true, 'test');
+  const fp = 'ab'.repeat(16);
+  const t0 = Date.now();
+  // Stesso telefono in navigazione privata: cookie nuovo ma stessa rete e stessa impronta = cambio di voto.
+  await VO.castVote({ teamId: A.id, device: 'priv-1', ip: '5.5.5.5', fp }, t0);
+  await VO.castVote({ teamId: A.id, device: 'priv-2', ip: '5.5.5.5', fp }, t0 + 4 * 60000);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).n, 1);
+  // Tetto giornaliero (qui 2): il terzo voto nuovo dalla stessa rete in 24 ore è respinto.
+  VO.updateVote(g.id, { netDailyMax: 2 }, 'test');
+  await VO.castVote({ teamId: A.id, device: 'other-1', ip: '5.5.5.5', fp: 'cd'.repeat(16) }, t0 + 10 * 60000);
+  await assert.rejects(VO.castVote({ teamId: A.id, device: 'other-2', ip: '5.5.5.5' }, t0 + 60 * 60000), /24 ore/);
+  VO.updateVote(g.id, { netDailyMax: 0 }, 'test');
+  // Voti a ripetizione (inseriti come arrivavano prima del blocco): 5 dalla stessa rete ad A, uno per rete a B.
+  for (let i = 0; i < 5; i++) q.run("INSERT INTO votes (gameId, teamId, device, net, weight, ua, createdAt) VALUES (?, ?, ?, 'rete-ripetuta', 1, 'iPhone Safari', ?)", g.id, A.id, `r${i}`, t0 + i * 60000);
+  for (let i = 0; i < 4; i++) q.run('INSERT INTO votes (gameId, teamId, device, net, weight, ua, createdAt) VALUES (?, ?, ?, ?, 1, ?, ?)', g.id, B.id, `b${i}`, `rete-${i}`, 'Android', t0 + i * 60000);
+  const s = VO.suspicious(g.id, { level: 'strong' });
+  assert.equal(s.groups.length, 1);
+  assert.equal(s.groups[0].annul.length, 4);
+  assert.equal(s.groups[0].strong, true);
+  // Anteprima: A scende, B sale, il podio cambia.
+  const a = s.preview.list.find((x) => x.id === A.id);
+  const b = s.preview.list.find((x) => x.id === B.id);
+  assert.ok(a.after.pct < a.before.pct);
+  assert.ok(b.after.pct > b.before.pct);
+  assert.equal(a.before.rank, 1);
+  assert.equal(b.after.rank, 1);
+  // Solo una coppia: niente gruppi per B; «tutte» prende anche le reti con 2 voti.
+  assert.equal(VO.suspicious(g.id, { teamId: B.id, level: 'all' }).groups.length, 0);
+  VO.annulVotes(g.id, s.ids, 'test');
+  assert.equal(VO.suspicious(g.id, { level: 'strong' }).groups.length, 0);
+  assert.equal(VO.simulate(g.id, []).removed, 0);
+});

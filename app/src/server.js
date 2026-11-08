@@ -364,7 +364,7 @@ app.get('/api/public/team-logo/:tid', (req, res, next) => {
   try { res.sendFile(G.teamLogoFile(req.params.tid), { headers: { 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } }); } catch (e) { next(e); }
 });
 app.get('/api/public/vote', (req, res) => res.json(VO.publicState(voteDevice(req, res), req.account || null, req.ip)));
-app.post('/api/public/vote', voteLimit, wrap(async (req, res) => VO.castVote({ teamId: req.body?.teamId, token: req.body?.token, device: voteDevice(req, res), account: req.account || null, ip: req.ip, ua: req.headers['user-agent'] })));
+app.post('/api/public/vote', voteLimit, wrap(async (req, res) => VO.castVote({ teamId: req.body?.teamId, token: req.body?.token, device: voteDevice(req, res), account: req.account || null, ip: req.ip, ua: req.headers['user-agent'], fp: req.body?.fp })));
 
 // ---- iscrizione pubblica
 app.get('/api/public/games', (_req, res) => res.json(openGames()));
@@ -878,6 +878,8 @@ m.delete('/teams/:tid/logo', wrap((req) => { G.clearTeamLogo(req.params.tid, act
 m.patch('/games/:id/vote', wrap((req) => VO.updateVote(gameId(req), req.body || {}, actor(req))));
 m.post('/teams/:tid/votable', wrap((req) => { VO.setVotable(req.params.tid, !!req.body?.on, actor(req)); return { ok: true }; }));
 m.get('/games/:id/vote/team/:tid', wrap((req) => VO.voteAnalysis(gameId(req), req.params.tid)));
+m.post('/games/:id/vote/preview', wrap((req) => VO.simulate(gameId(req), req.body?.ids)));
+m.post('/games/:id/vote/suspicious', wrap((req) => VO.suspicious(gameId(req), req.body || {})));
 m.post('/games/:id/vote/annul', wrap((req) => VO.annulVotes(gameId(req), req.body?.ids, actor(req))));
 m.post('/games/:id/vote/award', wrap((req) => VO.awardPrizes(gameId(req), actor(req))));
 m.post('/teams/:tid/read', wrap((req) => {

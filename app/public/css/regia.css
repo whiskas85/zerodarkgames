@@ -1491,3 +1491,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .va-hour i { display: block; height: 10px; border-radius: 4px; background: var(--brass, #d1ad62); min-width: 2px; }
 .va-row-bad td { background: color-mix(in srgb, var(--danger, #e5484d) 12%, transparent); }
 .va-off td { opacity: .45; text-decoration: line-through; }
+
+/* Pulizia dei voti e anteprima delle percentuali */
+.vp-table tr.vp-hit td { background: color-mix(in srgb, var(--danger, #e5484d) 10%, transparent); }
+.vc-groups { display: grid; gap: 6px; }
+.vc-team { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--paper); }
+.vc-team > summary { cursor: pointer; }
+.vc-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.vc-list li.strong { color: var(--danger, #e5484d); }
+.vote-blocks { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.vote-cap { width: 70px; display: inline-block; }

@@ -727,6 +727,8 @@ addColumn('games', 'voteOpensAt', 'INTEGER');
 addColumn('games', 'voteClosesAt', 'INTEGER');
 addColumn('games', 'voteTitle', 'TEXT');
 addColumn('games', 'votePrize1', 'TEXT');
+// Blocco dei voti a ripetizione: impronta del browser (uguale anche in navigazione privata) e tetto giornaliero per rete.
+addColumn('games', 'voteNetDailyMax', 'INTEGER NOT NULL DEFAULT 3');
 addColumn('games', 'votePrize2', 'TEXT');
 addColumn('games', 'votePrize3', 'TEXT');
 addColumn('games', 'votePrizedAt', 'INTEGER');
@@ -744,6 +746,7 @@ CREATE TABLE IF NOT EXISTS votes (
 CREATE INDEX IF NOT EXISTS ix_votes_game ON votes(gameId, annulledAt);
 CREATE INDEX IF NOT EXISTS ix_votes_net ON votes(gameId, net, createdAt);
 `);
+addColumn('votes', 'fp', 'TEXT');
 
 // Zone NO PLAY: chi ci entra (coppia, o singolo Eletto) ha 30 secondi per uscire, poi la regia viene avvisata.
 db.exec(`

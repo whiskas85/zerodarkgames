@@ -182,6 +182,17 @@ function showWait(until) {
 }
 function el(tag, cls) { const x = document.createElement(tag); if (cls) x.className = cls; return x; }
 
+// Impronta del browser: caratteristiche del telefono che non cambiano in navigazione privata (schermo, lingua,
+// fuso orario, processore…). Serve al server per riconoscere lo stesso telefono che vota di nuovo.
+async function browserPrint() {
+  try {
+    const n = navigator;
+    const parts = [screen.width, screen.height, devicePixelRatio, screen.colorDepth, Intl.DateTimeFormat().resolvedOptions().timeZone, (n.languages || [n.language]).join(','),
+      n.hardwareConcurrency || 0, n.deviceMemory || 0, n.maxTouchPoints || 0, n.platform || '', n.vendor || '', new Date().getTimezoneOffset()].join('|');
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts));
+    return [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch { return null; }
+}
 async function vote(teamId) {
   if (busy) return;
   // Voto nuovo da una rete che deve ancora aspettare: niente richiesta, subito il popup.
@@ -189,7 +200,7 @@ async function vote(teamId) {
   if (S.turnstile && !tsToken) { toast('Conferma prima di non essere un robot (il riquadro qui sotto)', 'err'); document.getElementById('ts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   busy = true; render();
   try {
-    const r = await fetch('/api/public/vote', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamId, token: tsToken }) });
+    const r = await fetch('/api/public/vote', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamId, token: tsToken, fp: await browserPrint() }) });
     const data = await r.json();
     if (!r.ok) {
       if (r.status === 429 && data.waitUntil) { if (data.serverNow) skew = data.serverNow - Date.now(); S.netWait = data.waitUntil; showWait(data.waitUntil); throw null; }
