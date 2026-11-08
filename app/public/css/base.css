@@ -347,3 +347,50 @@ body.no-scroll { overflow: hidden; }
 .go-sub { padding: 0 16px; font-family: var(--f-mono); letter-spacing: .14em; text-transform: uppercase; font-size: 14px; color: var(--muted); }
 @keyframes go-pop { from { transform: scale(1.35); opacity: .3; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .go-num.pop { animation: none; } }
+
+/* ---- Ristoro (app, Consiglio e regia) ---- */
+.food h2 { margin: 0; }
+.food h3 { margin: 6px 0 0; font-size: 20px; }
+.food-head p { margin: 4px 0 0; }
+.food-free { display: grid; gap: 2px; padding: 10px 12px; border: 2px dashed var(--brass); border-radius: 8px; background: rgba(209, 173, 98, .1); }
+.food-free strong { color: var(--brass); text-transform: uppercase; letter-spacing: .06em; }
+.food-deadline { display: grid; gap: 4px; padding: 10px 12px; border-radius: 8px; border-left: 6px solid var(--ok); background: var(--ok-soft); }
+.food-deadline.closed { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.food-deadline.closed strong { color: var(--warn); }
+.food-editing { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 2px solid var(--brass); border-radius: 8px; }
+.food-menu, .food-orders { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.food-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 8px; background: var(--paper); }
+.food-item.on { border-color: var(--brass); }
+.food-item-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.food-price { color: var(--brass); }
+.food-qty { display: flex; align-items: center; gap: 8px; }
+.food-qty b { min-width: 22px; text-align: center; font-size: 18px; }
+.food-qty .btn { min-width: 40px; font-size: 18px; }
+.food-cart { position: sticky; bottom: 70px; z-index: 5; display: grid; gap: 8px; padding: 12px; border: 2px solid var(--blood); border-radius: 10px; background: var(--paper); box-shadow: 0 6px 20px rgba(0, 0, 0, .4); }
+.food-cart.is-request { border-color: var(--warn); }
+.food-cart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.food-req-note { margin: 0; color: var(--warn); font-weight: 600; }
+.food-order { display: grid; gap: 6px; padding: 10px 12px; border: 2px solid var(--line); border-left: 6px solid var(--ok); border-radius: 8px; background: var(--paper); }
+.food-order.request { border-left-color: var(--warn); }
+.food-order.off { opacity: .6; border-left-color: var(--line); }
+.food-order-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.food-lines { margin: 0; padding-left: 18px; }
+.food-st { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--line); white-space: nowrap; }
+.food-st-ok { border-color: var(--ok); color: var(--ok); }
+.food-st-wait { border-color: var(--warn); color: var(--warn); }
+.food-st-no { border-color: var(--danger); color: var(--danger); }
+.food-st-off { color: var(--muted); }
+.food-log summary { cursor: pointer; color: var(--muted); }
+.food-log ul { margin: 4px 0 0; padding-left: 18px; }
+.food-who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.food-kind-consiglio { border-color: var(--brass); color: var(--brass); }
+.food-kind-eletto { border-color: #b493ff; color: #b493ff; }
+.food-sec-title { display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; }
+.food-sec-title.ord { background: var(--ok-soft); border-left: 6px solid var(--ok); }
+.food-sec-title.req { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 6px solid var(--warn); }
+.food-sec-title strong { letter-spacing: .08em; }
+.food-sum { padding: 10px 12px; border: 2px solid var(--brass); border-radius: 8px; }
+.food-sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.food-totals { border-collapse: collapse; width: 100%; }
+.food-totals td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.food-tabs { margin-top: 2px; }

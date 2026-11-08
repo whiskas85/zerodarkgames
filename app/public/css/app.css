@@ -1333,3 +1333,8 @@ a.radio-card { display: block; color: inherit; text-decoration: none; }
 .sos-practice { display: grid; gap: 4px; padding: 10px 12px; border: 2px dashed #e9c75a; border-radius: 8px; background: rgba(233, 199, 90, .12); font-size: 14px; }
 .sos-practice strong { color: #e9c75a; text-transform: uppercase; letter-spacing: .04em; }
 .sos-practice b { color: #ff8a7a; }
+/* Ristoro: gruppo a parte in home e nel menu (arancio caldo). */
+.g-food > .eyebrow { color: #ff9a4d; }
+.g-food .tile { border-color: #d9772b; background: linear-gradient(135deg, rgba(217, 119, 43, .2), transparent); }
+.g-food .tile-ico { color: #ff9a4d; }
+.g-food .tile .badge { font-size: 11px; }

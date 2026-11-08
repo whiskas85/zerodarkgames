@@ -20,6 +20,7 @@ const PERMS = [
   ['campo', 'Campo', 'Strumento di campo: piazza Altari, punti e doni'],
   ['doni', 'Lancio doni', 'Fa comparire i doni già piazzati'],
   ['comunicazioni', 'Annunci', 'Manda un annuncio a tutte le coppie'],
+  ['ristoro', 'Ristoro', 'Menù di panini e bevande, ora limite, ordini e richieste'],
 ];
 const PERM_KEYS = PERMS.map(([k]) => k);
 const LEGACY_PERMS = ['soglia', 'accettazione', 'armi'];

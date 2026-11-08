@@ -814,4 +814,31 @@ CREATE TABLE IF NOT EXISTS radio_channels (
 );
 `);
 
+// Ristoro: menù di panini e bevande (offerta libera), ordini di coppie, Eletti e Consiglio. Prima dell'ora limite
+// (games.foodDeadline) si fa un ordine; dopo, solo una richiesta d'ordine che l'addetto accetta o rifiuta.
+// Ogni inserimento e modifica resta nello storico (food_order_log).
+db.exec(`
+CREATE TABLE IF NOT EXISTS food_items (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  title TEXT NOT NULL, description TEXT, price REAL, ord INTEGER NOT NULL DEFAULT 0,
+  archivedAt INTEGER, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS food_orders (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  ownerKey TEXT NOT NULL, ownerName TEXT, ownerKind TEXT, ownerSub TEXT,
+  kind TEXT NOT NULL, status TEXT NOT NULL, note TEXT,
+  createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, cancelledAt INTEGER, decidedAt INTEGER, decidedBy TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_food_orders_game ON food_orders(gameId, ownerKey);
+CREATE TABLE IF NOT EXISTS food_order_lines (
+  id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL REFERENCES food_orders(id) ON DELETE CASCADE,
+  itemId INTEGER, title TEXT NOT NULL, price REAL, qty INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS food_order_log (
+  id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL REFERENCES food_orders(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL, action TEXT NOT NULL, by TEXT, summary TEXT
+);
+`);
+addColumn('games', 'foodDeadline', 'INTEGER');
+
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };
