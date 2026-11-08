@@ -128,8 +128,13 @@ function notifyState(gameId) {
 
 // ---------------------------------------------------------------- partite
 
+// Canale d'emergenza per le app: quello in uso (la riserva se la regia l'ha scelta) e l'altro.
+function emgOut(g) {
+  const swap = !!g.emergencyRadioOnBackup && !!g.emergencyRadioBackup;
+  return { emergencyRadioChannel: swap ? g.emergencyRadioBackup : g.emergencyRadioChannel, emergencyRadioBackup: (swap ? g.emergencyRadioChannel : g.emergencyRadioBackup) || null, emergencyRadioOnBackup: swap };
+}
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'emergencyRadioOnBackup', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
 const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles', 'activeSlots', 'passiveSlots']);
@@ -167,7 +172,7 @@ function updateGame(id, data, actor) {
       const start = Number(data[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? g[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? 1);
       if (v < start) throw err(400, `Gli slot ${f === 'activeSlots' ? 'attivi' : 'passivi'} devono essere almeno quante Skill si scelgono all'inizio (${start})`);
     }
-    if (f === 'registrationOpen' || f === 'altarCheckOn' || f === 'zoneCountdown') v = v && v !== '0' && v !== 'false' ? 1 : 0;
+    if (f === 'registrationOpen' || f === 'altarCheckOn' || f === 'zoneCountdown' || f === 'emergencyRadioOnBackup') v = v && v !== '0' && v !== 'false' ? 1 : 0;
     if (f === 'prepInfo') v = String(v ?? '').slice(0, 8000).trim();
     sets.push(`${f} = ?`);
     vals.push(v === '' ? null : v);
@@ -194,6 +199,13 @@ function updateGame(id, data, actor) {
   }
   if (C.PRE_START.includes(g.status) && data.neverRevealedCount !== undefined && q.get('SELECT 1 FROM sector_codes WHERE gameId = ?', id)) {
     extractNeverRevealed(getGame(id), actor);
+  }
+  // Cambio del canale d'emergenza in uso: avviso a tutti (coppie ed Eletti).
+  if (data.emergencyRadioOnBackup !== undefined && !!g.emergencyRadioOnBackup !== !!(data.emergencyRadioOnBackup && data.emergencyRadioOnBackup !== '0' && data.emergencyRadioOnBackup !== 'false')) {
+    const ng = getGame(id);
+    const ch = emgOut(ng).emergencyRadioChannel;
+    log(id, actor, 'emergency_radio_switched', { backup: !!ng.emergencyRadioOnBackup, channel: ch });
+    if (ch) rt.pushTeams(id, { title: '🚨 Canale radio d\'emergenza cambiato', body: `Da adesso il canale d'emergenza è ${ch}${ng.emergencyRadioOnBackup ? ' (riserva)' : ''}.`, tag: 'emergency-radio', url: '/#/radio' });
   }
   notifyState(id);
   return getGame(id);
@@ -2244,7 +2256,7 @@ function electState(team, player = null) {
   const squads = Object.fromEntries(q.all('SELECT id, name FROM elect_squads WHERE gameId = ?', g.id).map((x) => [x.id, x.name]));
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
+    game: { id: g.id, name: g.name, ...emgOut(g), bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: team.id, kind: 'elect', displayName: team.displayName || 'Eletti del Consiglio', status: team.status, sector: null, members: membersOf(team.id).map((m) => ({ name: m.name, nickname: m.nickname })) },
     seal: null, fragments: [], notebook: [], visited: [],
     // I tradimenti servono solo alle coppie.
@@ -2269,7 +2281,7 @@ function lobbyState(player) {
   const partner = player.regGroup ? q.get('SELECT nickname, softairTeam FROM players WHERE gameId = ? AND regGroup = ? AND id != ?', g.id, player.regGroup, player.id) : null;
   return {
     clock: clockOf(g),
-    game: { id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
+    game: { id: g.id, name: g.name, ...emgOut(g), bookUrl: g.bookUrl || '/regolamento.html', codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null },
     team: { id: null, kind: 'lobby', displayName: player.requestedTeamName, status: player.status, sector: null,
       members: [player, partner].filter(Boolean).map((m) => ({ nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: m === player })) },
     player: playerInfo(player),
@@ -2388,7 +2400,7 @@ function teamStateCore(team, player = null) {
   return {
     clock: clockOf(g),
     game: {
-      id: g.id, name: g.name, emergencyRadioChannel: g.emergencyRadioChannel, emergencyRadioBackup: g.emergencyRadioBackup || null, bookUrl: g.bookUrl || '/regolamento.html',
+      id: g.id, name: g.name, ...emgOut(g), bookUrl: g.bookUrl || '/regolamento.html',
       codeLength: g.codeLength, timers: timersOf(g), scheduledStart: g.scheduledStart, altarScanMin: g.altarScanMin, altarRadiusM: altarRadius(g),
       prepInfo: C.PRE_START.includes(g.status) ? g.prepInfo || null : null,
     },

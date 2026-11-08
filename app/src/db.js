@@ -809,6 +809,8 @@ addColumn('games', 'passiveSlots', 'INTEGER');
 addColumn('games', 'goAt', 'INTEGER');
 // Canale radio d'emergenza di riserva (oltre a emergencyRadioChannel).
 addColumn('games', 'emergencyRadioBackup', 'TEXT');
+// La regia può passare al canale d'emergenza di riserva: le app mostrano quello come canale d'emergenza.
+addColumn('games', 'emergencyRadioOnBackup', 'INTEGER NOT NULL DEFAULT 0');
 
 // Canali radio: canale e canale di riserva per coppia (privati: li vede solo la coppia), per squadra di Eletti e per
 // il Consiglio (regia ed Eletti). scope: 'team' | 'squad' | 'council' (refId 0).
