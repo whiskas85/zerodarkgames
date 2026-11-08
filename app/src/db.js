@@ -852,5 +852,24 @@ addColumn('food_orders', 'paymentId', 'INTEGER');
 // Link per pagare (Satispay, PayPal): l'addetto li imposta, chi ordina li vede, alla consegna c'è il QR.
 addColumn('games', 'foodPaypal', 'TEXT');
 addColumn('games', 'foodSatispay', 'TEXT');
+// Ritiro e pagamento sono separati: si consegna anche a pezzi (food_order_lines.delivered, una riga in
+// food_deliveries per ogni consegna) e si paga anche a rate (food_payments per persona; «closes» chiude il conto).
+addColumn('food_order_lines', 'delivered', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('food_payments', 'closes', 'INTEGER NOT NULL DEFAULT 0');
+db.exec(`
+CREATE TABLE IF NOT EXISTS food_deliveries (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  ownerKey TEXT NOT NULL, ownerName TEXT, lines TEXT NOT NULL, summary TEXT,
+  at INTEGER NOT NULL, by TEXT, cancelledAt INTEGER, cancelledBy TEXT
+);
+`);
+// Prima «Paga» voleva dire consegnato e pagato del tutto: chi era già pagato risulta consegnato e col conto chiuso.
+if (q.get('SELECT 1 AS x FROM food_orders WHERE paymentId IS NOT NULL LIMIT 1')) {
+  tx(() => {
+    db.exec(`UPDATE food_order_lines SET delivered = qty WHERE orderId IN (SELECT o.id FROM food_orders o JOIN food_payments p ON p.id = o.paymentId AND p.cancelledAt IS NULL)`);
+    db.exec(`UPDATE food_payments SET closes = 1 WHERE cancelledAt IS NULL AND id IN (SELECT paymentId FROM food_orders WHERE paymentId IS NOT NULL)`);
+    db.exec('UPDATE food_orders SET paymentId = NULL WHERE paymentId IS NOT NULL');
+  });
+}
 
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };
