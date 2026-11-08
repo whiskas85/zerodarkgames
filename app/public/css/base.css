@@ -458,6 +458,11 @@ body.no-scroll { overflow: hidden; }
 .food-dash-cell.warn strong { color: var(--warn); }
 .food-dash-cell.ok strong { color: var(--ok); }
 a.food-pend-alert { display: block; text-decoration: none; }
+.food-porder { padding: 6px 0; }
+.food-porder + .food-porder { border-top: 1px dashed var(--line); }
+.food-porder-state { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.food-porder-state .food-st { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.food-porder-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .food-pend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .food-pend > li { display: grid; gap: 6px; padding: 8px 10px; border: 2px dashed var(--warn); border-radius: 8px; color: var(--warn); }
 .food-pend-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

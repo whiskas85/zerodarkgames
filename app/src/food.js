@@ -251,7 +251,9 @@ function openLines(gameId, ownerKey) {
 // Consegna: tutto quello che manca (all) oppure solo alcune quantità ({ lineId, qty }). Il pagamento è a parte.
 function deliver(gameId, ownerKey, data, actor) {
   const g = G.getGame(gameId);
-  const { orders, lines } = openLines(g.id, ownerKey);
+  const { orders, lines: allLines } = openLines(g.id, ownerKey);
+  // Consegna di un ordine solo (orderId) o di tutto.
+  const lines = data.orderId ? allLines.filter((l) => l.orderId === Number(data.orderId)) : allLines;
   if (!orders.length) throw err(404, 'Nessun ordine da consegnare per questa persona');
   const want = new Map();
   if (data.all) for (const l of lines) { if (l.qty > l.delivered) want.set(l.id, l.qty - l.delivered); }
@@ -308,10 +310,10 @@ function coveredIds(gameId, ownerKey) {
   return ids;
 }
 // Gli ordini da coprire: quelli indicati (devono essere suoi, attivi e non ancora pagati) o tutti quelli non pagati.
-function ordersToCover(gameId, ownerKey, orders, wanted) {
+function ordersToCover(gameId, ownerKey, orders, wanted, allIfNone = true) {
   const covered = coveredIds(gameId, ownerKey);
   const free = orders.filter((o) => !covered.has(o.id));
-  if (!Array.isArray(wanted) || !wanted.length) return free.map((o) => o.id);
+  if (!Array.isArray(wanted) || !wanted.length) return allIfNone ? free.map((o) => o.id) : [];
   const ids = [...new Set(wanted.map(Number))];
   for (const id of ids) {
     if (!orders.some((o) => o.id === id)) throw err(404, 'Ordine non trovato');
@@ -331,7 +333,8 @@ function pay(gameId, ownerKey, data, actor) {
   const { orders } = openLines(g.id, ownerKey);
   if (!orders.length) throw err(409, 'Nessun ordine per questa persona');
   const o = orders[0];
-  const ids = ordersToCover(g.id, ownerKey, orders, data.orderIds);
+  // Alla cassa: gli ordini indicati; senza indicazione è un acconto sul conto (non copre un ordine preciso).
+  const ids = ordersToCover(g.id, ownerKey, orders, data.orderIds, false);
   const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, closes, orderIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     g.id, o.ownerKey, o.ownerName, method, amount, clean(data.note, 200) || null, Date.now(), actor, closes ? 1 : 0, ids.length ? JSON.stringify(ids) : null).lastInsertRowid);
   G.log(g.id, actor, 'food_paid', { owner: o.ownerName, method, amount, closes });
@@ -415,8 +418,15 @@ function accountOf(orders, all) {
   const closed = payments.some((x) => x.closes);
   const items = orders.reduce((t, o) => t + o.items, 0);
   const delivered = orders.reduce((t, o) => t + o.delivered, 0);
-  const toPay = closed ? 0 : round(Math.max(0, total - paid));
-  return { total, paid, toPay, closed, items, delivered, toDeliver: items - delivered, pendingAmount, deliveredAll: items > 0 && delivered >= items, paidAll: closed || (total > 0 ? paid >= total : paid > 0) };
+  // Ogni ordine pagato (anche in attesa di conferma) è a posto; il resto lo riducono gli acconti senza ordine.
+  const ids = new Set();
+  for (const x of all) if (!x.rejected) for (const id of x.orderIds || []) ids.add(id);
+  const open = orders.filter((o) => !ids.has(o.id));
+  const loose = round(payments.filter((x) => !(x.orderIds || []).length).reduce((t, x) => t + x.amount, 0));
+  const toPay = closed ? 0 : round(Math.max(0, open.reduce((t, o) => t + o.total, 0) - loose));
+  const waiting = all.some((x) => x.pending);
+  const paidAll = closed || (!waiting && (total > 0 ? toPay === 0 : paid > 0 || (orders.length > 0 && !open.length)));
+  return { total, paid, toPay, closed, items, delivered, toDeliver: items - delivered, pendingAmount, deliveredAll: items > 0 && delivered >= items, paidAll };
 }
 
 // Persone da servire: ordini divisi, cosa manca da consegnare, quanto manca da pagare; consegne e pagamenti.
