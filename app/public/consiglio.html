@@ -16,11 +16,25 @@
   <link rel="stylesheet" href="/css/regia.css">
   <style>
     .council { max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
-    .council-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-    .council-tile { display: grid; gap: 6px; align-content: center; min-height: 104px; padding: 14px; background: var(--paper); border: 2px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 17px; }
-    .council-tile:hover, .council-tile:focus-visible { border-color: var(--brass); }
-    .council-tile .ico { font-size: 28px; line-height: 1; color: var(--brass); }
-    .council-tile .tiny { font-weight: 400; }
+    /* Testata come nelle app: emblema (o ‹ per tornare), chi sei, avatar a destra. */
+    .council-top { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+    .council-id { flex: 1; min-width: 0; }
+    .council-id .brand-t { font-family: var(--f-display); font-weight: 900; font-size: 22px; text-transform: uppercase; line-height: 1; }
+    .council-id .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .council-back { width: 44px; height: 44px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; font-size: 26px; line-height: 1; flex: none; }
+    /* Pulsanti come nella home dell'app. */
+    .tile-groups { display: grid; gap: 18px; }
+    .tile-group { display: grid; gap: 8px; }
+    .tile-group > .eyebrow { padding-left: 2px; }
+    .tile-group .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tile { position: relative; display: grid; align-content: center; justify-items: center; gap: 6px; min-height: 108px; padding: 14px; background: var(--paper); border: 2px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 17px; border-radius: var(--radius, 10px); text-align: center; }
+    .tile .tiny { font-weight: 400; }
+    .tile-ico { font-size: 28px; line-height: 1; }
+    .g-game > .eyebrow { color: var(--brass); }
+    .g-game .tile { border-color: var(--brass); background: linear-gradient(135deg, rgba(209, 173, 98, .16), transparent); }
+    .g-game .tile-ico { color: var(--brass); }
+    .g-food > .eyebrow { color: #ff9a4d; }
+    .g-food .tile { border-color: #d9772b; background: linear-gradient(135deg, rgba(217, 119, 43, .2), transparent); }
     .gift-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid var(--line); background: var(--paper); }
     .gift-row .g-ico { font-size: 22px; width: 32px; text-align: center; }
     .gift-row .g-main { flex: 1; min-width: 0; display: grid; gap: 2px; }

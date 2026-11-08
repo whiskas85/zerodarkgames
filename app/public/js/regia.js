@@ -3,7 +3,7 @@ import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
-import { createFoodAdmin } from './food-ui.js';
+import { createFoodAdmin, createFoodOrder } from './food-ui.js';
 import { omnibar, matches } from './omnibar.js';
 
 const $root = document.getElementById('root');
@@ -40,7 +40,8 @@ const TABS = [
   ['avvisi', 'Avvisi'],
   ['eventi', 'Eventi'],
   ['voto', 'Voto del pubblico'],
-  ['ristoro', 'Ristoro'],
+  ['ristoro', 'Ristoro: gestione'],
+  ['ordina', 'Ristoro: ordina'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['rewind', 'Rewind'],
@@ -54,7 +55,7 @@ const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
   accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', catalogo: 'starFourPoints',
   doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
-  rewind: 'timerSand', ristoro: 'food', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
+  rewind: 'timerSand', ristoro: 'food', ordina: 'food', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
 const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
 const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
@@ -97,7 +98,7 @@ async function start() {
   loadSounds();
   stream('/api/stream?as=staff', {
     open: () => load(),
-    refresh: (d) => { if (d.reason === 'food' && tab() === 'ristoro') foodAdmin.load(); if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
+    refresh: (d) => { if (d.reason === 'food' && tab() === 'ristoro') foodAdmin.load(); if (d.reason === 'food' && tab() === 'ordina') foodOrderR.load(); if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
     // VIA: conto alla rovescia sincronizzato (anche se il tasto l'ha premuto un'altra regia, es. dal telefono).
     go: (d) => {
       if (d.gameId !== R.gameId) return;
@@ -315,7 +316,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, ristoro: viewRistoro, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, ristoro: viewRistoro, ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
@@ -4653,11 +4654,12 @@ function viewNotices() {
 const foodAdmin = createFoodAdmin({ gameId: () => R.gameId, rerender: () => render() });
 function viewRistoro() {
   return h('div', { class: 'stack' },
-    sectionActions('Ristoro', [h('a', { class: 'btn btn-sm', href: `/ristoro?g=${R.gameId}`, target: '_blank', rel: 'noopener' }, '🥪 Ordina per te'),
-      h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Addetti (permesso «Ristoro»)')],
-      h('p', { class: 'muted tiny' }, 'Coppie, Eletti e Consiglio ordinano dall\'app (sezione Ristoro). Prezzi in offerta libera. Fino all\'ora limite arrivano ORDINI; dopo, solo RICHIESTE d\'ordine da accettare o rifiutare. L\'addetto del Consiglio con il permesso «Ristoro» gestisce tutto dalla pagina /ristoro.')),
+    h('p', { class: 'muted tiny' }, 'Coppie, Eletti e Consiglio ordinano dall\'app (sezione Ristoro). Prezzi in offerta libera. Fino all\'ora limite arrivano ORDINI; dopo, solo RICHIESTE d\'ordine da accettare o rifiutare. Chi ha il permesso «Ristoro» (Consiglio Zero) gestisce tutto anche dalla sua app del Consiglio.'),
     foodAdmin.view());
 }
+// Ristoro: ordina — la regia ordina per sé, come chiunque nel Consiglio.
+const foodOrderR = createFoodOrder({ base: '/api/v/food', query: () => `?g=${R.gameId}`, rerender: () => render() });
+const viewOrdina = () => foodOrderR.view();
 
 // ---------------------------------------------------------------- STAMPE
 
