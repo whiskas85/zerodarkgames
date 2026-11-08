@@ -826,7 +826,7 @@ function banners() {
 }
 
 // Canale d'emergenza con la riserva, per i testi: «PMR 8 · 446.09375 (riserva LPD 3 · 433.125)».
-const sosText = (g) => (g?.emergencyRadioChannel ? `${g.emergencyRadioChannel}${g.emergencyRadioBackup ? ` (riserva ${g.emergencyRadioBackup})` : ''}` : '');
+const sosText = (g) => (g?.emergencyRadioChannel ? `${g.emergencyRadioChannel}${g.emergencyRadioOnBackup ? ' (riserva in uso)' : g.emergencyRadioBackup ? ` (riserva ${g.emergencyRadioBackup})` : ''}` : '');
 // In verticale è la barra in fondo; in orizzontale diventa la colonna a destra (con il menu).
 function radioBar() {
   const ch = S.state?.game.emergencyRadioChannel;
@@ -1059,7 +1059,7 @@ function emergencyModal() {
     h('div', { class: 'sos-main' },
       h('div', { class: 'sos-form' }, h('div', { class: 'eyebrow' }, 'Gravità'), levels, comment, update),
       h('div', { class: 'sos-action' }, big, status)),
-    ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch), S.state?.game.emergencyRadioBackup ? [' · riserva ', h('strong', { class: 'mono' }, S.state.game.emergencyRadioBackup)] : null) : null,
+    ch ? h('p', { class: 'small sos-radio' }, 'Radio: ', h('strong', { class: 'mono' }, ch), S.state?.game.emergencyRadioOnBackup ? ' (riserva in uso)' : S.state?.game.emergencyRadioBackup ? [' · riserva ', h('strong', { class: 'mono' }, S.state.game.emergencyRadioBackup)] : null) : null,
     // La mappa in emergenza si vede normalmente (senza effetti di gioco): per orientarsi o dire dove si è.
     h('a', { class: 'btn btn-block sos-map', href: '#/mappa', onclick: close }, '🗺 Vedi la mappa'),
     offGameStripe()));
@@ -1317,15 +1317,17 @@ function viewRadio() {
   return h('div', { class: 'stack' },
     h('h2', null, 'Canali radio'),
     h('p', { class: 'muted small' }, 'Impostate la radio su questi canali. PMR446 e LPD433: banda, numero del canale e frequenza.'),
+    // Il canale d'emergenza per primo (quello in uso: la riserva se la regia l'ha scelta).
+    sos ? h('div', { class: 'card radio-page-card radio-sos' },
+      h('div', { class: 'eyebrow' }, st.game.emergencyRadioOnBackup ? '🚨 Emergenza (SOS) · RISERVA IN USO' : '🚨 Emergenza (SOS) · tutti'),
+      h('div', { class: 'radio-page-ch' }, radioChannel(st.game.emergencyRadioOnBackup ? 'Emergenza backup' : 'Canale d\'emergenza', sos, true),
+        st.game.emergencyRadioOnBackup ? null : radioChannel('Riserva', st.game.emergencyRadioBackup, true)),
+      h('p', { class: 'tiny muted' }, st.game.emergencyRadioOnBackup ? `La Direzione ha spostato l'emergenza sul canale di riserva: usate questo, non ${st.game.emergencyRadioBackup || 'il principale'}.` : 'Solo per le emergenze reali (OFF GAME): lo ascoltano Direzione e Consiglio.')) : null,
     list.length ? list.map((r) => h('div', { class: 'card radio-page-card' },
       h('div', { class: 'eyebrow' }, r.label),
       h('div', { class: 'radio-page-ch' }, radioChannel('Canale', r.main, true), radioChannel('Riserva', r.backup, true)),
       r.note ? h('p', { class: 'tiny muted' }, r.note) : null))
-      : h('p', { class: 'empty' }, 'Il Consiglio non vi ha ancora assegnato un canale radio.'),
-    sos ? h('div', { class: 'card radio-page-card radio-sos' },
-      h('div', { class: 'eyebrow' }, '🚨 Emergenza (SOS) · tutti'),
-      h('div', { class: 'radio-page-ch' }, radioChannel('Canale d\'emergenza', sos, true), radioChannel('Riserva', st.game.emergencyRadioBackup, true)),
-      h('p', { class: 'tiny muted' }, 'Solo per le emergenze reali (OFF GAME): lo ascoltano Direzione e Consiglio.')) : null);
+      : h('p', { class: 'empty' }, 'Il Consiglio non vi ha ancora assegnato un canale radio.'));
 }
 
 function pushInvite() {
@@ -4750,7 +4752,7 @@ function viewRules() {
     h('div', { class: 'row-2' },
       h('a', { class: 'btn btn-block', href: '/regolamento.html?pdf=1', target: '_blank', rel: 'noopener' }, '⇩ Scarica PDF'),
       h('a', { class: 'btn btn-block', href: '/regolamento.html', download: 'Regolamento - I Giochi del Buio.html' }, '⇩ Scarica HTML')),
-    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Canale radio d\'emergenza'), h('div', { class: 'mono big-text' }, st?.game.emergencyRadioChannel || 'chiedete alla regia'), st?.game.emergencyRadioBackup ? h('div', { class: 'mono small muted' }, `Riserva: ${st.game.emergencyRadioBackup}`) : null));
+    h('div', { class: 'card' }, h('div', { class: 'eyebrow' }, 'Canale radio d\'emergenza'), h('div', { class: 'mono big-text' }, st?.game.emergencyRadioChannel || 'chiedete alla regia'), st?.game.emergencyRadioOnBackup ? h('div', { class: 'small warn-text' }, 'Riserva in uso: la Direzione ha spostato l\'emergenza su questo canale') : st?.game.emergencyRadioBackup ? h('div', { class: 'mono small muted' }, `Riserva: ${st.game.emergencyRadioBackup}`) : null));
 }
 
 // ---------------------------------------------------------------- Impostazioni

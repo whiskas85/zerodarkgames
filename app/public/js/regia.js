@@ -492,6 +492,26 @@ function emergencyItems() {
   });
 }
 
+// Interruttore del canale d'emergenza in uso: principale o riserva (le app mostrano quello scelto, con avviso a tutti).
+function emgSwitch() {
+  const g = R.ms?.game;
+  if (!g?.emergencyRadioChannel) return null;
+  const onB = !!g.emergencyRadioOnBackup;
+  const set = async (backup) => {
+    if (backup === onB) return;
+    if (backup && !g.emergencyRadioBackup) return toast('Imposta prima il canale di riserva in Canali radio', 'error');
+    const ch = backup ? g.emergencyRadioBackup : g.emergencyRadioChannel;
+    if (!(await dialog({ title: 'Cambiare il canale d\'emergenza?', text: `Da adesso tutte le app (coppie ed Eletti) mostrano come canale d'emergenza ${ch}${backup ? ' (riserva)' : ''}. Arriva una notifica a tutti.`, okLabel: `Passa a ${ch}`, danger: true }))) return;
+    try { await api('PATCH', `/api/m/games/${R.gameId}`, { emergencyRadioOnBackup: backup }); toast(`Canale d'emergenza: ${ch}`, 'ok'); load(); } catch (e) { toast(e.message, 'error', 6000); }
+  };
+  return h('div', { class: 'emg-switch' },
+    h('div', { class: 'eyebrow' }, '🚨 Canale d\'emergenza in uso'),
+    h('div', { class: 'food-tabs emg-switch-tabs', role: 'radiogroup' },
+      h('button', { type: 'button', role: 'radio', 'aria-checked': String(!onB), class: onB ? '' : 'on', onclick: () => set(false) }, h('span', null, 'Emergenza'), h('b', { class: 'mono' }, g.emergencyRadioChannel)),
+      h('button', { type: 'button', role: 'radio', 'aria-checked': String(onB), class: onB ? 'on' : '', disabled: !g.emergencyRadioBackup, onclick: () => set(true) }, h('span', null, 'Emergenza backup'), h('b', { class: 'mono' }, g.emergencyRadioBackup || 'non impostata'))),
+    h('p', { class: 'tiny muted' }, onB ? '⚠ In uso la RISERVA: nelle app è il canale d\'emergenza (in cima ai canali radio e nella barra Radio SOS).' : 'Nelle app è il primo canale (in cima ai canali radio e nella barra Radio SOS).'));
+}
+
 function viewEmergencies() {
   const all = R.ms.emergencies || [];
   const archived = all.filter((e) => e.archivedAt);
@@ -538,6 +558,7 @@ function viewEmergencies() {
         call('POST', `/api/m/emergencies/${e.id}/close`, { note }, 'Emergenza chiusa');
       } }, 'Chiudi')));
   return h('div', { class: 'stack' },
+    emgSwitch() ? h('div', { class: 'card' }, emgSwitch()) : null,
     section(`Emergenze (${open.length} aperte)`,
       h('p', { class: 'muted tiny' }, 'Emergenze reali (OFF GAME), non di gioco: arrivano dal pulsante EMERGENZA dell\'app o dal pulsante SOS di Traccar Client, con la posizione di chi chiama. Quando ne arriva una la regia salta qui con un allarme sonoro. Il segnaposto rosso è dove ha chiamato, quello arancione la sua ultima posizione.'),
       closedLive.length || archived.length ? h('div', { class: 'row-actions' },
@@ -5564,7 +5585,7 @@ function radioSettings() {
       h('div', { class: 'radio-emergency-fields' },
         h('label', { class: 'field' }, h('span', null, 'Canale d\'emergenza'), radioInput(R.ms.game.emergencyRadioChannel, 'es. PMR 8 · 446.09375', 'radio-emergency-main', 'emergency', 'Canale · Emergenza (SOS)', (v) => saveEmg('emergencyRadioChannel', v))),
         h('label', { class: 'field' }, h('span', null, 'Riserva'), radioInput(R.ms.game.emergencyRadioBackup, 'es. LPD 3 · 433.125', 'radio-emergency-backup', 'emergency-backup', 'Riserva · Emergenza (SOS)', (v) => saveEmg('emergencyRadioBackup', v)))),
-      R.ms.game.emergencyRadioChannel ? null : h('p', { class: 'small warn-text' }, '⚠ Non impostato: la partita lo segnala tra i controlli prima del via.')),
+      R.ms.game.emergencyRadioChannel ? emgSwitch() : h('p', { class: 'small warn-text' }, '⚠ Non impostato: la partita lo segnala tra i controlli prima del via.')),
     section('Consiglio (regia ed Eletti)', h('p', { class: 'muted tiny' }, 'Lo vedono tutti gli Eletti nella loro app. Con 📻 scegli da PMR446 o LPD433: i canali già usati sono disabilitati.'),
       table([row('Consiglio', 'Consiglio', 'council', 0, rd.council)])),
     section('Squadre di Eletti', h('p', { class: 'muted tiny' }, 'Ogni squadra vede solo il suo.'),
