@@ -3667,6 +3667,37 @@ async function loadCatalog() {
 }
 const SKILL_TYPE = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
 
+// Probabilità del Dono a caso (Autorità, Conquista, premi «a caso»): prima la rarità, poi il dono nella rarità (peso).
+function giftOddsView(c) {
+  const o = c.odds;
+  if (!o) return null;
+  const save = async (body, msg) => {
+    try { c.odds = await api('PUT', G('/gift-odds'), body); if (msg) toast(msg, 'ok', 1500); render(); } catch (e) { toast(e.message, 'error', 6000); }
+  };
+  const byId = Object.fromEntries(c.gifts.map((x) => [x.id, x]));
+  const tierSum = o.tiers.reduce((t, r) => t + r.pct, 0);
+  const num = (value, onchange, opts = {}) => h('input', { class: 'input odds-num', type: 'number', min: 0, max: 100, step: opts.step || 1, value, onchange: (e) => onchange(e.target.value) });
+  return section('Probabilità del Dono a caso',
+    h('p', { class: 'muted tiny' }, 'Vale quando un Dono esce «a caso» (Autorità, Zona di Conquista, premi di eventi e voto senza un dono scelto). Doppia estrazione: prima la rarità con la sua probabilità, poi uno dei doni di quella rarità in base al peso. Peso 0 = quel dono non esce mai; una rarità a 0% o senza doni non esce (le altre si riproporzionano). Si può cambiare anche a partita in corso.'),
+    h('div', { class: 'odds-tiers' }, o.tiers.map((r) => h('label', { class: 'odds-tier', style: { '--c': r.color } },
+      h('span', null, r.name), h('span', { class: 'odds-pct' }, num(r.pct, (v) => save({ tiers: { [r.id]: v } }, 'Probabilità salvata')), '%'),
+      h('span', { class: 'tiny muted' }, `${o.gifts.filter((x) => x.tier === r.id && x.weight > 0).length} doni`)))),
+    Math.round(tierSum) !== 100 ? h('p', { class: 'tiny warn-text' }, `Le rarità sommano a ${tierSum}%: vanno bene lo stesso (si riproporzionano), ma con 100% è più chiaro.`) : null,
+    h('div', { class: 'table-wrap' }, h('table', { class: 'odds-table' },
+      h('thead', null, h('tr', null, ['Dono', 'Rarità', 'Peso', 'Probabilità'].map((x) => h('th', null, x)))),
+      h('tbody', null, [...o.gifts].sort((a, b) => b.pct - a.pct).map((x) => {
+        const t = byId[x.id];
+        const r = o.tiers.find((y) => y.id === x.tier);
+        return h('tr', { class: x.pct ? '' : 'odds-off' },
+          h('td', null, h('span', { 'aria-hidden': 'true' }, t?.icon || '🎁'), ' ', h('strong', null, t?.current.name || x.id)),
+          h('td', null, h('select', { class: 'input odds-sel', style: { '--c': r?.color }, onchange: (e) => save({ gifts: { [x.id]: { tier: e.target.value } } }, 'Rarità salvata') },
+            o.tiers.map((y) => h('option', { value: y.id, selected: y.id === x.tier }, y.name)))),
+          h('td', null, num(x.weight, (v) => save({ gifts: { [x.id]: { weight: v } } }, 'Peso salvato'), { step: 0.5 })),
+          h('td', { class: 'mono' }, x.pct ? `${String(x.pct).replace('.', ',')}%` : h('span', { class: 'muted' }, 'mai')));
+      })))),
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: 'Tornare alle probabilità predefinite?', text: 'Comune 60%, Raro 25%, Epico 11%, Leggendario 4%, peso 1 per tutti.', okLabel: 'Ripristina' })) save({ reset: true }, 'Probabilità predefinite'); } }, 'Ripristina i valori predefiniti')));
+}
+
 async function editCatalogDialog(x) {
   const name = h('input', { class: 'input', maxlength: 40, value: x.current.name });
   const desc = h('textarea', { class: 'input', rows: 4, maxlength: 400 });
@@ -3734,6 +3765,7 @@ function viewCatalog() {
       return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
     }),
     gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
+    catalogQ ? null : giftOddsView(c),
     hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`));
 }
 

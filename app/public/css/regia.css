@@ -1464,3 +1464,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .emg-switch-tabs button b { font-size: 16px; }
 .emg-switch-tabs button.on { background: color-mix(in srgb, #e5484d 30%, var(--paper)); box-shadow: inset 0 -3px 0 #e5484d; }
 .emg-switch-tabs button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Probabilità del Dono a caso */
+.odds-tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.odds-tier { display: grid; gap: 4px; padding: 10px; border: 2px solid var(--c); border-radius: 10px; background: color-mix(in srgb, var(--c) 12%, var(--paper)); }
+.odds-tier > span:first-child { font-weight: 700; color: var(--c); }
+.odds-pct { display: flex; align-items: center; gap: 4px; font-weight: 700; }
+.odds-num { width: 80px; }
+.odds-sel { min-width: 130px; border-left: 4px solid var(--c, var(--line)); }
+.odds-table tr.odds-off td { opacity: .55; }

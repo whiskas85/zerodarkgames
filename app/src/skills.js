@@ -68,6 +68,70 @@ const GIFTS = [
 const skillById = (id) => SKILLS.find((s) => s.id === id);
 const giftById = (id) => GIFTS.find((g) => g.id === id);
 const available = (x) => !x.phase || x.phase <= 1;
+
+// ---------------------------------------------------------------- Dono a caso: rarità e probabilità
+// Doppia estrazione: prima la rarità (con la sua probabilità), poi il dono dentro quella rarità (in base al peso).
+// Peso 0 = quel dono non esce mai a caso. Le rarità senza doni estraibili non contano (le altre si riproporzionano).
+const RARITIES = [
+  { id: 'comune', name: 'Comune', pct: 60, color: '#9aa39b' },
+  { id: 'raro', name: 'Raro', pct: 25, color: '#5aa0e0' },
+  { id: 'epico', name: 'Epico', pct: 11, color: '#9b6cf0' },
+  { id: 'leggendario', name: 'Leggendario', pct: 4, color: '#f0a020' },
+];
+const DEFAULT_RARITY = {
+  chiave: 'comune', seconda: 'comune', tracciamento: 'comune', taglia: 'comune', saggio: 'comune', dossier: 'comune',
+  sporche: 'raro', maestro: 'raro', reliquia: 'raro', benedizione: 'raro',
+  sovraccarico: 'epico', scudo: 'epico',
+  archivio: 'leggendario', furto: 'leggendario', frammento: 'leggendario',
+};
+function giftOdds(g) {
+  let saved = {};
+  try { saved = JSON.parse(g?.giftOdds || '{}') || {}; } catch { saved = {}; }
+  const tiers = RARITIES.map((r) => ({ ...r, pct: Number.isFinite(Number(saved.tiers?.[r.id])) ? Number(saved.tiers[r.id]) : r.pct }));
+  const gifts = GIFTS.filter(available).map((t) => {
+    const s = saved.gifts?.[t.id] || {};
+    return { id: t.id, tier: RARITIES.some((r) => r.id === s.tier) ? s.tier : DEFAULT_RARITY[t.id] || 'comune', weight: Number.isFinite(Number(s.weight)) ? Math.max(0, Number(s.weight)) : 1 };
+  });
+  // Probabilità effettiva di ogni dono (in %), come la vede la regia.
+  const live = tiers.filter((r) => r.pct > 0 && gifts.some((x) => x.tier === r.id && x.weight > 0));
+  const tot = live.reduce((t, r) => t + r.pct, 0);
+  for (const x of gifts) {
+    const r = live.find((y) => y.id === x.tier);
+    const w = gifts.filter((y) => y.tier === x.tier).reduce((t, y) => t + y.weight, 0);
+    x.pct = r && w && x.weight ? Math.round((r.pct / tot) * (x.weight / w) * 10000) / 100 : 0;
+  }
+  return { tiers, gifts };
+}
+function drawGift(g, rnd = Math.random) {
+  const { tiers, gifts } = giftOdds(g);
+  const live = tiers.filter((r) => r.pct > 0 && gifts.some((x) => x.tier === r.id && x.weight > 0));
+  // Nessuna probabilità valida (tutto a 0): un dono qualsiasi, come prima.
+  if (!live.length) return shuffle(GIFTS.filter(available))[0];
+  const pick = (list, w) => { let r = rnd() * list.reduce((t, x) => t + w(x), 0); for (const x of list) { r -= w(x); if (r < 0) return x; } return list.at(-1); };
+  const tier = pick(live, (r) => r.pct);
+  const inTier = gifts.filter((x) => x.tier === tier.id && x.weight > 0);
+  return giftById(pick(inTier, (x) => x.weight).id);
+}
+function setGiftOdds(gameId, data, actor) {
+  const g = G.getGame(gameId);
+  const cur = giftOdds(g);
+  const tiers = Object.fromEntries(cur.tiers.map((r) => [r.id, r.pct]));
+  for (const r of RARITIES) if (data.tiers?.[r.id] !== undefined) {
+    const v = Number(String(data.tiers[r.id]).replace(',', '.'));
+    if (!Number.isFinite(v) || v < 0 || v > 100) throw err(400, `Probabilità non valida per ${r.name}`);
+    tiers[r.id] = Math.round(v * 100) / 100;
+  }
+  const gifts = Object.fromEntries(cur.gifts.map((x) => [x.id, { tier: x.tier, weight: x.weight }]));
+  for (const [id, v] of Object.entries(data.gifts || {})) {
+    if (!gifts[id]) continue;
+    if (v.tier !== undefined) { if (!RARITIES.some((r) => r.id === v.tier)) throw err(400, 'Rarità non valida'); gifts[id].tier = v.tier; }
+    if (v.weight !== undefined) { const w = Number(String(v.weight).replace(',', '.')); if (!Number.isFinite(w) || w < 0 || w > 100) throw err(400, 'Peso non valido (da 0 a 100)'); gifts[id].weight = w; }
+  }
+  q.run('UPDATE games SET giftOdds = ? WHERE id = ?', data.reset ? null : JSON.stringify({ tiers, gifts }), g.id);
+  G.log(g.id, actor, 'gift_odds_updated', { reset: !!data.reset });
+  rt.toStaff(g.id, 'catalog');
+  return giftOdds(G.getGame(g.id));
+}
 const isPassive = (s) => s.kind === 'passive';
 
 // ---------------------------------------------------------------- utilità
@@ -355,7 +419,8 @@ function endNow(gameId, teamId, code) {
 // Un Dono senza QR (Autorità, premio di un evento): finisce subito tra i doni della coppia.
 // typeId: un tipo preciso (se disponibile), altrimenti a caso.
 function grantVirtualGift(me, label, typeId = null) {
-  const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : shuffle(GIFTS.filter(available))[0];
+  // Senza un tipo preciso: estrazione con le probabilità della partita (prima la rarità, poi il dono).
+  const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : drawGift(G.getGame(me.gameId));
   const type = giftForGame(pick, G.getGame(me.gameId));
   const now = Date.now();
   const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt)
@@ -748,6 +813,7 @@ function editableCatalog(gameId) {
     editable: ['created', 'draft'].includes(g.status),
     skills: SKILLS.filter(available).map((s) => row(s, skillTemplate(s, g), 'skill', ed.skills?.[s.id])),
     gifts: GIFTS.filter(available).map((t) => row(t, giftTemplate(t, g), 'gift', ed.gifts?.[t.id])),
+    odds: giftOdds(g),
   };
 }
 
@@ -1028,5 +1094,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden, hiddenSince: (t, now = Date.now()) => effectOn(t.gameId, t.id, 'ombra', now)?.startedAt ?? null,
-  editableCatalog, editCatalog, giftForGame, distM, grantVirtualGift, availableGift: available,
+  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, grantVirtualGift, availableGift: available,
 };
