@@ -1026,7 +1026,9 @@ function buildCalendar(g, actor) {
   const order = shuffle(codes);
   const lock = order.findIndex((c) => !couples.has(c.sectorId));
   if (lock >= 0) order.push(...order.splice(lock, 1));
-  const offsets = revelationOffsets(g, order.length, 0);
+  // Nessun Tradimento dopo l'inizio dell'ultima mezz'ora (lì si saltano): l'ultimo, il «lucchetto», al più tardi lì.
+  const lastStart = g.durationMin - C.LAST_PHASE_MIN;
+  const offsets = revelationOffsets(g, order.length, 0).map((m) => Math.min(m, lastStart));
   tx(() => {
     q.run('DELETE FROM revelations WHERE gameId = ?', g.id);
     offsets.forEach((m, i) => {
@@ -1041,7 +1043,7 @@ function retimeCalendar(g) {
   const revs = q.all("SELECT * FROM revelations WHERE gameId = ? AND status = 'scheduled' ORDER BY ord", g.id);
   if (!revs.length) return;
   const n = q.get('SELECT COUNT(*) AS n FROM sector_codes WHERE gameId = ? AND neverRevealed = 0', g.id).n;
-  const offsets = revelationOffsets(g, n, 0);
+  const offsets = revelationOffsets(g, n, 0).map((m) => Math.min(m, g.durationMin - C.LAST_PHASE_MIN));
   revs.forEach((r, i) => q.run('UPDATE revelations SET scheduledMin = ? WHERE id = ?', offsets[i] ?? r.scheduledMin, r.id));
 }
 
@@ -1446,9 +1448,16 @@ function postponeRevelation(revId, minutes, actor) {
   notifyState(r.gameId);
 }
 
+// Settori senza coppia (Altari liberi): il loro Sigillo nessuno lo può conquistare negli scontri, arriva solo dal Tradimento.
+const freeSectorIds = (gameId) => {
+  const couples = new Set(usedSectorIds(gameId));
+  return new Set(q.all('SELECT sectorId FROM points WHERE gameId = ?', gameId).map((r) => r.sectorId).filter((sid) => !couples.has(sid)));
+};
+
 function skipRevelation(revId, actor, restore = false) {
   const r = q.get('SELECT * FROM revelations WHERE id = ?', revId);
   if (!r) throw err(404, 'Rivelazione non trovata');
+  if (!restore && freeSectorIds(r.gameId).has(r.sectorId)) throw err(409, 'È il Sigillo di un Settore senza coppia: nessuno lo può conquistare, arriva solo da questo Tradimento. Non si salta (puoi spostarlo o rivelarlo subito).');
   if (!restore && r.status !== 'scheduled') throw err(409, 'Già rivelato o saltato');
   if (restore && r.status !== 'skipped') throw err(409, 'Non è stata saltata');
   q.run('UPDATE revelations SET status = ? WHERE id = ?', restore ? 'scheduled' : 'skipped', r.id);
@@ -1590,6 +1599,9 @@ function tickGame(g) {
   if (g.status === 'hunt' && e >= lastStart) {
     setStatus(g, 'last_half_hour');
     log(g.id, 'sistema', 'phase_last_half_hour');
+    // I Sigilli dei Settori senza coppia non si saltano mai (nessuno li può conquistare): partono adesso.
+    const free = freeSectorIds(g.id);
+    for (const r of q.all("SELECT * FROM revelations WHERE gameId = ? AND status = 'scheduled' ORDER BY COALESCE(scheduledMin, 99999), ord", g.id)) if (free.has(r.sectorId)) fireRevelation(g, r, 'sistema');
     const skipped = q.run("UPDATE revelations SET status = 'skipped' WHERE gameId = ? AND status = 'scheduled'", g.id).changes;
     if (skipped) log(g.id, 'sistema', 'revelations_skipped_last_phase', { count: skipped });
     announce(g.id, 'last_half_hour');
