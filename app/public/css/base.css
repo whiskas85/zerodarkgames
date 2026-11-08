@@ -417,3 +417,30 @@ body.no-scroll { overflow: hidden; }
 .food-sum-detail { margin-top: 8px; }
 .food-sum-detail summary { cursor: pointer; color: var(--muted); }
 .food-sum-detail .eyebrow { margin-top: 8px; }
+
+/* Ristoro: consegna e pagamenti. */
+.food-cash { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 10px 12px; border: 2px solid var(--ok); border-radius: 10px; background: var(--ok-soft); }
+.food-cash strong { font-size: 24px; }
+.food-cash .tiny { grid-column: 1 / -1; }
+.food-cash .btn { grid-column: 2; grid-row: 1; }
+.food-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.food-person { display: grid; gap: 8px; padding: 12px; border: 2px solid var(--brass); border-radius: 10px; background: var(--paper); }
+.food-person.done { border-color: var(--line); opacity: .8; }
+.food-person-tot { font-size: 20px; color: var(--brass); }
+.food-person-orders { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.food-person-orders > li.paid { opacity: .7; }
+.food-paid { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); font-weight: 600; font-size: 14px; }
+.food-pay-btn { font-size: 18px; padding: 12px; }
+.food-pay-methods button { font-size: 14px; }
+.food-qr { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.food-qr-img { width: min(200px, 60vw); background: #fff; padding: 8px; border-radius: 8px; }
+.food-qr-img svg { width: 100%; height: auto; display: block; }
+.food-amount { font-size: 22px; font-weight: 700; }
+.food-pay-sum { margin: 0; padding-left: 18px; font-size: 14px; }
+
+/* Prezzo grande a destra della voce (oro), con «offerta indicativa» piccolo sotto. */
+.food-admin-top { display: flex; align-items: flex-start; gap: 12px; }
+.food-bigprice { flex: none; display: grid; justify-items: end; line-height: 1.05; text-align: right; color: var(--brass); }
+.food-bigprice strong { font-size: 26px; font-weight: 800; white-space: nowrap; }
+.food-bigprice span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .85; }
+.food-item-side { flex: none; display: grid; justify-items: end; gap: 6px; }

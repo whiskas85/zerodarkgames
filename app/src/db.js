@@ -840,5 +840,17 @@ CREATE TABLE IF NOT EXISTS food_order_log (
 );
 `);
 addColumn('games', 'foodDeadline', 'INTEGER');
+// Consegna e pagamento (offerta libera): un pagamento per persona copre i suoi ordini consegnati.
+db.exec(`
+CREATE TABLE IF NOT EXISTS food_payments (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  ownerKey TEXT NOT NULL, ownerName TEXT, method TEXT NOT NULL, amount REAL NOT NULL, note TEXT,
+  at INTEGER NOT NULL, by TEXT, cancelledAt INTEGER, cancelledBy TEXT
+);
+`);
+addColumn('food_orders', 'paymentId', 'INTEGER');
+// Link per pagare (Satispay, PayPal): l'addetto li imposta, chi ordina li vede, alla consegna c'è il QR.
+addColumn('games', 'foodPaypal', 'TEXT');
+addColumn('games', 'foodSatispay', 'TEXT');
 
 module.exports = { db, q, tx, getSetting, setSetting, DATA_DIR };

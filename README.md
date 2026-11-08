@@ -86,6 +86,7 @@ Il Consiglio prepara un menù di panini e bevande e coppie, Eletti e Consiglio o
   - I propri ordini si vedono, si modificano e si annullano fino all'ora limite.
 - **Dopo l'ora limite** non si ordina più: si può solo mandare una **richiesta d'ordine**, segnalata come tale a chi la manda e all'addetto. L'addetto la accetta o la rifiuta, e la risposta arriva con una notifica. Gli ordini già fatti da quel momento non si cambiano più.
 - **Storico**: ogni ordine e ogni richiesta tengono la data dell'invio e dell'ultima modifica, più lo storico di ogni passaggio (inviato, modificato, annullato, accettato, rifiutato).
+- **Consegna e pagamenti** (permesso Ristoro; regia: «Ristoro: consegna e pagamenti»): l'elenco di chi ha ordinato, con i suoi ordini divisi e il totale indicativo. **Paga** chiede come ha pagato (contanti, Satispay, PayPal) e quanto ha lasciato, e segna l'ordine come consegnato e pagato; per Satispay e PayPal mostra il **QR** da far inquadrare. I link Satispay e PayPal si impostano in «Link per pagare» e chi ordina li vede nella pagina del Ristoro. In alto c'è l'incassato, diviso per metodo. Un pagamento si può annullare; un ordine pagato non si modifica più.
 
 ## Canali radio
 

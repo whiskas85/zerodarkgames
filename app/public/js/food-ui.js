@@ -7,6 +7,8 @@ import { h, api, toast, dialog, modal } from './lib.js';
 const TZ = 'Europe/Rome';
 export const fmtDT = (ts) => (ts ? new Date(ts).toLocaleString('it-IT', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 export const euro = (n) => (n == null ? null : Number(n).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }));
+// Prezzo grande a destra della voce: importo indicativo (o «offerta libera»), con la scritta piccola sotto.
+const bigPrice = (p) => h('div', { class: 'food-bigprice' }, p == null ? [h('span', null, 'offerta'), h('strong', null, 'libera')] : [h('strong', null, euro(p)), h('span', null, 'offerta indicativa')]);
 const offerText = (p) => (p == null ? 'offerta libera' : `offerta indicativa ${euro(p)}`);
 
 const STATUS = {
@@ -17,7 +19,7 @@ const STATUS = {
   'request:rejected': ['Richiesta d\'ordine · rifiutata', 'food-st-no'],
   'request:cancelled': ['Richiesta annullata', 'food-st-off'],
 };
-const LOG = { created: 'Ordine inviato', requested: 'Richiesta d\'ordine inviata', updated: 'Modificato', cancelled: 'Annullato', accepted: 'Richiesta accettata', rejected: 'Richiesta rifiutata', reopened: 'Rimessa in attesa' };
+const LOG = { created: 'Ordine inviato', requested: 'Richiesta d\'ordine inviata', updated: 'Modificato', cancelled: 'Annullato', accepted: 'Richiesta accettata', rejected: 'Richiesta rifiutata', reopened: 'Rimessa in attesa', paid: 'Consegnato e pagato', unpaid: 'Pagamento annullato' };
 const statusChip = (o) => { const [label, cls] = STATUS[`${o.kind}:${o.status}`] || [o.status, '']; return h('span', { class: `food-st ${cls}` }, label); };
 const linesList = (o) => h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', null, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title}`, l.price != null ? h('span', { class: 'tiny muted' }, ` · ${euro(l.price)}`) : null)));
 const dates = (o) => h('div', { class: 'tiny muted' }, `Inviato ${fmtDT(o.createdAt)}`, o.updatedAt > o.createdAt + 1000 ? ` · ultima modifica ${fmtDT(o.updatedAt)}` : '');
@@ -68,10 +70,11 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     const total = menu.reduce((t, m) => t + (m.price || 0) * (S.cart.get(m.id) || 0), 0);
     const count = [...S.cart.values()].reduce((a, b) => a + b, 0);
     const isRequest = S.editing ? S.editing.kind === 'request' : !d.open;
-    const canEdit = (o) => o.status !== 'cancelled' && (o.kind === 'order' ? d.open : o.status === 'pending');
+    const canEdit = (o) => o.status !== 'cancelled' && !o.payment && (o.kind === 'order' ? d.open : o.status === 'pending');
     return h('div', { class: 'food stack' },
       h('div', { class: 'food-head' }, h('h2', null, '🥪 Ristoro'), h('p', { class: 'small muted' }, 'Panini e bevande dei Giochi.')),
-      h('div', { class: 'food-free' }, h('strong', null, 'Offerta libera'), h('span', null, 'I prezzi sono solo un\'offerta indicativa: al ritiro ognuno lascia quello che vuole.')),
+      h('div', { class: 'food-free' }, h('strong', null, 'Offerta libera'), h('span', null, 'I prezzi sono solo un\'offerta indicativa: al ritiro ognuno lascia quello che vuole.'),
+        h('span', { class: 'small' }, 'Si paga al ritiro: 💶 contanti', d.payLinks?.satispay ? [' · ', h('a', { href: d.payLinks.satispay, target: '_blank', rel: 'noopener' }, '📱 Satispay')] : '', d.payLinks?.paypal ? [' · ', h('a', { href: d.payLinks.paypal, target: '_blank', rel: 'noopener' }, '🅿️ PayPal')] : '', '.')),
       d.open
         ? h('div', { class: 'food-deadline open' }, h('strong', null, d.deadline ? `Ordini aperti fino a ${fmtDT(d.deadline)}` : 'Ordini aperti'),
           h('span', { class: 'small' }, d.deadline ? 'Fino all\'ora limite puoi modificare o annullare i tuoi ordini.' : 'Puoi modificare o annullare i tuoi ordini finché il Consiglio non fissa l\'ora limite.'))
@@ -83,11 +86,11 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
       menu.length ? h('ul', { class: 'food-menu' }, menu.map((m) => {
         const qn = S.cart.get(m.id) || 0;
         return h('li', { class: `food-item ${qn ? 'on' : ''}` },
-          h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null, h('span', { class: 'tiny food-price' }, offerText(m.price))),
-          h('div', { class: 'food-qty' },
+          h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null),
+          h('div', { class: 'food-item-side' }, bigPrice(m.price), h('div', { class: 'food-qty' },
             h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': `Togli un ${m.title}`, disabled: !qn, onclick: () => setQty(m.id, qn - 1) }, '−'),
             h('b', { class: 'mono' }, String(qn)),
-            h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': `Aggiungi un ${m.title}`, disabled: d.ended, onclick: () => setQty(m.id, qn + 1) }, '+')));
+            h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': `Aggiungi un ${m.title}`, disabled: d.ended, onclick: () => setQty(m.id, qn + 1) }, '+'))));
       })) : h('p', { class: 'empty' }, 'Il menù non è ancora pronto.'),
       count ? h('div', { class: `food-cart ${isRequest ? 'is-request' : ''}` },
         h('div', { class: 'food-cart-head' }, h('strong', null, `${S.editing ? 'Modifica' : 'Carrello'}: ${count} ${count === 1 ? 'voce' : 'voci'}`), total ? h('span', { class: 'small' }, `offerta indicativa ${euro(total)}`) : null),
@@ -100,6 +103,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
           h('div', { class: 'food-order-head' }, statusChip(o), o.total ? h('span', { class: 'tiny muted' }, `offerta indicativa ${euro(o.total)}`) : null),
           linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null, dates(o),
           o.decidedAt ? h('div', { class: 'tiny muted' }, `${o.status === 'accepted' ? 'Accettata' : 'Rifiutata'} ${fmtDT(o.decidedAt)}`) : null,
+          o.payment ? h('div', { class: 'food-paid' }, `✓ Consegnato e pagato · ${o.payment.methodLabel} · ${fmtDT(o.payment.at)}`) : null,
           history(o),
           canEdit(o) && !d.ended ? h('div', { class: 'row-actions' },
             h('button', { class: 'btn btn-sm', type: 'button', onclick: () => edit(o) }, 'Modifica'),
@@ -169,6 +173,73 @@ export function createFoodAdmin({ gameId, rerender }) {
       o.status !== 'pending' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'pending' }, 'Rimessa in attesa') }, 'Rimetti in attesa') : null) : null);
   const totalsTable = (list) => (list.length ? h('table', { class: 'food-totals' }, h('tbody', null, list.map((x) => h('tr', null, h('td', { class: 'mono' }, `${x.qty}×`), h('td', null, x.title), h('td', { class: 'tiny muted' }, x.offer ? euro(x.offer) : ''))))) : h('p', { class: 'tiny muted' }, 'Niente.'));
 
+  // Paga: come ha pagato (contanti, Satispay, PayPal, con il QR da far inquadrare) e quanto (offerta libera).
+  async function payDialog(p) {
+    const d = S.data;
+    let method = 'contanti';
+    const amount = h('input', { class: 'input food-amount', inputmode: 'decimal', value: p.toPayTotal ? String(p.toPayTotal).replace('.', ',') : '', placeholder: 'es. 10' });
+    const note = h('input', { class: 'input', maxlength: 200, placeholder: 'Nota (facoltativa)' });
+    const qrBox = h('div', { class: 'food-qr' });
+    const seg = h('div', { class: 'food-tabs food-pay-methods' });
+    const paint = () => {
+      seg.replaceChildren(...[['contanti', '💶 Contanti'], ['satispay', '📱 Satispay'], ['paypal', '🅿️ PayPal']].map(([k, l]) => h('button', { type: 'button', class: method === k ? 'on' : '', onclick: () => { method = k; paint(); } }, l)));
+      const svg = d.qr?.[method];
+      if (method === 'contanti') qrBox.replaceChildren();
+      else if (svg) { const el = h('div', { class: 'food-qr-img' }); el.innerHTML = svg; qrBox.replaceChildren(h('p', { class: 'tiny muted' }, `Fai inquadrare il QR di ${method === 'paypal' ? 'PayPal' : 'Satispay'}:`), el, h('a', { class: 'tiny', href: d.payLinks[method], target: '_blank', rel: 'noopener' }, d.payLinks[method])); }
+      else qrBox.replaceChildren(h('p', { class: 'small warn-text' }, `Nessun link ${method === 'paypal' ? 'PayPal' : 'Satispay'} impostato: aggiungilo in «Link per pagare».`));
+    };
+    paint();
+    await modal({
+      title: `Paga · ${p.owner.name}`, okLabel: 'Pagato e consegnato', tall: true,
+      body: h('div', { class: 'stack-sm' },
+        h('ul', { class: 'food-pay-sum' }, p.toPay.map((o) => h('li', null, h('span', { class: 'tiny muted' }, o.kind === 'request' ? 'Richiesta accettata' : 'Ordine'), ' ', o.lines.map((l) => `${l.qty}× ${l.title}`).join(', ')))),
+        h('p', { class: 'small' }, 'Offerta indicativa: ', h('strong', null, euro(p.toPayTotal) || '—'), h('span', { class: 'tiny muted' }, ' · offerta libera')),
+        h('div', { class: 'field' }, h('span', null, 'Come ha pagato'), seg), qrBox,
+        h('label', { class: 'field' }, h('span', null, 'Quanto ha lasciato (€)'), amount), note),
+      onOk: async () => {
+        await api('POST', `${base()}/pay`, { ownerKey: p.key, method, amount: amount.value, note: note.value });
+        toast(`${p.owner.name}: consegnato e pagato`, 'ok'); load(true); return true;
+      },
+    });
+  }
+  async function linksDialog() {
+    const d = S.data;
+    const sat = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.satispay || '', placeholder: 'https://… (link Satispay)' });
+    const pp = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.paypal || '', placeholder: 'https://paypal.me/…' });
+    await modal({
+      title: 'Link per pagare', okLabel: 'Salva',
+      body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Satispay'), sat), h('label', { class: 'field' }, h('span', null, 'PayPal'), pp),
+        h('p', { class: 'tiny muted' }, 'Alla consegna, scegliendo Satispay o PayPal compare il QR da far inquadrare. Chi ordina vede i link nella pagina del Ristoro.')),
+      onOk: async () => { await api('PUT', `${base()}/paylinks`, { satispay: sat.value, paypal: pp.value }); toast('Link salvati', 'ok'); load(true); return true; },
+    });
+  }
+  function deliveryView(d) {
+    const people = d.delivery;
+    const todo = people.filter((p) => !p.done);
+    const done = people.filter((p) => p.done);
+    const byMethod = {};
+    for (const x of d.payments) byMethod[x.methodLabel] = (byMethod[x.methodLabel] || 0) + x.amount;
+    const cashed = d.payments.reduce((t, x) => t + x.amount, 0);
+    const personCard = (p) => h('li', { class: `food-person ${p.done ? 'done' : ''}` },
+      h('div', { class: 'food-order-head' }, h('div', { class: 'food-who' }, h('strong', null, p.owner.name), h('span', { class: `chip food-kind-${p.owner.kind}` }, p.owner.kind === 'consiglio' ? 'Consiglio' : p.owner.kind === 'eletto' ? 'Eletto' : 'Legati'), p.owner.sub ? h('span', { class: 'tiny muted' }, p.owner.sub) : null),
+        p.done ? h('span', { class: 'food-st food-st-ok' }, '✓ Pagato') : h('strong', { class: 'food-person-tot' }, euro(p.toPayTotal) || 'offerta libera')),
+      h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', { class: o.payment ? 'paid' : '' },
+        h('div', { class: 'tiny muted' }, `${o.kind === 'request' ? 'Richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`),
+        linesList(o), o.note ? h('p', { class: 'small' }, `Note: ${o.note}`) : null))),
+      p.payments.map((x) => h('div', { class: 'food-paid' }, h('span', null, `💶 ${x.methodLabel} · ${euro(x.amount)} · ${fmtDT(x.at)}${x.by ? ` · ${x.by}` : ''}${x.note ? ` · ${x.note}` : ''}`),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: 'Annullare il pagamento?', text: `${p.owner.name}: torna da consegnare.`, okLabel: 'Annulla il pagamento', cancelLabel: 'No', danger: true })) call('DELETE', `/payments/${x.id}`, undefined, 'Pagamento annullato'); } }, 'Annulla'))),
+      p.toPay.length ? h('button', { class: 'btn btn-primary btn-block food-pay-btn', type: 'button', onclick: () => payDialog(p) }, `💶 Paga${p.toPayTotal ? ` · ${euro(p.toPayTotal)}` : ''}`) : null);
+    const filters = [['dacons', 'Da consegnare', todo.length, todo.length > 0], ['fatti', 'Pagati', done.length, false]];
+    if (!['dacons', 'fatti'].includes(S.dtab)) S.dtab = 'dacons';
+    const shown = S.dtab === 'fatti' ? done : todo;
+    return h('div', { class: 'food food-admin stack' },
+      h('div', { class: 'food-cash' }, h('div', null, h('div', { class: 'eyebrow' }, 'Incassato'), h('strong', null, euro(cashed) || '0,00 €')),
+        h('div', { class: 'tiny muted' }, Object.entries(byMethod).map(([k, v]) => `${k} ${euro(v)}`).join(' · ') || 'Ancora niente'),
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: linksDialog }, d.payLinks.satispay || d.payLinks.paypal ? '🔗 Link per pagare' : '🔗 Aggiungi i link Satispay e PayPal')),
+      h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', class: S.dtab === k ? 'on' : '', onclick: () => { S.dtab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
+      shown.length ? h('ul', { class: 'food-people' }, shown.map(personCard)) : h('p', { class: 'empty' }, S.dtab === 'fatti' ? 'Nessuno ha ancora pagato.' : 'Nessuno da servire.'));
+  }
+
   // Due pagine distinte: 'menu' (le voci) e 'orders' (ordini e richieste, con il filtro tra i due).
   function view(mode = 'orders') {
     if (!gameId()) return h('p', { class: 'empty' }, 'Scegli la partita.');
@@ -176,13 +247,17 @@ export function createFoodAdmin({ gameId, rerender }) {
     load();
     const d = S.data;
     const live = d.items.filter((i) => !i.archived);
+    if (mode === 'delivery') return deliveryView(d);
     if (mode === 'menu') {
       return h('div', { class: 'food food-admin stack' },
         h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => itemDialog() }, '＋ Aggiungi una voce')),
         h('p', { class: 'tiny muted' }, 'Titolo, descrizione e prezzo indicativo: chi ordina vede sempre «offerta libera». Una voce già ordinata, se la togli, esce dal menù ma resta negli ordini.'),
         live.length ? h('ul', { class: 'food-menu' }, live.map((m, i) => h('li', { class: 'food-item food-admin-item' },
-          h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null,
-            h('span', { class: 'tiny food-price' }, offerText(m.price)), h('span', { class: 'tiny muted' }, `Creata ${fmtDT(m.createdAt)}${m.updatedAt > m.createdAt + 1000 ? ` · modificata ${fmtDT(m.updatedAt)}` : ''}`)),
+          // Titolo e descrizione a sinistra, prezzo grande a destra (oro).
+          h('div', { class: 'food-admin-top' },
+            h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null,
+              h('span', { class: 'tiny muted' }, `Creata ${fmtDT(m.createdAt)}${m.updatedAt > m.createdAt + 1000 ? ` · modificata ${fmtDT(m.updatedAt)}` : ''}`)),
+            bigPrice(m.price)),
           h('div', { class: 'food-admin-actions' },
             h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: i === 0, 'aria-label': 'Sposta su', onclick: () => call('POST', `/items/${m.id}/move`, { dir: -1 }) }, '↑'),
             h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: i === live.length - 1, 'aria-label': 'Sposta giù', onclick: () => call('POST', `/items/${m.id}/move`, { dir: 1 }) }, '↓'),
