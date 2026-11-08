@@ -33,10 +33,12 @@ const history = (o) => (o.log?.length > 1 ? h('details', { class: 'food-log' }, 
 export function createFoodOrder({ base, query = () => '', rerender }) {
   const S = { data: null, loading: false, cart: new Map(), note: '', editing: null, at: 0 };
   const url = (path = '') => `${base}${path}${query()}`;
+  // Un caricamento forzato mentre un altro è in corso aspetta e poi rilegge (i dati devono essere quelli dopo l'azione).
   async function load(force = false) {
-    if (S.loading || (!force && S.data && Date.now() - S.at < 15000)) return;
-    S.loading = true;
-    try { S.data = await api('GET', url()); S.at = Date.now(); } catch (e) { toast(e.message, 'error'); } finally { S.loading = false; rerender(); }
+    if (S.loading) { if (force) { await S.loading.catch(() => {}); return load(true); } return; }
+    if (!force && S.data && Date.now() - S.at < 15000) return;
+    S.loading = (async () => { try { S.data = await api('GET', url()); S.at = Date.now(); } catch (e) { toast(e.message, 'error'); } })();
+    try { await S.loading; } finally { S.loading = null; rerender(); }
   }
   const reset = () => { S.cart.clear(); S.note = ''; S.editing = null; };
   const setQty = (id, q) => { if (q > 0) S.cart.set(id, Math.min(20, q)); else S.cart.delete(id); rerender(); };
@@ -142,7 +144,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
       })) : h('p', { class: 'empty' }, 'Il menù non è ancora pronto.'),
       count ? h('div', { class: `food-cart ${isRequest ? 'is-request' : ''}` },
         h('div', { class: 'food-cart-head' }, h('strong', null, `${S.editing ? 'Modifica' : 'Carrello'}: ${count} ${count === 1 ? 'voce' : 'voci'}`), total ? h('span', { class: 'small' }, `offerta indicativa ${euro(total)}`) : null),
-        h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'Note (facoltative): es. senza cipolla, per due persone…', value: S.note, oninput: (e) => { S.note = e.target.value; } }),
+        h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'Note (facoltative): es. senza cipolla, per due persone…', 'data-keep': 'food-note', value: S.note, oninput: (e) => { S.note = e.target.value; } }),
         isRequest ? h('p', { class: 'small food-req-note' }, '⚠ Dopo l\'ora limite questa è una RICHIESTA d\'ordine, non un ordine: il Consiglio può accettarla o rifiutarla.') : null,
         h('button', { class: `btn btn-block ${isRequest ? 'btn-warn' : 'btn-primary'}`, type: 'button', onclick: send },
           S.editing ? 'Salva la modifica' : isRequest ? 'Manda la richiesta d\'ordine' : 'Invia l\'ordine')) : null,
@@ -180,9 +182,11 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
   const base = () => `/api/v/games/${gameId()}/food`;
   async function load(force = false) {
     const gid = gameId();
-    if (!gid || S.loading || (!force && S.data && S.gid === gid && Date.now() - S.at < 15000)) return;
-    S.loading = true;
-    try { S.data = await api('GET', base()); S.gid = gid; S.at = Date.now(); } catch (e) { toast(e.message, 'error'); } finally { S.loading = false; rerender(); }
+    if (!gid) return;
+    if (S.loading) { if (force) { await S.loading.catch(() => {}); return load(true); } return; }
+    if (!force && S.data && S.gid === gid && Date.now() - S.at < 15000) return;
+    S.loading = (async () => { try { S.data = await api('GET', base()); S.gid = gid; S.at = Date.now(); } catch (e) { toast(e.message, 'error'); } })();
+    try { await S.loading; } finally { S.loading = null; rerender(); }
   }
   const call = async (method, path, body, ok) => { try { await api(method, `${base()}${path}`, body); if (ok) toast(ok, 'ok'); await load(true); return true; } catch (e) { toast(e.message, 'error', 7000); return false; } };
 
@@ -303,8 +307,12 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
   }
   // Pagina a sé: i metodi di pagamento (contanti sempre; Satispay e PayPal con il loro link e il QR).
   function methodsView(d) {
-    const sat = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.satispay || '', placeholder: 'https://… (link Satispay)', 'data-keep': 'food-sat' });
-    const pp = h('input', { class: 'input', inputmode: 'url', value: d.payLinks.paypal || '', placeholder: 'https://paypal.me/…', 'data-keep': 'food-pp' });
+    // Quello che si scrive resta in una bozza finché non si salva: gli aggiornamenti automatici non lo cancellano.
+    if (S.mdGid !== gameId()) { S.md = null; S.mdGid = gameId(); }
+    const draft = (k) => (S.md && S.md[k] != null ? S.md[k] : d.payLinks[k] || '');
+    const typed = (k) => (e) => { S.md = { ...(S.md || {}), [k]: e.target.value }; };
+    const sat = h('input', { class: 'input', inputmode: 'url', value: draft('satispay'), placeholder: 'https://… (link Satispay)', 'data-keep': 'food-sat', oninput: typed('satispay') });
+    const pp = h('input', { class: 'input', inputmode: 'url', value: draft('paypal'), placeholder: 'https://paypal.me/…', 'data-keep': 'food-pp', oninput: typed('paypal') });
     const qr = (k) => {
       if (!d.qr?.[k]) return h('p', { class: 'tiny muted' }, 'Nessun link: alla consegna non compare il QR.');
       const el = h('div', { class: 'food-qr-img' }); el.innerHTML = d.qr[k];
@@ -314,7 +322,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       h('div', { class: 'food-admin-top' }, h('div', { class: 'food-item-main' }, h('strong', null, `${ico} ${title}`), h('span', { class: 'small muted' }, txt)),
         h('span', { class: `food-st ${k === 'contanti' || d.payLinks[k] ? 'food-st-ok' : ''}` }, k === 'contanti' || d.payLinks[k] ? 'Attivo' : 'Da impostare')),
       input ? h('label', { class: 'field' }, h('span', null, 'Link'), input) : null, input ? qr(k) : null);
-    const save = async () => { await call('PUT', '/paylinks', { satispay: sat.value, paypal: pp.value }, 'Metodi di pagamento salvati'); };
+    const save = async () => { if (await call('PUT', '/paylinks', { satispay: sat.value, paypal: pp.value }, 'Metodi di pagamento salvati')) { S.md = null; rerender(); } };
     return h('div', { class: 'food food-admin stack' },
       h('p', { class: 'tiny muted' }, 'Come si può pagare al ritiro. Chi ordina vede i link nella pagina del Ristoro; al ritiro, scegliendo Satispay o PayPal, compare il QR da far inquadrare.'),
       h('ul', { class: 'food-menu' },
