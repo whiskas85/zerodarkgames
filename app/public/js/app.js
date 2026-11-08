@@ -1751,9 +1751,9 @@ function viewHome() {
       ['Info e impostazioni', 'g-info', infoTiles()]));
 }
 
-// Ristoro: sezione a parte (panini e bevande, offerta libera); compare quando il Consiglio ha preparato il menù.
+// Ristoro: sezione a parte (panini e bevande, offerta libera), sempre presente; col menù vuoto dice «presto».
 const foodOrder = createFoodOrder({ base: '/api/food', rerender: () => render() });
-const foodGroup = () => (S.state?.food ? ['Ristoro', 'g-food', [tile('#/ristoro', 'Panini e bevande', '🥪', S.state.food.open ? null : 'solo richieste')]] : ['', '', []]);
+const foodGroup = () => (S.state?.food ? ['Ristoro', 'g-food', [tile('#/ristoro', 'Panini e bevande', '🥪', !S.state.food.items ? 'presto' : S.state.food.open ? null : 'solo richieste')]] : ['', '', []]);
 // La home a gruppi: prima del via (blu), gioco (giallo), comunicazioni, info e impostazioni. I gruppi vuoti spariscono.
 function tileGroups(...groups) {
   return h('div', { class: 'tile-groups' }, groups.map(([title, cls, tiles]) => {

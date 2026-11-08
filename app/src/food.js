@@ -212,11 +212,11 @@ function forOwner(owner) {
   };
 }
 
-// Per l'app: c'è un menù? (la voce Ristoro compare solo allora).
+// Per l'app: quante voci ha il menù e se si ordina ancora (la sezione Ristoro c'è sempre).
 function teamSummary(gameId) {
   const g = G.getGame(gameId);
   const n = q.get('SELECT COUNT(*) AS n FROM food_items WHERE gameId = ? AND archivedAt IS NULL', g.id).n;
-  return n ? { items: n, deadline: g.foodDeadline || null, open: isOpen(g) } : null;
+  return { items: n, deadline: g.foodDeadline || null, open: isOpen(g) };
 }
 
 // Per l'addetto: menù (anche le voci tolte), ora limite, ordini e richieste separati, quantità da preparare.
