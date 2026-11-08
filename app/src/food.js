@@ -182,6 +182,10 @@ function cancelOrder(owner, orderId) {
   return { ok: true };
 }
 
+// Le notifiche di chi ha ordinato (coppia o Eletto; il Consiglio non ne ha).
+const ownerSubs = (key) => (key.startsWith('p') ? q.all('SELECT * FROM push_subs WHERE playerId = ?', Number(key.slice(1)))
+  : key.startsWith('t') ? q.all('SELECT * FROM push_subs WHERE teamId = ?', Number(key.slice(1))) : []);
+
 // L'addetto accetta o rifiuta una richiesta arrivata dopo l'ora limite.
 function decideRequest(gameId, orderId, decision, actor) {
   const o = q.get("SELECT * FROM food_orders WHERE id = ? AND gameId = ? AND kind = 'request'", Number(orderId), Number(gameId));
@@ -194,8 +198,7 @@ function decideRequest(gameId, orderId, decision, actor) {
   q.run('UPDATE food_orders SET status = ?, decidedAt = ?, decidedBy = ?, updatedAt = ? WHERE id = ?', status, status === 'pending' ? null : now, status === 'pending' ? null : actor, now, o.id);
   addLog(o.id, status === 'accepted' ? 'accepted' : status === 'rejected' ? 'rejected' : 'reopened', actor, null);
   G.log(o.gameId, actor, 'food_request_decided', { owner: o.ownerName, status });
-  const subs = o.ownerKey.startsWith('p') ? q.all('SELECT * FROM push_subs WHERE playerId = ?', Number(o.ownerKey.slice(1)))
-    : o.ownerKey.startsWith('t') ? q.all('SELECT * FROM push_subs WHERE teamId = ?', Number(o.ownerKey.slice(1))) : [];
+  const subs = ownerSubs(o.ownerKey);
   if (status !== 'pending' && subs.length) rt.pushSubs(subs, { title: status === 'accepted' ? '🥪 Richiesta accettata' : '🥪 Richiesta rifiutata', body: status === 'accepted' ? 'Il Consiglio ha accettato la vostra richiesta d\'ordine.' : 'Il Consiglio non può accettare la vostra richiesta d\'ordine.', tag: `food-${o.id}`, url: '/#/ristoro' });
   changed(o.gameId);
   return orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', o.id));
@@ -204,7 +207,8 @@ function decideRequest(gameId, orderId, decision, actor) {
 // ---------------------------------------------------------------- consegna e pagamento
 
 const METHODS = { contanti: 'Contanti', satispay: 'Satispay', paypal: 'PayPal' };
-const paymentOut = (p) => (p ? { id: p.id, method: p.method, methodLabel: METHODS[p.method] || p.method, amount: p.amount, note: p.note || '', at: p.at, by: p.by, closes: !!p.closes } : null);
+const paymentOut = (p) => (p ? { id: p.id, method: p.method, methodLabel: METHODS[p.method] || p.method, amount: p.amount, note: p.note || '', at: p.at, by: p.by, closes: !!p.closes,
+  pending: !!p.pending && !p.cancelledAt, rejected: !!p.rejectedAt, confirmedAt: p.confirmedAt || null, confirmedBy: p.confirmedBy || null } : null);
 // Da consegnare: ordini attivi e richieste accettate.
 const deliverable = (o) => (o.kind === 'order' && o.status === 'active') || (o.kind === 'request' && o.status === 'accepted');
 const payLinks = (g) => ({ paypal: g.foodPaypal || null, satispay: g.foodSatispay || null });
@@ -311,6 +315,61 @@ function pay(gameId, ownerKey, data, actor) {
   return paymentOut(q.get('SELECT * FROM food_payments WHERE id = ?', id));
 }
 
+// Chi ha ordinato paga in anticipo con Satispay o PayPal (fuori dall'app) e lo dichiara: resta in attesa finché
+// la cassa non lo conferma. Non conta nel pagato finché non è confermato.
+function declarePayment(owner, data) {
+  const g = G.getGame(owner.gameId);
+  const method = String(data.method || '');
+  if (!['satispay', 'paypal'].includes(method)) throw err(400, 'Scegli Satispay o PayPal (i contanti si danno alla cassa)');
+  if (!payLinks(g)[method]) throw err(409, `${METHODS[method]} non è attivo: paga alla cassa`);
+  const amount = readAmount(data.amount);
+  if (!amount) throw err(400, 'Scrivi quanto hai pagato');
+  const { orders } = openLines(g.id, owner.key);
+  if (!orders.length) throw err(409, 'Non hai ordini da pagare');
+  if (q.get('SELECT COUNT(*) AS n FROM food_payments WHERE gameId = ? AND ownerKey = ? AND pending = 1 AND cancelledAt IS NULL', g.id, owner.key).n >= 5) throw err(429, 'Hai già troppi pagamenti in attesa di conferma');
+  const id = Number(q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    g.id, owner.key, owner.name, method, amount, clean(data.note, 200) || null, Date.now(), owner.name).lastInsertRowid);
+  G.log(g.id, owner.name, 'food_pay_declared', { method, amount });
+  rt.pushMasters({ title: '💶 Pagamento da verificare', body: `${owner.name}: ${METHODS[method]} ${amount.toFixed(2)} € (in anticipo)`, url: '/regia#ristoro-consegna' });
+  changed(g.id);
+  return paymentOut(q.get('SELECT * FROM food_payments WHERE id = ?', id));
+}
+
+function cancelDeclared(owner, paymentId) {
+  const p = q.get('SELECT * FROM food_payments WHERE id = ? AND gameId = ? AND ownerKey = ? AND cancelledAt IS NULL', Number(paymentId), owner.gameId, owner.key);
+  if (!p) throw err(404, 'Pagamento non trovato');
+  if (!p.pending) throw err(409, 'La cassa l\'ha già confermato: per cambiarlo parla con il Consiglio');
+  q.run('UPDATE food_payments SET cancelledAt = ?, cancelledBy = ? WHERE id = ?', Date.now(), owner.name, p.id);
+  changed(p.gameId);
+  return { ok: true };
+}
+
+// La cassa conferma (eventualmente correggendo l'importo arrivato) o dice che non è arrivato.
+function confirmPayment(gameId, paymentId, data, actor) {
+  const p = q.get('SELECT * FROM food_payments WHERE id = ? AND gameId = ? AND cancelledAt IS NULL AND pending = 1', Number(paymentId), Number(gameId));
+  if (!p) throw err(404, 'Pagamento in attesa non trovato');
+  const amount = data.amount != null && data.amount !== '' ? readAmount(data.amount) : p.amount;
+  if (!amount) throw err(400, 'Importo non valido');
+  q.run('UPDATE food_payments SET pending = 0, amount = ?, closes = ?, confirmedAt = ?, confirmedBy = ? WHERE id = ?', amount, data.closes ? 1 : 0, Date.now(), actor, p.id);
+  G.log(p.gameId, actor, 'food_pay_confirmed', { owner: p.ownerName, method: p.method, amount });
+  const subs = ownerSubs(p.ownerKey);
+  if (subs.length) rt.pushSubs(subs, { title: '💶 Pagamento confermato', body: `La cassa ha ricevuto ${amount.toFixed(2)} € con ${METHODS[p.method]}.`, tag: `foodpay-${p.id}`, url: '/#/ristoro' });
+  changed(p.gameId);
+  return paymentOut(q.get('SELECT * FROM food_payments WHERE id = ?', p.id));
+}
+
+function rejectPayment(gameId, paymentId, actor) {
+  const p = q.get('SELECT * FROM food_payments WHERE id = ? AND gameId = ? AND cancelledAt IS NULL AND pending = 1', Number(paymentId), Number(gameId));
+  if (!p) throw err(404, 'Pagamento in attesa non trovato');
+  const now = Date.now();
+  q.run('UPDATE food_payments SET cancelledAt = ?, cancelledBy = ?, rejectedAt = ? WHERE id = ?', now, actor, now, p.id);
+  G.log(p.gameId, actor, 'food_pay_rejected', { owner: p.ownerName, method: p.method, amount: p.amount });
+  const subs = ownerSubs(p.ownerKey);
+  if (subs.length) rt.pushSubs(subs, { title: '💶 Pagamento non arrivato', body: `La cassa non trova il pagamento di ${p.amount.toFixed(2)} € con ${METHODS[p.method]}: passate alla cassa.`, tag: `foodpay-${p.id}`, url: '/#/ristoro' });
+  changed(p.gameId);
+  return { ok: true };
+}
+
 function unpay(gameId, paymentId, actor) {
   const p = q.get('SELECT * FROM food_payments WHERE id = ? AND gameId = ? AND cancelledAt IS NULL', Number(paymentId), Number(gameId));
   if (!p) throw err(404, 'Pagamento non trovato');
@@ -322,14 +381,16 @@ function unpay(gameId, paymentId, actor) {
 
 const deliveryOut = (d) => ({ id: d.id, summary: d.summary, at: d.at, by: d.by });
 // Il conto di una persona: totale indicativo, pagato, quanto resta; voci consegnate e da consegnare.
-function accountOf(orders, payments) {
+function accountOf(orders, all) {
+  const payments = all.filter((x) => !x.pending && !x.rejected);
+  const pendingAmount = round(all.filter((x) => x.pending).reduce((t, x) => t + x.amount, 0));
   const total = round(orders.reduce((t, o) => t + o.total, 0));
   const paid = round(payments.reduce((t, x) => t + x.amount, 0));
   const closed = payments.some((x) => x.closes);
   const items = orders.reduce((t, o) => t + o.items, 0);
   const delivered = orders.reduce((t, o) => t + o.delivered, 0);
   const toPay = closed ? 0 : round(Math.max(0, total - paid));
-  return { total, paid, toPay, closed, items, delivered, toDeliver: items - delivered, deliveredAll: items > 0 && delivered >= items, paidAll: closed || (total > 0 ? paid >= total : paid > 0) };
+  return { total, paid, toPay, closed, items, delivered, toDeliver: items - delivered, pendingAmount, deliveredAll: items > 0 && delivered >= items, paidAll: closed || (total > 0 ? paid >= total : paid > 0) };
 }
 
 // Persone da servire: ordini divisi, cosa manca da consegnare, quanto manca da pagare; consegne e pagamenti.
@@ -343,10 +404,10 @@ function deliveryOf(gameId, orders) {
   const pays = q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL ORDER BY at', gameId);
   const dels = q.all('SELECT * FROM food_deliveries WHERE gameId = ? AND cancelledAt IS NULL ORDER BY at', gameId);
   return [...people.values()].map((p) => {
-    const payments = pays.filter((x) => x.ownerKey === p.key).map(paymentOut);
-    const a = accountOf(p.orders, payments);
-    return { ...p, payments, deliveries: dels.filter((x) => x.ownerKey === p.key).map(deliveryOut), ...a, done: a.deliveredAll && a.paidAll };
-  }).sort((a, b) => a.done - b.done || a.owner.name.localeCompare(b.owner.name));
+    const all = pays.filter((x) => x.ownerKey === p.key).map(paymentOut);
+    const a = accountOf(p.orders, all);
+    return { ...p, payments: all.filter((x) => !x.pending), pendingPayments: all.filter((x) => x.pending), deliveries: dels.filter((x) => x.ownerKey === p.key).map(deliveryOut), ...a, done: a.deliveredAll && a.paidAll };
+  }).sort((a, b) => b.pendingPayments.length - a.pendingPayments.length || a.done - b.done || a.owner.name.localeCompare(b.owner.name));
 }
 
 // ---------------------------------------------------------------- viste
@@ -355,7 +416,7 @@ function deliveryOf(gameId, orders) {
 function forOwner(owner) {
   const g = G.getGame(owner.gameId);
   const orders = q.all('SELECT * FROM food_orders WHERE gameId = ? AND ownerKey = ? ORDER BY id DESC', g.id, owner.key).map(orderOut);
-  const payments = q.all('SELECT * FROM food_payments WHERE gameId = ? AND ownerKey = ? AND cancelledAt IS NULL ORDER BY at', g.id, owner.key).map(paymentOut);
+  const payments = q.all('SELECT * FROM food_payments WHERE gameId = ? AND ownerKey = ? AND (cancelledAt IS NULL OR rejectedAt IS NOT NULL) ORDER BY at', g.id, owner.key).map(paymentOut);
   return {
     gameId: g.id, gameName: g.name, deadline: g.foodDeadline || null, open: isOpen(g), ended: g.status === 'ended', serverNow: Date.now(),
     menu: menuOf(g.id), payLinks: payLinks(g),
@@ -393,9 +454,9 @@ function forStaff(gameId) {
     items: q.all('SELECT * FROM food_items WHERE gameId = ? ORDER BY archivedAt IS NOT NULL, ord, id', g.id).map(itemOut),
     orders, requests,
     totals: { orders: count(live), accepted: count(accepted), all: count([...live, ...accepted]) },
-    counts: { orders: live.length, pending: requests.filter((o) => o.status === 'pending').length, accepted: accepted.length },
+    counts: { orders: live.length, pending: requests.filter((o) => o.status === 'pending').length, accepted: accepted.length, payPending: q.get('SELECT COUNT(*) AS n FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL AND pending = 1', g.id).n },
     delivery: deliveryOf(g.id, all), payLinks: payLinks(g),
-    payments: q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL ORDER BY at', g.id).map(paymentOut),
+    payments: q.all('SELECT * FROM food_payments WHERE gameId = ? AND cancelledAt IS NULL AND pending = 0 ORDER BY at', g.id).map(paymentOut),
   };
 }
 
@@ -409,4 +470,4 @@ async function payQr(gameId) {
 }
 
 module.exports = {
-  setPayLinks, pay, unpay, deliver, undeliver, payQr, METHODS, saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };
+  setPayLinks, pay, unpay, deliver, undeliver, declarePayment, cancelDeclared, confirmPayment, rejectPayment, payQr, METHODS, saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };

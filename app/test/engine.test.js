@@ -3527,4 +3527,27 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   assert.throws(() => FD.setPayLinks(g.id, { paypal: 'paypal.me/x' }, 'addetto'), /https/);
   assert.deepEqual(FD.setPayLinks(g.id, { paypal: 'https://paypal.me/zdt', satispay: '' }, 'addetto'), { paypal: 'https://paypal.me/zdt', satispay: null });
   assert.equal(FD.forOwner(me).payLinks.paypal, 'https://paypal.me/zdt');
+  // Pagamento in anticipo dichiarato da chi ha ordinato: in attesa finché la cassa non conferma.
+  assert.throws(() => FD.declarePayment(me, { method: 'contanti', amount: 5 }), /Satispay o PayPal/);
+  assert.throws(() => FD.declarePayment(me, { method: 'satispay', amount: 5 }), /non è attivo/);
+  const dp = FD.declarePayment(me, { method: 'paypal', amount: '6,5' });
+  assert.equal(dp.pending, true);
+  let acc2 = FD.forOwner(me).account;
+  assert.equal(acc2.paid, 8);
+  assert.equal(acc2.pendingAmount, 6.5);
+  assert.equal(FD.forStaff(g.id).counts.payPending, 1);
+  assert.equal(FD.forStaff(g.id).delivery[0].pendingPayments.length, 1);
+  FD.confirmPayment(g.id, dp.id, { amount: 6 }, 'addetto');
+  acc2 = FD.forOwner(me).account;
+  assert.equal(acc2.paid, 14);
+  assert.equal(acc2.pendingAmount, 0);
+  assert.throws(() => FD.cancelDeclared(me, dp.id), /confermato/);
+  const dp2 = FD.declarePayment(me, { method: 'paypal', amount: 3 });
+  FD.rejectPayment(g.id, dp2.id, 'addetto');
+  const mine = FD.forOwner(me).payments;
+  assert.equal(mine.find((x) => x.id === dp2.id).rejected, true);
+  assert.equal(FD.forOwner(me).account.paid, 14);
+  const dp3 = FD.declarePayment(me, { method: 'paypal', amount: 2 });
+  FD.cancelDeclared(me, dp3.id);
+  assert.equal(FD.forStaff(g.id).counts.payPending, 0);
 });

@@ -64,6 +64,43 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     if (!(await dialog({ title: o.kind === 'request' ? 'Annullare la richiesta?' : 'Annullare l\'ordine?', text: 'Resta nello storico come annullato.', okLabel: 'Annulla l\'ordine', cancelLabel: 'No', danger: true }))) return;
     try { await api('DELETE', url(`/orders/${o.id}`)); toast('Annullato', 'ok'); if (S.editing?.id === o.id) reset(); load(true); } catch (e) { toast(e.message, 'error', 7000); }
   }
+  // Paga in anticipo: Satispay o PayPal si aprono fuori dall'app; poi «Ho pagato» e la cassa conferma.
+  async function prepay() {
+    const d = S.data;
+    const acc = d.account;
+    const opts = [['satispay', '📱 Satispay'], ['paypal', '🅿️ PayPal']].filter(([k]) => d.payLinks?.[k]);
+    let method = opts[0]?.[0];
+    let opened = false;
+    const amount = h('input', { class: 'input food-amount', inputmode: 'decimal', value: acc.toPay ? String(Math.max(0, acc.toPay - acc.pendingAmount)).replace('.', ',') : '', placeholder: 'es. 10' });
+    const seg = h('div', { class: 'food-tabs food-pay-methods' });
+    const go = h('a', { class: 'btn btn-block food-go', target: '_blank', rel: 'noopener', onclick: () => { opened = true; } });
+    const paint = () => {
+      seg.replaceChildren(h('button', { type: 'button', class: 'off', onclick: () => toast('I contanti si danno alla cassa, al ritiro.') }, '💶 Contanti'),
+        ...opts.map(([k, l]) => h('button', { type: 'button', class: method === k ? 'on' : '', onclick: () => { method = k; opened = false; paint(); } }, l)));
+      go.href = d.payLinks[method];
+      go.textContent = `Apri ${method === 'paypal' ? 'PayPal' : 'Satispay'} e paga ↗`;
+    };
+    paint();
+    await modal({
+      title: 'Paga in anticipo', okLabel: '✓ Ho pagato', tall: true,
+      body: h('div', { class: 'stack-sm' },
+        h('div', { class: 'food-acc' }, accRow('Totale indicativo', euro(acc.total) || 'offerta libera'), accRow('Già pagato', euro(acc.paid) || '0,00 €'), acc.pendingAmount ? accRow('In attesa di conferma', euro(acc.pendingAmount)) : null, accRow('Resta', euro(acc.toPay) || '0,00 €', true)),
+        h('p', { class: 'tiny muted' }, 'Offerta libera: il totale è solo indicativo. I contanti si danno alla cassa al ritiro.'),
+        h('div', { class: 'field' }, h('span', null, 'Come paghi'), seg),
+        h('label', { class: 'field' }, h('span', null, 'Quanto paghi (€)'), amount),
+        h('ol', { class: 'food-steps small' }, h('li', null, 'Apri il link: si esce dall\'app e paghi lì.'), h('li', null, 'Torna qui e premi «Ho pagato».'), h('li', null, 'Il pagamento resta in attesa finché la cassa non lo conferma.')),
+        go),
+      onOk: async () => {
+        if (!opened && !(await dialog({ title: 'Hai già pagato?', text: 'Non hai aperto il link di pagamento da qui. Confermi di aver già pagato?', okLabel: 'Sì, ho pagato', cancelLabel: 'No' }))) return false;
+        await api('POST', url('/payments'), { method, amount: amount.value });
+        toast('Pagamento inviato: in attesa di conferma dalla cassa', 'ok'); load(true); return true;
+      },
+    });
+  }
+  async function cancelPay(x) {
+    if (!(await dialog({ title: 'Annullare il pagamento dichiarato?', text: 'Toglilo solo se non hai pagato davvero.', okLabel: 'Annulla', cancelLabel: 'No', danger: true }))) return;
+    try { await api('DELETE', url(`/payments/${x.id}`)); toast('Annullato', 'ok'); load(true); } catch (e) { toast(e.message, 'error', 7000); }
+  }
   function view() {
     if (!S.data) { load(); return h('p', { class: 'empty' }, 'Caricamento del menù…'); }
     load();
@@ -77,7 +114,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
     return h('div', { class: 'food stack' },
       h('div', { class: 'food-head' }, h('h2', null, '🥪 Ristoro'), h('p', { class: 'small muted' }, 'Panini e bevande dei Giochi.')),
       h('div', { class: 'food-free' }, h('strong', null, 'Offerta libera'), h('span', null, 'I prezzi sono solo un\'offerta indicativa: al ritiro ognuno lascia quello che vuole.'),
-        h('span', { class: 'small' }, 'Si paga prima o al ritiro, anche in più volte: 💶 contanti', d.payLinks?.satispay ? [' · ', h('a', { href: d.payLinks.satispay, target: '_blank', rel: 'noopener' }, '📱 Satispay')] : '', d.payLinks?.paypal ? [' · ', h('a', { href: d.payLinks.paypal, target: '_blank', rel: 'noopener' }, '🅿️ PayPal')] : '', '.')),
+        h('span', { class: 'small' }, 'Si paga in anticipo dall\'app o alla cassa al ritiro, anche in più volte: 💶 contanti alla cassa', d.payLinks?.satispay ? [' · ', h('a', { href: d.payLinks.satispay, target: '_blank', rel: 'noopener' }, '📱 Satispay')] : '', d.payLinks?.paypal ? [' · ', h('a', { href: d.payLinks.paypal, target: '_blank', rel: 'noopener' }, '🅿️ PayPal')] : '', '.')),
       d.open
         ? h('div', { class: 'food-deadline open' }, h('strong', null, d.deadline ? `Ordini aperti fino a ${fmtDT(d.deadline)}` : 'Ordini aperti'),
           h('span', { class: 'small' }, d.deadline ? 'Fino all\'ora limite puoi modificare o annullare i tuoi ordini.' : 'Puoi modificare o annullare i tuoi ordini finché il Consiglio non fissa l\'ora limite.'))
@@ -105,8 +142,13 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
         accRow('Totale indicativo', euro(acc.total) || 'offerta libera'), accRow('Pagato', euro(acc.paid) || '0,00 €'),
         accRow(acc.closed ? 'Conto chiuso' : 'Resta da pagare', acc.closed ? '✓' : euro(acc.toPay) || '0,00 €', true),
         accRow('Ritirato', acc.deliveredAll ? '✓ tutto' : `${acc.delivered} di ${acc.items}`),
-        d.payments?.length ? h('ul', { class: 'tiny muted food-hist' }, d.payments.map((x) => h('li', null, `💶 ${fmtDT(x.at)} · ${x.methodLabel} ${euro(x.amount)}`)))
-          : null) : null,
+        acc.pendingAmount ? accRow('In attesa di conferma', euro(acc.pendingAmount)) : null,
+        d.payments?.length ? h('ul', { class: 'food-hist food-my-pays' }, d.payments.map((x) => h('li', { class: x.pending ? 'wait' : x.rejected ? 'no' : '' },
+          h('span', null, `${x.pending ? '⏳' : x.rejected ? '✗' : '💶'} ${fmtDT(x.at)} · ${x.methodLabel} ${euro(x.amount)}${x.pending ? ' · in attesa che la cassa confermi' : x.rejected ? ' · non arrivato: passa alla cassa' : ' · confermato'}`),
+          x.pending ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => cancelPay(x) }, 'Annulla') : null)))
+          : null,
+        !acc.closed && acc.toPay > acc.pendingAmount && (d.payLinks?.satispay || d.payLinks?.paypal) && !d.ended
+          ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: prepay }, '💳 Paga in anticipo') : null) : null,
       h('section', { class: 'stack-sm' }, h('h3', null, 'I tuoi ordini e richieste'),
         d.orders.length ? h('ul', { class: 'food-orders' }, d.orders.map((o) => h('li', { class: `food-order ${o.status === 'cancelled' ? 'off' : ''} ${o.kind}` },
           h('div', { class: 'food-order-head' }, statusChip(o), o.total ? h('span', { class: 'tiny muted' }, `offerta indicativa ${euro(o.total)}`) : null),
@@ -213,6 +255,19 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
       },
     });
   }
+  // Conferma alla cassa di un pagamento dichiarato in anticipo (si può correggere l'importo arrivato).
+  async function confirmDialog(p, x) {
+    const amount = h('input', { class: 'input food-amount', inputmode: 'decimal', value: String(x.amount).replace('.', ',') });
+    const closes = h('input', { type: 'checkbox' });
+    await modal({
+      title: `Conferma · ${p.owner.name}`, okLabel: 'Pagamento arrivato',
+      body: h('div', { class: 'stack-sm' },
+        h('p', { class: 'small' }, `Controlla su ${x.methodLabel} che siano arrivati i soldi.`),
+        h('label', { class: 'field' }, h('span', null, 'Importo arrivato (€)'), amount),
+        h('label', { class: 'check' }, closes, h('span', null, 'Chiudi il conto: offerta libera, il resto non è dovuto'))),
+      onOk: async () => { await api('POST', `${base()}/payments/${x.id}/confirm`, { amount: amount.value, closes: closes.checked }); toast(`${p.owner.name}: pagamento confermato`, 'ok'); load(true); return true; },
+    });
+  }
   // Consegna: tutto quello che manca, oppure solo una parte (quantità per voce).
   async function deliverDialog(p) {
     const rows = [];
@@ -272,7 +327,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
     const personCard = (p) => {
       const tags = [];
       if (p.toDeliver > 0) tags.push('dacons');
-      if (!p.paidAll) tags.push('dapagare');
+      if (!p.paidAll || p.pendingPayments.length) tags.push('dapagare');
       if (p.done) tags.push('fatti');
       const hist = [
         ...p.deliveries.map((x) => ({ at: x.at, el: h('li', { class: 'food-hist-del' }, h('span', null, `📦 ${fmtDT(x.at)} · ${x.summary}${x.by ? ` · ${x.by}` : ''}`),
@@ -286,6 +341,11 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
         h('div', { class: 'food-person-state' },
           p.deliveredAll ? h('span', { class: 'food-st food-st-ok' }, '📦 Consegnato tutto') : h('span', { class: 'food-st food-st-wait' }, `📦 Da consegnare ${p.toDeliver} di ${p.items}`),
           p.paid ? h('span', { class: `food-st ${p.paidAll ? 'food-st-ok' : 'food-st-wait'}` }, `💶 Pagato ${euro(p.paid)}${p.total ? ` di ${euro(p.total)}` : ''}${p.closed ? ' · chiuso' : ''}`) : h('span', { class: 'food-st' }, '💶 Non ha pagato')),
+        p.pendingPayments.length ? h('ul', { class: 'food-pend' }, p.pendingPayments.map((x) => h('li', null,
+          h('div', null, h('strong', null, `⏳ ${x.methodLabel} ${euro(x.amount)}`), h('span', { class: 'tiny' }, ` · pagato in anticipo ${fmtDT(x.at)} · da verificare`)),
+          h('div', { class: 'food-pend-actions' },
+            h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => confirmDialog(p, x) }, '✓ Arrivato'),
+            h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: async () => { if (await dialog({ title: 'Pagamento non arrivato?', text: `${p.owner.name}: ${x.methodLabel} ${euro(x.amount)}. Riceverà un avviso di passare alla cassa.`, okLabel: 'Non arrivato', cancelLabel: 'No', danger: true })) call('POST', `/payments/${x.id}/reject`, {}, 'Segnato come non arrivato'); } }, 'Non arrivato'))))) : null,
         h('ol', { class: 'food-person-orders' }, p.orders.map((o) => h('li', null,
           h('div', { class: 'tiny muted' }, `${o.kind === 'request' ? 'Richiesta accettata' : 'Ordine'} · ${fmtDT(o.createdAt)}${o.total ? ` · ${euro(o.total)}` : ''}`),
           h('ul', { class: 'food-lines' }, o.lines.map((l) => h('li', { class: l.delivered >= l.qty ? 'got' : '' }, h('b', { class: 'mono' }, `${l.qty}×`), ` ${l.title} `, lineDone(l)))),
@@ -328,6 +388,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
         h('div', { class: 'food-cash-owed' }, h('div', { class: 'eyebrow' }, 'Ancora da pagare'), h('strong', null, euro(owed) || '0,00 €')),
         h('div', { class: 'tiny muted' }, Object.entries(byMethod).map(([k, v]) => `${k} ${euro(v)}`).join(' · ') || 'Ancora niente'),
         methodsHref && !d.payLinks.satispay && !d.payLinks.paypal ? h('a', { class: 'btn btn-sm food-cash-link', href: methodsHref }, '💳 Imposta Satispay e PayPal') : null),
+      d.counts.payPending ? h('button', { class: 'food-pend-alert', type: 'button', onclick: () => { S.dtab = 'dapagare'; S.dq = ''; search.value = ''; apply(); } }, `⏳ ${d.counts.payPending} ${d.counts.payPending === 1 ? 'pagamento in anticipo da verificare' : 'pagamenti in anticipo da verificare'}`) : null,
       search, tabs, list, empty);
   }
 
