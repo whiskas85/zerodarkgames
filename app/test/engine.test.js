@@ -3548,6 +3548,10 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   assert.equal(acc2.paid, 14);
   assert.equal(acc2.pendingAmount, 0);
   assert.throws(() => FD.cancelDeclared(me, dp.id), /confermato/);
+  // Gli ordini fin qui sono coperti dal pagamento confermato: per i prossimi serve un ordine nuovo.
+  FD.setDeadline(g.id, null, 'addetto');
+  FD.placeOrder(me, { lines: [{ itemId: panino.id, qty: 1 }] });
+  assert.throws(() => FD.declarePayment(me, { method: 'paypal', amount: 3, orderIds: [dp.orderIds[0]] }), /già pagato/);
   const dp2 = FD.declarePayment(me, { method: 'paypal', amount: 3 });
   FD.rejectPayment(g.id, dp2.id, 'addetto');
   const mine = FD.forOwner(me).payments;
@@ -3556,4 +3560,17 @@ test('ristoro: menù in offerta libera, ordine prima dell\'ora limite, richiesta
   const dp3 = FD.declarePayment(me, { method: 'paypal', amount: 2 });
   FD.cancelDeclared(me, dp3.id);
   assert.equal(FD.forStaff(g.id).counts.payPending, 0);
+  // Il pagamento è legato all'ordine: l'ordine pagato risulta pagato, gli altri no.
+  FD.setDeadline(g.id, null, 'addetto');
+  const ob = FD.placeOrder(me, { lines: [{ itemId: panino.id, qty: 1 }] });
+  const oc = FD.placeOrder(me, { lines: [{ itemId: panino.id, qty: 2 }] });
+  const dp4 = FD.declarePayment(me, { method: 'paypal', amount: 5, orderIds: [ob.id] });
+  assert.deepEqual(dp4.orderIds, [ob.id]);
+  let mineOrders = FD.forOwner(me).orders;
+  assert.equal(mineOrders.find((x) => x.id === ob.id).pay.pending, true);
+  assert.equal(mineOrders.find((x) => x.id === oc.id).pay, null);
+  assert.throws(() => FD.declarePayment(me, { method: 'paypal', amount: 5, orderIds: [ob.id] }), /già pagato/);
+  assert.throws(() => FD.updateOrder(me, ob.id, { lines: [{ itemId: panino.id, qty: 3 }] }), /Già pagato/);
+  FD.rejectPayment(g.id, dp4.id, 'addetto');
+  assert.equal(FD.forOwner(me).orders.find((x) => x.id === ob.id).pay, null);
 });
