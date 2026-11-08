@@ -56,7 +56,10 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
       if (S.editing) await api('PUT', url(`/orders/${S.editing.id}`), { lines, note: S.note });
       const placed = S.editing ? null : await api('POST', url('/orders'), { lines, note: S.note });
       toast(S.editing ? 'Modifica salvata' : isRequest ? 'Richiesta d\'ordine inviata' : 'Ordine inviato', 'ok');
-      reset(); await load(true);
+      reset();
+      // Dati freschi anche se un aggiornamento (SSE) è già in corso: servono per proporre il pagamento.
+      try { S.data = await api('GET', url()); S.at = Date.now(); } catch { /* resta quello che c'è */ }
+      rerender();
       // Ordine appena fatto: si può pagare subito in anticipo (o al ritiro).
       if (placed?.kind === 'order' && canPay() && await dialog({ title: 'Ordine inviato', text: 'Vuoi pagarlo adesso in anticipo con Satispay o PayPal? Puoi anche pagare alla cassa al ritiro.', okLabel: '💳 Paga adesso', cancelLabel: 'Pago al ritiro' })) prepay(placed.total);
     } catch (e) { toast(e.message, 'error', 7000); load(true); }
