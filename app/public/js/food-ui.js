@@ -113,6 +113,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
 // gameId(): la partita; tutto passa da /api/v/games/:id/food (permesso «ristoro» o master).
 export function createFoodAdmin({ gameId, rerender }) {
   const S = { data: null, gid: null, loading: false, at: 0, tab: 'ordini' };
+  const pending = () => S.data?.counts?.pending || 0;
   const base = () => `/api/v/games/${gameId()}/food`;
   async function load(force = false) {
     const gid = gameId();
@@ -165,25 +166,15 @@ export function createFoodAdmin({ gameId, rerender }) {
       o.status !== 'pending' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('POST', `/orders/${o.id}/decision`, { decision: 'pending' }, 'Rimessa in attesa') }, 'Rimetti in attesa') : null) : null);
   const totalsTable = (list) => (list.length ? h('table', { class: 'food-totals' }, h('tbody', null, list.map((x) => h('tr', null, h('td', { class: 'mono' }, `${x.qty}×`), h('td', null, x.title), h('td', { class: 'tiny muted' }, x.offer ? euro(x.offer) : ''))))) : h('p', { class: 'tiny muted' }, 'Niente.'));
 
-  function view() {
+  // Due pagine distinte: 'menu' (le voci) e 'orders' (ordini e richieste, con il filtro tra i due).
+  function view(mode = 'orders') {
     if (!gameId()) return h('p', { class: 'empty' }, 'Scegli la partita.');
     if (!S.data || S.gid !== gameId()) { load(); return h('p', { class: 'empty' }, 'Caricamento…'); }
     load();
     const d = S.data;
     const live = d.items.filter((i) => !i.archived);
-    const tabs = [['ordini', 'Ordini', d.counts.orders, false], ['richieste', 'Richieste', d.counts.pending, d.counts.pending > 0], ['menu', 'Menù', live.length, false]];
-    const activeOrders = d.orders.filter((o) => o.status === 'active');
-    const offOrders = d.orders.filter((o) => o.status !== 'active');
-    return h('div', { class: 'food food-admin stack' },
-      h('div', { class: `food-deadline ${d.open ? 'open' : 'closed'}` },
-        h('strong', null, d.deadline ? (d.open ? `Ora limite: ${fmtDT(d.deadline)} · ordini aperti` : `Ora limite passata (${fmtDT(d.deadline)}) · arrivano solo richieste`) : 'Nessuna ora limite: ordini aperti'),
-        h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm', type: 'button', onclick: deadlineDialog }, d.deadline ? 'Cambia l\'ora limite' : 'Fissa l\'ora limite'),
-          d.deadline ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('PUT', '/deadline', { deadline: null }, 'Ora limite tolta: ordini aperti') }, 'Togli') : null,
-          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => load(true) }, '↻ Aggiorna'))),
-      // Tre schede su una riga: Ordini, Richieste (con quante aspettano una risposta) e Menù.
-      h('nav', { class: 'food-tabs', role: 'tablist' }, tabs.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
-      S.tab === 'menu' ? h('section', { class: 'stack-sm' },
+    if (mode === 'menu') {
+      return h('div', { class: 'food food-admin stack' },
         h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => itemDialog() }, '＋ Aggiungi una voce')),
         h('p', { class: 'tiny muted' }, 'Titolo, descrizione e prezzo indicativo: chi ordina vede sempre «offerta libera». Una voce già ordinata, se la togli, esce dal menù ma resta negli ordini.'),
         live.length ? h('ul', { class: 'food-menu' }, live.map((m, i) => h('li', { class: 'food-item' },
@@ -193,8 +184,21 @@ export function createFoodAdmin({ gameId, rerender }) {
             h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: i === 0, 'aria-label': 'Sposta su', onclick: () => call('POST', `/items/${m.id}/move`, { dir: -1 }) }, '↑'),
             h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: i === live.length - 1, 'aria-label': 'Sposta giù', onclick: () => call('POST', `/items/${m.id}/move`, { dir: 1 }) }, '↓'),
             h('button', { class: 'btn btn-sm', type: 'button', onclick: () => itemDialog(m) }, 'Modifica'),
-            h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: `Togliere «${m.title}»?`, text: 'Esce dal menù. Gli ordini già fatti restano com\'erano.', okLabel: 'Togli', danger: true })) call('DELETE', `/items/${m.id}`, undefined, 'Voce tolta'); } }, 'Togli'))))) : h('p', { class: 'empty' }, 'Il menù è vuoto: aggiungi la prima voce.'))
-      : S.tab === 'richieste' ? h('section', { class: 'stack-sm food-sec-req' },
+            h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: `Togliere «${m.title}»?`, text: 'Esce dal menù. Gli ordini già fatti restano com\'erano.', okLabel: 'Togli', danger: true })) call('DELETE', `/items/${m.id}`, undefined, 'Voce tolta'); } }, 'Togli'))))) : h('p', { class: 'empty' }, 'Il menù è vuoto: aggiungi la prima voce.'));
+    }
+    const filters = [['ordini', 'Ordini', d.counts.orders, false], ['richieste', 'Richieste d\'ordine', d.counts.pending, d.counts.pending > 0]];
+    const activeOrders = d.orders.filter((o) => o.status === 'active');
+    const offOrders = d.orders.filter((o) => o.status !== 'active');
+    return h('div', { class: 'food food-admin stack' },
+      h('div', { class: `food-deadline ${d.open ? 'open' : 'closed'}` },
+        h('strong', null, d.deadline ? (d.open ? `Ora limite: ${fmtDT(d.deadline)} · ordini aperti` : `Ora limite passata (${fmtDT(d.deadline)}) · arrivano solo richieste`) : 'Nessuna ora limite: ordini aperti'),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: deadlineDialog }, d.deadline ? 'Cambia l\'ora limite' : 'Fissa l\'ora limite'),
+          d.deadline ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('PUT', '/deadline', { deadline: null }, 'Ora limite tolta: ordini aperti') }, 'Togli') : null,
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => load(true) }, '↻ Aggiorna'))),
+      // Filtro: ordini (entro l'ora limite) o richieste d'ordine (dopo), con quante aspettano una risposta.
+      h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),
+      S.tab === 'richieste' ? h('section', { class: 'stack-sm food-sec-req' },
         h('div', { class: 'food-sec-title req' }, h('strong', null, 'RICHIESTE D\'ORDINE'), h('span', { class: 'small' }, 'Arrivate DOPO l\'ora limite: non sono ordini finché non le accetti.')),
         d.requests.length ? h('ul', { class: 'food-orders' }, [...d.requests].sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.createdAt - a.createdAt).map(orderCard)) : h('p', { class: 'empty' }, 'Nessuna richiesta.'),
         h('h3', null, 'Richieste accettate: da preparare'), totalsTable(d.totals.accepted))
@@ -208,5 +212,5 @@ export function createFoodAdmin({ gameId, rerender }) {
         activeOrders.length ? h('ul', { class: 'food-orders' }, [...activeOrders].reverse().map(orderCard)) : h('p', { class: 'empty' }, 'Nessun ordine.'),
         offOrders.length ? h('details', null, h('summary', { class: 'small' }, `Annullati (${offOrders.length})`), h('ul', { class: 'food-orders' }, offOrders.map(orderCard))) : null));
   }
-  return { view, load: () => load(true) };
+  return { view, load: () => load(true), pending };
 }

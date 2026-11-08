@@ -75,10 +75,10 @@ Gli Eletti hanno la loro app (non la regia): incarichi della squadra, **Piazza A
 
 Il Consiglio prepara un menù di panini e bevande e coppie, Eletti e Consiglio ordinano dall'app. I prezzi sono solo **un'offerta indicativa: si paga in offerta libera**, e l'app lo dice sempre.
 
-- **Addetto**: in Consiglio Zero il master dà il permesso **Ristoro**. L'addetto, e il master, gestisce tutto dalla sua app del Consiglio (`/consiglio` → «Gestione ristoro») o dalla regia (voce **Ristoro: gestione**):
+- **Addetto**: in Consiglio Zero il master dà il permesso **Ristoro**. L'addetto, e il master, gestisce tutto dalla sua app del Consiglio (`/consiglio`, gruppo Ristoro: **Menù** e **Ordini e richieste**) o dalla regia (voci **Ristoro: menù** e **Ristoro: ordini e richieste**):
   - le voci del menù (titolo, descrizione, prezzo indicativo, ordine);
   - l'**ora limite** per ordinare;
-  - gli ordini e le richieste d'ordine, in due schede separate, con il riepilogo «da preparare».
+  - in **Ordini e richieste** l'ora limite e un filtro Ordini / Richieste d'ordine, con il riepilogo «da preparare».
 - **Chi ordina**:
   - Coppie ed Eletti: nell'app, sezione **Ristoro** in home e nel menu.
   - Consiglio: nella sua app (`/consiglio`), gruppo Ristoro → «Panini e bevande»; la regia dalla voce **Ristoro: ordina**.
