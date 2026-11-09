@@ -1508,3 +1508,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .pw-reset-box strong { font-size: 20px; overflow-wrap: anywhere; }
 .pw-reset-pass { color: var(--brass, #d1ad62); letter-spacing: .04em; }
 .pw-reset-text { margin: 0; padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); white-space: pre-wrap; font-size: 13px; }
+
+/* Pagina Minigiochi */
+.mg-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.mg-admin-card { display: grid; gap: 8px; align-content: start; padding: 12px; border: 2px solid var(--brass, #d1ad62); border-radius: 12px; background: var(--paper); }
+.mg-admin-card.off { border-color: var(--line); opacity: .7; }
+.mg-admin-head { display: flex; align-items: center; gap: 8px; }
+.mg-admin-head strong { flex: 1; }
+.mg-admin-ico { font-size: 24px; }

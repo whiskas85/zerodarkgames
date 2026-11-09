@@ -3749,3 +3749,20 @@ test('reset della password dalla regia: temporanea, cambio obbligatorio, non per
   q.run("INSERT INTO account_identities (accountId, iss, sub, createdAt) VALUES (?, 'https://ops.example', 'sub-1', ?)", c.id, Date.now());
   assert.throws(() => A.resetPassword(c.id, null, 'regia'), /Zero Dark Ops/);
 });
+
+test('minigiochi: la regia li accende e spegne; uno spento non esce né a caso né se scelto', () => {
+  const MG = require('../src/minigames');
+  const g = G.createGame({ name: 'Minigiochi' }, 'test');
+  G.updateGame(g.id, { altarMinigame: 'random', beaconMinigame: 'simon' }, 'test');
+  for (const k of ['simon', 'memoria', 'tempo']) MG.setEnabled(g.id, k, false, 'test');
+  const l = MG.list(G.getGame(g.id));
+  assert.deepEqual(l.games.filter((x) => x.enabled).map((x) => x.id), ['ordine']);
+  // A caso: solo quello acceso; scelto ma spento: uno acceso a caso.
+  for (let i = 0; i < 5; i++) assert.equal(MG.gate({ g: G.getGame(g.id), ref: `beacon:zone:${i}`, teamId: 1, playerId: 1 + i }).minigame.game, 'ordine');
+  assert.equal(MG.modeFor(G.getGame(g.id), 'beacon:zone:1'), 'random');
+  // Tutti spenti: nessun minigioco.
+  MG.setEnabled(g.id, 'ordine', false, 'test');
+  assert.equal(MG.modeFor(G.getGame(g.id), 'beacon:zone:1'), 'off');
+  MG.setEnabled(g.id, 'simon', true, 'test');
+  assert.equal(MG.modeFor(G.getGame(g.id), 'beacon:zone:1'), 'simon');
+});

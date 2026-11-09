@@ -34,6 +34,7 @@ const TABS = [
   ['mappa', 'Mappa e campo'],
   ['doniqr', 'Doni QR'],
   ['stampe', 'Stampe'],
+  ['minigiochi', 'Minigiochi'],
   ['catalogo', 'Skill e Doni'],
   ['doni', 'Armamenti'],
   ['comunicazioni', 'Annunci e messaggi'],
@@ -57,7 +58,7 @@ const TABS = [
 // Icone (MDI) del menu della regia; Emergenze è rossa.
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
-  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', catalogo: 'starFourPoints',
+  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', minigiochi: 'puzzle', catalogo: 'starFourPoints',
   doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
   rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
@@ -321,7 +322,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, ristoro: viewRistoro, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
@@ -1974,6 +1975,41 @@ async function assignDialog(kind, item, move) {
   if (ok) { toast(move ? 'Spostamento assegnato: la squadra è stata avvisata' : 'Incarico assegnato: la squadra è stata avvisata', 'ok'); load(); loadField(false); }
 }
 
+// Pagina Minigiochi: dove si usano (Altari, Beacon), quali sono accesi, e la prova di ognuno.
+let mgList = null;
+async function loadMinigames() { try { mgList = { gameId: R.gameId, ...(await api('GET', G('/minigames'))) }; } catch (e) { toast(e.message, 'error'); } render(); }
+const MG_ICON = { simon: '🔴', memoria: '🔢', tempo: '⏱️', ordine: '🔟' };
+function viewMinigames() {
+  if (!mgList || mgList.gameId !== R.gameId) { if (!loadMinigames.busy) { loadMinigames.busy = true; loadMinigames().finally(() => { loadMinigames.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
+  const L = mgList;
+  const g = R.ms.game;
+  const save = async (key, v) => { await call('PATCH', `/api/m/games/${R.gameId}`, { [key]: v }, 'Salvato'); loadMinigames(); };
+  const toggle = async (x) => { try { const r = await api('PUT', G(`/minigames/${x.id}`), { on: !x.enabled }); mgList = { gameId: R.gameId, ...r }; toast(x.enabled ? `${x.name}: spento` : `${x.name}: acceso`, 'ok'); render(); } catch (e) { toast(e.message, 'error'); } };
+  const prova = async (x) => {
+    const { playMinigame, localChallenge } = await import('./minigame-ui.js');
+    let r;
+    do r = await playMinigame(localChallenge(x.id, x)); while (r === 'retry');
+  };
+  const on = L.games.filter((x) => x.enabled).length;
+  return h('div', { class: 'stack' },
+    section('Dove si usano',
+      h('p', { class: 'muted tiny' }, 'Una prova veloce sul telefono: per le coppie dopo aver inquadrato un Altare e prima di pronunciare il Sigillo; per gli Eletti prima di spegnere un Altare con il Beacon e alla fine della sequenza che accende una zona. Chi sbaglia riprova dopo 10 secondi.'),
+      h('div', { class: 'mg-settings' },
+        h('label', { class: 'field' }, h('span', null, '⛬ Sblocco degli Altari'), mgSelect(g.altarMinigame || 'off', (v) => save('altarMinigame', v))),
+        h('label', { class: 'field' }, h('span', null, '📡 Beacon degli Eletti'), mgSelect(g.beaconMinigame || 'off', (v) => save('beaconMinigame', v)))),
+      L.altarsCustom ? h('p', { class: 'tiny muted' }, `${L.altarsCustom} ${L.altarsCustom === 1 ? 'Altare ha' : 'Altari hanno'} un minigioco proprio (in `, h('a', { href: '#altari' }, 'Altari e Parola'), ').') : null,
+      !on ? h('p', { class: 'small warn-text' }, '⚠ Tutti i minigiochi sono spenti: non ne compare nessuno, anche se sopra è scelto.') : null),
+    section(`Minigiochi (${on} su ${L.games.length} accesi)`,
+      h('p', { class: 'muted tiny' }, 'Spento = non esce «a caso» e non si usa nemmeno se è quello scelto (al suo posto ne esce uno acceso a caso). «Prova» lo fa giocare qui, senza contare nulla.'),
+      h('div', { class: 'mg-cards' }, L.games.map((x) => h('div', { class: `mg-admin-card ${x.enabled ? '' : 'off'}` },
+        h('div', { class: 'mg-admin-head' }, h('span', { class: 'mg-admin-ico', 'aria-hidden': 'true' }, MG_ICON[x.id] || '🎲'), h('strong', null, x.name),
+          h('button', { type: 'button', class: `switch switch-sm ${x.enabled ? 'on' : ''}`, role: 'switch', 'aria-checked': x.enabled ? 'true' : 'false', onclick: () => toggle(x) },
+            h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), x.enabled ? 'ACCESO' : 'SPENTO')),
+        h('p', { class: 'small' }, x.hint),
+        h('div', { class: 'tiny muted' }, x.id === 'simon' || x.id === 'memoria' ? '✓ Risposta verificata dal server' : 'Esito dato dal telefono'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => prova(x) }, '▶ Prova'))))));
+}
+
 // Minigiochi per sbloccare gli Altari (coppie) e completare i Beacon (Eletti).
 const MG_OPTS = [['off', 'Nessun minigioco'], ['random', '🎲 A caso'], ['simon', 'Ripeti il segnale'], ['memoria', 'Ricorda il codice'], ['tempo', 'Ferma al momento giusto'], ['ordine', 'Tocca in ordine']];
 const mgSelect = (value, onchange, inherit = null) => h('select', { class: 'input input-sm mg-select', onchange: (e) => onchange(e.target.value) },
@@ -1986,7 +2022,8 @@ function minigameCard(ms) {
     h('p', { class: 'muted tiny' }, 'Prova veloce sul telefono prima di aprire un Altare (dopo la scansione, prima del Sigillo) o prima di completare un Beacon degli Eletti. «A caso» ne sceglie uno ogni volta. Chi sbaglia riprova dopo 10 secondi. Ogni Altare può avere il suo minigioco (qui sotto, nella sua scheda).'),
     h('div', { class: 'mg-settings' },
       h('label', { class: 'field' }, h('span', null, '⛬ Sblocco degli Altari'), mgSelect(g.altarMinigame || 'off', (v) => save('altarMinigame', v))),
-      h('label', { class: 'field' }, h('span', null, '📡 Beacon degli Eletti'), mgSelect(g.beaconMinigame || 'off', (v) => save('beaconMinigame', v)))));
+      h('label', { class: 'field' }, h('span', null, '📡 Beacon degli Eletti'), mgSelect(g.beaconMinigame || 'off', (v) => save('beaconMinigame', v)))),
+    h('a', { class: 'btn btn-sm', href: '#minigiochi' }, '🎲 Prova, accendi e spegni i minigiochi'));
 }
 
 function viewAltars() {

@@ -16,6 +16,15 @@ export async function withMinigame(call) {
   return res;
 }
 
+// Prova dalla regia: stessa sfida del server, verificata qui (niente server, niente attese dopo un errore).
+const rnd = (n) => Math.floor(Math.random() * n);
+export function localChallenge(game, info = {}) {
+  const params = game === 'simon' ? { seq: Array.from({ length: 5 }, () => rnd(4)), pads: 4 }
+    : game === 'memoria' ? { code: Array.from({ length: 5 }, () => rnd(10)).join(''), showMs: 3000 }
+      : game === 'tempo' ? { rounds: 4, need: 3, zone: 0.18 } : { n: 9, seconds: 12 };
+  return { id: 0, local: true, game, name: info.name || game, hint: info.hint || '', params };
+}
+
 export function playMinigame(mg) {
   return new Promise((resolve) => {
     let over = false;
@@ -24,7 +33,7 @@ export function playMinigame(mg) {
     const close = (v) => { if (over) return; over = true; el.remove(); resolve(v); };
     const el = h('div', { class: 'mg-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': mg.name },
       h('div', { class: 'mg-card' },
-        h('div', { class: 'eyebrow' }, '🎲 Minigioco del Consiglio'),
+        h('div', { class: 'eyebrow' }, mg.local ? '🎲 Prova del minigioco' : '🎲 Minigioco del Consiglio'),
         h('h2', null, mg.name),
         h('p', { class: 'small muted' }, mg.hint),
         area, status,
@@ -35,7 +44,12 @@ export function playMinigame(mg) {
       if (over) return;
       area.replaceChildren(h('div', { class: 'mg-wait' }, 'Verifica…'));
       let r;
-      try { r = await api('POST', `/api/team/minigame/${mg.id}/done`, body); } catch (e) { status.textContent = e.message; r = { ok: false }; }
+      if (mg.local) {
+        const want = mg.game === 'simon' ? mg.params.seq.join('') : mg.game === 'memoria' ? mg.params.code : null;
+        r = { ok: want != null ? String(body.answer ?? '').replace(/\D/g, '') === want : !!body.ok, retryAt: Date.now() };
+      } else {
+        try { r = await api('POST', `/api/team/minigame/${mg.id}/done`, body); } catch (e) { status.textContent = e.message; r = { ok: false }; }
+      }
       if (r.ok) {
         vibrate([80, 50, 200]);
         area.replaceChildren(h('div', { class: 'mg-result ok' }, '✓ Superato'));

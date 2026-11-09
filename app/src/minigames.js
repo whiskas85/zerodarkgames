@@ -27,14 +27,33 @@ function challenge(game) {
 }
 const cleanMode = (v) => (MODES.includes(v) ? v : 'off');
 
+// Minigiochi spenti dalla regia: non escono a caso e non si usano anche se scelti (si passa a uno acceso a caso).
+const offList = (g) => { try { return new Set(JSON.parse(g?.minigamesOff || '[]')); } catch { return new Set(); } };
+const enabledGames = (g) => Object.keys(GAMES).filter((k) => !offList(g).has(k));
 // Che minigioco serve per quel bersaglio: 'off' = nessuno.
 function modeFor(g, ref) {
+  let mode;
   if (ref.startsWith('altar:')) {
     const p = q.get('SELECT minigame FROM points WHERE id = ?', Number(ref.slice(6)));
-    return cleanMode(p?.minigame || g.altarMinigame || 'off');
-  }
-  return cleanMode(g.beaconMinigame || 'off');
+    mode = cleanMode(p?.minigame || g.altarMinigame || 'off');
+  } else mode = cleanMode(g.beaconMinigame || 'off');
+  if (mode === 'off') return 'off';
+  if (!enabledGames(g).length) return 'off';
+  return mode !== 'random' && offList(g).has(mode) ? 'random' : mode;
 }
+// Accende o spegne un minigioco per la partita.
+function setEnabled(gameId, game, on, actor) {
+  const g = G.getGame(gameId);
+  if (!GAMES[game]) throw new HttpError(404, 'Minigioco non trovato');
+  const off = offList(g);
+  if (on) off.delete(game); else off.add(game);
+  q.run('UPDATE games SET minigamesOff = ? WHERE id = ?', off.size ? JSON.stringify([...off]) : null, g.id);
+  G.log(g.id, actor, on ? 'minigame_enabled' : 'minigame_disabled', { game: GAMES[game].name });
+  return list(G.getGame(g.id));
+}
+// Per la regia: i minigiochi con lo stato e dove si usano.
+const list = (g) => ({ games: Object.entries(GAMES).map(([id, x]) => ({ id, ...x, enabled: !offList(g).has(id) })), altar: g.altarMinigame || 'off', beacon: g.beaconMinigame || 'off',
+  altarsCustom: q.get('SELECT COUNT(*) AS n FROM points WHERE gameId = ? AND minigame IS NOT NULL', g.id).n });
 
 // Da chiamare prima dell'azione: null se non serve o è già superato; altrimenti la sfida da giocare.
 // since: per l'Altare, il momento della scansione (il minigioco vale solo dopo di essa).
@@ -52,7 +71,7 @@ function gate({ g, ref, teamId, playerId = null, since = 0 }) {
   if (open) return { minigame: out(open) };
   const failed = q.get(`SELECT doneAt FROM minigame_runs WHERE gameId = ? AND ref = ? AND ${who} AND doneAt IS NOT NULL AND passedAt IS NULL ORDER BY id DESC LIMIT 1`, g.id, ref, id);
   const retryAt = failed ? failed.doneAt + RETRY_MS : 0;
-  const keys = Object.keys(GAMES);
+  const keys = enabledGames(g);
   const game = mode === 'random' ? keys[rint(keys.length)] : mode;
   const c = challenge(game);
   const runId = Number(q.run('INSERT INTO minigame_runs (gameId, ref, teamId, playerId, game, params, answer, createdAt, notBefore) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -77,4 +96,4 @@ function done(team, player, runId, body) {
   return { ok, retryAt: ok ? null : now + RETRY_MS };
 }
 
-module.exports = { GAMES, MODES, cleanMode, gate, done, use, modeFor };
+module.exports = { GAMES, MODES, cleanMode, gate, done, use, modeFor, setEnabled, list, challenge };
