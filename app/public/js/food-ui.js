@@ -145,7 +145,8 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => { reset(); rerender(); } }, 'Lascia stare')) : null,
       menu.length ? h('ul', { class: 'food-menu' }, menu.map((m) => {
         const qn = S.cart.get(m.id) || 0;
-        return h('li', { class: `food-item ${qn ? 'on' : ''}` },
+        // Tocco sulla voce (fuori dai pulsanti − e +): una in più.
+        return h('li', { class: `food-item ${qn ? 'on' : ''} ${d.ended ? '' : 'tap'}`, onclick: (e) => { if (d.ended || e.target.closest('button')) return; setQty(m.id, qn + 1); } },
           h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null),
           h('div', { class: 'food-item-side' }, bigPrice(m.price), h('div', { class: 'food-qty' },
             h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': `Togli un ${m.title}`, disabled: !qn, onclick: () => setQty(m.id, qn - 1) }, '−'),

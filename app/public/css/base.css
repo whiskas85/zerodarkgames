@@ -524,3 +524,5 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .mg-num { aspect-ratio: 1; font-size: 28px; font-weight: 800; border-radius: 12px; border: 2px solid var(--line, #333); background: rgba(255, 255, 255, .06); color: inherit; cursor: pointer; }
 .mg-num.done { background: rgba(63, 185, 80, .3); border-color: #3fb950; } .mg-num.bad { background: rgba(229, 72, 77, .4); border-color: #e5484d; }
 
+.food-item.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+.food-item.tap:active { filter: brightness(1.15); }
