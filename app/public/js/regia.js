@@ -3753,18 +3753,22 @@ function giftOddsView(c) {
   const tierSum = o.tiers.reduce((t, r) => t + r.pct, 0);
   const num = (value, onchange, opts = {}) => h('input', { class: 'input odds-num', type: 'number', min: 0, max: 100, step: opts.step || 1, value, onchange: (e) => onchange(e.target.value) });
   return section('Probabilità del Dono a caso',
-    h('p', { class: 'muted tiny' }, 'Vale quando un Dono esce «a caso» (Autorità, Zona di Conquista, premi di eventi e voto senza un dono scelto). Doppia estrazione: prima la rarità con la sua probabilità, poi uno dei doni di quella rarità in base al peso. Peso 0 = quel dono non esce mai; una rarità a 0% o senza doni non esce (le altre si riproporzionano). Si può cambiare anche a partita in corso.'),
+    h('p', { class: 'muted tiny' }, 'Vale quando un Dono esce «a caso» (Autorità, Zona di Conquista, premi di eventi e voto senza un dono scelto). Doppia estrazione: prima la rarità con la sua probabilità, poi uno dei doni di quella rarità in base al peso. «Mai a caso» (o peso 0) = quel dono non esce mai dall\'estrazione, ma si può sempre dare come premio scelto o con un QR; una rarità a 0% o senza doni non esce (le altre si riproporzionano). Si può cambiare anche a partita in corso.'),
     h('div', { class: 'odds-tiers' }, o.tiers.map((r) => h('label', { class: 'odds-tier', style: { '--c': r.color } },
       h('span', null, r.name), h('span', { class: 'odds-pct' }, num(r.pct, (v) => save({ tiers: { [r.id]: v } }, 'Probabilità salvata')), '%'),
       h('span', { class: 'tiny muted' }, `${o.gifts.filter((x) => x.tier === r.id && x.weight > 0).length} doni`)))),
     Math.round(tierSum) !== 100 ? h('p', { class: 'tiny warn-text' }, `Le rarità sommano a ${tierSum}%: vanno bene lo stesso (si riproporzionano), ma con 100% è più chiaro.`) : null,
     h('div', { class: 'table-wrap' }, h('table', { class: 'odds-table' },
-      h('thead', null, h('tr', null, ['Dono', 'Rarità', 'Peso', 'Probabilità'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['Dono', 'Estrazione casuale', 'Rarità', 'Peso', 'Probabilità'].map((x) => h('th', null, x)))),
       h('tbody', null, [...o.gifts].sort((a, b) => b.pct - a.pct).map((x) => {
         const t = byId[x.id];
         const r = o.tiers.find((y) => y.id === x.tier);
         return h('tr', { class: x.pct ? '' : 'odds-off' },
           h('td', null, h('span', { 'aria-hidden': 'true' }, t?.icon || '🎁'), ' ', h('strong', null, t?.current.name || x.id)),
+          // Mai a caso = peso 0: quel dono non esce mai dall'estrazione (si può sempre dare come premio scelto o col QR).
+          h('td', null, h('button', { type: 'button', class: `switch switch-sm ${x.weight > 0 ? 'on' : ''}`, role: 'switch', 'aria-checked': x.weight > 0 ? 'true' : 'false',
+            onclick: () => save({ gifts: { [x.id]: { weight: x.weight > 0 ? 0 : 1 } } }, x.weight > 0 ? `${t?.current.name || x.id}: mai a caso` : `${t?.current.name || x.id}: di nuovo nell'estrazione`) },
+            h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), x.weight > 0 ? 'ESCE' : 'MAI A CASO')),
           h('td', null, h('select', { class: 'input odds-sel', style: { '--c': r?.color }, onchange: (e) => save({ gifts: { [x.id]: { tier: e.target.value } } }, 'Rarità salvata') },
             o.tiers.map((y) => h('option', { value: y.id, selected: y.id === x.tier }, y.name)))),
           h('td', null, num(x.weight, (v) => save({ gifts: { [x.id]: { weight: v } } }, 'Peso salvato'), { step: 0.5 })),
@@ -3826,7 +3830,9 @@ function viewCatalog() {
   const hits = skills.length + gifts.length;
   const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
-      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
+      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null,
+      // Doni: quanto esce nell'estrazione casuale (o «mai a caso»).
+      x.kind === 'gift' && c.odds ? (() => { const od = c.odds.gifts.find((y) => y.id === x.id); return od ? h('a', { class: `chip ${od.pct ? '' : 'chip-blood'}`, href: '#catalogo', title: 'Probabilità nell\'estrazione casuale: si cambia in fondo alla pagina', onclick: (e) => { e.preventDefault(); document.getElementById('gift-odds')?.scrollIntoView({ behavior: 'smooth' }); } }, od.pct ? `🎲 ${String(od.pct).replace('.', ',')}%` : 'mai a caso') : null; })() : null),
     h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
     c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
@@ -3834,13 +3840,14 @@ function viewCatalog() {
     h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
       ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
       : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { catalogQ = ''; render(); setTimeout(() => document.getElementById('gift-odds')?.scrollIntoView({ behavior: 'smooth' }), 50); } }, '🎲 Probabilità del Dono a caso (rarità, peso, mai a caso)')),
     omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
     ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
       const list = skills.filter((x) => x.type === type);
       return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
     }),
     gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
-    catalogQ ? null : giftOddsView(c),
+    catalogQ ? null : h('div', { id: 'gift-odds' }, giftOddsView(c)),
     hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`));
 }
 
