@@ -440,6 +440,7 @@ function handleResult(item, res, fromQueue) {
   if (item.kind === 'visit') {
     if (res.ok === false) { scanRejected(item.payload.qrToken, res.message); return; }
     rememberVisit(item.payload.qrToken, { label: res.label, sectorName: res.sectorName, sectorId: res.sectorId, expiresAt: res.expiresAt });
+    autoUnlocked(item.payload.qrToken, res);
     return;
   }
   if (item.kind === 'unlock') {
@@ -485,6 +486,16 @@ async function act(kind, payload, label) {
 // Inquadrato un Altare: vale dall'ora di inquadratura (ora del server) per i minuti stabiliti dalla regia.
 // Se la regia ha fissato un raggio, si manda anche la posizione del telefono: lontani dall'Altare la lettura non vale.
 // Con il controllo di posizione acceso l'Altare non risulta letto finché il server non conferma la posizione.
+// Lettura di un Altare di cui avete il Sigillo: il server lo sblocca da solo (frammento subito, o dopo il minigioco).
+function autoUnlocked(token, r) {
+  if (!r?.kept) return;
+  if (r.fragment && r.unlocked) {
+    S.altarResults[token] = { ok: true, fragment: r.fragment };
+    store.set('zdg_altar_results', S.altarResults);
+    toast(`🔓 ${r.label}: avevate il Sigillo, frammento preso`, 'ok', 6000);
+  } else if (r.minigamePending) toast(`🔓 ${r.label} sbloccato: superate il minigioco per prendere il frammento`, 'ok', 7000);
+}
+
 const checkingScan = new Set();
 async function registerScan(token) {
   if (checkingScan.has(token)) return;
@@ -497,7 +508,7 @@ async function registerScan(token) {
   const pos = await scanPosition();
   if (navigator.onLine) {
     api('GET', `/api/team/point/${encodeURIComponent(token)}?at=${at}${posQuery(pos)}`)
-      .then((r) => { checkingScan.delete(token); rememberVisit(token, { scannedAt: at, at: Date.now(), label: r.label, sectorName: r.sectorName, sectorId: r.sectorId, expiresAt: r.expiresAt }); refresh(); render(); })
+      .then((r) => { checkingScan.delete(token); rememberVisit(token, { scannedAt: at, at: Date.now(), label: r.label, sectorName: r.sectorName, sectorId: r.sectorId, expiresAt: r.expiresAt }); autoUnlocked(token, r); refresh(); render(); })
       .catch((e) => {
         checkingScan.delete(token);
         if (e.offline) enqueue('visit', { qrToken: token, at, pos }, 'riconoscimento Altare');
@@ -3914,7 +3925,7 @@ function viewAltars() {
         h('div', null, h('strong', null, v.label || 'Altare da riconoscere'), h('div', { class: 'muted small' }, v.sectorName ? `Settore ${v.sectorName}` : 'in attesa di rete')),
         v.unlocked ? h('span', { class: 'chip chip-ok' }, 'Sbloccato') : pending ? h('span', { class: 'chip chip-brass' }, 'In attesa di rete')
           : scanExpired(v) ? h('span', { class: 'chip chip-warn' }, 'Scansione scaduta')
-            : v.kept ? h('span', { class: 'chip chip-brass', title: 'Conoscete il suo Sigillo: la scansione non scade più' }, '🔒 Vostro')
+            : v.kept ? h('span', { class: 'chip chip-brass', title: 'Avete il suo Sigillo: è sbloccato, toccatelo per il minigioco e prendere il frammento' }, '🔓 Sbloccato · minigioco')
             : v.expiresAt ? h('span', { class: 'chip' }, 'valida ', h('span', { class: 'mono', 'data-abs': v.expiresAt }, '—')) : h('span', { class: 'chip' }, 'Da sbloccare')));
     })) : h('p', { class: 'empty' }, 'Nessun Altare ancora inquadrato.'));
 }
@@ -4018,6 +4029,12 @@ function viewAltar(token, query) {
       h('p', null, `La scansione vale ${st?.game.altarScanMin || '?'} minuti${v.expiresAt ? ` ed è scaduta alle ${fmtTime(v.expiresAt)}` : ''}. Tornate all'Altare e inquadratelo di nuovo.`),
       h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: openScanner }, '⌖ Riscansiona l\'Altare'),
       memoryBtn(v, token));
+  } else if (v.kept && known) {
+    // Altare sbloccato con il Sigillo che avete: manca solo il minigioco (si può fare anche più tardi).
+    action = h('div', { class: 'known-seal' },
+      h('div', { class: 'eyebrow' }, '🔓 Altare sbloccato'),
+      h('p', null, `Avete il Sigillo del Settore ${known.sectorName}: l'Altare è vostro. Per prendere il frammento superate il minigioco, adesso o quando avete tempo (lo ritrovate negli Altari).`),
+      h('button', { class: 'btn btn-primary btn-xl btn-block', onclick: () => unlockWith(known.code) }, '🎮 Gioca e prendi il frammento'));
   } else if (known && !manualAltar.has(token) && !query.get('code')) {
     // Sigillo già nel taccuino: niente da scrivere, basta confermarlo.
     action = h('div', { class: 'known-seal' },
@@ -4041,7 +4058,7 @@ function viewAltar(token, query) {
       h('div', { class: 'eyebrow' }, v.sectorName ? `Settore ${v.sectorName}` : 'Altare'),
       h('h2', { class: 'altar-title' }, v.label || 'Altare da riconoscere'),
       !v.label ? h('p', { class: 'muted small' }, 'Il nome apparirà appena torna la rete. Potete già inserire il Sigillo.') : null,
-      !fragment && v.kept ? h('p', { class: 'scan-valid small' }, '🔒 Altare vostro: conoscete il suo Sigillo, la scansione non scade più. Potete aprirlo quando volete.') : null,
+      !fragment && v.kept ? h('p', { class: 'scan-valid small' }, '🔓 Sbloccato con il vostro Sigillo: non scade più.') : null,
       !fragment && !expired && v.expiresAt ? h('p', { class: 'scan-valid small' }, 'Scansione valida ancora ', h('strong', { class: 'mono', 'data-abs': v.expiresAt }, '—'), ` (fino alle ${fmtTime(v.expiresAt, true)})`) : null),
     fragment
       ? h('div', { class: 'fragment-reveal' },

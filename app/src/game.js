@@ -1763,9 +1763,20 @@ function visitPoint(team, qrToken, at, pos = null) {
   if (!C.PRE_START.includes(g.status)) log(g.id, `coppia:${team.id}`, 'altar_scanned', { teamId: team.id, point: p.label, ...(Number.isFinite(lat) && Number.isFinite(lng) && pos.lat != null ? { lat, lng } : {}) });
   const s = sectorById(p.sectorId);
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
-  const owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
+  let owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
+  // Avete il Sigillo: inquadrare l'Altare basta per sbloccarlo. Senza minigioco il frammento arriva subito;
+  // con il minigioco l'Altare resta sbloccato e il frammento si prende quando lo superate (anche più tardi).
+  let minigamePending = false;
+  if (kept && f && !owned && C.ACTIVE.includes(g.status)) {
+    const sc = q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', g.id, p.sectorId);
+    try {
+      const r = sc ? unlock(team, p.qrToken, sc.code) : null;
+      if (r?.minigame) minigamePending = true;
+      if (r?.ok) owned = q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
+    } catch { /* partita in pausa o simili: resta sbloccabile a mano */ }
+  }
   return {
-    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt, team, kept), kept,
+    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt, team, kept), kept, minigamePending,
     unlocked: !!owned, fragment: owned ? fragmentOut(f, p, owned.source, owned.acquiredAt) : null,
   };
 }
