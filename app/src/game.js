@@ -1660,11 +1660,29 @@ function fragmentOut(f, p, source, acquiredAt) {
 
 // Una scansione vale altarScanMin minuti (0 = senza limite); poi l'Altare va riscansionato.
 const scanWindowMs = (g) => (g.altarScanMin > 0 ? g.altarScanMin * 60000 : null);
-function scanExpiresAt(g, visitedAt, team = null) {
+function scanExpiresAt(g, visitedAt, team = null, kept = false) {
+  // Altare tenuto (Sigillo conosciuto quando l'avete inquadrato): non scade più.
+  if (kept) return null;
   const w = scanWindowMs(g);
   // Memoria del Nodo (Skill passiva): la scansione vale quanto deciso nei parametri della partita (mai meno del normale).
   const node = team && require('./skills').hasSkill(team.id, 'memoria_nodo') && g.nodeScanMin > 0 ? Math.max(w || 0, g.nodeScanMin * 60000) : null;
   return w && visitedAt ? visitedAt + (node || w) : null;
+}
+
+// Se avete inquadrato l'Altare (scansione valida) e conoscete il suo Sigillo, l'Altare resta vostro: la scansione non
+// scade più, anche se non avete ancora fatto il minigioco o pronunciato il Sigillo. Vale anche se il Sigillo lo
+// scoprite mentre la scansione è ancora valida. Restituisce true se l'Altare è tenuto.
+function keptScan(g, team, p, known = null) {
+  const v = q.get('SELECT visitedAt, geoOk, keptAt FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id);
+  if (!v) return false;
+  if (v.keptAt) return true;
+  if (needsGeo(g, p) && !v.geoOk) return false;
+  const exp = scanExpiresAt(g, v.visitedAt, team);
+  if (exp && exp < Date.now()) return false;
+  if (!(known || require('./combat').knownSectors(team)).has(p.sectorId)) return false;
+  q.run('UPDATE team_visits SET keptAt = ? WHERE teamId = ? AND pointId = ?', Date.now(), team.id, p.id);
+  log(g.id, `coppia:${team.id}`, 'altar_kept', { teamId: team.id, point: p.label });
+  return true;
 }
 
 // Fa fede l'ora in cui il QR è stato inquadrato (anche se arriva dopo dalla coda offline), mai nel futuro né troppo vecchia.
@@ -1739,6 +1757,7 @@ function visitPoint(team, qrToken, at, pos = null) {
   requireAltarOn(p);
   const geoOk = checkAltarDistance(g, team, p, pos);
   const visitedAt = recordScan(team, p, at, geoOk);
+  const kept = !C.PRE_START.includes(g.status) && keptScan(g, team, p);
   // Nel registro (per il Rewind) anche la lettura, con la posizione del telefono se è arrivata.
   const lat = Number(pos?.lat); const lng = Number(pos?.lng);
   if (!C.PRE_START.includes(g.status)) log(g.id, `coppia:${team.id}`, 'altar_scanned', { teamId: team.id, point: p.label, ...(Number.isFinite(lat) && Number.isFinite(lng) && pos.lat != null ? { lat, lng } : {}) });
@@ -1746,7 +1765,7 @@ function visitPoint(team, qrToken, at, pos = null) {
   const f = q.get('SELECT * FROM fragments WHERE pointId = ?', p.id);
   const owned = f && q.get('SELECT * FROM team_fragments WHERE teamId = ? AND fragmentId = ?', team.id, f.id);
   return {
-    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt, team),
+    qrToken: p.qrToken, label: p.label, sectorId: s.id, sectorName: s.name, visitedAt, expiresAt: scanExpiresAt(g, visitedAt, team, kept), kept,
     unlocked: !!owned, fragment: owned ? fragmentOut(f, p, owned.source, owned.acquiredAt) : null,
   };
 }
@@ -1763,7 +1782,7 @@ function unlock(team, qrToken, code) {
   if (owned) return { ok: true, already: true, label: p.label, fragment: fragmentOut(f, p, owned.source, owned.acquiredAt) };
   // Serve una scansione ancora valida dell'Altare.
   const v = q.get('SELECT visitedAt, geoOk FROM team_visits WHERE teamId = ? AND pointId = ?', team.id, p.id);
-  const exp = v ? scanExpiresAt(g, v.visitedAt, team) : null;
+  const exp = v ? scanExpiresAt(g, v.visitedAt, team, keptScan(g, team, p)) : null;
   if (!v) return { ok: false, label: p.label, expired: true, message: 'Prima inquadrate il QR dell\'Altare con l\'app' };
   if (needsGeo(g, p) && !v.geoOk) {
     log(g.id, `coppia:${team.id}`, 'unlock_scan_unchecked', { teamId: team.id, point: p.label });
@@ -2385,7 +2404,10 @@ function teamStateCore(team, player = null) {
   const visitRows = Object.fromEntries(q.all('SELECT pointId, visitedAt, geoOk FROM team_visits WHERE teamId = ?', team.id)
     .filter((v) => v.geoOk || !pointById[v.pointId] || !needsGeo(g, pointById[v.pointId])).map((v) => [v.pointId, v.visitedAt]));
   const visits = new Set(Object.keys(visitRows).map(Number));
-  const scanValid = (pid) => { const e = scanExpiresAt(g, visitRows[pid], team); return !e || e >= Date.now(); };
+  // Altari tenuti: inquadrati conoscendone il Sigillo, la scansione non scade più.
+  const knownNow = C.PRE_START.includes(g.status) ? new Set() : require('./combat').knownSectors(team);
+  const keptPoints = new Set([...visits].filter((pid) => pointById[pid] && !C.PRE_START.includes(g.status) && keptScan(g, team, pointById[pid], knownNow)));
+  const scanValid = (pid) => { const e = scanExpiresAt(g, visitRows[pid], team, keptPoints.has(pid)); return !e || e >= Date.now(); };
   const board = teamFragmentsBoard(team);
   const ownedPoints = new Set(board.filter((f) => f.source).map((f) => f.pointId));
 
@@ -2410,7 +2432,7 @@ function teamStateCore(team, player = null) {
 
   const visited = points.filter((p) => visits.has(p.id)).map((p) => ({
     pointId: p.id, qrToken: p.qrToken, label: p.label, sectorId: p.sectorId, sectorName: sectorById(p.sectorId).name, unlocked: ownedPoints.has(p.id), guardedUntil: p.sectorId !== team.sectorId ? guarded[p.sectorId] || null : null,
-    visitedAt: visitRows[p.id], expiresAt: scanExpiresAt(g, visitRows[p.id], team),
+    visitedAt: visitRows[p.id], expiresAt: scanExpiresAt(g, visitRows[p.id], team, keptPoints.has(p.id)), kept: keptPoints.has(p.id),
   }));
 
   return {
@@ -2654,7 +2676,7 @@ function boardState(gameId) {
 module.exports = {
   removePerson,
   tickGo, setRadio, radioOf, radioFor,
-  notAccepted, acceptanceUsed, acceptanceClosed, requireAcceptanceOpen, playingCouples, landmarksOf, scanExpiresAt,
+  notAccepted, acceptanceUsed, acceptanceClosed, requireAcceptanceOpen, playingCouples, landmarksOf, scanExpiresAt, keptScan,
   getGame, sectors, sectorById, teamsOf, sectorsAdmin, saveSector, deleteSector, restoreSector, availableSectors,
   messageAudio, reviewPlayer, lobbyState, ensurePlayerCredentials, electOf, ensureElect, addToElect, addElectPerson, removeFromElect, createNotice, deleteNotice, voteNotice, readNotices, membersOf, createGame, updateGame, deleteGame,
   addPlayer, publicRegister, updatePlayer, deletePlayer, createTeam, autoPair, updateTeam, dissolveTeam, withdrawTeam, regenTeamToken,
