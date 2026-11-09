@@ -23,7 +23,22 @@ const foodOrder = createFoodOrder({ base: '/api/v/food', query: () => `?g=${C.ga
 const foodAdmin = createFoodAdmin({ gameId: () => C.gameId, rerender: () => render(), methodsHref: '#ristoro-pagamenti', otherHref: '#ristoro-altri' });
 setInterval(() => { if (document.hidden || !C.me) return; if (tab() === 'ristoro') foodOrder.load(); if (['ristoro-gestione', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti', 'ristoro-altri'].includes(tab()) || (!tab() && canFood())) foodAdmin.load(); }, 20000);
 const tab = () => location.hash.slice(1);
-window.addEventListener('hashchange', () => { C.gifts = null; render(); loadTab(); window.scrollTo(0, 0); });
+// Tornando indietro (‹ o tasto «indietro» del telefono) si ritrova il punto della home dove si era arrivati.
+const scrollMemo = new Map();
+let routeKey = location.hash || '#';
+let goingBack = false;
+try { history.scrollRestoration = 'manual'; } catch { /* vecchi browser */ }
+window.addEventListener('scroll', () => { if (routeKey === (location.hash || '#')) scrollMemo.set(routeKey, window.scrollY); }, { passive: true });
+window.addEventListener('popstate', () => { goingBack = true; });
+document.addEventListener('click', (e) => { if (e.target.closest?.('.council-back')) goingBack = true; }, true);
+window.addEventListener('hashchange', () => {
+  C.gifts = null; render(); loadTab();
+  routeKey = location.hash || '#';
+  const y = goingBack ? scrollMemo.get(routeKey) || 0 : 0;
+  goingBack = false;
+  window.scrollTo(0, y);
+  if (y) setTimeout(() => window.scrollTo(0, y), 150);
+});
 
 (async function boot() {
   try { C.me = (await api('GET', '/api/auth/me')).user; } catch { /* offline */ }
