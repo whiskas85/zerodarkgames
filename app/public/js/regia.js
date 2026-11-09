@@ -5136,7 +5136,10 @@ function viewTeamVideo() {
   const per = h('input', { class: 'input', type: 'number', min: 5, max: 15, step: 1, value: TV.perTeam, 'data-keep': 'tv-per', oninput: (e) => { TV.perTeam = Number(e.target.value) || 7; dur.textContent = durText(); } });
   const durText = () => { const s = VIDEO_TIMING.INTRO + couples.length * (TV.perTeam || 7) + VIDEO_TIMING.OUTRO; return `Durata: ${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`; };
   const dur = h('span', { class: 'chip' }, durText());
-  const sound = h('input', { type: 'checkbox', checked: TV.sound, onchange: (e) => { TV.sound = e.target.checked; } });
+  // Colonna sonora sì/no: interruttore ben visibile.
+  const soundSeg = h('div', { class: 'tv-seg', role: 'group', 'aria-label': 'Colonna sonora' });
+  const paintSound = () => soundSeg.replaceChildren(...[[true, '🔊 Sì'], [false, '🔇 No']].map(([v, l]) => h('button', { type: 'button', class: TV.sound === v ? 'on' : '', 'aria-pressed': String(TV.sound === v), onclick: () => { TV.sound = v; paintSound(); } }, l)));
+  paintSound();
   const type = pickRecorderType();
   const grid = h('div', { class: 'tv-stills' });
   // Anteprime: un fotogramma per coppia.
@@ -5146,12 +5149,12 @@ function viewTeamVideo() {
   })();
   return h('div', { class: 'stack' },
     section(`Video di presentazione delle coppie (${couples.length})`, h('div', { class: 'stack-sm' },
-      h('p', { class: 'muted small' }, 'Intro «I Giochi del Buio», poi una coppia alla volta in ordine di Settore: numero romano, Settore con l\'effetto del suo elemento (braci per il Fuoco, vento per l\'Aria, polvere per la Terra…), motto, il logo che si apre con un lampo e sotto i nick dei due membri. Chiusura del Consiglio. Formato 1920×1080 con colonna sonora.'),
+      h('p', { class: 'muted small' }, 'Intro «I Giochi del Buio», poi una coppia alla volta in ordine di Settore: numero romano, Settore con l\'effetto del suo elemento (braci per il Fuoco, vento per l\'Aria, polvere per la Terra…), motto, il logo che si apre con un lampo e sotto i nick dei due membri. Chiusura del Consiglio. Formato 1920×1080; colonna sonora horror facoltativa: campana a morto, bordone dissonante, coro spettrale, vento, e per ogni coppia un risucchio che sale fino al colpo e un battito di cuore sui nick.'),
       noLogo.length ? h('p', { class: 'small warn-text' }, `Senza logo (al suo posto il numero romano): ${noLogo.map((t) => `${t.roman} ${t.sectorName}`).join(', ')}. Il logo si carica in Coppie.`) : null,
       noNick.length ? h('p', { class: 'small warn-text' }, `Senza due nick: ${noNick.map((t) => `${t.roman} ${t.sectorName}`).join(', ')} (al posto del nick va il nome).`) : null,
       h('div', { class: 'form-grid' },
         h('label', { class: 'field' }, h('span', null, 'Secondi per coppia'), per),
-        h('label', { class: 'field check' }, sound, h('span', null, 'Colonna sonora (bordone e colpi)'))),
+        h('div', { class: 'field' }, h('span', null, 'Colonna sonora horror (campane, coro, colpi)'), soundSeg)),
       h('div', { class: 'row-actions' }, dur,
         h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound }) }, '▶ Guarda a schermo intero'),
         h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, record: true }) }, '⏺ Registra e scarica il video')),

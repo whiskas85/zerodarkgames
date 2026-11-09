@@ -331,47 +331,154 @@ function drawTeam(ctx, t, dur, tm, st) {
   ctx.restore();
 }
 
-// Colonna sonora: bordone scuro, colpo sordo all'apertura del logo, soffio alla comparsa del Settore.
+// Colonna sonora horror e mistica, tutta sintetizzata:
+// - bordone grave e dissonante (seconda minore e tritono) che respira lentamente;
+// - coro spettrale (vocali «aa/oo» filtrate) e vento che sussurra, tutto in un riverbero da cattedrale;
+// - campana a morto all'inizio e alla fine;
+// - per ogni coppia: un risucchio al contrario che sale, poi il COLPO (impatto grave distorto, lamiera, archi dissonanti stridenti),
+//   e un battito di cuore quando compaiono i nick.
 function makeAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
   const ac = new AC();
+  const now = () => ac.currentTime;
   const out = ac.createGain();
-  out.gain.value = 0.9;
+  out.gain.value = 0.85;
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 4;
+  out.connect(comp);
   const dest = ac.createMediaStreamDestination();
-  out.connect(ac.destination);
-  out.connect(dest);
-  const drone = ac.createGain();
-  drone.gain.value = 0;
-  const lp = ac.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 220;
-  drone.connect(lp); lp.connect(out);
-  const oscs = [55, 55.4, 82.4].map((f) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(drone); o.start(); return o; });
-  const noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  comp.connect(ac.destination);
+  comp.connect(dest);
+  // Riverbero lungo (risposta all'impulso generata: rumore che si spegne in ~4 s).
+  const verb = ac.createConvolver();
+  const len = ac.sampleRate * 4.5;
+  const ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.6; }
+  verb.buffer = ir;
+  const wet = ac.createGain(); wet.gain.value = 0.55;
+  verb.connect(wet); wet.connect(out);
+  const send = (node, dry = 0.6, w = 0.8) => { const d = ac.createGain(); d.gain.value = dry; node.connect(d); d.connect(out); const s = ac.createGain(); s.gain.value = w; node.connect(s); s.connect(verb); };
+  const noiseBuf = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
   const nd = noiseBuf.getChannelData(0);
   for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = () => { const n = ac.createBufferSource(); n.buffer = noiseBuf; n.loop = true; return n; };
+  const lfo = (freq, amount, target) => { const o = ac.createOscillator(); o.frequency.value = freq; const g = ac.createGain(); g.gain.value = amount; o.connect(g); g.connect(target); o.start(); return o; };
+  const live = [];
+
+  // Bordone: Mi grave + Fa (seconda minore) + Si bemolle (tritono), filtro che respira.
+  const drone = ac.createGain(); drone.gain.value = 0;
+  const dlp = ac.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 170; dlp.Q.value = 6;
+  drone.connect(dlp); send(dlp, 0.8, 0.5);
+  for (const [f, type, g] of [[41.2, 'sawtooth', 0.5], [43.65, 'sawtooth', 0.35], [58.27, 'triangle', 0.4], [20.6, 'sine', 0.8]]) {
+    const o = ac.createOscillator(); o.type = type; o.frequency.value = f; const og = ac.createGain(); og.gain.value = g; o.connect(og); og.connect(drone); o.start(); live.push(o);
+  }
+  live.push(lfo(0.07, 90, dlp.frequency));
+  // Tremolo lento e irregolare sul bordone.
+  const trem = ac.createGain(); trem.gain.value = 1; dlp.disconnect(); dlp.connect(trem); send(trem, 0.8, 0.5);
+  live.push(lfo(0.23, 0.25, trem.gain));
+
+  // Coro spettrale: accordo diminuito con formanti di vocale, vibrato lento.
+  const choir = ac.createGain(); choir.gain.value = 0;
+  const f1 = ac.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 650; f1.Q.value = 5;
+  const f2 = ac.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1080; f2.Q.value = 7;
+  choir.connect(f1); choir.connect(f2);
+  const cmix = ac.createGain(); cmix.gain.value = 0.9; f1.connect(cmix); f2.connect(cmix); send(cmix, 0.25, 1.2);
+  for (const f of [164.8, 196, 233.1, 329.6, 349.2]) {
+    for (const det of [-7, 6]) {
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
+      live.push(lfo(4.8 + Math.random(), 7, o.detune));
+      const g = ac.createGain(); g.gain.value = 0.05; o.connect(g); g.connect(choir); o.start(); live.push(o);
+    }
+  }
+  live.push(lfo(0.05, 160, f1.frequency));
+
+  // Vento che sussurra.
+  const wind = noise(); const wf = ac.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 500; wf.Q.value = 3;
+  const wg = ac.createGain(); wg.gain.value = 0;
+  wind.connect(wf); wf.connect(wg); send(wg, 0.4, 0.8); wind.start(); live.push(wind);
+  live.push(lfo(0.11, 350, wf.frequency));
+  live.push(lfo(0.17, 0.02, wg.gain));
+
+  const env = (g, t, a, peak, d) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
+  const shaper = (() => { const w = ac.createWaveShaper(); const c = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; c[i] = Math.tanh(x * 6); } w.curve = c; return w; })();
+  shaper.connect(out);
+
   return {
     ac, dest,
-    start() { drone.gain.setTargetAtTime(0.16, ac.currentTime, 1.5); },
-    stop() { drone.gain.setTargetAtTime(0, ac.currentTime, 0.6); setTimeout(() => { oscs.forEach((o) => { try { o.stop(); } catch { /* */ } }); ac.close(); }, 1500); },
-    boom() {
-      const t = ac.currentTime;
-      const o = ac.createOscillator(); const g = ac.createGain();
-      o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(32, t + 1.2);
-      g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
-      o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.7);
-      const n = ac.createBufferSource(); n.buffer = noiseBuf;
-      const ng = ac.createGain(); const nf = ac.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 900;
-      ng.gain.setValueAtTime(0.35, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-      n.connect(nf); nf.connect(ng); ng.connect(out); n.start(t); n.stop(t + 0.7);
+    start() {
+      const t = now();
+      drone.gain.setTargetAtTime(0.22, t, 2);
+      wg.gain.setTargetAtTime(0.05, t, 3);
+      choir.gain.setTargetAtTime(0.5, t + 2.5, 3);
     },
-    whoosh() {
-      const t = ac.currentTime;
-      const n = ac.createBufferSource(); n.buffer = noiseBuf;
-      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
-      f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.9);
-      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
-      n.connect(f); f.connect(g); g.connect(out); n.start(t); n.stop(t + 1.2);
+    stop() {
+      const t = now();
+      for (const g of [drone, choir, wg]) g.gain.setTargetAtTime(0, t, 0.8);
+      setTimeout(() => { live.forEach((o) => { try { o.stop(); } catch { /* */ } }); ac.close(); }, 4000);
+    },
+    // Campana a morto: parziali inarmoniche, coda lunghissima.
+    bell(base = 98) {
+      const t = now();
+      for (const [r, a, d] of [[0.5, 0.35, 7], [1, 0.4, 6], [1.183, 0.25, 4], [1.506, 0.22, 3.5], [2, 0.18, 3], [2.514, 0.12, 2.4], [2.662, 0.1, 2], [3.011, 0.08, 1.6], [4.166, 0.05, 1.2]]) {
+        const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = base * r;
+        const g = ac.createGain(); env(g, t, 0.005, a, d); o.connect(g); send(g, 0.5, 1.4); o.start(t); o.stop(t + d + 0.2);
+      }
+    },
+    // Risucchio al contrario che sale verso il colpo (dur secondi).
+    riser(dur = 1.4) {
+      const t = now();
+      const n = noise(); const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2;
+      f.frequency.setValueAtTime(200, t); f.frequency.exponentialRampToValueAtTime(3500, t + dur);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+      n.connect(f); f.connect(g); send(g, 0.6, 0.6); n.start(t); n.stop(t + dur + 0.05);
+      // Archi che salgono stridendo, dissonanti.
+      for (const f0 of [440, 466, 622]) {
+        const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + dur);
+        const og = ac.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.03, t + dur); og.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+        o.connect(og); send(og, 0.4, 0.8); o.start(t); o.stop(t + dur + 0.05);
+      }
+    },
+    // Il COLPO: impatto grave distorto + lamiera + stridore di archi, nel riverbero.
+    boom() {
+      const t = now();
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(24, t + 1.8);
+      const g = ac.createGain(); env(g, t, 0.004, 0.9, 2.2); o.connect(g); g.connect(shaper); send(g, 0.3, 0.7); o.start(t); o.stop(t + 2.4);
+      const n = noise(); const nf = ac.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.setValueAtTime(2500, t); nf.frequency.exponentialRampToValueAtTime(120, t + 0.8);
+      const ng = ac.createGain(); env(ng, t, 0.002, 0.6, 0.9); n.connect(nf); nf.connect(ng); send(ng, 0.6, 0.9); n.start(t); n.stop(t + 1);
+      for (const [f, d] of [[211, 2.5], [377, 2], [563, 1.6], [829, 1.3], [1187, 1]]) {
+        const m = ac.createOscillator(); m.type = 'triangle'; m.frequency.value = f;
+        const mg = ac.createGain(); env(mg, t, 0.002, 0.09, d); m.connect(mg); send(mg, 0.3, 1.3); m.start(t); m.stop(t + d + 0.1);
+      }
+      for (const f of [932, 988, 1047, 1109]) {
+        const s = ac.createOscillator(); s.type = 'sawtooth'; s.frequency.value = f;
+        const sg = ac.createGain(); env(sg, t, 0.01, 0.035, 1.4); lfo(13, 0.02, sg.gain).stop(t + 1.6);
+        s.connect(sg); send(sg, 0.35, 1); s.start(t); s.stop(t + 1.6);
+      }
+    },
+    // I nomi: sussurro spettrale che sale e un rintocco dissonante per nick (sopra il battito di cuore).
+    names(count = 2) {
+      const t = now();
+      const n = noise(); const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 9;
+      f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.7);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+      n.connect(f); f.connect(g); send(g, 0.3, 1.4); n.start(t); n.stop(t + 1.3);
+      for (let k = 0; k < Math.max(1, count); k++) {
+        const tk = t + 0.12 + k * 0.32;
+        for (const [fr, a, d] of [[k ? 466.2 : 440, 0.32, 2.6], [k ? 932.3 : 880, 0.12, 1.8], [k ? 1318 : 1244, 0.07, 1.2]]) {
+          const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = fr;
+          const og = ac.createGain(); env(og, tk, 0.003, a, d); o.connect(og); send(og, 0.45, 1.3); o.start(tk); o.stop(tk + d + 0.1);
+        }
+      }
+      this.heartbeat();
+    },
+    // Battito di cuore (due colpi sordi).
+    heartbeat() {
+      const t = now();
+      for (const [dt, a] of [[0, 0.95], [0.22, 0.65]]) {
+        const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(70, t + dt); o.frequency.exponentialRampToValueAtTime(35, t + dt + 0.18);
+        const g = ac.createGain(); env(g, t + dt, 0.005, a, 0.25); o.connect(g); send(g, 0.9, 0.2); o.start(t + dt); o.stop(t + dt + 0.35);
+      }
     },
   };
 }
@@ -438,15 +545,18 @@ export async function playTeamVideo(ms, opts = {}) {
       last = now;
       if (stopped || t >= total) { resolve(); return; }
       ctx.globalAlpha = 1;
-      if (t < INTRO) drawIntro(ctx, t, ms.game?.name || '', teams.length);
+      if (t < INTRO) {
+        drawIntro(ctx, t, ms.game?.name || '', teams.length);
+        if (audio) { if (t > 0.1) cue('bell1', () => audio.bell(98)); if (t > 0.6) cue('title', () => audio.boom()); }
+      }
       else if (t < INTRO + teams.length * perTeam) {
         const i = Math.floor((t - INTRO) / perTeam);
         const lt = t - INTRO - i * perTeam;
         states[i].dt = dt;
         drawTeam(ctx, lt, perTeam, teams[i], states[i]);
-        if (audio) { if (lt > 0.5) cue(`w${i}`, () => audio.whoosh()); if (lt > 2.0) cue(`b${i}`, () => audio.boom()); }
+        if (audio) { if (lt > 0.6) cue(`r${i}`, () => audio.riser(1.4)); if (lt > 2.0) cue(`b${i}`, () => audio.boom()); if (lt > 3.2) cue(`h${i}`, () => audio.names(teams[i].nicks.filter(Boolean).length)); }
         status.textContent = `${i + 1}/${teams.length} · ${teams[i].roman} ${teams[i].sectorName}${rec ? ' · ⏺ registrazione' : ''}`;
-      } else drawOutro(ctx, t - INTRO - teams.length * perTeam);
+      } else { drawOutro(ctx, t - INTRO - teams.length * perTeam); if (audio) cue('bell2', () => audio.bell(82.4)); }
       drawVignette(ctx);
       drawGrain(ctx, grain);
       requestAnimationFrame(frame);
