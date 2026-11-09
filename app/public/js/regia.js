@@ -3861,7 +3861,11 @@ function viewCatalog() {
         const list = skills.filter((x) => x.type === type);
         return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
       }),
-      gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
+      // Doni in ordine di rarità: Comune, Raro, Epico, Leggendario, poi quelli che non escono mai.
+      gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, [...gifts].sort((a, b) => {
+        const rank = (x) => { const t = giftRarity(c, x.id); return t ? c.odds.tiers.findIndex((y) => y.id === t.id) : 99; };
+        return rank(a) - rank(b) || a.current.name.localeCompare(b.current.name);
+      }).map(card))) : null,
       hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`)]));
 }
 
