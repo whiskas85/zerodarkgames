@@ -3836,14 +3836,14 @@ function viewCatalog() {
   const hits = skills.length + gifts.length;
   const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
-      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null,
-      // Doni: quanto esce nell'estrazione casuale (o «mai a caso»).
-      x.kind === 'gift' && c.odds ? (() => {
-        const tier = giftRarity(c, x.id);
-        if (tier === undefined) return null;
-        return h('button', { type: 'button', class: `odds-badge ${tier ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Rarità nell\'estrazione casuale (Dono a caso): tocca per cambiarla', onclick: (e) => giftRarityMenu(e, c, x) },
-          tier ? `◆ ${tier.name}` : '🚫 Non esce mai');
-      })() : null),
+      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
+    // Doni: la rarità nell'estrazione casuale, sempre su una riga sua sotto il titolo.
+    x.kind === 'gift' && c.odds ? (() => {
+      const tier = giftRarity(c, x.id);
+      if (tier === undefined) return null;
+      return h('div', { class: 'cat-rarity' }, h('button', { type: 'button', class: `odds-badge ${tier ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Rarità nell\'estrazione casuale (Dono a caso): tocca per cambiarla', onclick: (e) => giftRarityMenu(e, c, x) },
+        tier ? `◆ ${tier.name}` : '🚫 Non esce mai'));
+    })() : null,
     h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
     c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
