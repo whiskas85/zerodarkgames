@@ -3827,6 +3827,7 @@ let catalogQ = '';
 const catalogHit = (x, kind) => matches(catalogQ, kind, x.current.name, x.current.description, x.preview, SKILL_TYPE[x.type], x.type,
   x.current.durationMin ? `durata ${x.current.durationMin}` : '', x.current.cooldownMin ? `ricarica ${x.current.cooldownMin}` : '', x.edited ? 'modificato' : '');
 
+let catalogTab = 'items';
 function viewCatalog() {
   // Cambia lo stato della partita (preparazione ↔ pronta): si ricarica per sapere se è ancora modificabile.
   if (!catalogData || catalogData.gameId !== R.gameId || catalogData.status !== R.ms?.clock.status) { if (!loadCatalog.busy) { loadCatalog.busy = true; loadCatalog().finally(() => { loadCatalog.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
@@ -3836,14 +3837,14 @@ function viewCatalog() {
   const hits = skills.length + gifts.length;
   const card = (x) => h('div', { class: `cat-card ${x.edited ? 'edited' : ''}`, style: { '--c': x.color || 'var(--brass, #d1ad62)' } },
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
-      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null,
-      // Doni: quanto esce nell'estrazione casuale (o «mai a caso»).
-      x.kind === 'gift' && c.odds ? (() => {
-        const tier = giftRarity(c, x.id);
-        if (tier === undefined) return null;
-        return h('button', { type: 'button', class: `odds-badge ${tier ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Rarità nell\'estrazione casuale (Dono a caso): tocca per cambiarla', onclick: (e) => giftRarityMenu(e, c, x) },
-          tier ? `◆ ${tier.name}` : '🚫 Non esce mai');
-      })() : null),
+      x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null),
+    // Doni: la rarità nell'estrazione casuale, sempre su una riga sua sotto il titolo.
+    x.kind === 'gift' && c.odds ? (() => {
+      const tier = giftRarity(c, x.id);
+      if (tier === undefined) return null;
+      return h('div', { class: 'cat-rarity' }, h('button', { type: 'button', class: `odds-badge ${tier ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Rarità nell\'estrazione casuale (Dono a caso): tocca per cambiarla', onclick: (e) => giftRarityMenu(e, c, x) },
+        tier ? `◆ ${tier.name}` : '🚫 Non esce mai'));
+    })() : null,
     h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
     c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
@@ -3851,15 +3852,21 @@ function viewCatalog() {
     h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
       ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
       : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
-    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { catalogQ = ''; render(); setTimeout(() => document.getElementById('gift-odds')?.scrollIntoView({ behavior: 'smooth' }), 50); } }, '🎲 Probabilità del Dono a caso (rarità, peso, mai a caso)')),
-    omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
-    ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
-      const list = skills.filter((x) => x.type === type);
-      return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
-    }),
-    gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
-    catalogQ ? null : h('div', { id: 'gift-odds' }, giftOddsView(c)),
-    hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`));
+    // Due schede: le Skill e i Doni, e le probabilità del Dono a caso.
+    h('nav', { class: 'food-tabs cat-tabs', role: 'tablist' }, [['items', '✦ Skill e Doni'], ['odds', '🎲 Probabilità del Dono a caso']].map(([k, l]) =>
+      h('button', { type: 'button', role: 'tab', class: catalogTab === k ? 'on' : '', 'aria-selected': catalogTab === k ? 'true' : 'false', onclick: () => { catalogTab = k; render(); } }, l))),
+    ...(catalogTab === 'odds' ? [giftOddsView(c)] : [
+      omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
+      ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
+        const list = skills.filter((x) => x.type === type);
+        return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
+      }),
+      // Doni in ordine di rarità: Comune, Raro, Epico, Leggendario, poi quelli che non escono mai.
+      gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, [...gifts].sort((a, b) => {
+        const rank = (x) => { const t = giftRarity(c, x.id); return t ? c.odds.tiers.findIndex((y) => y.id === t.id) : 99; };
+        return rank(a) - rank(b) || a.current.name.localeCompare(b.current.name);
+      }).map(card))) : null,
+      hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`)]));
 }
 
 // ---------------------------------------------------------------- ACCETTAZIONE E TEST REPLICHE (modulo condiviso con lo staff, in Soglia)
