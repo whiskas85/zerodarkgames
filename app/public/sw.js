@@ -1,8 +1,8 @@
 // Service worker: app shell offline, font in cache, notifiche push.
-const VERSION = 'zdg-v402';
+const VERSION = 'zdg-v403';
 const SHELL = [
   '/', '/index.html', '/css/base.css', '/css/app.css', '/js/lib.js', '/js/app.js',
-  '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/js/food-ui.js', '/js/minigame-ui.js', '/js/pwchange.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
+  '/manifest.webmanifest', '/regia.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-round-192.png', '/icons/icon-round-512.png', '/icons/badge.png', '/img/zdt-logo.jpg', '/regolamento.html', '/vendor/jsQR.js', '/js/map.js', '/js/mdi.js', '/js/skill-guide.js', '/js/field-ui.js', '/js/omnibar.js', '/js/food-ui.js', '/js/minigame-ui.js', '/js/pwchange.js', '/js/teamvideo.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
 ];
 const PAGES = { '/campo': '/campo.html', '/regia': '/regia.html', '/soglia': '/soglia.html', '/tabellone': '/tabellone.html', '/iscrizione': '/iscrizione.html' };
 
