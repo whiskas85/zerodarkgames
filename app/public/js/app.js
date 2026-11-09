@@ -3735,6 +3735,8 @@ function viewSkills() {
 function resultCard(r) {
   if (r.code === 'segugio') return h('div', { class: 'card small' }, `🦅 Segugio · ${r.targetName}: ${r.data.point ? `ha conquistato ${r.data.point} alle ${fmtTime(r.at)}` : 'in ascolto'}`);
   if (r.code === 'intercettazione') return h('div', { class: 'card stack-sm' }, h('strong', null, `📡 Intercettazione · ${r.targetName} (${fmtTime(r.at)})`), sealTypes(r.data.sectors));
+  if (r.code === 'borseggio') return h('div', { class: 'card stack-sm' }, h('strong', null, `🧤 Furto · ${r.targetName} (${fmtTime(r.at)})`),
+    r.data.stolen ? sealCodes([r.data.stolen]) : h('p', { class: 'muted small' }, r.data.failed || 'Non riuscito'));
   if (r.code === 'dossier') return h('div', { class: 'card stack-sm' }, h('strong', null, `🕵️ Dossier · ${r.targetName} (${fmtTime(r.at)})`), sealCodes(r.data.codes));
   return null;
 }
@@ -3777,6 +3779,11 @@ async function askParams(target, name, text, id = null) {
   const one = async (key, title, options, note) => { const v = await pick(`${name}: ${title}`, options, { text: note }); return v == null ? null : { [key]: v }; };
   switch (target) {
     case 'team': return one('teamId', 'scegliete una coppia', teamOptions(), text);
+    // Furto: solo le coppie entro 30 m (dal server, con la distanza).
+    case 'nearTeam': {
+      if (!(sk.nearTeams || []).length) { toast('Nessuna coppia entro 30 m da voi (serve anche la vostra posizione)', 'error', 6000); return null; }
+      return one('teamId', 'coppia da derubare', sk.nearTeams.map((t) => ({ value: t.teamId, label: `${t.roman} · Settore ${t.sectorName}`, sub: `a circa ${t.distance} m` })), text);
+    }
     // Veggenza: solo gli Altari conosciuti (già inquadrati) con un frammento che non avete.
     case 'altar': return id === 'veggenza'
       ? one('pointId', 'scegliete un Altare che conoscete', altarOptions(true), 'Solo gli Altari che avete già inquadrato e di cui non avete il frammento.')
