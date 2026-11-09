@@ -1516,3 +1516,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .mg-admin-head { display: flex; align-items: center; gap: 8px; }
 .mg-admin-head strong { flex: 1; }
 .mg-admin-ico { font-size: 24px; }
+
+/* Badge della probabilità sulla scheda di un Dono */
+.odds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; border: 1.5px solid var(--c, var(--brass)); background: color-mix(in srgb, var(--c, var(--brass)) 18%, transparent); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.odds-badge:hover { background: color-mix(in srgb, var(--c, var(--brass)) 32%, transparent); }
+.odds-badge.off { border-color: var(--danger, #e5484d); background: color-mix(in srgb, var(--danger, #e5484d) 15%, transparent); }
+.odds-big { display: grid; justify-items: center; gap: 2px; padding: 12px; border-radius: 10px; border: 2px solid var(--c, var(--brass)); background: color-mix(in srgb, var(--c, var(--brass)) 12%, var(--paper)); }
+.odds-big strong { font-size: 34px; color: var(--c, var(--brass)); }
+.odds-tier-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.odds-tier-pick button { display: grid; gap: 2px; padding: 8px 4px; border-radius: 8px; border: 2px solid var(--c); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.odds-tier-pick button.on { background: color-mix(in srgb, var(--c) 30%, var(--paper)); }
