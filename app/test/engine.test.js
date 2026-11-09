@@ -3884,3 +3884,28 @@ test('Altare tenuto: inquadrato conoscendo il Sigillo, la scansione non scade pi
   q.run('UPDATE team_visits SET visitedAt = visitedAt - 3600000 WHERE teamId = ? AND pointId = ?', A.id, pC.id);
   assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).ok, true);
 });
+
+test('Altare con il Sigillo in mano: la lettura lo sblocca (frammento subito, o dopo il minigioco anche più tardi)', () => {
+  const MG = require('../src/minigames');
+  const g = setupGame(3);
+  G.updateGame(g.id, { altarScanMin: 10 }, 'test');
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const pB = pointOf(g.id, B.sectorId);
+  const pC = pointOf(g.id, Cc.sectorId);
+  for (const t of [B, Cc]) q.run("INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt) VALUES (?, ?, ?, 1, ?)", A.id, t.sectorId, codeOf(g.id, t.sectorId), Date.now());
+  // Senza minigioco: inquadrato → frammento preso subito.
+  const vB = G.visitPoint(A, pB.qrToken);
+  assert.equal(vB.unlocked, true);
+  assert.ok(vB.fragment.text);
+  // Con il minigioco: sbloccato, il frammento arriva dopo averlo superato, anche un'ora dopo.
+  G.updateGame(g.id, { altarMinigame: 'memoria' }, 'test');
+  const vC = G.visitPoint(A, pC.qrToken);
+  assert.equal(vC.unlocked, false);
+  assert.equal(vC.minigamePending, true);
+  q.run('UPDATE team_visits SET visitedAt = visitedAt - 3600000 WHERE teamId = ? AND pointId = ?', A.id, pC.id);
+  const r = G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId));
+  assert.ok(r.minigame);
+  assert.equal(MG.done(A, null, r.minigame.id, { answer: r.minigame.params.code }).ok, true);
+  assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).ok, true);
+});
