@@ -1344,3 +1344,8 @@ a.radio-card { display: block; color: inherit; text-decoration: none; }
 .g-food .tile { border-color: #d9772b; background: linear-gradient(135deg, rgba(217, 119, 43, .2), transparent); }
 .g-food .tile-ico { color: #ff9a4d; }
 .g-food .tile .badge { font-size: 11px; }
+
+/* Sigilli e frammenti: non selezionabili, niente menu della pressione lunga (iPhone) */
+.seal-code, .nb-code, .battle-code, .known-code, .ann-code, .fragment-text, .fragment-reveal, .fragments, .frag-word, .unveil, .ghost {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
