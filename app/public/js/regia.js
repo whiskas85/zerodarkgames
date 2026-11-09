@@ -3742,6 +3742,29 @@ async function loadCatalog() {
 }
 const SKILL_TYPE = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
 
+// Badge della probabilità sulla scheda di un Dono: rarità, peso ed «Esce / Mai a caso» di quel dono, con la probabilità che ne risulta.
+async function giftOddsDialog(c, x) {
+  const box = h('div', { class: 'stack-sm' });
+  const save = async (body) => { try { c.odds = await api('PUT', G('/gift-odds'), { gifts: { [x.id]: body } }); paint(); render(); } catch (e) { toast(e.message, 'error', 6000); } };
+  const paint = () => {
+    const od = c.odds.gifts.find((y) => y.id === x.id);
+    const tier = c.odds.tiers.find((y) => y.id === od.tier);
+    const same = c.odds.gifts.filter((y) => y.tier === od.tier && y.weight > 0).length;
+    box.replaceChildren(
+      h('div', { class: 'odds-big', style: { '--c': tier?.color } }, h('strong', null, od.pct ? `${String(od.pct).replace('.', ',')}%` : 'mai'), h('span', { class: 'tiny muted' }, od.pct ? 'probabilità di uscire in un\'estrazione casuale' : 'non esce mai dall\'estrazione casuale')),
+      h('div', { class: 'field' }, h('span', null, 'Estrazione casuale'),
+        h('button', { type: 'button', class: `switch ${od.weight > 0 ? 'on' : ''}`, role: 'switch', 'aria-checked': od.weight > 0 ? 'true' : 'false', onclick: () => save({ weight: od.weight > 0 ? 0 : 1 }) },
+          h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), od.weight > 0 ? 'ESCE' : 'MAI A CASO')),
+      h('div', { class: 'field' }, h('span', null, 'Rarità'),
+        h('div', { class: 'odds-tier-pick' }, c.odds.tiers.map((r) => h('button', { type: 'button', class: r.id === od.tier ? 'on' : '', style: { '--c': r.color }, onclick: () => save({ tier: r.id }) }, h('strong', null, r.name), h('span', { class: 'tiny' }, `${r.pct}%`))))),
+      h('label', { class: 'field' }, h('span', null, 'Peso dentro la rarità (1 = normale, 2 = esce il doppio degli altri, 0 = mai)'),
+        h('input', { class: 'input odds-num', type: 'number', min: 0, max: 100, step: 0.5, value: od.weight, onchange: (e) => save({ weight: e.target.value }) })),
+      h('p', { class: 'tiny muted' }, `Prima esce la rarità ${tier?.name || ''} (${tier?.pct ?? 0}% delle estrazioni), poi uno dei ${same} doni di quella rarità in base al peso. Le percentuali delle rarità si cambiano in fondo alla pagina.`));
+  };
+  paint();
+  await modal({ title: `🎲 ${x.icon} ${x.current.name}`, okLabel: 'Fatto', cancelLabel: null, body: box });
+}
+
 // Probabilità del Dono a caso (Autorità, Conquista, premi «a caso»): prima la rarità, poi il dono nella rarità (peso).
 function giftOddsView(c) {
   const o = c.odds;
@@ -3832,7 +3855,12 @@ function viewCatalog() {
     h('div', { class: 'cat-head' }, h('span', { class: 'cat-ico', 'aria-hidden': 'true' }, x.icon), h('strong', null, x.current.name),
       x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null,
       // Doni: quanto esce nell'estrazione casuale (o «mai a caso»).
-      x.kind === 'gift' && c.odds ? (() => { const od = c.odds.gifts.find((y) => y.id === x.id); return od ? h('a', { class: `chip ${od.pct ? '' : 'chip-blood'}`, href: '#catalogo', title: 'Probabilità nell\'estrazione casuale: si cambia in fondo alla pagina', onclick: (e) => { e.preventDefault(); document.getElementById('gift-odds')?.scrollIntoView({ behavior: 'smooth' }); } }, od.pct ? `🎲 ${String(od.pct).replace('.', ',')}%` : 'mai a caso') : null; })() : null),
+      x.kind === 'gift' && c.odds ? (() => {
+        const od = c.odds.gifts.find((y) => y.id === x.id);
+        const tier = od && c.odds.tiers.find((y) => y.id === od.tier);
+        return od ? h('button', { type: 'button', class: `odds-badge ${od.pct ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Probabilità nell\'estrazione casuale: tocca per cambiarla', onclick: () => giftOddsDialog(c, x) },
+          od.pct ? `🎲 ${tier?.name || ''} · ${String(od.pct).replace('.', ',')}%` : '🚫 mai a caso') : null;
+      })() : null),
     h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
     c.editable ? h('button', { class: 'btn btn-sm', onclick: () => editCatalogDialog(x) }, 'Modifica') : null);
