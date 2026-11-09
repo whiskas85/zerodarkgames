@@ -3812,3 +3812,21 @@ test('Doni del pubblico e Furto: Sguardo, Sentinella, Contromossa, Maschera, fur
   assert.ok(K.knownSectors(Cc).has(D.sectorId));
   assert.ok(S.skillsState(Cc).results.some((x) => x.code === 'borseggio' && x.data.stolen.sectorId === D.sectorId));
 });
+
+test('Dono a caso solo tra alcune rarità (premi degli eventi)', () => {
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  assert.deepEqual(S.rarityRange('epico-raro'), ['raro', 'epico']);
+  assert.equal(S.cleanRarity('comune-leggendario'), null);
+  assert.equal(S.cleanRarity('leggendario-leggendario'), 'leggendario');
+  const tierOf = (id) => S.giftOdds(G.getGame(g.id)).gifts.find((x) => x.id === id).tier;
+  for (let i = 0; i < 60; i++) assert.equal(tierOf(S.drawGift(G.getGame(g.id), Math.random, 'leggendario').id), 'leggendario');
+  for (let i = 0; i < 60; i++) assert.ok(['comune', 'raro'].includes(tierOf(S.drawGift(G.getGame(g.id), Math.random, 'comune-raro').id)));
+  // Rarità a 0%: si sceglie comunque tra i doni di quella fascia.
+  S.setGiftOdds(g.id, { tiers: { epico: 0 } }, 'test');
+  assert.equal(tierOf(S.drawGift(G.getGame(g.id), Math.random, 'epico').id), 'epico');
+  const E = require('../src/events');
+  const ev = E.createEvent(g.id, { name: 'Prova', slots: 2, rewardKind: 'gift', rewardRarity: 'raro-epico' }, 'test');
+  assert.equal(ev.rewardRarity, 'raro-epico');
+  assert.match(ev.rewardLabel, /da Raro a Epico/);
+});
