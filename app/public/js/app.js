@@ -66,7 +66,30 @@ applyTheme();
 
 // ---------------------------------------------------------------- avvio
 
+// Sigilli e frammenti non si selezionano né si copiano (niente copia-incolla da girare in chat), e niente menu
+// del tasto destro o pressione lunga su di essi. F12 e le scorciatoie degli strumenti per sviluppatori sono
+// disattivate: è solo un deterrente, perché comunque il server non manda mai Sigilli o frammenti che la coppia non ha.
+const SECRET = '.seal-code, .nb-code, .battle-code, .known-code, .ann-code, .fragment-text, .fragment-reveal, .fragments, .frag-word, .unveil, .ghost';
+function guardSecrets() {
+  const inSecret = (e) => e.target instanceof Element && e.target.closest(SECRET);
+  for (const ev of ['copy', 'cut', 'contextmenu', 'dragstart', 'selectstart']) {
+    document.addEventListener(ev, (e) => { if (inSecret(e)) e.preventDefault(); }, true);
+  }
+  // Se la selezione finisce comunque su un Sigillo o un frammento, la copia esce vuota.
+  document.addEventListener('copy', (e) => {
+    const sel = document.getSelection();
+    const node = sel?.anchorNode?.parentElement;
+    const focus = sel?.focusNode?.parentElement;
+    if (node?.closest?.(SECRET) || focus?.closest?.(SECRET)) { e.preventDefault(); e.clipboardData?.setData('text/plain', ''); }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    const k = e.key?.toUpperCase();
+    if (e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'J', 'C'].includes(k)) || ((e.ctrlKey || e.metaKey) && k === 'U')) e.preventDefault();
+  }, true);
+}
+
 function boot() {
+  guardSecrets();
   const m = location.pathname.match(/^\/a\/([\w-]+)/);
   if (m) {
     history.replaceState(null, '', `/#/altare/${m[1]}`);
