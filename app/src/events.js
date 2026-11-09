@@ -49,6 +49,7 @@ function createEvent(gameId, data, actor) {
   if (!(slots >= 1 && slots <= 20)) throw err(400, 'Capienza: da 1 a 20 coppie');
   const rewardKind = REWARDS[data.rewardKind] ? data.rewardKind : 'gift';
   const rewardGiftType = rewardKind === 'gift' && data.rewardGiftType && SK().giftById(data.rewardGiftType) ? data.rewardGiftType : null;
+  const rewardRarity = rewardKind === 'gift' && !rewardGiftType ? SK().cleanRarity(data.rewardRarity) : null;
   let squadId = Number(data.squadId) || null;
   if (squadId && !q.get('SELECT 1 FROM elect_squads WHERE id = ? AND gameId = ?', squadId, g.id)) squadId = null;
   const windowMin = Number(data.windowMin) || 0;
@@ -61,6 +62,7 @@ function createEvent(gameId, data, actor) {
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
   g.id, name, String(data.description || '').trim().slice(0, 2000) || null, squadId, slots, rewardKind, rewardGiftType,
   windowMin > 0 ? windowMin : null, num(data.confirmMin, 3, 1, 60), num(data.truceMin, 5, 0, 60), mode, now, actor || null).lastInsertRowid);
+  if (rewardRarity) q.run('UPDATE game_events SET rewardRarity = ? WHERE id = ?', rewardRarity, id);
   if (data.location) writeLocation(id, data.location);
   writeSchedule(id, data);
   G.log(g.id, actor, 'event_created', { name, slots, launch: !!data.launch });
@@ -84,17 +86,19 @@ function updateEvent(id, data, actor) {
     if (!(slots >= 1 && slots <= 20)) throw err(400, 'Capienza: da 1 a 20 coppie');
     if (slots < used(ev.id)) throw err(409, `Ci sono già ${used(ev.id)} coppie iscritte: non puoi scendere sotto`);
   }
-  let { rewardKind, rewardGiftType } = ev;
-  if (data.rewardKind !== undefined || data.rewardGiftType !== undefined) {
+  let { rewardKind, rewardGiftType, rewardRarity } = ev;
+  if (data.rewardKind !== undefined || data.rewardGiftType !== undefined || data.rewardRarity !== undefined) {
     if (['closing', 'truce'].includes(ev.status)) throw err(409, 'Le prove sono chiuse: il premio non si cambia più');
     rewardKind = REWARDS[data.rewardKind] ? data.rewardKind : rewardKind;
     rewardGiftType = rewardKind === 'gift' && data.rewardGiftType && SK().giftById(data.rewardGiftType) ? data.rewardGiftType : null;
+    rewardRarity = rewardKind === 'gift' && !rewardGiftType ? SK().cleanRarity(data.rewardRarity) : null;
   }
   const num = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : def; };
   const windowMin = data.windowMin !== undefined ? (Number(data.windowMin) > 0 ? Math.round(Number(data.windowMin)) : null) : ev.windowMin;
   q.run('UPDATE game_events SET name = ?, description = ?, slots = ?, rewardKind = ?, rewardGiftType = ?, windowMin = ?, confirmMin = ?, truceMin = ? WHERE id = ?',
     name, description, slots, rewardKind, rewardGiftType, windowMin,
     data.confirmMin !== undefined ? num(data.confirmMin, ev.confirmMin, 1, 60) : ev.confirmMin, data.truceMin !== undefined ? num(data.truceMin, ev.truceMin, 0, 60) : ev.truceMin, ev.id);
+  q.run('UPDATE game_events SET rewardRarity = ? WHERE id = ?', rewardRarity || null, ev.id);
   if (data.mode !== undefined && ['draft', 'open'].includes(ev.status)) q.run('UPDATE game_events SET mode = ? WHERE id = ?', data.mode === 'bounty' ? 'bounty' : 'manual', ev.id);
   if (data.location !== undefined) writeLocation(ev.id, data.location);
   if (data.startAt !== undefined || data.durationMin !== undefined) writeSchedule(ev.id, data);
@@ -356,7 +360,7 @@ function giveReward(ev, t) {
       return { kind: 'code', code: c.code, sectorName: c.sectorName, roman: c.roman };
     }
   }
-  const g = SK().grantVirtualGift(t, label, ev.rewardKind === 'gift' ? ev.rewardGiftType : null);
+  const g = SK().grantVirtualGift(t, label, ev.rewardKind === 'gift' ? ev.rewardGiftType : null, ev.rewardKind === 'gift' ? ev.rewardRarity : null);
   return { kind: 'gift', name: g.name, icon: g.icon, color: g.color, description: g.description };
 }
 
@@ -462,7 +466,8 @@ function baseOut(ev) {
   return {
     id: ev.id, name: ev.name, description: ev.description, status: ev.status, slots: ev.slots,
     taken: list.length, joined: list.filter((e) => e.status === 'accepted').length,
-    mode: ev.mode || 'manual', rewardKind: ev.rewardKind, rewardGiftType: ev.rewardGiftType || null, rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : REWARDS[ev.rewardKind],
+    mode: ev.mode || 'manual', rewardKind: ev.rewardKind, rewardGiftType: ev.rewardGiftType || null, rewardRarity: ev.rewardRarity || null,
+    rewardLabel: ev.rewardKind === 'gift' && ev.rewardGiftType ? `Dono: ${SK().giftById(ev.rewardGiftType)?.name || ev.rewardGiftType}` : ev.rewardKind === 'gift' && ev.rewardRarity ? `Un Dono a caso (${SK().rarityLabel(ev.rewardRarity)})` : REWARDS[ev.rewardKind],
     openUntil: ev.openUntil, open: candidaturesOpen(ev), windowMin: ev.windowMin, launchedAt: ev.launchedAt,
     location: ev.locLat != null ? { label: ev.locLabel, lat: ev.locLat, lng: ev.locLng } : null,
     startAt: ev.startAt, durationMin: ev.durationMin, endsAt: endsAtOf(ev), timeUp: !!ev.endNotifiedAt, confirmMin: ev.confirmMin, truceMin: ev.truceMin,
@@ -479,7 +484,7 @@ function masterEvent(ev) {
 }
 
 function masterEvents(gameId) {
-  return { list: q.all('SELECT * FROM game_events WHERE gameId = ? ORDER BY id DESC', gameId).map(masterEvent), rewards: REWARDS,
+  return { list: q.all('SELECT * FROM game_events WHERE gameId = ? ORDER BY id DESC', gameId).map(masterEvent), rewards: REWARDS, rarities: SK().RARITIES,
     giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon, color: x.color || null,
       description: String(x.description || '').replace('{durata}', x.durationMin || '').replace('{raggio}', x.radiusM || '') })) };
 }

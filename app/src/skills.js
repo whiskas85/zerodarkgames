@@ -108,9 +108,33 @@ function giftOdds(g) {
   }
   return { tiers, gifts };
 }
-function drawGift(g, rnd = Math.random) {
-  const { tiers, gifts } = giftOdds(g);
+// Intervallo di rarità «raro-epico» (o una sola, «leggendario») → gli id delle rarità comprese; null = tutte.
+function rarityRange(v) {
+  const ids = RARITIES.map((r) => r.id);
+  const [a, b = a] = String(v || '').split('-');
+  const i = ids.indexOf(a); const j = ids.indexOf(b);
+  if (i < 0 || j < 0) return null;
+  return ids.slice(Math.min(i, j), Math.max(i, j) + 1);
+}
+const cleanRarity = (v) => { const r = rarityRange(v); return r && r.length < RARITIES.length ? (r.length === 1 ? r[0] : `${r[0]}-${r.at(-1)}`) : null; };
+function rarityLabel(v) {
+  const r = rarityRange(v);
+  if (!r) return null;
+  const n = (id) => RARITIES.find((x) => x.id === id).name;
+  return r.length === 1 ? n(r[0]) : `da ${n(r[0])} a ${n(r.at(-1))}`;
+}
+
+function drawGift(g, rnd = Math.random, range = null) {
+  const odds = giftOdds(g);
+  const only = rarityRange(range);
+  const tiers = only ? odds.tiers.filter((r) => only.includes(r.id)) : odds.tiers;
+  const gifts = only ? odds.gifts.filter((x) => only.includes(x.tier)) : odds.gifts;
   const live = tiers.filter((r) => r.pct > 0 && gifts.some((x) => x.tier === r.id && x.weight > 0));
+  // Solo alcune rarità ma con probabilità a 0: si sceglie tra i doni di quelle rarità che possono uscire, alla pari.
+  if (!live.length && only) {
+    const pool = gifts.filter((x) => x.weight > 0);
+    if (pool.length) return giftById(pool[Math.floor(rnd() * pool.length)].id);
+  }
   // Nessuna probabilità valida (tutto a 0): un dono qualsiasi, come prima.
   if (!live.length) return shuffle(GIFTS.filter(available))[0];
   const pick = (list, w) => { let r = rnd() * list.reduce((t, x) => t + w(x), 0); for (const x of list) { r -= w(x); if (r < 0) return x; } return list.at(-1); };
@@ -497,9 +521,9 @@ function endNow(gameId, teamId, code) {
 
 // Un Dono senza QR (Autorità, premio di un evento): finisce subito tra i doni della coppia.
 // typeId: un tipo preciso (se disponibile), altrimenti a caso.
-function grantVirtualGift(me, label, typeId = null) {
-  // Senza un tipo preciso: estrazione con le probabilità della partita (prima la rarità, poi il dono).
-  const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : drawGift(G.getGame(me.gameId));
+function grantVirtualGift(me, label, typeId = null, rarity = null) {
+  // Senza un tipo preciso: estrazione con le probabilità della partita (prima la rarità, poi il dono), eventualmente solo tra alcune rarità.
+  const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : drawGift(G.getGame(me.gameId), Math.random, rarity);
   const type = giftForGame(pick, G.getGame(me.gameId));
   const now = Date.now();
   const id = Number(q.run(`INSERT INTO gifts (gameId, typeId, name, icon, color, description, label, qrToken, status, revealMode, claimedByTeamId, claimedAt, createdAt)
@@ -1240,5 +1264,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden, hiddenSince: (t, now = Date.now()) => effectOn(t.gameId, t.id, 'ombra', now)?.startedAt ?? null,
-  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, nearTeams, cancelSteals, completeSteal, grantVirtualGift, availableGift: available,
+  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, rarityRange, cleanRarity, rarityLabel, nearTeams, cancelSteals, completeSteal, grantVirtualGift, availableGift: available,
 };

@@ -5254,12 +5254,33 @@ async function gameEventDialog(ev = null) {
     const r = await pickGiftTypeDialog(E.giftTypes, giftId);
     if (r !== undefined) { giftId = r; paintGift(); }
   } });
-  const paintGift = () => { const x = E.giftTypes.find((y) => y.id === giftId); giftSel.textContent = x ? `${x.icon} ${x.name}` : '✦ A caso (uno per coppia)'; };
-  paintGift();
-  // Il premio è sempre un Dono (anche il frammento della Parola o un Sigillo a caso sono Doni).
-  const giftWrap = h('div', { class: 'field' }, h('span', null, 'Premio per ogni coppia vincente: il Dono'), giftSel);
   // Premio bloccato a prove chiuse (le coppie l'hanno già visto vinto o perso).
   const rewardLocked = ev && ['closing', 'truce'].includes(ev.status);
+  // Dono a caso: solo tra alcune rarità (una fascia contigua, es. Comune–Raro o solo Leggendario).
+  const tiers = E.rarities || [];
+  const ids = tiers.map((r) => r.id);
+  let [ra, rb] = (() => { const [a, b = a] = String(ev?.rewardRarity || '').split('-'); const i = ids.indexOf(a); const j = ids.indexOf(b); return i < 0 || j < 0 ? [0, ids.length - 1] : [Math.min(i, j), Math.max(i, j)]; })();
+  let anchor = null;
+  const rarityBar = h('div', { class: 'rarity-slicer' });
+  const rarityHint = h('span', { class: 'tiny muted' });
+  const rarityValue = () => (ra === 0 && rb === ids.length - 1 ? null : ra === rb ? ids[ra] : `${ids[ra]}-${ids[rb]}`);
+  const paintRarity = () => {
+    rarityBar.replaceChildren(...tiers.map((r, i) => h('button', { type: 'button', class: `rarity-chip${i >= ra && i <= rb ? ' on' : ''}`, style: { '--c': r.color }, disabled: rewardLocked,
+      onclick: () => {
+        // Primo tocco: solo quella rarità; secondo tocco su un'altra: la fascia tra le due.
+        if (anchor == null) { ra = rb = i; anchor = i; } else { ra = Math.min(anchor, i); rb = Math.max(anchor, i); anchor = null; }
+        paintRarity();
+      } }, r.name)));
+    rarityHint.textContent = rarityValue() == null ? 'Tutte le rarità, con le probabilità della partita.'
+      : ra === rb ? `Solo doni ${tiers[ra].name}. Tocca un'altra rarità per allargare la fascia.` : `Da ${tiers[ra].name} a ${tiers[rb].name}, con le probabilità della partita.`;
+  };
+  const rarityAll = h('button', { type: 'button', class: 'btn btn-sm', disabled: rewardLocked, onclick: () => { ra = 0; rb = ids.length - 1; anchor = null; paintRarity(); } }, 'Tutte');
+  const rarityWrap = h('div', { class: 'stack-sm rarity-wrap' }, h('span', { class: 'tiny muted' }, 'Rarità del dono a caso'), h('div', { class: 'row-actions' }, rarityBar, rarityAll), rarityHint);
+  paintRarity();
+  const paintGift = () => { const x = E.giftTypes.find((y) => y.id === giftId); giftSel.textContent = x ? `${x.icon} ${x.name}` : '✦ A caso (uno per coppia)'; rarityWrap.hidden = !!x || !tiers.length; };
+  paintGift();
+  // Il premio è sempre un Dono (anche il frammento della Parola o un Sigillo a caso sono Doni).
+  const giftWrap = h('div', { class: 'field', style: { gridColumn: '1 / -1' } }, h('span', null, 'Premio per ogni coppia vincente: il Dono'), giftSel, rarityWrap);
   const reward = { value: 'gift' };
   if (rewardLocked) giftSel.disabled = true;
   const windowMin = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'fino all\'avvio', value: ev?.windowMin || '' });
@@ -5297,12 +5318,12 @@ async function gameEventDialog(ev = null) {
   if (!ok) return;
   if (ev) {
     await call('PATCH', `/api/m/events/${ev.id}`, { ...(modeLocked ? {} : { mode: mode.value }), name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null,
-      ...(rewardLocked ? {} : { rewardKind: reward.value, rewardGiftType: giftId || null }),
+      ...(rewardLocked ? {} : { rewardKind: reward.value, rewardGiftType: giftId || null, rewardRarity: giftId ? null : rarityValue() }),
       windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, startAt: startAt.get(), durationMin: durationMin.value || null }, 'Evento aggiornato');
     return;
   }
   if (launch && !(await dialog({ title: 'Lanciare subito l\'evento?', text: `«${name.value}» arriva adesso a tutte le coppie con una notifica.`, okLabel: 'Lancia subito' }))) launch = false;
-  await call('POST', G('/events'), { mode: mode.value, name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null,
+  await call('POST', G('/events'), { mode: mode.value, name: name.value, description: desc.value, slots: slots.value, squadId: squad.value || null, rewardKind: reward.value, rewardGiftType: giftId || null, rewardRarity: giftId ? null : rarityValue(),
     windowMin: windowMin.value, confirmMin: confirmMin.value, truceMin: truceMin.value, location, launch,
     startAt: startAt.get(), durationMin: durationMin.value || null }, launch ? 'Evento lanciato alle coppie' : 'Evento salvato: lancialo dall\'elenco quando vuoi');
 }
@@ -5328,7 +5349,7 @@ function viewEvents() {
           h('button', { type: 'button', class: `ev-fact ${ev.durationMin ? '' : 'missing'}`, title: 'Cambia la durata', onclick: () => eventScheduleDialog(ev) },
             h('span', { class: 'eyebrow' }, '⏱ Durata'), h('strong', null, ev.durationMin ? `${ev.durationMin} minuti` : 'senza limite')),
           h('button', { type: 'button', class: 'ev-fact', title: 'Cambia il premio', onclick: () => gameEventDialog(ev) },
-            h('span', { class: 'eyebrow' }, '🎁 Premio'), h('strong', null, ev.rewardKind === 'gift' && ev.rewardGiftType ? (() => { const x = E.giftTypes.find((y) => y.id === ev.rewardGiftType); return x ? `${x.icon} ${x.name}` : ev.rewardLabel; })() : ev.rewardKind === 'gift' ? '✦ Un Dono a caso' : ev.rewardLabel))),
+            h('span', { class: 'eyebrow' }, '🎁 Premio'), h('strong', null, ev.rewardKind === 'gift' && ev.rewardGiftType ? (() => { const x = E.giftTypes.find((y) => y.id === ev.rewardGiftType); return x ? `${x.icon} ${x.name}` : ev.rewardLabel; })() : ev.rewardKind === 'gift' ? (ev.rewardRarity ? `✦ ${ev.rewardLabel}` : '✦ Un Dono a caso') : ev.rewardLabel))),
         ev.description ? h('p', { class: 'small ev-desc' }, ev.description) : null,
         ev.location ? locationPreview(`ev${ev.id}`, ev.location) : null,
         h('div', { class: 'tiny muted' }, `Conferma ${ev.confirmMin}′ · tregua ${ev.truceMin}′`,

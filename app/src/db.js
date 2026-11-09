@@ -712,6 +712,7 @@ CREATE TABLE IF NOT EXISTS chrono_types (
 // Tipo di evento: 'manual' (chiude la regia o la squadra custode) o 'bounty' (taglia su sé stessi: si chiude da solo,
 // vince chi non viene ingaggiato dagli Eletti entro la fine).
 addColumn('game_events', 'mode', "TEXT NOT NULL DEFAULT 'manual'");
+addColumn('game_events', 'rewardRarity', 'TEXT'); // Dono a caso solo tra queste rarità: «raro-epico», «leggendario»
 
 // Emergenze archiviate dalla regia (solo chiuse): spariscono dalla vista, restano nel registro.
 addColumn('emergencies', 'archivedAt', 'INTEGER');

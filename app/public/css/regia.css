@@ -1529,3 +1529,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 
 .cat-rarity { display: flex; margin: -2px 0 2px; }
 .cat-tabs { max-width: 560px; }
+
+/* Eventi: fascia di rarità del Dono a caso */
+.rarity-wrap { margin-top: 8px; }
+.rarity-slicer { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--line, #333); border-radius: 999px; overflow: hidden; }
+.rarity-chip { border: 0; background: transparent; color: var(--muted, #999); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line, #333); }
+.rarity-chip:last-child { border-right: 0; }
+.rarity-chip.on { background: color-mix(in srgb, var(--c) 28%, transparent); color: var(--c); font-weight: 600; }
+.rarity-chip:disabled { cursor: default; opacity: .6; }
