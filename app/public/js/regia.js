@@ -1,6 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
+import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING } from './teamvideo.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -34,6 +35,7 @@ const TABS = [
   ['mappa', 'Mappa e campo'],
   ['doniqr', 'Doni QR'],
   ['stampe', 'Stampe'],
+  ['video', 'Video coppie'],
   ['minigiochi', 'Minigiochi'],
   ['catalogo', 'Skill e Doni'],
   ['doni', 'Armamenti'],
@@ -59,7 +61,7 @@ const TABS = [
 // Icone (MDI) del menu della regia; Emergenze è rossa.
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
-  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', minigiochi: 'puzzle', catalogo: 'starFourPoints',
+  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', video: 'play', minigiochi: 'puzzle', catalogo: 'starFourPoints',
   doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
   rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', 'ristoro-altri': 'accountPlus', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
@@ -323,7 +325,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
@@ -5121,6 +5123,41 @@ function viewRistoro() {
 // Ristoro: ordina — la regia ordina per sé, come chiunque nel Consiglio.
 const foodOrderR = createFoodOrder({ base: '/api/v/food', query: () => `?g=${R.gameId}`, rerender: () => render() });
 const viewOrdina = () => foodOrderR.view();
+
+// ---------------------------------------------------------------- VIDEO DELLE COPPIE
+// Presentazione delle coppie in tema Giochi del Buio (Settore, numero romano, motto, logo, nick): anteprima e
+// registrazione in un file video direttamente dal browser.
+const TV = { perTeam: 7, sound: true, stills: null, gid: null };
+function viewTeamVideo() {
+  const ms = R.ms;
+  const couples = (ms.teams || []).filter((t) => t.sectorId);
+  const noLogo = couples.filter((t) => !t.logoAt);
+  const noNick = couples.filter((t) => (t.members || []).length < 2 || (t.members || []).some((m) => !m.nickname));
+  const per = h('input', { class: 'input', type: 'number', min: 5, max: 15, step: 1, value: TV.perTeam, 'data-keep': 'tv-per', oninput: (e) => { TV.perTeam = Number(e.target.value) || 7; dur.textContent = durText(); } });
+  const durText = () => { const s = VIDEO_TIMING.INTRO + couples.length * (TV.perTeam || 7) + VIDEO_TIMING.OUTRO; return `Durata: ${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`; };
+  const dur = h('span', { class: 'chip' }, durText());
+  const sound = h('input', { type: 'checkbox', checked: TV.sound, onchange: (e) => { TV.sound = e.target.checked; } });
+  const type = pickRecorderType();
+  const grid = h('div', { class: 'tv-stills' });
+  // Anteprime: un fotogramma per coppia.
+  (async () => {
+    const list = await teamsForVideo(ms);
+    grid.replaceChildren(...list.map((t) => { const c = h('canvas', { width: 1920, height: 1080, class: 'tv-still', title: `${t.roman} ${t.sectorName}` }); try { drawStill(c, t, TV.perTeam); } catch { /* font non pronto */ } return c; }));
+  })();
+  return h('div', { class: 'stack' },
+    section(`Video di presentazione delle coppie (${couples.length})`, h('div', { class: 'stack-sm' },
+      h('p', { class: 'muted small' }, 'Intro «I Giochi del Buio», poi una coppia alla volta in ordine di Settore: numero romano, Settore con l\'effetto del suo elemento (braci per il Fuoco, vento per l\'Aria, polvere per la Terra…), motto, il logo che si apre con un lampo e sotto i nick dei due membri. Chiusura del Consiglio. Formato 1920×1080 con colonna sonora.'),
+      noLogo.length ? h('p', { class: 'small warn-text' }, `Senza logo (al suo posto il numero romano): ${noLogo.map((t) => `${t.roman} ${t.sectorName}`).join(', ')}. Il logo si carica in Coppie.`) : null,
+      noNick.length ? h('p', { class: 'small warn-text' }, `Senza due nick: ${noNick.map((t) => `${t.roman} ${t.sectorName}`).join(', ')} (al posto del nick va il nome).`) : null,
+      h('div', { class: 'form-grid' },
+        h('label', { class: 'field' }, h('span', null, 'Secondi per coppia'), per),
+        h('label', { class: 'field check' }, sound, h('span', null, 'Colonna sonora (bordone e colpi)'))),
+      h('div', { class: 'row-actions' }, dur,
+        h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound }) }, '▶ Guarda a schermo intero'),
+        h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, record: true }) }, '⏺ Registra e scarica il video')),
+      h('p', { class: 'tiny muted' }, type ? `La registrazione avviene in tempo reale (dura quanto il video) e alla fine scarica il file ${type.includes('mp4') ? 'MP4' : 'WebM'}. Tieni la scheda aperta e in primo piano finché non finisce.` : 'Questo browser non sa registrare video: usa Chrome o Edge sul computer. Puoi comunque guardarlo a schermo intero.'))),
+    section('Anteprima', grid));
+}
 
 // ---------------------------------------------------------------- STAMPE
 
