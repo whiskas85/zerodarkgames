@@ -575,6 +575,19 @@ export async function nfcListen(signal, onText, onError = () => {}) {
   await r.scan({ signal });
   return true;
 }
+// Cancella un tag NFC: prima lo legge (per sapere cosa conteneva), poi ci scrive un messaggio vuoto.
+// Restituisce il testo che c'era (o null se era già vuoto o illeggibile).
+export async function nfcErase(signal) {
+  const r = new window.NDEFReader();
+  const before = await new Promise((resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new DOMException('Annullato', 'AbortError')));
+    r.onreading = (e) => { let t = null; for (const rec of e.message.records) { t = nfcText(rec); if (t) break; } resolve(t); };
+    r.onreadingerror = () => resolve(null);
+    r.scan({ signal }).catch(reject);
+  });
+  await r.write({ records: [{ recordType: 'empty' }] }, { signal, overwrite: true });
+  return before;
+}
 // Scrive un link su un tag NFC (sovrascrive quello che c'era).
 export async function nfcWriteUrl(url, signal) {
   const w = new window.NDEFReader();
