@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl } from './lib.js';
+import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -4056,23 +4056,72 @@ async function writeNfcDialog(g) {
   const done = modal({ title: `📶 Scrivi su NFC · ${g.label}`, okLabel: 'Fatto', cancelLabel: null,
     body: h('div', { class: 'stack-sm' },
       h('p', { class: 'small muted' }, `Il tag conterrà il link del dono (${g.icon || '🎁'} ${g.name || 'Dono'}). ${g.multi ? 'Il dono resta attivo dopo la lettura: puoi scrivere più tag uguali.' : 'Come il QR, lo prende la prima coppia che lo legge.'} Vanno bene tag NTAG213/215/216 (anche adesivi o portachiavi).`),
-      status, h('div', { class: 'row-actions' }, again, copy)) });
+      status, h('div', { class: 'row-actions' }, again, copy, h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => { e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); setTimeout(eraseNfcDialog, 50); } }, '🧽 Cancella un tag'))) });
   start();
   await done;
   ctl?.abort();
   if (written) loadField();
 }
 
+// Cancella un tag NFC (anche per riusarlo): se conteneva un dono di questa partita, il suo conteggio scende di uno.
+async function eraseNfcDialog() {
+  if (!nfcSupported()) {
+    await modal({ title: '🧽 Cancella un tag NFC', okLabel: 'Chiudi', cancelLabel: null,
+      body: h('p', null, 'Da questo browser non si possono cancellare tag NFC: serve Chrome su un telefono Android con l\'NFC acceso. In alternativa usa un\'app come «NFC Tools» (Altro → Cancella tag).') });
+    return;
+  }
+  let erased = 0;
+  let ctl = null;
+  const status = h('p', { class: 'nfc-status', role: 'status', 'aria-live': 'polite' });
+  const again = h('button', { type: 'button', class: 'btn', hidden: true, onclick: () => start() }, 'Cancella un altro tag');
+  const start = async () => {
+    again.hidden = true;
+    status.className = 'nfc-status wait';
+    status.textContent = '🧽 Avvicina il tag da cancellare al retro del telefono e tienilo fermo…';
+    const ac = new AbortController();
+    ctl = ac;
+    try {
+      const before = await nfcErase(ac.signal);
+      erased += 1;
+      navigator.vibrate?.(120);
+      const tok = before?.match(/\/d\/([\w-]+)/)?.[1];
+      const g = tok ? (fieldData?.gifts || []).find((x) => x.qrToken === tok) : null;
+      if (g) api('POST', `/api/m/gifts/${g.id}/nfc`, { erased: true }).catch(() => {});
+      status.className = 'nfc-status ok';
+      status.textContent = `✅ Tag cancellato${erased > 1 ? ` (${erased} in questa sessione)` : ''}. ${g ? `Conteneva il dono «${g.label}».` : before ? 'Conteneva un link che non è un dono di questa partita.' : 'Era già vuoto.'} Ora è libero: puoi riscriverlo.`;
+      again.textContent = 'Cancella un altro tag';
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      status.className = 'nfc-status bad';
+      status.textContent = e.name === 'NotAllowedError' ? '⚠️ Permesso NFC negato o tag protetto da scrittura (bloccato): non si può cancellare.'
+        : e.name === 'NotSupportedError' ? '⚠️ NFC spento o non disponibile: accendilo nelle impostazioni del telefono.'
+          : `⚠️ Cancellazione non riuscita (${e.message || e.name}). Riprova tenendo il tag fermo.`;
+      again.textContent = 'Riprova';
+    }
+    again.hidden = false;
+  };
+  const done = modal({ title: '🧽 Cancella un tag NFC', okLabel: 'Fatto', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'small muted' }, 'Il tag torna vuoto: chi lo avvicina al telefono non prende più niente. I tag bloccati in sola lettura non si possono cancellare.'),
+      status, h('div', { class: 'row-actions' }, again)) });
+  start();
+  await done;
+  ctl?.abort();
+  if (erased) loadField();
+}
+
 // Generatore NFC: scegli un dono in gioco e scrivilo su uno o più tag.
 async function nfcGeneratorDialog(list) {
-  if (!list.length) { toast('Nessun dono in gioco: crealo prima con «+ Crea dono»', 'error'); return; }
   let chosen = null;
   await modal({ title: '📶 Generatore NFC', okLabel: 'Chiudi', cancelLabel: null,
     body: h('div', { class: 'stack-sm' },
       h('p', { class: 'small muted' }, 'Scegli il dono da scrivere sul tag. Il tag NFC vale come il QR: chi lo avvicina al telefono (Android dall\'app, iPhone dalla lettura NFC di sistema) prende il dono.'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: (e) => { chosen = 'erase'; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } }, '🧽 Cancella un tag NFC'),
+      list.length ? null : h('p', { class: 'empty' }, 'Nessun dono in gioco da scrivere: crealo con «+ Crea dono».'),
       h('div', { class: 'pick-list' }, list.map((g) => h('button', { type: 'button', class: 'btn nfc-pick', onclick: (e) => { chosen = g; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } },
         h('span', { style: { color: g.color } }, g.icon || '🎁'), ' ', h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` · ${g.name}${g.nfcTags ? ` · 📶 ${g.nfcTags}` : ''}`))))) });
-  if (chosen) writeNfcDialog(chosen);
+  if (chosen === 'erase') eraseNfcDialog();
+  else if (chosen) writeNfcDialog(chosen);
 }
 
 function viewGiftsQR() {
