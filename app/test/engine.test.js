@@ -3731,7 +3731,7 @@ test('reset della password dalla regia: temporanea, cambio obbligatorio, non per
   q.run("INSERT INTO sessions (token, kind, refId, createdAt) VALUES ('tok-smemo', 'account', ?, ?)", a.id, Date.now());
   const r = A.resetPassword(a.id, null, 'regia');
   assert.equal(r.username, 'smemorato');
-  assert.match(r.password, /^[a-z]{4}-\d{4}$/);
+  assert.match(r.password, /^[a-z]{3}\d[a-z]{3}\d$/);
   // La vecchia non vale più, la temporanea sì; la sessione aperta è chiusa; al primo accesso va cambiata.
   assert.equal(A.authenticate('smemorato', 'vecchia123'), null);
   const b = A.authenticate('smemorato', r.password);

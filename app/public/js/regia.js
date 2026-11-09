@@ -1363,7 +1363,9 @@ async function resetAccountPassword({ accountId, username, name }) {
   let r;
   try { r = await api('POST', `/api/m/accounts/${accountId}/password`, {}); } catch (e) { return toast(e.message, 'error', 7000); }
   const url = R.baseUrl || location.origin;
-  const text = `*🔑 Zero Dark Games · nuova password*\nCiao ${r.name ? r.name.split(' ')[0] : ''}, ecco i dati per entrare:\n\n👤 Username: *${r.username}*\n🔒 Password temporanea: *${r.password}*\n\n👉 ${url}\n\nAl primo accesso ti chiederà di scegliere una password tua.`;
+  // Username e password su righe a sé, in ```monospazio```: WhatsApp non li trasforma in link o numeri
+  // e si copiano interi tenendo premuto.
+  const text = `*🔑 Zero Dark Games · nuova password*\nCiao ${r.name ? r.name.split(' ')[0] : ''}, ecco i dati per entrare.\n\n👤 Username:\n\`\`\`${r.username}\`\`\`\n\n🔒 Password temporanea:\n\`\`\`${r.password}\`\`\`\n\n👉 ${url}\n\nAl primo accesso ti chiederà di scegliere una password tua.`;
   const digits = String(r.phone || '').replace(/\D/g, '');
   const wa = digits ? `https://wa.me/${digits.length === 10 && digits.startsWith('3') ? `39${digits}` : digits.replace(/^00/, '')}?text=${encodeURIComponent(text)}` : null;
   const copy = () => navigator.clipboard?.writeText(text).then(() => toast('Copiato: incollalo su WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
@@ -1374,7 +1376,7 @@ async function resetAccountPassword({ accountId, username, name }) {
         h('div', null, h('span', { class: 'eyebrow' }, 'Username'), h('strong', { class: 'mono' }, r.username)),
         h('div', null, h('span', { class: 'eyebrow' }, 'Password temporanea'), h('strong', { class: 'mono pw-reset-pass' }, r.password))),
       h('p', { class: 'tiny muted' }, 'Al primo accesso con questa password dovrà sceglierne una nuova. Ti conviene mandarla subito: qui non la rivedi più.'),
-      h('pre', { class: 'pw-reset-text' }, text.replace(/\*/g, '')),
+      h('pre', { class: 'pw-reset-text' }, text.replace(/\*|```/g, '')),
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn btn-primary', type: 'button', onclick: copy }, '📋 Copia per WhatsApp'),
         wa ? h('a', { class: 'btn', href: wa, target: '_blank', rel: 'noopener' }, `💬 Apri WhatsApp (${r.phone})`) : null)),

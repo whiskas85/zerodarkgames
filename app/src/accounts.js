@@ -87,7 +87,8 @@ function tempPassword() {
   const L = 'abcdefghjkmnpqrstuvwxyz';
   const D = '23456789';
   const pick = (s, n) => Array.from({ length: n }, () => s[crypto.randomInt(s.length)]).join('');
-  return `${pick(L, 4)}-${pick(D, 4)}`;
+  // Lettere e cifre alternate, senza gruppi di cifre: WhatsApp non le scambia per un numero di telefono.
+  return `${pick(L, 3)}${pick(D, 1)}${pick(L, 3)}${pick(D, 1)}`;
 }
 // La regia reimposta la password di chi l'ha dimenticata (solo account con username e password: chi entra con
 // Zero Dark Ops la gestisce lì). Senza password indicata ne genera una temporanea. Al primo accesso la persona
