@@ -1537,3 +1537,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .rarity-chip:last-child { border-right: 0; }
 .rarity-chip.on { background: color-mix(in srgb, var(--c) 28%, transparent); color: var(--c); font-weight: 600; }
 .rarity-chip:disabled { cursor: default; opacity: .6; }
+
+/* Doni su NFC */
+.nfc-status { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line, #333); font-weight: 600; }
+.nfc-status.wait { animation: nfc-pulse 1.6s ease-in-out infinite; }
+.nfc-status.ok { border-color: #46c46a; color: #46c46a; }
+.nfc-status.bad { border-color: #e5484d; color: #e5484d; }
+@keyframes nfc-pulse { 50% { opacity: .55; } }
+.nfc-pick { justify-content: flex-start; text-align: left; width: 100%; }

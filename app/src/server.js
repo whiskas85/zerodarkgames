@@ -988,6 +988,14 @@ m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || 
 m.delete('/gifts/:gid', wrap((req) => { F.deleteGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/gifts/:gid/reveal', wrap((req) => { F.revealGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/gifts/:gid/schedule', wrap((req) => F.scheduleGiftReveal(req.params.gid, req.body || {}, actor(req))));
+// Tag NFC scritto dal telefono della regia con il link del dono (solo per tenerne il conto).
+m.post('/gifts/:gid/nfc', wrap((req) => {
+  const g = q.get('SELECT id, gameId, label FROM gifts WHERE id = ?', Number(req.params.gid));
+  if (!g) throw new HttpError(404, 'Dono non trovato');
+  q.run('UPDATE gifts SET nfcTags = nfcTags + 1, nfcAt = ? WHERE id = ?', Date.now(), g.id);
+  G.log(g.gameId, actor(req), 'gift_nfc_written', { label: g.label });
+  return { ok: true };
+}));
 m.post('/gifts/:gid/reset', wrap((req) => { F.resetGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.body.text, actor(req))));
 
