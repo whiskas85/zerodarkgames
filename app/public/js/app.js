@@ -592,6 +592,26 @@ function preserveInputs(fn) {
   }
 }
 
+// Posizione nella pagina: tornando indietro (‹ in alto o tasto «indietro» del telefono) si ritrova il punto del menu
+// dove si era arrivati; aprendo una pagina nuova si parte dall'alto.
+const scrollMemo = new Map();
+let routeKey = null;
+let goingBack = false;
+window.addEventListener('scroll', () => { if (routeKey === (location.hash || '#/home')) scrollMemo.set(routeKey, window.scrollY); }, { passive: true });
+window.addEventListener('popstate', () => { goingBack = true; });
+try { history.scrollRestoration = 'manual'; } catch { /* vecchi browser */ }
+function restoreScroll(skip) {
+  const key = location.hash || '#/home';
+  if (key === routeKey) return;
+  const back = goingBack;
+  goingBack = false;
+  routeKey = key;
+  if (skip) return;
+  const y = back ? scrollMemo.get(key) || 0 : 0;
+  // Due tentativi: il contenuto (immagini, schede) può allungarsi subito dopo il disegno.
+  requestAnimationFrame(() => { window.scrollTo(0, y); if (y) setTimeout(() => { if (routeKey === key && Math.abs(window.scrollY - y) > 4) window.scrollTo(0, y); }, 120); });
+}
+
 function render() {
   if (S.auth === 'unknown' && !S.state) return mount($app, h('div', { class: 'boot' }, h('div', { class: 'emblem' }, h('span', null, '0')), h('p', { class: 'eyebrow' }, 'Il Consiglio vi osserva…')));
   if (S.auth === 'none') return mount($app, viewLogin());
@@ -624,6 +644,7 @@ function render() {
     if (view === 'mappa') requestAnimationFrame(fitMap);
     document.body.classList.toggle('chat-open', chatView);
     if (chatView && (!arg || arg === 'solo') && (nearBottom || S.chatScroll)) { S.chatScroll = false; requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight)); }
+    restoreScroll(chatView || view === 'mappa');
   });
   applyFocus(view, arg);
   if (view === 'annunci') markSeen('ann');
@@ -723,7 +744,7 @@ function header(view) {
   const veglia = (S.timers || []).find((t) => t.id === 'veglia' && !t.done && t.endsAt > Date.now());
   return h('header', { class: `top ${isElect() ? 'top-elect' : ''} ${fx.length ? 'top-fx' : ''}` },
     view !== 'home' ? h('a', { class: 'back', href: upOf(view), 'aria-label': upOf(view) === '#/home' && !upStep(view) ? 'Torna alla home' : 'Torna indietro',
-      onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); } } }, '‹')
+      onclick: (e) => { const step = upStep(view); if (step) { e.preventDefault(); step(); return; } goingBack = true; } }, '‹')
       // Logo della coppia al posto del timbro, con il numero romano in basso a destra (come nel voto del pubblico).
       // Il logo (o il timbro) apre il menu che sale dal basso, come nel portale Zero Dark Ops.
       : st?.team.kind === 'couple' && st.team.logoAt ? h('button', { type: 'button', class: 'stamp stamp-logo', 'aria-label': 'Menu', 'aria-haspopup': 'dialog', style: sec?.color ? { '--c': sec.color } : null, onclick: openSheetMenu },
