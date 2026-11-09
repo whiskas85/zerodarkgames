@@ -1528,3 +1528,4 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .odds-tier-pick button.on { background: color-mix(in srgb, var(--c) 30%, var(--paper)); }
 
 .cat-rarity { display: flex; margin: -2px 0 2px; }
+.cat-tabs { max-width: 560px; }

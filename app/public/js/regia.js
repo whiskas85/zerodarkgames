@@ -3827,6 +3827,7 @@ let catalogQ = '';
 const catalogHit = (x, kind) => matches(catalogQ, kind, x.current.name, x.current.description, x.preview, SKILL_TYPE[x.type], x.type,
   x.current.durationMin ? `durata ${x.current.durationMin}` : '', x.current.cooldownMin ? `ricarica ${x.current.cooldownMin}` : '', x.edited ? 'modificato' : '');
 
+let catalogTab = 'items';
 function viewCatalog() {
   // Cambia lo stato della partita (preparazione ↔ pronta): si ricarica per sapere se è ancora modificabile.
   if (!catalogData || catalogData.gameId !== R.gameId || catalogData.status !== R.ms?.clock.status) { if (!loadCatalog.busy) { loadCatalog.busy = true; loadCatalog().finally(() => { loadCatalog.busy = false; }); } return h('p', { class: 'empty' }, 'Caricamento…'); }
@@ -3851,15 +3852,17 @@ function viewCatalog() {
     h('div', { class: `panel ${c.editable ? '' : 'pending-panel'}` }, h('p', { class: 'small', style: { margin: 0 } }, c.editable
       ? 'Partita in preparazione: puoi cambiare nome, descrizione, durata e ricarica di ogni Skill e Dono. Alle coppie arrivano i testi e i tempi di questa pagina.'
       : '🔒 Testi e tempi sono bloccati: si cambiano solo con la partita in preparazione.')),
-    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { catalogQ = ''; render(); setTimeout(() => document.getElementById('gift-odds')?.scrollIntoView({ behavior: 'smooth' }), 50); } }, '🎲 Probabilità del Dono a caso (rarità, peso, mai a caso)')),
-    omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
-    ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
-      const list = skills.filter((x) => x.type === type);
-      return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
-    }),
-    gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
-    catalogQ ? null : h('div', { id: 'gift-odds' }, giftOddsView(c)),
-    hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`));
+    // Due schede: le Skill e i Doni, e le probabilità del Dono a caso.
+    h('nav', { class: 'food-tabs cat-tabs', role: 'tablist' }, [['items', '✦ Skill e Doni'], ['odds', '🎲 Probabilità del Dono a caso']].map(([k, l]) =>
+      h('button', { type: 'button', role: 'tab', class: catalogTab === k ? 'on' : '', 'aria-selected': catalogTab === k ? 'true' : 'false', onclick: () => { catalogTab = k; render(); } }, l))),
+    ...(catalogTab === 'odds' ? [giftOddsView(c)] : [
+      omnibar({ keep: 'catalog-q', value: catalogQ, placeholder: 'Cerca tra Skill e Doni: nome, effetto, tipo, durata…', count: hits, onInput: (v) => { catalogQ = v; render(); } }),
+      ...[['active', 'Skill attive'], ['ultimate', 'Ultimate'], ['passive', 'Skill passive']].map(([type, title]) => {
+        const list = skills.filter((x) => x.type === type);
+        return list.length ? section(`${title} (${list.length})`, h('div', { class: 'cat-grid' }, list.map(card))) : null;
+      }),
+      gifts.length ? section(`Doni (${gifts.length})`, h('div', { class: 'cat-grid' }, gifts.map(card))) : null,
+      hits ? null : h('p', { class: 'empty' }, `Nessuna Skill o Dono per «${catalogQ}».`)]));
 }
 
 // ---------------------------------------------------------------- ACCETTAZIONE E TEST REPLICHE (modulo condiviso con lo staff, in Soglia)
