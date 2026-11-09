@@ -38,7 +38,7 @@ function giftOut(g) {
     provisional: !!g.provisional,
     ...taskFields(g),
     revealedAt: g.revealedAt, claimedAt: g.claimedAt, usedAt: g.usedAt, expiredAt: g.expiredAt,
-    revealDelayMin: g.revealDelayMin || null, removeSign: g.removeSign !== 0, multi: !!g.multi,
+    revealDelayMin: g.revealDelayMin || null, removeSign: g.removeSign !== 0, multi: !!g.multi, nfcTags: g.nfcTags || 0, nfcAt: g.nfcAt || null,
     // Resta attivo dopo la lettura: le coppie che l'hanno già preso.
     takenBy: g.multi ? q.all('SELECT s.name, s.roman, c.claimedAt FROM gifts c JOIN teams t ON t.id = c.claimedByTeamId LEFT JOIN sectors s ON s.id = t.sectorId WHERE c.parentGiftId = ? ORDER BY c.claimedAt', g.id)
       .map((x) => `${x.roman || ''} ${x.name || ''}`.trim()) : [],

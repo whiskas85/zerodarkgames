@@ -553,6 +553,8 @@ addColumn('gifts', 'removeSign', 'INTEGER NOT NULL DEFAULT 1');
 // Doni che restano attivi dopo la lettura: ogni coppia ne prende una copia (una volta sola); la copia ricorda l'originale.
 addColumn('gifts', 'multi', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('gifts', 'parentGiftId', 'INTEGER');
+addColumn('gifts', 'nfcTags', 'INTEGER NOT NULL DEFAULT 0'); // tag NFC scritti dalla regia con il link del dono
+addColumn('gifts', 'nfcAt', 'INTEGER');
 
 // Testi e tempi di Skill e Doni modificati dalla regia per questa partita (JSON: { skills: {id: {...}}, gifts: {id: {...}} }).
 addColumn('games', 'catalogEdits', 'TEXT');

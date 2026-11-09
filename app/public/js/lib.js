@@ -558,6 +558,29 @@ export function cameraSupported() {
   return !!(window.isSecureContext && navigator.mediaDevices?.getUserMedia);
 }
 
+// ---- NFC (Web NFC: Chrome su Android). I tag contengono lo stesso link del QR (record URL).
+export const nfcSupported = () => typeof window !== 'undefined' && 'NDEFReader' in window;
+const nfcText = (rec) => {
+  try {
+    if (rec.recordType === 'url' || rec.recordType === 'absolute-url' || rec.recordType === 'text') return new TextDecoder(rec.encoding || 'utf-8').decode(rec.data);
+  } catch { /* record illeggibile */ }
+  return null;
+};
+// Ascolta i tag finché signal non viene interrotto: onText(testo) per ogni link o testo letto.
+export async function nfcListen(signal, onText, onError = () => {}) {
+  if (!nfcSupported()) return false;
+  const r = new window.NDEFReader();
+  r.onreading = (e) => { for (const rec of e.message.records) { const t = nfcText(rec); if (t) { onText(t); return; } } onError('Tag NFC vuoto o non dei Giochi'); };
+  r.onreadingerror = () => onError('Tag NFC illeggibile: riprovate tenendolo fermo sul retro del telefono');
+  await r.scan({ signal });
+  return true;
+}
+// Scrive un link su un tag NFC (sovrascrive quello che c'era).
+export async function nfcWriteUrl(url, signal) {
+  const w = new window.NDEFReader();
+  await w.write({ records: [{ recordType: 'url', data: url }] }, { signal, overwrite: true });
+}
+
 // Apre lo scanner a tutto schermo. accept(testo) → true per accettare, una stringa per mostrare un avviso e continuare.
 // Restituisce il testo letto, oppure null se chiuso.
 export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => true } = {}) {
@@ -600,9 +623,12 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
       camSel.replaceChildren(...cams.map((d, i) => h('option', { value: d.deviceId, selected: d.deviceId === cur }, name(d, i))));
       camSel.classList.toggle('hidden', cams.length < 2);
     };
+    // NFC (Android): mentre lo scanner è aperto si può anche avvicinare un tag con lo stesso link del QR.
+    const nfcAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const finish = (val) => {
       if (done) return;
       done = true;
+      try { nfcAbort?.abort(); } catch { /* già fermo */ }
       clearTimeout(timer);
       stream?.getTracks().forEach((t) => t.stop());
       overlay.remove();
@@ -618,6 +644,7 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
       h('div', { class: 'scanner-bottom' }, status, hint ? h('p', null, hint) : null,
         h('div', { class: 'scanner-tools' }, torchBtn, zoomBtn),
         camSel,
+        nfcSupported() ? h('p', { class: 'scanner-tip' }, '📶 Oppure avvicinate un tag NFC al retro del telefono.') : null,
         h('p', { class: 'scanner-tip' }, 'Non mette a fuoco? Scegli un\'altra fotocamera qui sopra, tocca l\'immagine o usa lo zoom 2×.')));
     // Tocco sull'immagine: rifà la messa a fuoco (dove il telefono lo consente).
     video.addEventListener('click', async (e) => {
@@ -634,6 +661,13 @@ export function scanQR({ title = 'Inquadra il QR', hint = '', accept = () => tru
     });
     document.addEventListener('keydown', onKey);
     document.body.append(overlay);
+    if (nfcSupported() && nfcAbort) {
+      nfcListen(nfcAbort.signal, (t) => {
+        if (done) return;
+        const ok = accept(t);
+        if (ok === true) { navigator.vibrate?.(80); finish(t); } else { status.textContent = typeof ok === 'string' ? ok : 'Tag NFC non valido'; status.classList.add('bad'); }
+      }, (msg) => { if (!done) { status.textContent = msg; status.classList.add('bad'); } }).catch(() => { /* NFC spento o permesso negato: resta la fotocamera */ });
+    }
     document.body.classList.add('no-scroll');
 
     const fail = (msg) => { status.textContent = msg; status.classList.add('bad'); };

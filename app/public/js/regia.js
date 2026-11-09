@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow } from './lib.js';
+import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl } from './lib.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -4012,6 +4012,68 @@ async function editGiftDialog(g) {
     } });
 }
 
+// Dono su NFC: dal telefono (Chrome su Android) si scrive sul tag lo stesso link del QR. Chi lo legge prende il dono come col QR.
+async function writeNfcDialog(g) {
+  const url = `${R.baseUrl}/d/${g.qrToken}`;
+  const copy = h('button', { type: 'button', class: 'btn btn-sm', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Link copiato', 'ok')).catch(() => toast(url, 'info', 10000)) }, '⧉ Copia il link');
+  if (!nfcSupported()) {
+    await modal({ title: `📶 NFC · ${g.label}`, okLabel: 'Chiudi', cancelLabel: null,
+      body: h('div', { class: 'stack-sm' },
+        h('p', null, 'Da questo browser non si possono scrivere tag NFC: serve Chrome su un telefono Android (con l\'NFC acceso). Apri la regia da lì e ripremi «📶 NFC».'),
+        h('p', { class: 'small muted' }, 'In alternativa (anche da iPhone) usa un\'app come «NFC Tools»: Scrivi → Aggiungi un record → URL, e incolla questo link:'),
+        h('p', { class: 'mono small', style: { wordBreak: 'break-all' } }, url), copy) });
+    return;
+  }
+  let written = 0;
+  let ctl = null;
+  const status = h('p', { class: 'nfc-status', role: 'status', 'aria-live': 'polite' });
+  const again = h('button', { type: 'button', class: 'btn', hidden: true, onclick: () => start() }, 'Scrivi un altro tag');
+  const start = async () => {
+    again.hidden = true;
+    status.className = 'nfc-status wait';
+    status.textContent = '📶 Avvicina il tag NFC al retro del telefono e tienilo fermo…';
+    const ac = new AbortController();
+    ctl = ac;
+    try {
+      await nfcWriteUrl(url, ac.signal);
+      written += 1;
+      api('POST', `/api/m/gifts/${g.id}/nfc`).catch(() => {});
+      navigator.vibrate?.(120);
+      status.className = 'nfc-status ok';
+      status.textContent = `✅ Tag scritto${written > 1 ? ` (${written} in questa sessione)` : ''}. Chi lo avvicina al telefono prende «${g.label}» come con il QR.`;
+      again.textContent = 'Scrivi un altro tag';
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      status.className = 'nfc-status bad';
+      status.textContent = e.name === 'NotAllowedError' ? '⚠️ Permesso NFC negato: consentilo nelle impostazioni del sito e riprova.'
+        : e.name === 'NotSupportedError' ? '⚠️ NFC spento o non disponibile: accendilo nelle impostazioni del telefono.'
+          : `⚠️ Scrittura non riuscita (${e.message || e.name}). Riprova tenendo il tag fermo.`;
+      again.textContent = 'Riprova';
+    }
+    again.hidden = false;
+  };
+  const done = modal({ title: `📶 Scrivi su NFC · ${g.label}`, okLabel: 'Fatto', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'small muted' }, `Il tag conterrà il link del dono (${g.icon || '🎁'} ${g.name || 'Dono'}). ${g.multi ? 'Il dono resta attivo dopo la lettura: puoi scrivere più tag uguali.' : 'Come il QR, lo prende la prima coppia che lo legge.'} Vanno bene tag NTAG213/215/216 (anche adesivi o portachiavi).`),
+      status, h('div', { class: 'row-actions' }, again, copy)) });
+  start();
+  await done;
+  ctl?.abort();
+  if (written) loadField();
+}
+
+// Generatore NFC: scegli un dono in gioco e scrivilo su uno o più tag.
+async function nfcGeneratorDialog(list) {
+  if (!list.length) { toast('Nessun dono in gioco: crealo prima con «+ Crea dono»', 'error'); return; }
+  let chosen = null;
+  await modal({ title: '📶 Generatore NFC', okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'small muted' }, 'Scegli il dono da scrivere sul tag. Il tag NFC vale come il QR: chi lo avvicina al telefono (Android dall\'app, iPhone dalla lettura NFC di sistema) prende il dono.'),
+      h('div', { class: 'pick-list' }, list.map((g) => h('button', { type: 'button', class: 'btn nfc-pick', onclick: (e) => { chosen = g; e.currentTarget.closest('dialog')?.querySelector('.dlg-actions .btn-primary')?.click(); } },
+        h('span', { style: { color: g.color } }, g.icon || '🎁'), ' ', h('strong', null, g.label), h('span', { class: 'tiny muted' }, ` · ${g.name}${g.nfcTags ? ` · 📶 ${g.nfcTags}` : ''}`))))) });
+  if (chosen) writeNfcDialog(chosen);
+}
+
 function viewGiftsQR() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento dei doni…'); }
@@ -4033,6 +4095,7 @@ function viewGiftsQR() {
       } }, '✎') : null),
       h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
       h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello'),
+      g.nfcTags ? h('div', { class: 'tiny muted' }, `📶 ${g.nfcTags === 1 ? '1 tag NFC scritto' : `${g.nfcTags} tag NFC scritti`}`) : null,
       g.multi ? h('div', { class: 'tiny gift-multi' }, `♾ Resta attivo${g.takenBy?.length ? ` · preso da ${g.takenBy.join(', ')}` : ''}`) : null),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
@@ -4041,6 +4104,7 @@ function viewGiftsQR() {
     h('td', { class: 'tiny' }, !g.expiresAfterMin ? 'mai' : g.status === 'revealed' && g.expiresAtElapsedMs != null ? h('span', null, 'tra ', h('span', { class: 'mono', 'data-clock': `until:${g.expiresAtElapsedMs}` }, '—')) : `${g.expiresAfterMin}′ dopo l'annuncio`),
     h('td', { class: 'row-actions' },
       !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm', onclick: () => editGiftDialog(g) }, '✎ Modifica') : null,
+      !['claimed', 'expired'].includes(g.status) && g.qrToken ? h('button', { class: 'btn btn-sm', title: 'Scrivi il dono su un tag NFC', onclick: () => writeNfcDialog(g) }, '📶 NFC') : null,
       ['draft', 'placed'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => scheduleGiftDialog(g) }, ['at', 'onplace', 'time'].includes(g.revealMode) ? '◷ Cambia annuncio' : '◷ Annuncia…') : null,
       ['draft', 'placed'].includes(g.status) && ['at', 'onplace', 'time'].includes(g.revealMode) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => call('POST', `/api/m/gifts/${g.id}/schedule`, { mode: 'cancel' }, 'Annuncio annullato').then(() => loadField()) }, 'Annulla annuncio') : null,
       ['draft', 'placed', 'revealed'].includes(g.status) ? placementButtons('gift', g, g.status !== 'draft') : null,
@@ -4054,6 +4118,7 @@ function viewGiftsQR() {
   return h('div', { class: 'stack' },
     sectionActions(`Doni in gioco (${live.length})`, [
       h('button', { class: 'btn btn-sm btn-primary', onclick: createGiftDialog }, '+ Crea dono'),
+      h('button', { class: 'btn btn-sm', onclick: () => nfcGeneratorDialog(live.filter((g) => g.qrToken)) }, '📶 Generatore NFC'),
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
     live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco: crealo con «+ Crea dono».')),
     gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null,
