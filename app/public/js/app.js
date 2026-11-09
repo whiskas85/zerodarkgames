@@ -75,12 +75,15 @@ function guardSecrets() {
   for (const ev of ['copy', 'cut', 'contextmenu', 'dragstart', 'selectstart']) {
     document.addEventListener(ev, (e) => { if (inSecret(e)) e.preventDefault(); }, true);
   }
-  // Se la selezione finisce comunque su un Sigillo o un frammento, la copia esce vuota.
+  // Se la selezione tocca un Sigillo o un frammento (anche partendo da un altro punto della pagina e allargandola),
+  // la copia esce vuota. Nei campi di testo si copia normalmente.
   document.addEventListener('copy', (e) => {
+    const t = e.target instanceof Element ? e.target : null;
+    if (t?.closest('input, textarea, [contenteditable="true"]')) return;
     const sel = document.getSelection();
-    const node = sel?.anchorNode?.parentElement;
-    const focus = sel?.focusNode?.parentElement;
-    if (node?.closest?.(SECRET) || focus?.closest?.(SECRET)) { e.preventDefault(); e.clipboardData?.setData('text/plain', ''); }
+    if (!sel || sel.isCollapsed) return;
+    const hit = [...document.querySelectorAll(SECRET)].some((el) => sel.containsNode(el, true));
+    if (hit) { e.preventDefault(); e.clipboardData?.setData('text/plain', ''); }
   }, true);
   document.addEventListener('keydown', (e) => {
     const k = e.key?.toUpperCase();
