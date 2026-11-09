@@ -62,6 +62,12 @@ const GIFTS = [
   { id: 'dossier', name: 'Dossier Segreto', icon: '🕵️', color: '#a0703c', target: 'team', description: 'Vedete tutti i Sigilli che conosce una coppia a scelta.' },
   { id: 'benedizione', name: 'Benedizione del Consiglio', icon: '✨', color: '#f0e3b0', target: 'swap', description: 'Sostituite una vostra Skill con un\'altra, pronta da usare.' },
   { id: 'sporche', name: 'Alleanze sporche', icon: '🤝', color: '#7a7a7a', target: null, description: 'Una squadra di Eletti vi raggiunge (la vedete sulla mappa): quando siete vicini, siete alleati per 30 minuti. Poi gli Eletti se ne vanno, qualunque cosa stia succedendo.' },
+  // Doni pensati per i premi (es. voto del pubblico): avvantaggiano senza dare Sigilli né frammenti.
+  { id: 'sguardo', name: 'Sguardo della Folla', icon: '🧭', color: '#f0a020', target: null, durationMin: 5, description: 'Per {durata} minuti, accanto all\'orologio, vedete in che direzione e a che distanza è la coppia non alleata più vicina (non la sua posizione sulla mappa).' },
+  { id: 'sentinella', name: 'Sentinella', icon: '📯', color: '#ff4fa3', target: null, durationMin: 20, description: 'Per {durata} minuti il telefono vibra quando una coppia non alleata arriva entro 80 m (come l\'Allarme di Prossimità, ma a tempo).' },
+  { id: 'contromossa', name: 'Contromossa', icon: '↩️', color: '#46c46a', target: null, durationMin: 60, description: 'Attivatela: per {durata} minuti la prima Taglia, Tracciamento o Tracker usato contro di voi viene respinto e chi l\'ha usato lo perde.' },
+  { id: 'maschera', name: 'Maschera', icon: '🎭', color: '#8b8bf5', target: null, durationMin: 15, description: 'Per {durata} minuti chi vi vede sulla mappa con una Skill o un Dono (Occhio, Rete, Tracker, Tracciamento, Taglia) vi vede in un punto falso a circa 150 m.' },
+  { id: 'borseggio', name: 'Furto', icon: '🧤', color: '#c2410c', target: 'nearTeam', durationMin: 15, description: 'Scegliete una coppia entro 30 m da voi: parte un conto alla rovescia di {durata} minuti, e lei lo sa subito. Se in quel tempo non c\'è uno scontro vinto o perso tra voi, le rubate il Sigillo.' },
   { id: 'reliquia', name: 'Reliquia Antica', icon: '💎', color: '#22c3e6', target: null, durationMin: 30, description: 'Per {durata} minuti i vostri Sigilli non si perdono: perdendo uno scontro il vostro resta coperto e nessuno ve li ruba.' },
 ];
 
@@ -81,7 +87,7 @@ const RARITIES = [
 const DEFAULT_RARITY = {
   chiave: 'comune', seconda: 'comune', tracciamento: 'comune', taglia: 'comune', saggio: 'comune', dossier: 'comune',
   sporche: 'raro', maestro: 'raro', reliquia: 'raro', benedizione: 'raro',
-  sovraccarico: 'epico', scudo: 'epico',
+  sovraccarico: 'epico', scudo: 'epico', sentinella: 'comune', contromossa: 'comune', sguardo: 'raro', maschera: 'raro', borseggio: 'epico',
   archivio: 'leggendario', furto: 'leggendario', frammento: 'leggendario',
 };
 function giftOdds(g) {
@@ -194,6 +200,65 @@ function startEffect(t, kind, code, { durationMin = null, target = null, sectorI
   return id;
 }
 
+// Furto: le coppie (non alleate) entro 30 m, con una posizione recente.
+const STEAL_RANGE_M = 30;
+function nearTeams(me, now = Date.now()) {
+  const here = latestPos(me.id, now);
+  if (!here) return [];
+  const allies = new Set(K.allianceOf(me.id)?.members || []);
+  return q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple' AND status = 'active' AND id <> ? ORDER BY id", me.gameId, me.id)
+    .filter((r) => !allies.has(r.id)).map((r) => team(r.id)).map((t) => ({ t, p: latestPos(t.id, now) }))
+    .filter((x) => x.p && distM(here, x.p) <= STEAL_RANGE_M)
+    .map((x) => ({ teamId: x.t.id, roman: x.t.roman, sectorName: x.t.sectorName, distance: Math.round(distM(here, x.p)) }));
+}
+
+// Furto: allo scadere, senza scontri vinti o persi tra le due coppie, il Sigillo passa al ladro.
+// Prima il Sigillo della coppia derubata; se il ladro lo conosce già, uno a caso tra quelli che lei conosce e lui no.
+function completeSteal(e, now = Date.now()) {
+  const me = team(e.teamId);
+  const t = team(e.targetTeamId);
+  let data;
+  if (!me || me.status !== 'active' || !t) data = { failed: 'La coppia non è più in gioco' };
+  else if (reliquiaOn(t, now)) data = { failed: `I Sigilli del Settore ${t.sectorName} sono protetti da una Reliquia Antica` };
+  else if (immune(t, now)) data = { failed: `Il Settore ${t.sectorName} è protetto da un'Immunità` };
+  else {
+    const mine = K.knownSectors(me);
+    const theirs = [...K.knownSectors(t)].filter((sid) => !mine.has(sid));
+    const sid = theirs.includes(t.sectorId) ? t.sectorId : shuffle(theirs)[0];
+    if (!sid) data = { failed: `Il Settore ${t.sectorName} non conosce Sigilli che voi non abbiate già` };
+    else {
+      const sc = q.get('SELECT code FROM sector_codes WHERE gameId = ? AND sectorId = ?', e.gameId, sid);
+      tx(() => {
+        q.run("INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt, source) VALUES (?, ?, ?, 1, ?, 'stolen')", me.id, sid, sc.code, now);
+        if (sid !== t.sectorId) q.run('DELETE FROM team_code_notes WHERE teamId = ? AND sectorId = ?', t.id, sid);
+      });
+      const sec = G.sectorById(sid);
+      data = { stolen: { sectorId: sid, sectorName: sec.name, roman: sec.roman, code: sc.code } };
+    }
+  }
+  q.run('UPDATE skill_effects SET endedAt = ?, data = ? WHERE id = ?', e.endsAt || now, JSON.stringify(data), e.id);
+  G.log(e.gameId, 'sistema', 'gift_steal_done', { teamId: e.teamId, target: t?.sectorName, sector: data.stolen?.sectorName || null, failed: data.failed || null });
+  rt.pushTeams(e.gameId, data.stolen
+    ? { title: 'Furto riuscito', body: `Avete rubato il Sigillo del Settore ${data.stolen.sectorName} al Settore ${t.sectorName}.`, tag: `borseggio-${e.id}`, url: '/#/skill' }
+    : { title: 'Furto fallito', body: data.failed, tag: `borseggio-${e.id}`, url: '/#/skill' }, e.teamId);
+  if (data.stolen && t) rt.pushTeams(e.gameId, { title: 'Vi hanno derubati', body: `Il Settore ${me.sectorName} conosce ora il Sigillo del Settore ${data.stolen.sectorName}.`, tag: `borseggio-${e.id}`, url: '/#/home' }, t.id);
+  rt.toTeams(e.gameId, 'state', {}, e.teamId);
+  if (t) rt.toTeams(e.gameId, 'state', {}, t.id);
+}
+
+// Uno scontro vinto o perso tra le due coppie (o le loro alleanze) annulla il Furto in corso.
+function cancelSteals(gameId, sideA, sideB, now = Date.now()) {
+  const a = new Set(sideA); const b = new Set(sideB);
+  for (const e of activeEffects(gameId, now).filter((x) => x.code === 'borseggio')) {
+    if (!((a.has(e.teamId) && b.has(e.targetTeamId)) || (b.has(e.teamId) && a.has(e.targetTeamId)))) continue;
+    q.run('UPDATE skill_effects SET endedAt = ?, data = ? WHERE id = ?', now, JSON.stringify({ failed: 'Annullato: c\'è stato uno scontro tra voi' }), e.id);
+    rt.pushTeams(gameId, { title: 'Furto annullato', body: `Lo scontro con il Settore ${team(e.targetTeamId)?.sectorName} ha annullato il Furto.`, tag: `borseggio-${e.id}`, url: '/#/skill' }, e.teamId);
+    rt.pushTeams(gameId, { title: 'Furto sventato', body: `Lo scontro con il Settore ${team(e.teamId)?.sectorName} ha annullato il Furto su di voi.`, tag: `borseggio-${e.id}`, url: '/#/home' }, e.targetTeamId);
+    rt.toTeams(gameId, 'state', {}, e.teamId);
+    rt.toTeams(gameId, 'state', {}, e.targetTeamId);
+  }
+}
+
 // Velo di Ceneri: tracciamenti e taglie contro chi ce l'ha durano la metà.
 const trackMin = (target, min) => (hasSkill(target.id, 'velo') ? min / 2 : min);
 
@@ -203,6 +268,18 @@ function pickTarget(me, targetTeamId) {
   if (t.status !== 'active') throw err(409, `Il Settore ${t.sectorName} è fuori dal gioco`);
   if (immune(t)) throw err(409, `Il Settore ${t.sectorName} è protetto da un\'Immunità: riprovate più tardi`);
   return t;
+}
+
+// Contromossa: la prima Taglia, Tracciamento o Tracker contro una coppia che la tiene attiva viene respinto
+// (chi l'ha usato lo perde). Torna il messaggio da mostrare, oppure null se non c'è Contromossa.
+function countered(me, t, what) {
+  const e = effectOn(t.gameId, t.id, 'contromossa');
+  if (!e) return null;
+  q.run('UPDATE skill_effects SET endedAt = ? WHERE id = ?', Date.now(), e.id);
+  G.log(t.gameId, 'sistema', 'contromossa', { teamId: t.id, by: me.id, what });
+  rt.pushTeams(t.gameId, { title: '↩️ Contromossa', body: `Il Settore ${team(me.id)?.sectorName} ha usato ${what} contro di voi: respinto.`, tag: `contromossa-${e.id}`, url: '/#/home' }, t.id);
+  rt.toTeams(t.gameId, 'state', {}, t.id);
+  return `${what} respinto: il Settore ${t.sectorName} aveva una Contromossa pronta. ${what} è consumato.`;
 }
 
 // Effetti che cambiano ciò che vedono gli altri (posizioni, Sigilli coperti): tutte le app si aggiornano subito.
@@ -315,6 +392,8 @@ function applySkill(g, me, s, p) {
       return { message: 'Per 3 minuti vedete tutte le coppie.' };
     case 'tracker': {
       const t = pickTarget(me, p.teamId);
+      const cm = countered(me, t, 'Tracker');
+      if (cm) return { targetName: t.sectorName, message: cm };
       startEffect(me, 'skill', s.id, { durationMin: trackMin(t, s.durationMin), target: t.id, notifyAfterMin: 1 });
       return { targetName: t.sectorName, message: `Seguite il Settore ${t.sectorName} sulla mappa.` };
     }
@@ -513,6 +592,15 @@ function applyGift(g, me, type, p) {
       const sec = G.sectorById(sid);
       return { targetName: t.sectorName, notifyTeams: [t.id], stolen: { sectorId: sid, sectorName: sec.name, roman: sec.roman, code: sc.code }, message: `Rubato il Sigillo del Settore ${sec.name}.` };
     }
+    case 'borseggio': {
+      const t = pickTarget(me, p.teamId);
+      if ((K.allianceOf(me.id)?.members || []).includes(t.id)) throw err(409, 'Non potete derubare un vostro alleato');
+      if (!nearTeams(me, now).some((x) => x.teamId === t.id)) throw err(409, `Il Settore ${t.sectorName} non è entro ${STEAL_RANGE_M} m da voi`);
+      if (activeEffects(g.id, now).some((e) => e.code === 'borseggio' && e.teamId === me.id && e.targetTeamId === t.id)) throw err(409, `State già derubando il Settore ${t.sectorName}`);
+      const id = startEffect(me, 'gift', 'borseggio', { durationMin: type.durationMin || 15, target: t.id });
+      rt.pushTeams(g.id, { title: 'Vi stanno derubando', body: `Il Settore ${team(me.id).sectorName} ha usato un Furto su di voi: se entro ${type.durationMin || 15} minuti non c'è uno scontro tra voi, vi ruba il Sigillo.`, tag: `borseggio-${id}`, url: '/#/home' }, t.id);
+      return { targetName: t.sectorName, notifyTeams: [t.id], message: `Furto avviato sul Settore ${t.sectorName}: se entro ${type.durationMin || 15} minuti non c'è uno scontro tra voi, il Sigillo è vostro.` };
+    }
     case 'frammento': {
       // Un frammento a caso tra quelli che la coppia non ha ancora (vale come l'apertura del suo Altare).
       const pool = q.all(`SELECT f.*, p.label AS pointLabel, p.id AS pid FROM fragments f JOIN points p ON p.id = f.pointId
@@ -544,6 +632,22 @@ function applyGift(g, me, type, p) {
       else rt.pushMasters({ title: 'Alleanze sporche', body: `Il Settore ${team(me.id).sectorName} chiama gli Eletti: assegna una squadra.`, url: '/regia#squadre' });
       return { message: squad ? `Chiamata la squadra ${squad.name}: appena prende in consegna l'incarico la vedete sulla mappa; quando siete vicini parte l'alleanza.` : 'Il Consiglio sta scegliendo la squadra di Eletti che vi raggiungerà.' };
     }
+    case 'sguardo':
+      startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
+      return { message: `Per ${type.durationMin} minuti vedete accanto all'orologio dov'è la coppia non alleata più vicina.` };
+    case 'sentinella':
+      startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
+      return { message: `Per ${type.durationMin} minuti il telefono vibra quando una coppia non alleata arriva entro 80 m.` };
+    case 'contromossa':
+      if (effectOn(g.id, me.id, 'contromossa')) throw err(409, 'Avete già una Contromossa pronta');
+      startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
+      return { message: `Contromossa pronta per ${type.durationMin} minuti: la prima Taglia, Tracciamento o Tracker contro di voi verrà respinto.` };
+    case 'maschera': {
+      // Lo scarto resta fisso per tutta la durata: il punto falso si muove con voi, a circa 150 m.
+      const a = Math.random() * 2 * Math.PI;
+      startEffect(me, 'gift', type.id, { durationMin: type.durationMin, data: { a, d: 130 + Math.random() * 50 } });
+      return { message: `Per ${type.durationMin} minuti chi vi guarda con una Skill o un Dono vi vede in un punto falso.` };
+    }
     case 'reliquia':
       startEffect(me, 'gift', type.id, { durationMin: type.durationMin });
       return { message: 'Per 30 minuti i vostri Sigilli non si perdono.' };
@@ -552,11 +656,15 @@ function applyGift(g, me, type, p) {
       return { message: 'Per 15 minuti nessuna Skill o Dono avversario vi colpisce.' };
     case 'tracciamento': {
       const t = pickTarget(me, p.teamId);
+      const cm = countered(me, t, 'Tracciamento');
+      if (cm) return { targetName: t.sectorName, message: cm };
       startEffect(me, 'gift', type.id, { durationMin: trackMin(t, type.durationMin), target: t.id, notifyAfterMin: 1 });
       return { targetName: t.sectorName, message: `Vedete il Settore ${t.sectorName} sulla mappa.` };
     }
     case 'taglia': {
       const t = pickTarget(me, p.teamId);
+      const cm = countered(me, t, 'Taglia');
+      if (cm) return { targetName: t.sectorName, message: cm };
       startEffect(me, 'gift', type.id, { durationMin: trackMin(t, type.durationMin), target: t.id, notifyAfterMin: 1 });
       return { targetName: t.sectorName, message: `Taglia sul Settore ${t.sectorName}: lo vedono tutti.` };
     }
@@ -624,7 +732,11 @@ function sightingsFor(me, now = Date.now()) {
     squadPositions(task.squadId, now).forEach((p, i) => list.push({ kind: 'elect', teamId: null, key: `e${task.id}-${i}`, sectorName: task.squadName, roman: (p.nickname || p.name || 'E').slice(0, 2).toUpperCase(),
       displayName: p.nickname || p.name, color: task.squadColor, source: task.startedAt ? 'Alleanza sporca' : 'In arrivo', until: task.endsAt, at: p.at, lat: p.lat, lng: p.lng, radius: null }));
   }
-  for (const { t, pos, source, until, scan } of out.values()) {
+  for (const { t, pos: real, source, until, scan } of out.values()) {
+    // Maschera: chi vi guarda vi vede in un punto falso (scostato in modo fisso, a circa 150 m).
+    const mask = effectOn(g.id, t.id, 'maschera', now);
+    const md = mask ? JSON.parse(mask.data || '{}') : null;
+    const pos = md ? { ...real, ...offset(real, Math.cos(md.a) * md.d, Math.sin(md.a) * md.d) } : real;
     const base = { teamId: t.id, sectorName: t.sectorName, displayName: t.displayName || null, roman: t.roman, color: t.sectorColor, source, until, at: pos.at };
     if (scan && hasSkill(t.id, 'silenzio')) {
       // Area di 100 m che contiene la posizione vera, con il centro spostato in modo stabile.
@@ -676,6 +788,9 @@ const OWN = {
   ombra: { icon: '🥷', color: '#9b6cf0', label: 'Ombra: nessuno vede la vostra posizione', desc: 'Siete invisibili a Skill e Doni che mostrano le posizioni (Tracker, Occhio, Rete…) finché dura Ombra.' },
   scudo: { icon: '🛡️', color: '#46c46a', label: 'Immunità: Skill e Doni avversari non vi colpiscono', desc: 'Le Skill e i Doni delle altre coppie non hanno effetto su di voi finché dura l\'Immunità.' },
   reliquia: { icon: '💎', color: '#14b8a6', label: 'Reliquia Antica: i vostri Sigilli non si perdono', desc: 'Se perdete uno scontro, il vostro Sigillo resta coperto: chi vince non lo legge.' },
+  sentinella: { icon: '📯', color: '#ff4fa3', label: 'Sentinella: il telefono vibra se una coppia si avvicina', desc: 'Quando una coppia non alleata arriva entro 80 m il telefono vibra e compare l\'avviso.' },
+  contromossa: { icon: '↩️', color: '#46c46a', label: 'Contromossa pronta', desc: 'La prima Taglia, Tracciamento o Tracker usato contro di voi viene respinto.' },
+  maschera: { icon: '🎭', color: '#8b8bf5', label: 'Maschera: chi vi guarda vi vede altrove', desc: 'Chi vi vede sulla mappa con una Skill o un Dono vede un punto falso a circa 150 m da voi.' },
 };
 
 // Le coppie che un effetto di osservazione sta vedendo adesso.
@@ -704,7 +819,30 @@ function indicatorsFor(me, now = Date.now()) {
     AND notifiedAt IS NOT NULL`, me.id)) out.push({ code: 'caccia', ...ELECT_WATCH, until: null });
   const dirty = q.get("SELECT startedAt, endsAt FROM squad_tasks WHERE kind = 'meet' AND targetTeamId = ? AND startedAt IS NOT NULL AND doneAt IS NULL AND cancelledAt IS NULL", me.id);
   if (dirty) out.push({ code: 'sporche', icon: '🤝', color: '#a3a3a3', label: 'Alleanza sporca con gli Eletti', desc: 'Siete alleati con una squadra di Eletti: non vi attaccano e potete muovervi insieme finché dura.', until: dirty.endsAt });
-  if (hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', desc: 'Una coppia non alleata è a meno di 80 metri da voi. L\'avviso resta finché non si allontana oltre 120 metri.', until: null });
+  // Furto: chi deruba vede il conto alla rovescia; chi è derubato anche, con il nome del ladro.
+  for (const e of activeEffects(me.gameId, now).filter((x) => x.code === 'borseggio')) {
+    if (e.teamId === me.id) out.push({ code: `borseggio-${e.id}`, icon: '🧤', color: '#c2410c', until: e.endsAt, label: `Furto in corso sul Settore ${team(e.targetTeamId)?.sectorName}`, desc: 'Allo scadere, se non c\'è stato uno scontro vinto o perso tra voi, avrete il suo Sigillo.' });
+    else if (e.targetTeamId === me.id) out.push({ code: `borseggiato-${e.id}`, icon: '🧤', color: '#e5484d', until: e.endsAt, label: `Il Settore ${team(e.teamId)?.sectorName} vi sta derubando`, desc: 'Allo scadere vi ruba il Sigillo, a meno che prima ci sia uno scontro vinto o perso tra voi: trovatelo!' });
+  }
+  // Sguardo della Folla: direzione e distanza della coppia non alleata più vicina (che non si nasconde).
+  if (effectOn(me.gameId, me.id, 'sguardo', now)) {
+    const e = effectOn(me.gameId, me.id, 'sguardo', now);
+    const here = latestPos(me.id, now, SIGHT_FRESH_MS);
+    const allies = new Set(K.allianceOf(me.id)?.members || []);
+    const Z = require('./zones');
+    let best = null;
+    if (here) for (const r of q.all("SELECT id, gameId FROM teams WHERE gameId = ? AND kind = 'couple' AND status = 'active' AND id <> ?", me.gameId, me.id)) {
+      if (allies.has(r.id) || hidden(r, now) || immune(r, now) || Z.visibilityOf(r.id) === 'hidden') continue;
+      const p = latestPos(r.id, now, SIGHT_FRESH_MS);
+      if (p) { const d = distM(here, p); if (!best || d < best.d) best = { d, p }; }
+    }
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    const bearing = best ? (Math.atan2((best.p.lng - here.lng) * Math.cos((here.lat * Math.PI) / 180), best.p.lat - here.lat) * 180 / Math.PI + 360) % 360 : null;
+    out.push({ code: 'sguardo', icon: '🧭', color: '#f0a020', until: e.endsAt,
+      label: best ? `Sguardo della Folla: coppia a ${Math.round(best.d / 10) * 10} m verso ${dirs[Math.round(bearing / 45) % 8]}` : 'Sguardo della Folla: nessuna coppia rilevata',
+      desc: best ? `La coppia non alleata più vicina è a circa ${Math.round(best.d / 10) * 10} m in direzione ${dirs[Math.round(bearing / 45) % 8]} (${Math.round(bearing)}°). Si aggiorna da sola.` : 'Nessuna coppia non alleata con una posizione recente (o sono nascoste).' });
+  }
+  if ((hasSkill(me.id, 'allarme') || effectOn(me.gameId, me.id, 'sentinella', now)) && [...near.keys()].some((k) => k.startsWith(`${me.id}:`))) out.push({ code: 'allarme', icon: '📳', color: '#ff4fa3', label: 'Allarme di Prossimità: una coppia è vicina', desc: 'Una coppia non alleata è a meno di 80 metri da voi. L\'avviso resta finché non si allontana oltre 120 metri.', until: null });
   // Confusione attiva: chi vi osserva vede anche una posizione falsa. Le icone restano (sapete di essere visti),
   // ma senza l'alone d'allarme, e con il segno di Confusione.
   const conf = effectOn(me.gameId, me.id, 'confusione', now);
@@ -920,7 +1058,7 @@ function skillsState(me, now = Date.now()) {
     // Effetti in corso sulla coppia (Immunità del Dono, tracciamenti in corso…).
     effects: live.map((e) => ({ id: e.id, code: e.code, kind: e.kind, from: e.startedAt, until: e.endsAt, targetName: name(e.targetTeamId), targetRoman: e.targetTeamId ? team(e.targetTeamId)?.roman : null, name: (e.kind === 'gift' ? giftFor(e.code, me.gameId) : skillFor(e.code, me.gameId))?.name })),
     // Ultimi risultati (Intercettazione, Dossier, Segugio).
-    results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio'].includes(e.code) && e.data).slice(0, 6)
+    results: effects.filter((e) => ['intercettazione', 'dossier', 'segugio', 'borseggio'].includes(e.code) && e.data).slice(0, 6)
       .map((e) => ({ id: e.id, code: e.code, at: e.endedAt || e.startedAt, targetName: name(e.targetTeamId), data: JSON.parse(e.data) })),
     sightings: sightingsFor(me, now),
     // Segugio: conquiste scoperte negli ultimi 30 minuti (scheda grande in home) e quelli ancora in ascolto.
@@ -928,8 +1066,10 @@ function skillsState(me, now = Date.now()) {
       .map((e) => ({ id: e.id, at: e.endedAt, point: JSON.parse(e.data).point, sectorName: team(e.targetTeamId)?.sectorName, roman: team(e.targetTeamId)?.roman })).filter((x) => x.point),
     houndWatching: q.all("SELECT targetTeamId FROM skill_effects WHERE teamId = ? AND code = 'segugio' AND endedAt IS NULL", me.id).map((e) => team(e.targetTeamId)?.sectorName).filter(Boolean),
     // Allarme di Prossimità: una coppia non alleata è entro 80 m (finché non si allontana oltre 120 m).
-    nearby: hasSkill(me.id, 'allarme') && [...near.keys()].some((k) => k.startsWith(`${me.id}:`)),
+    nearby: (hasSkill(me.id, 'allarme') || !!effectOn(me.gameId, me.id, 'sentinella', now)) && [...near.keys()].some((k) => k.startsWith(`${me.id}:`)),
     indicators: indicatorsFor(me, now),
+    // Furto: le coppie entro 30 m (solo per chi ha il Dono da usare).
+    nearTeams: q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND typeId = 'borseggio' AND usedAt IS NULL", me.id) ? nearTeams(me, now) : [],
     dirty: (() => {
       const t = q.get("SELECT t.*, s.name AS squadName FROM squad_tasks t LEFT JOIN elect_squads s ON s.id = t.squadId WHERE t.kind = 'meet' AND t.targetTeamId = ? AND t.doneAt IS NULL AND t.cancelledAt IS NULL", me.id);
       return t ? { squadName: t.squadName, acceptedAt: t.acceptedAt, startedAt: t.startedAt, endsAt: t.endsAt } : null;
@@ -983,6 +1123,10 @@ function tickAll(now = Date.now()) {
         rt.pushTeams(g.id, { title, body, tag: `track-${e.id}`, url: '/#/home' }, e.targetTeamId);
         rt.toTeams(g.id, 'state', {}, e.targetTeamId);
       }
+    }
+    // Furti arrivati in fondo senza scontri: il Sigillo passa al ladro.
+    for (const e of q.all("SELECT * FROM skill_effects WHERE gameId = ? AND code = 'borseggio' AND endedAt IS NULL AND endsAt IS NOT NULL AND endsAt <= ?", g.id, now)) {
+      try { completeSteal(e, now); } catch (x) { console.error('furto', e.id, x); }
     }
     // Effetti appena finiti: le mappe si aggiornano.
     const ended = q.all('SELECT * FROM skill_effects WHERE gameId = ? AND endedAt IS NULL AND endsAt IS NOT NULL AND endsAt <= ?', g.id, now);
@@ -1056,7 +1200,9 @@ function meetings(g, now) {
 }
 
 function proximity(g, now) {
-  const holders = q.all("SELECT t.id FROM teams t JOIN team_skills k ON k.teamId = t.id AND k.skillId = 'allarme' WHERE t.gameId = ? AND t.status = 'active'", g.id).map((r) => r.id);
+  // Allarme di Prossimità (Skill passiva) e Sentinella (Dono a tempo).
+  const holders = [...new Set([...q.all("SELECT t.id FROM teams t JOIN team_skills k ON k.teamId = t.id AND k.skillId = 'allarme' WHERE t.gameId = ? AND t.status = 'active'", g.id).map((r) => r.id),
+    ...activeEffects(g.id, now).filter((e) => e.code === 'sentinella').map((e) => e.teamId)])];
   if (!holders.length) return;
   const couples = q.all("SELECT id FROM teams WHERE gameId = ? AND kind = 'couple' AND status = 'active'", g.id).map((r) => r.id);
   for (const h of holders) {
@@ -1094,5 +1240,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden, hiddenSince: (t, now = Date.now()) => effectOn(t.gameId, t.id, 'ombra', now)?.startedAt ?? null,
-  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, grantVirtualGift, availableGift: available,
+  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, nearTeams, cancelSteals, completeSteal, grantVirtualGift, availableGift: available,
 };

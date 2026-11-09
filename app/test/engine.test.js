@@ -3766,3 +3766,49 @@ test('minigiochi: la regia li accende e spegne; uno spento non esce né a caso n
   MG.setEnabled(g.id, 'simon', true, 'test');
   assert.equal(MG.modeFor(G.getGame(g.id), 'beacon:zone:1'), 'simon');
 });
+
+test('Doni del pubblico e Furto: Sguardo, Sentinella, Contromossa, Maschera, furto a 30 m annullato da uno scontro', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const K = require('../src/combat');
+  const g = setupGame(4);
+  const [A, B, Cc, D] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  q.run("UPDATE games SET status = 'hunt' WHERE id = ?", g.id);
+  const now = Date.now();
+  const put = (t, lat, lng) => q.run('INSERT INTO positions (deviceId, gameId, teamId, lat, lng, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(deviceId) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, at = excluded.at', `dev${t.id}`, g.id, t.id, lat, lng, now);
+  put(A, 45, 9); put(B, 45.0002, 9); put(Cc, 45.002, 9); put(D, 45.01, 9);
+  const gift = (t, typeId) => Number(q.run("INSERT INTO gifts (gameId, typeId, name, label, qrToken, status, claimedByTeamId, claimedAt, createdAt) VALUES (?, ?, 'x', 'Dono', ?, 'claimed', ?, ?, ?)", g.id, typeId, `t${typeId}${t.id}${Math.random()}`, t.id, now, now).lastInsertRowid);
+  // Sguardo della Folla: la coppia più vicina (B, ~22 m a nord).
+  F.useGift(A, gift(A, 'sguardo'));
+  const ind = S.skillsState(A).indicators.find((x) => x.code === 'sguardo');
+  assert.match(ind.label, /20 m verso N/);
+  // Contromossa: la Taglia di C contro D viene respinta.
+  F.useGift(D, gift(D, 'contromossa'));
+  const r = F.useGift(Cc, gift(Cc, 'taglia'), { teamId: D.id });
+  assert.ok(!S.sightingsFor(B).some((x) => x.teamId === D.id), JSON.stringify(r));
+  // Maschera: chi vede C con la Taglia lo vede spostato.
+  F.useGift(Cc, gift(Cc, 'maschera'));
+  F.useGift(B, gift(B, 'taglia'), { teamId: Cc.id });
+  const seen = S.sightingsFor(A).find((x) => x.teamId === Cc.id);
+  assert.ok(seen && S.distM(seen, { lat: 45.002, lng: 9 }) > 50);
+  // Furto: solo entro 30 m; parte il conto alla rovescia, lo scontro vinto o perso lo annulla.
+  const f1 = gift(A, 'borseggio');
+  assert.deepEqual(S.skillsState(A).nearTeams.map((x) => x.teamId), [B.id]);
+  assert.throws(() => F.useGift(A, f1, { teamId: Cc.id }), /entro 30 m/);
+  F.useGift(A, f1, { teamId: B.id });
+  assert.ok(S.skillsState(B).indicators.some((x) => /vi sta derubando/.test(x.label)));
+  lose(K, B, A);
+  assert.ok(!q.get("SELECT 1 FROM skill_effects WHERE code = 'borseggio' AND endedAt IS NULL"));
+  // Senza scontri, allo scadere il Sigillo della coppia derubata passa al ladro.
+  const f2 = gift(Cc, 'borseggio');
+  put(Cc, 45.0098, 9);
+  F.useGift(Cc, f2, { teamId: D.id });
+  assert.ok(!K.knownSectors(Cc).has(D.sectorId));
+  q.run("UPDATE skill_effects SET endsAt = ? WHERE code = 'borseggio' AND endedAt IS NULL", Date.now() - 1);
+  S.tickAll();
+  assert.ok(K.knownSectors(Cc).has(D.sectorId));
+  assert.ok(S.skillsState(Cc).results.some((x) => x.code === 'borseggio' && x.data.stolen.sectorId === D.sectorId));
+});

@@ -350,6 +350,8 @@ function applyEngagement(e, by) {
       for (const id of [...winners, ...losers]) startTimer(id, 'blocco', 'Pareggio');
       return;
     }
+    // Furto: uno scontro vinto o perso tra ladro e derubato lo annulla.
+    SK().cancelSteals(e.gameId, winners, losers);
     // Ogni vincitore (e ogni suo alleato) riceve i Sigilli di tutta la parte sconfitta.
     const gained = new Set();
     for (const w of winners) for (const l of losers) if (!hidden[l] && giveCode(w, l, 'won')) { won.push(l); gained.add(w); }
