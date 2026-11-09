@@ -3830,3 +3830,25 @@ test('Dono a caso solo tra alcune rarità (premi degli eventi)', () => {
   assert.equal(ev.rewardRarity, 'raro-epico');
   assert.match(ev.rewardLabel, /da Raro a Epico/);
 });
+
+test('Ristoro: ordina per altri (dall\'elenco o a mano), anche già chiuso e incassato', () => {
+  const FD = require('../src/food');
+  const gameId = setupGame(2).id;
+  const item = FD.saveItem(gameId, { title: 'Panino prova', price: 5 }, 'test');
+  const pid = Number(q.run("INSERT INTO players (gameId, name, nickname, createdAt) VALUES (?, 'Mario Rossi', 'Lupo', ?)", gameId, Date.now()).lastInsertRowid);
+  const ppl = FD.people(gameId);
+  assert.ok(ppl.players.some((p) => p.playerId === pid && p.nickname === 'Lupo'));
+  // Dall'elenco: l'ordine è suo (lo vede nella sua app).
+  const o1 = FD.orderFor(gameId, { playerId: pid, lines: [{ itemId: item.id, qty: 2 }] }, 'cucina');
+  assert.equal(o1.owner.key, `p${pid}`);
+  assert.equal(FD.forOwner({ key: `p${pid}`, gameId }).orders.length, 1);
+  // A mano e chiuso: consegnato e incassato.
+  const o2 = FD.orderFor(gameId, { name: 'Zia Pina', lines: [{ itemId: item.id, qty: 1 }], close: true, method: 'contanti', amount: '4' }, 'cucina');
+  assert.equal(o2.closed, true);
+  const st = FD.forStaff(gameId);
+  const pina = st.delivery.find((p) => p.name === 'Zia Pina' || p.owner?.name === 'Zia Pina');
+  assert.ok(pina && pina.done, JSON.stringify(pina));
+  assert.ok(st.payments.some((x) => x.amount === 4 && x.closes));
+  assert.ok(FD.people(gameId).guests.some((x) => x.name === 'Zia Pina'));
+  assert.throws(() => FD.orderFor(gameId, { name: 'x', lines: [{ itemId: item.id, qty: 1 }] }, 'cucina'), /Scegli la persona/);
+});

@@ -188,7 +188,7 @@ export function createFoodOrder({ base, query = () => '', rerender }) {
 // ---------------------------------------------------------------- addetto
 
 // gameId(): la partita; tutto passa da /api/v/games/:id/food (permesso «ristoro» o master).
-export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
+export function createFoodAdmin({ gameId, rerender, methodsHref = '', otherHref = '' }) {
   const S = { data: null, gid: null, loading: false, at: 0, tab: 'ordini' };
   const pending = () => S.data?.counts?.pending || 0;
   const base = () => `/api/v/games/${gameId()}/food`;
@@ -432,7 +432,99 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
         h('div', { class: 'tiny muted' }, Object.entries(byMethod).map(([k, v]) => `${k} ${euro(v)}`).join(' · ') || 'Ancora niente'),
         methodsHref && !d.payLinks.satispay && !d.payLinks.paypal ? h('a', { class: 'btn btn-sm food-cash-link', href: methodsHref }, '💳 Imposta Satispay e PayPal') : null),
       d.counts.payPending ? h('button', { class: 'food-pend-alert', type: 'button', onclick: () => { S.dtab = 'dapagare'; S.dq = ''; search.value = ''; apply(); } }, `⏳ ${d.counts.payPending} ${d.counts.payPending === 1 ? 'pagamento in anticipo da verificare' : 'pagamenti in anticipo da verificare'}`) : null,
+      otherHref ? h('div', { class: 'row-actions' }, h('a', { class: 'btn btn-sm btn-primary', href: otherHref }, '🧾 Ordina per altri (anche già pagato)')) : null,
       search, tabs, list, empty);
+  }
+
+  // Ordina per altri: prima la persona (dall'elenco o scritta a mano), poi il carrello. L'ordine è suo, come se l'avesse fatto
+  // lei; si può anche chiudere subito (consegnato e già incassato).
+  const O = { person: null, q: '', cart: new Map(), note: '', people: null, gid: null };
+  const resetOther = () => { O.person = null; O.q = ''; O.cart = new Map(); O.note = ''; };
+  async function loadPeople(force = false) {
+    if (!force && O.people && O.gid === gameId()) return;
+    try { O.people = await api('GET', `${base()}/people`); O.gid = gameId(); } catch (e) { toast(e.message, 'error'); O.people = { players: [], guests: [] }; }
+    rerender();
+  }
+  function personPicker() {
+    if (!O.people || O.gid !== gameId()) { loadPeople(); return h('p', { class: 'empty' }, 'Caricamento dell\'elenco…'); }
+    const all = [...O.people.players.map((p) => ({ ...p, label: p.nickname ? `${p.name} «${p.nickname}»` : p.name })), ...O.people.guests.map((g) => ({ ...g, label: g.name }))];
+    const manual = h('button', { type: 'button', class: 'btn btn-block food-manual', hidden: true, onclick: () => { const n = O.q.trim(); if (n.length < 2) return; O.person = { name: n, label: n, sub: 'Scritto a mano', guest: true }; rerender(); } });
+    const empty = h('p', { class: 'empty', hidden: true }, 'Nessuno con questo nome nell\'elenco.');
+    const list = h('ul', { class: 'food-people' }, all.map((p) => h('li', { 'data-q': `${p.label} ${p.sub || ''}`.toLowerCase() },
+      h('button', { type: 'button', class: 'food-person', onclick: () => { O.person = p; rerender(); } }, h('strong', null, p.label), p.sub ? h('span', { class: 'tiny muted' }, p.sub) : null))));
+    const apply = () => {
+      const words = O.q.toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const li of list.children) { li.hidden = !words.every((w) => li.dataset.q.includes(w)); if (!li.hidden) shown++; }
+      const n = O.q.trim();
+      manual.hidden = n.length < 2;
+      manual.textContent = `✍️ Ordina per «${n}» (scritto a mano)`;
+      empty.hidden = !!shown;
+    };
+    const search = h('input', { class: 'input food-search', type: 'search', placeholder: 'Nome, cognome o nick…', value: O.q, 'data-keep': 'food-other-q', autocomplete: 'off', oninput: (e) => { O.q = e.target.value; apply(); } });
+    apply();
+    return h('div', { class: 'stack-sm' }, h('h3', null, '1 · Per chi è l\'ordine?'),
+      h('p', { class: 'tiny muted' }, 'Scegli dall\'elenco (nome e cognome, nick, squadra) oppure scrivi il nome a mano. Se è nell\'elenco, l\'ordine compare anche nella sua app, come se l\'avesse fatto lui.'),
+      search, manual, list, empty);
+  }
+  async function submitOther(close) {
+    const d = S.data;
+    const lines = [...O.cart].map(([itemId, qty]) => ({ itemId, qty }));
+    if (!lines.length) { toast('Aggiungi almeno una voce', 'error'); return; }
+    const total = d.items.reduce((t, m) => t + (m.price || 0) * (O.cart.get(m.id) || 0), 0);
+    let extra = {};
+    if (close) {
+      let method = 'contanti';
+      const seg = h('div', { class: 'food-tabs food-pay-methods' });
+      const paintSeg = () => seg.replaceChildren(...[['contanti', '💶 Contanti'], ['satispay', '📱 Satispay'], ['paypal', '🅿️ PayPal']].map(([k, l]) => h('button', { type: 'button', class: method === k ? 'on' : '', onclick: () => { method = k; paintSeg(); } }, l)));
+      paintSeg();
+      const amount = h('input', { class: 'input', inputmode: 'decimal', value: total ? String(Math.round(total * 100) / 100).replace('.', ',') : '', placeholder: 'es. 5' });
+      const ok = await modal({ title: `Chiudere l'ordine di ${O.person.label}?`, okLabel: 'Crea e chiudi',
+        body: h('div', { class: 'stack-sm' },
+          h('p', { class: 'small' }, 'L\'ordine nasce già consegnato e incassato: non resta niente da dare né da pagare.'),
+          h('div', { class: 'field' }, h('span', null, 'Come ha pagato'), seg),
+          h('label', { class: 'field' }, h('span', null, 'Quanto ha lasciato (€)'), amount),
+          h('p', { class: 'tiny muted' }, `Offerta libera: lascia l'importo che ha dato davvero${total ? ` (indicativo ${euro(total)})` : ''}.`)),
+        onOk: () => { extra = { close: true, method, amount: amount.value.trim().replace(',', '.') }; return true; } });
+      if (!ok) return;
+    }
+    const body = { lines, note: O.note, ...(O.person.playerId ? { playerId: O.person.playerId } : { name: O.person.name }), ...extra };
+    try {
+      const r = await api('POST', `${base()}/order-for`, body);
+      toast(r.closed ? `Ordine di ${O.person.label} creato e chiuso (${euro(r.amount) || 'offerta libera'})` : `Ordine creato per ${O.person.label}`, 'ok', 5000);
+      resetOther();
+      loadPeople(true);
+      await load(true);
+    } catch (e) { toast(e.message, 'error', 7000); }
+  }
+  function otherView(d) {
+    if (!O.person) return h('div', { class: 'food food-admin stack' }, h('div', { class: 'food-head' }, h('h2', null, '🧾 Ordina per altri')), personPicker());
+    const live = d.items.filter((i) => !i.archived);
+    const setQty = (id, n) => { if (n > 0) O.cart.set(id, Math.min(20, n)); else O.cart.delete(id); rerender(); };
+    const total = live.reduce((t, m) => t + (m.price || 0) * (O.cart.get(m.id) || 0), 0);
+    const count = [...O.cart.values()].reduce((a, b) => a + b, 0);
+    const note = h('input', { class: 'input', maxlength: 300, value: O.note, placeholder: 'Nota (facoltativa)', 'data-keep': 'food-other-note', oninput: (e) => { O.note = e.target.value; } });
+    return h('div', { class: 'food food-admin stack' },
+      h('div', { class: 'food-head' }, h('h2', null, '🧾 Ordina per altri')),
+      h('div', { class: 'food-for' }, h('div', null, h('div', { class: 'eyebrow' }, 'Ordine per'), h('strong', null, O.person.label), O.person.sub ? h('div', { class: 'tiny muted' }, O.person.sub) : null),
+        h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { O.person = null; rerender(); } }, 'Cambia')),
+      h('h3', null, '2 · Cosa prende'),
+      live.length ? h('ul', { class: 'food-menu' }, live.map((m) => {
+        const qn = O.cart.get(m.id) || 0;
+        return h('li', { class: `food-item tap ${qn ? 'on' : ''}`, onclick: (e) => { if (e.target.closest('button')) return; setQty(m.id, qn + 1); } },
+          h('div', { class: 'food-item-main' }, h('strong', null, m.title), m.description ? h('span', { class: 'small muted' }, m.description) : null),
+          h('div', { class: 'food-item-side' }, bigPrice(m.price), h('div', { class: 'food-qty' },
+            h('button', { class: 'btn btn-sm', type: 'button', disabled: !qn, onclick: () => setQty(m.id, qn - 1) }, '−'),
+            h('b', { class: 'mono' }, String(qn)),
+            h('button', { class: 'btn btn-sm', type: 'button', onclick: () => setQty(m.id, qn + 1) }, '+'))));
+      })) : h('p', { class: 'empty' }, 'Il menù è vuoto.'),
+      note,
+      h('div', { class: 'food-cart' },
+        h('div', { class: 'small' }, count ? `${count} ${count === 1 ? 'voce' : 'voci'} · ${total ? `offerta indicativa ${euro(total)}` : 'offerta libera'}` : 'Tocca le voci per aggiungerle.'),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-primary', type: 'button', disabled: !count, onclick: () => submitOther(false) }, '🧾 Crea l\'ordine'),
+          h('button', { class: 'btn', type: 'button', disabled: !count, onclick: () => submitOther(true) }, '✅ Crea e chiudi (consegnato e pagato)')),
+        h('p', { class: 'tiny muted' }, '«Crea l\'ordine»: lo trovi in Ordini e al Ritiro, da consegnare e pagare. «Crea e chiudi»: ha già pagato e ha già avuto tutto, conta come incassato.')));
   }
 
   // Mini cruscotto per chi gestisce la cucina: ordini aperti, evasi, da chiudere; incassi attesi, pagati, ricevuti.
@@ -475,6 +567,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
     const live = d.items.filter((i) => !i.archived);
     if (mode === 'delivery') return deliveryView(d);
     if (mode === 'methods') return methodsView(d);
+    if (mode === 'other') return otherView(d);
     if (mode === 'menu') {
       return h('div', { class: 'food food-admin stack' },
         h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => itemDialog() }, '＋ Aggiungi una voce')),
@@ -500,6 +593,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '' }) {
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn btn-sm', type: 'button', onclick: deadlineDialog }, d.deadline ? 'Cambia l\'ora limite' : 'Fissa l\'ora limite'),
           d.deadline ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => call('PUT', '/deadline', { deadline: null }, 'Ora limite tolta: ordini aperti') }, 'Togli') : null,
+          otherHref ? h('a', { class: 'btn btn-sm btn-primary', href: otherHref }, '🧾 Ordina per altri') : null,
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => load(true) }, '↻ Aggiorna'))),
       // Filtro: ordini (entro l'ora limite) o richieste d'ordine (dopo), con quante aspettano una risposta.
       h('nav', { class: 'food-tabs', role: 'tablist', 'aria-label': 'Filtro' }, filters.map(([k, l, n, alert]) => h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', class: S.tab === k ? 'on' : '', onclick: () => { S.tab = k; rerender(); } }, h('span', null, l), h('b', { class: `food-tab-n ${alert ? 'alert' : ''}` }, String(n))))),

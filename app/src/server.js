@@ -1083,6 +1083,8 @@ v.delete('/food/payments/:pid', wrap((req) => FD.cancelDeclared(foodOwnerStaff(r
 // Addetto al ristoro (permesso «ristoro», o il master): menù, ora limite, ordini e richieste.
 v.get('/games/:id/food', needPerm('ristoro'), wrap(async (req) => ({ ...FD.forStaff(Number(req.params.id)), qr: await FD.payQr(Number(req.params.id)) })));
 v.put('/games/:id/food/paylinks', needPerm('ristoro'), wrap((req) => FD.setPayLinks(Number(req.params.id), req.body || {}, sActor(req))));
+v.get('/games/:id/food/people', needPerm('ristoro'), wrap((req) => FD.people(Number(req.params.id))));
+v.post('/games/:id/food/order-for', needPerm('ristoro'), wrap((req) => FD.orderFor(Number(req.params.id), req.body || {}, sActor(req))));
 v.post('/games/:id/food/pay', needPerm('ristoro'), wrap((req) => FD.pay(Number(req.params.id), req.body?.ownerKey, req.body || {}, sActor(req))));
 v.delete('/games/:id/food/payments/:pid', needPerm('ristoro'), wrap((req) => FD.unpay(Number(req.params.id), req.params.pid, sActor(req))));
 v.post('/games/:id/food/payments/:pid/confirm', needPerm('ristoro'), wrap((req) => FD.confirmPayment(Number(req.params.id), req.params.pid, req.body || {}, sActor(req))));

@@ -141,6 +141,72 @@ function placeOrder(owner, data) {
   return orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', id));
 }
 
+// ---------------------------------------------------------------- ordina per altri (addetto)
+
+// La persona per cui si ordina: un giocatore della partita (l'ordine è suo, lo vede nella sua app) oppure
+// un nome scritto a mano (ospite: l'ordine esiste solo al Ristoro).
+function playerOwner(p) {
+  const t = p.teamId ? q.get('SELECT t.kind, s.name AS sectorName, s.roman FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', p.teamId) : null;
+  const sq = p.squadId ? q.get('SELECT name FROM elect_squads WHERE id = ?', p.squadId) : null;
+  return { key: `p${p.id}`, name: p.nickname || p.name, gameId: p.gameId,
+    kind: t?.kind === 'elect' ? 'eletto' : 'legato', sub: t?.kind === 'elect' ? `Eletti${sq ? ` · Squadra ${sq.name}` : ''}` : t?.sectorName ? `${t.roman} Settore ${t.sectorName}` : 'Legato' };
+}
+const guestKey = (name) => `n:${name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()}`;
+
+// Elenco per la scelta: nome e cognome, nick e squadra dei giocatori; poi i nomi scritti a mano in ordini precedenti.
+function people(gameId) {
+  const players = q.all("SELECT * FROM players WHERE gameId = ? AND COALESCE(status, 'accepted') <> 'rejected' ORDER BY name COLLATE NOCASE", Number(gameId))
+    .map((p) => { const o = playerOwner(p); return { playerId: p.id, key: o.key, name: p.name, nickname: p.nickname || null, sub: o.sub }; });
+  const guests = q.all("SELECT ownerKey, MAX(ownerName) AS name FROM food_orders WHERE gameId = ? AND ownerKey LIKE 'n:%' GROUP BY ownerKey ORDER BY name COLLATE NOCASE", Number(gameId))
+    .map((r) => ({ key: r.ownerKey, name: r.name, nickname: null, sub: 'Scritto a mano', guest: true }));
+  return { players, guests };
+}
+
+// L'addetto crea l'ordine a nome di un altro (come se l'avesse fatto lui, anche dopo l'ora limite).
+// close: consegnato tutto e incassato subito (con il metodo scelto; senza importo, il totale indicativo).
+function orderFor(gameId, data, actor) {
+  const g = G.getGame(Number(gameId));
+  if (!g) throw err(404, 'Partita non trovata');
+  if (g.status === 'ended') throw err(409, 'La partita è finita');
+  let owner;
+  if (data.playerId) {
+    const p = q.get('SELECT * FROM players WHERE id = ? AND gameId = ?', Number(data.playerId), g.id);
+    if (!p) throw err(404, 'Persona non trovata in questa partita');
+    owner = playerOwner(p);
+  } else {
+    const name = clean(data.name, 60);
+    if (name.length < 2) throw err(400, 'Scegli la persona dall\'elenco o scrivi il suo nome');
+    owner = { key: guestKey(name), name, gameId: g.id, kind: 'ospite', sub: 'Ordine al banco' };
+  }
+  const lines = readLines(g.id, data.lines);
+  const close = !!data.close;
+  const method = String(data.method || 'contanti');
+  if (close && !METHODS[method]) throw err(400, 'Scegli come ha pagato');
+  const total = Math.round(lines.reduce((t, l) => t + (l.price || 0) * l.qty, 0) * 100) / 100;
+  const amount = close ? (data.amount === '' || data.amount == null ? total : readAmount(data.amount)) : 0;
+  const now = Date.now();
+  const note = clean(data.note, 300) || null;
+  const id = tx(() => {
+    const oid = Number(q.run('INSERT INTO food_orders (gameId, ownerKey, ownerName, ownerKind, ownerSub, kind, status, note, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      g.id, owner.key, owner.name, owner.kind, owner.sub || null, 'order', 'active', note, now, now).lastInsertRowid);
+    writeLines(oid, lines);
+    addLog(oid, 'created', actor, `${summaryOf(lines)} (al banco, per ${owner.name})`);
+    if (close) {
+      const rows = q.all('SELECT * FROM food_order_lines WHERE orderId = ?', oid);
+      q.run('UPDATE food_order_lines SET delivered = qty WHERE orderId = ?', oid);
+      q.run('INSERT INTO food_deliveries (gameId, ownerKey, ownerName, lines, summary, at, by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        g.id, owner.key, owner.name, JSON.stringify(rows.map((l) => ({ lineId: l.id, qty: l.qty }))), summaryOf(lines), now, actor);
+      addLog(oid, 'delivered', actor, summaryOf(lines));
+      q.run('INSERT INTO food_payments (gameId, ownerKey, ownerName, method, amount, note, at, by, closes, orderIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)',
+        g.id, owner.key, owner.name, method, amount, 'Chiuso al banco', now, actor, JSON.stringify([oid]));
+    }
+    return oid;
+  });
+  G.log(g.id, actor, 'food_order_for', { owner: owner.name, items: summaryOf(lines), closed: close, amount: close ? amount : null });
+  changed(g.id);
+  return { ...orderOut(q.get('SELECT * FROM food_orders WHERE id = ?', id)), closed: close, amount: close ? amount : null };
+}
+
 function ownOrder(owner, orderId) {
   const o = q.get('SELECT * FROM food_orders WHERE id = ? AND gameId = ? AND ownerKey = ?', Number(orderId), owner.gameId, owner.key);
   if (!o) throw err(404, 'Ordine non trovato');
@@ -542,4 +608,4 @@ async function payQr(gameId) {
 }
 
 module.exports = {
-  setPayLinks, pay, unpay, deliver, undeliver, declarePayment, cancelDeclared, confirmPayment, rejectPayment, payQr, METHODS, saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };
+  setPayLinks, people, orderFor, pay, unpay, deliver, undeliver, declarePayment, cancelDeclared, confirmPayment, rejectPayment, payQr, METHODS, saveItem, removeItem, moveItem, setDeadline, placeOrder, updateOrder, cancelOrder, decideRequest, forOwner, forStaff, teamSummary, menuOf, isOpen };

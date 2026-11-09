@@ -526,3 +526,9 @@ a.food-pend-alert { display: block; text-decoration: none; }
 
 .food-item.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
 .food-item.tap:active { filter: brightness(1.15); }
+/* Ristoro: ordina per altri */
+.food-people { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; max-height: 55vh; overflow: auto; }
+.food-person { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line, #333); background: var(--panel, transparent); color: inherit; font: inherit; cursor: pointer; }
+.food-person:hover { border-color: var(--brass, #d1ad62); }
+.food-manual { border-style: dashed; }
+.food-for { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--brass, #d1ad62); border-radius: 12px; }
