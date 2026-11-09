@@ -3724,3 +3724,28 @@ test('voto del pubblico: blocco della navigazione privata (impronta), tetto gior
   assert.equal(VO.suspicious(g.id, { level: 'strong' }).groups.length, 0);
   assert.equal(VO.simulate(g.id, []).removed, 0);
 });
+
+test('reset della password dalla regia: temporanea, cambio obbligatorio, non per chi entra con Zero Dark Ops', () => {
+  const A = require('../src/accounts');
+  const a = A.register({ username: 'smemorato', password: 'vecchia123', name: 'Mario Smemorato', softairTeam: 'nessuno', phone: '+39 333 1234567' });
+  q.run("INSERT INTO sessions (token, kind, refId, createdAt) VALUES ('tok-smemo', 'account', ?, ?)", a.id, Date.now());
+  const r = A.resetPassword(a.id, null, 'regia');
+  assert.equal(r.username, 'smemorato');
+  assert.match(r.password, /^[a-z]{4}-\d{4}$/);
+  // La vecchia non vale più, la temporanea sì; la sessione aperta è chiusa; al primo accesso va cambiata.
+  assert.equal(A.authenticate('smemorato', 'vecchia123'), null);
+  const b = A.authenticate('smemorato', r.password);
+  assert.ok(b);
+  assert.equal(A.publicAccount(b).mustChangePassword, true);
+  assert.equal(q.get("SELECT 1 AS x FROM sessions WHERE token = 'tok-smemo'"), undefined);
+  assert.throws(() => A.changePassword(b, { password: 'corta' }), /8 caratteri/);
+  assert.throws(() => A.changePassword(b, { password: r.password }), /diversa/);
+  A.changePassword(b, { password: 'nuovissima1' });
+  const c = A.authenticate('smemorato', 'nuovissima1');
+  assert.equal(A.publicAccount(c).mustChangePassword, false);
+  // Senza obbligo, per cambiarla serve quella attuale.
+  assert.throws(() => A.changePassword(c, { password: 'altra12345' }), /attuale/);
+  // Chi entra con Zero Dark Ops: niente reset dalla regia.
+  q.run("INSERT INTO account_identities (accountId, iss, sub, createdAt) VALUES (?, 'https://ops.example', 'sub-1', ?)", c.id, Date.now());
+  assert.throws(() => A.resetPassword(c.id, null, 'regia'), /Zero Dark Ops/);
+});

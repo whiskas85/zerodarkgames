@@ -1354,15 +1354,37 @@ function personLine(p) {
   return [h('strong', null, p.name), p.nickname ? h('span', { class: 'muted' }, ` «${p.nickname}»`) : null, acc ? h('span', { class: 'tiny brass' }, ` @${acc}`) : null];
 }
 
-// Il giocatore ha dimenticato la password: la regia ne imposta una nuova e gliela comunica.
-async function resetPassword(p) {
-  const pl = R.ms.players.find((x) => x.id === p.id) || p;
-  if (!pl.accountId) return;
-  const pwd = await dialog({ title: `Nuova password per @${pl.username}`, text: `${pl.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
-  if (!pwd) return;
-  await call('POST', `/api/m/accounts/${pl.accountId}/password`, { password: pwd }, 'Password reimpostata');
+// Password dimenticata (solo per chi non entra con Zero Dark Ops): la regia genera una password temporanea,
+// la copia per WhatsApp; al primo accesso la persona deve sceglierne una sua. Le sessioni aperte si chiudono.
+const opsOfAccount = (accountId) => (accountsCache || []).find((a) => a.id === accountId)?.ops || null;
+async function resetAccountPassword({ accountId, username, name }) {
+  if (!accountId) return;
+  if (!(await dialog({ title: `Reimpostare la password di @${username || '…'}?`, text: `${name || ''}: riceverà una password temporanea da copiare su WhatsApp. Al primo accesso dovrà sceglierne una nuova. Se è dentro l'app ne esce e deve rientrare.`, okLabel: 'Reimposta' }))) return;
+  let r;
+  try { r = await api('POST', `/api/m/accounts/${accountId}/password`, {}); } catch (e) { return toast(e.message, 'error', 7000); }
+  const url = R.baseUrl || location.origin;
+  const text = `*🔑 Zero Dark Games · nuova password*\nCiao ${r.name ? r.name.split(' ')[0] : ''}, ecco i dati per entrare:\n\n👤 Username: *${r.username}*\n🔒 Password temporanea: *${r.password}*\n\n👉 ${url}\n\nAl primo accesso ti chiederà di scegliere una password tua.`;
+  const digits = String(r.phone || '').replace(/\D/g, '');
+  const wa = digits ? `https://wa.me/${digits.length === 10 && digits.startsWith('3') ? `39${digits}` : digits.replace(/^00/, '')}?text=${encodeURIComponent(text)}` : null;
+  const copy = () => navigator.clipboard?.writeText(text).then(() => toast('Copiato: incollalo su WhatsApp', 'ok'), () => toast('Copia non riuscita', 'error'));
+  await modal({
+    title: `Password reimpostata · @${r.username}`, okLabel: 'Fatto', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      h('div', { class: 'pw-reset-box' },
+        h('div', null, h('span', { class: 'eyebrow' }, 'Username'), h('strong', { class: 'mono' }, r.username)),
+        h('div', null, h('span', { class: 'eyebrow' }, 'Password temporanea'), h('strong', { class: 'mono pw-reset-pass' }, r.password))),
+      h('p', { class: 'tiny muted' }, 'Al primo accesso con questa password dovrà sceglierne una nuova. Ti conviene mandarla subito: qui non la rivedi più.'),
+      h('pre', { class: 'pw-reset-text' }, text.replace(/\*/g, '')),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: copy }, '📋 Copia per WhatsApp'),
+        wa ? h('a', { class: 'btn', href: wa, target: '_blank', rel: 'noopener' }, `💬 Apri WhatsApp (${r.phone})`) : null)),
+  });
 }
-const resetBtn = (p) => ((R.ms.players.find((x) => x.id === p.id) || p).accountId ? h('button', { class: 'btn btn-sm btn-ghost', title: "Reimposta la password dell'account", onclick: () => resetPassword(p) }, 'Password') : null);
+const resetBtn = (p) => {
+  const pl = R.ms.players.find((x) => x.id === p.id) || p;
+  if (!pl.accountId || opsOfAccount(pl.accountId)) return null;
+  return h('button', { class: 'btn btn-sm btn-ghost', title: "Reimposta la password dell'account", onclick: () => resetAccountPassword({ accountId: pl.accountId, username: pl.username, name: pl.name }) }, '🔑 Password');
+};
 
 // Squadre Legati, in cima: iscrizioni aperte/chiuse con il pulsante e quanti Settori restano da assegnare (in grande).
 function registrationHero(ms, st, regUrl) {
@@ -1654,10 +1676,7 @@ function viewPeople() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const CAT = { daiscrivere: ['Da iscrivere', 'chip-warn'], attesa: ['In attesa', 'chip-blood'], coppie: ['In coppia', 'chip-ok'], senza: ['Senza coppia', 'chip-brass'], eletti: ['Eletto', 'chip'], consiglio: ['Consiglio', 'chip-ok'] };
   const invite = (r) => `Ciao ${r.nickname || r.name}, ti sei registrato ai Giochi del Buio ma non hai ancora scelto come partecipare (coppia, temerario solitario o Eletti). Completa l'iscrizione qui: ${R.baseUrl}/iscrizione`;
-  const pwd = async (r) => {
-    const v = await dialog({ title: `Nuova password per @${r.username}`, text: `${r.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
-    if (v) call('POST', `/api/m/accounts/${r.accountId}/password`, { password: v }, 'Password reimpostata');
-  };
+  const pwd = (r) => resetAccountPassword({ accountId: r.accountId, username: r.username, name: r.name });
   const delAcc = async (r) => {
     if (!(await dialog({ title: `Eliminare @${r.username}?`, text: `${r.name} non potrà più entrare con questo account.`, okLabel: 'Elimina', danger: true }))) return;
     try { await api('DELETE', `/api/m/accounts/${r.accountId}`); toast('Account eliminato', 'ok'); await loadAccounts(); } catch (e) { toast(e.message, 'error', 7000); }
@@ -1697,7 +1716,7 @@ function viewPeople() {
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
         r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
-        r.accountId ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => pwd(r) }, 'Password') : null,
+        r.accountId && !r.ops ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Password temporanea da mandare su WhatsApp', onclick: () => pwd(r) }, '🔑 Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null,
         r.pid ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deletePersonDialog(r) }, 'Elimina…') : null))))
       : h('p', { class: 'empty' }, q ? 'Nessuno con questa ricerca.' : 'Nessuno qui.'));
@@ -5920,10 +5939,7 @@ function accountsSection() {
   const f = accountsFilter.trim().toLowerCase();
   const list = accountsCache.filter((a) => !f || [a.username, a.name, a.nickname, a.softairTeam].some((x) => (x || '').toLowerCase().includes(f)));
   const orphans = accountsCache.filter((a) => !a.enrollments && !a.staff).length;
-  const reset = async (a) => {
-    const pwd = await dialog({ title: `Nuova password per @${a.username}`, text: `${a.name}: scrivi la nuova password (almeno 8 caratteri) e comunicagliela.`, okLabel: 'Imposta', input: { placeholder: 'nuova password' } });
-    if (pwd) call('POST', `/api/m/accounts/${a.id}/password`, { password: pwd }, 'Password reimpostata');
-  };
+  const reset = (a) => resetAccountPassword({ accountId: a.id, username: a.username, name: a.name });
   const del = async (a) => {
     if (!(await dialog({ title: `Eliminare @${a.username}?`, text: `${a.name} non potrà più entrare con questo account.${a.active ? ' Le sue iscrizioni in attesa vengono cancellate.' : ''}`, okLabel: 'Elimina', danger: true }))) return;
     try { await api('DELETE', `/api/m/accounts/${a.id}`); toast('Account eliminato', 'ok'); loadAccounts(); load(); } catch (e) { toast(e.message, 'error', 7000); }
@@ -5944,7 +5960,7 @@ function accountsSection() {
         h('td', null, a.softairTeam || '—'),
         h('td', { class: 'tiny' }, a.enrollments ? a.games : h('span', { class: 'chip' }, 'nessuna')),
         h('td', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => reset(a) }, 'Password'),
+          a.ops ? null : h('button', { class: 'btn btn-sm btn-ghost', title: 'Password temporanea da mandare su WhatsApp', onclick: () => reset(a) }, '🔑 Password'),
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => del(a) }, 'Elimina'))))))) : h('p', { class: 'empty' }, f ? 'Nessun account trovato.' : 'Nessun account registrato.'));
 }
 

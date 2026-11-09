@@ -259,6 +259,8 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 `);
 addColumn('players', 'accountId', 'INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
+// Password reimpostata dalla regia: al primo accesso la persona deve sceglierne una nuova.
+addColumn('accounts', 'mustChangePassword', 'INTEGER NOT NULL DEFAULT 0');
 // Gestionali (Zero Dark Ops) collegati a un account: l'identità è la coppia (iss, sub), il sub vale solo nel suo gestionale.
 db.exec(`
 CREATE TABLE IF NOT EXISTS account_identities (
