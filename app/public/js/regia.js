@@ -3742,27 +3742,14 @@ async function loadCatalog() {
 }
 const SKILL_TYPE = { active: 'Attiva', ultimate: 'Ultimate', passive: 'Passiva' };
 
-// Badge della probabilità sulla scheda di un Dono: rarità, peso ed «Esce / Mai a caso» di quel dono, con la probabilità che ne risulta.
-async function giftOddsDialog(c, x) {
-  const box = h('div', { class: 'stack-sm' });
-  const save = async (body) => { try { c.odds = await api('PUT', G('/gift-odds'), { gifts: { [x.id]: body } }); paint(); render(); } catch (e) { toast(e.message, 'error', 6000); } };
-  const paint = () => {
-    const od = c.odds.gifts.find((y) => y.id === x.id);
-    const tier = c.odds.tiers.find((y) => y.id === od.tier);
-    const same = c.odds.gifts.filter((y) => y.tier === od.tier && y.weight > 0).length;
-    box.replaceChildren(
-      h('div', { class: 'odds-big', style: { '--c': tier?.color } }, h('strong', null, od.pct ? `${String(od.pct).replace('.', ',')}%` : 'mai'), h('span', { class: 'tiny muted' }, od.pct ? 'probabilità di uscire in un\'estrazione casuale' : 'non esce mai dall\'estrazione casuale')),
-      h('div', { class: 'field' }, h('span', null, 'Estrazione casuale'),
-        h('button', { type: 'button', class: `switch ${od.weight > 0 ? 'on' : ''}`, role: 'switch', 'aria-checked': od.weight > 0 ? 'true' : 'false', onclick: () => save({ weight: od.weight > 0 ? 0 : 1 }) },
-          h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), od.weight > 0 ? 'ESCE' : 'MAI A CASO')),
-      h('div', { class: 'field' }, h('span', null, 'Rarità'),
-        h('div', { class: 'odds-tier-pick' }, c.odds.tiers.map((r) => h('button', { type: 'button', class: r.id === od.tier ? 'on' : '', style: { '--c': r.color }, onclick: () => save({ tier: r.id }) }, h('strong', null, r.name), h('span', { class: 'tiny' }, `${r.pct}%`))))),
-      h('label', { class: 'field' }, h('span', null, 'Peso dentro la rarità (1 = normale, 2 = esce il doppio degli altri, 0 = mai)'),
-        h('input', { class: 'input odds-num', type: 'number', min: 0, max: 100, step: 0.5, value: od.weight, onchange: (e) => save({ weight: e.target.value }) })),
-      h('p', { class: 'tiny muted' }, `Prima esce la rarità ${tier?.name || ''} (${tier?.pct ?? 0}% delle estrazioni), poi uno dei ${same} doni di quella rarità in base al peso. Le percentuali delle rarità si cambiano in fondo alla pagina.`));
-  };
-  paint();
-  await modal({ title: `🎲 ${x.icon} ${x.current.name}`, okLabel: 'Fatto', cancelLabel: null, body: box });
+// Rarità di un Dono nell'estrazione casuale: una sola scelta (Comune, Raro, Epico, Leggendario o Non esce mai).
+const giftRarity = (c, id) => { const od = c.odds?.gifts.find((y) => y.id === id); return od ? (od.weight > 0 ? c.odds.tiers.find((t) => t.id === od.tier) : null) : undefined; };
+function giftRarityMenu(e, c, x) {
+  const save = async (body, msg) => { try { c.odds = await api('PUT', G('/gift-odds'), { gifts: { [x.id]: body } }); toast(msg, 'ok', 1500); render(); } catch (err) { toast(err.message, 'error', 6000); } };
+  rowMenu(e, [
+    ...c.odds.tiers.map((t) => [`◆ ${t.name}`, () => save({ tier: t.id, weight: 1 }, `${x.current.name}: ${t.name}`)]),
+    ['🚫 Non esce mai', () => save({ weight: 0 }, `${x.current.name}: non esce mai a caso`)],
+  ]);
 }
 
 // Probabilità del Dono a caso (Autorità, Conquista, premi «a caso»): prima la rarità, poi il dono nella rarità (peso).
@@ -3776,28 +3763,24 @@ function giftOddsView(c) {
   const tierSum = o.tiers.reduce((t, r) => t + r.pct, 0);
   const num = (value, onchange, opts = {}) => h('input', { class: 'input odds-num', type: 'number', min: 0, max: 100, step: opts.step || 1, value, onchange: (e) => onchange(e.target.value) });
   return section('Probabilità del Dono a caso',
-    h('p', { class: 'muted tiny' }, 'Vale quando un Dono esce «a caso» (Autorità, Zona di Conquista, premi di eventi e voto senza un dono scelto). Doppia estrazione: prima la rarità con la sua probabilità, poi uno dei doni di quella rarità in base al peso. «Mai a caso» (o peso 0) = quel dono non esce mai dall\'estrazione, ma si può sempre dare come premio scelto o con un QR; una rarità a 0% o senza doni non esce (le altre si riproporzionano). Si può cambiare anche a partita in corso.'),
+    h('p', { class: 'muted tiny' }, 'Vale quando un Dono esce «a caso» (Autorità, Zona di Conquista, premi di eventi e voto senza un dono scelto). Prima esce la rarità con la sua probabilità, poi uno dei doni di quella rarità. «Non esce mai» = quel dono non esce dall\'estrazione, ma si può sempre dare come premio scelto o con un QR. La rarità si sceglie anche toccando il badge sulla scheda del dono; una rarità a 0% o senza doni non esce (le altre si riproporzionano). Si può cambiare anche a partita in corso.'),
     h('div', { class: 'odds-tiers' }, o.tiers.map((r) => h('label', { class: 'odds-tier', style: { '--c': r.color } },
       h('span', null, r.name), h('span', { class: 'odds-pct' }, num(r.pct, (v) => save({ tiers: { [r.id]: v } }, 'Probabilità salvata')), '%'),
       h('span', { class: 'tiny muted' }, `${o.gifts.filter((x) => x.tier === r.id && x.weight > 0).length} doni`)))),
     Math.round(tierSum) !== 100 ? h('p', { class: 'tiny warn-text' }, `Le rarità sommano a ${tierSum}%: vanno bene lo stesso (si riproporzionano), ma con 100% è più chiaro.`) : null,
     h('div', { class: 'table-wrap' }, h('table', { class: 'odds-table' },
-      h('thead', null, h('tr', null, ['Dono', 'Estrazione casuale', 'Rarità', 'Peso', 'Probabilità'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['Dono', 'Rarità', 'Probabilità'].map((x) => h('th', null, x)))),
       h('tbody', null, [...o.gifts].sort((a, b) => b.pct - a.pct).map((x) => {
         const t = byId[x.id];
         const r = o.tiers.find((y) => y.id === x.tier);
         return h('tr', { class: x.pct ? '' : 'odds-off' },
           h('td', null, h('span', { 'aria-hidden': 'true' }, t?.icon || '🎁'), ' ', h('strong', null, t?.current.name || x.id)),
-          // Mai a caso = peso 0: quel dono non esce mai dall'estrazione (si può sempre dare come premio scelto o col QR).
-          h('td', null, h('button', { type: 'button', class: `switch switch-sm ${x.weight > 0 ? 'on' : ''}`, role: 'switch', 'aria-checked': x.weight > 0 ? 'true' : 'false',
-            onclick: () => save({ gifts: { [x.id]: { weight: x.weight > 0 ? 0 : 1 } } }, x.weight > 0 ? `${t?.current.name || x.id}: mai a caso` : `${t?.current.name || x.id}: di nuovo nell'estrazione`) },
-            h('span', { class: 'switch-knob', 'aria-hidden': 'true' }), x.weight > 0 ? 'ESCE' : 'MAI A CASO')),
-          h('td', null, h('select', { class: 'input odds-sel', style: { '--c': r?.color }, onchange: (e) => save({ gifts: { [x.id]: { tier: e.target.value } } }, 'Rarità salvata') },
-            o.tiers.map((y) => h('option', { value: y.id, selected: y.id === x.tier }, y.name)))),
-          h('td', null, num(x.weight, (v) => save({ gifts: { [x.id]: { weight: v } } }, 'Peso salvato'), { step: 0.5 })),
+          // Una sola scelta: la rarità, oppure «Non esce mai» (peso 0: si può sempre dare come premio scelto o con un QR).
+          h('td', null, h('select', { class: 'input odds-sel', style: { '--c': x.weight > 0 ? r?.color : '#e5484d' }, onchange: (e) => save(e.target.value === 'mai' ? { gifts: { [x.id]: { weight: 0 } } } : { gifts: { [x.id]: { tier: e.target.value, weight: 1 } } }, 'Rarità salvata') },
+            o.tiers.map((y) => h('option', { value: y.id, selected: x.weight > 0 && y.id === x.tier }, y.name)), h('option', { value: 'mai', selected: !(x.weight > 0) }, 'Non esce mai'))),
           h('td', { class: 'mono' }, x.pct ? `${String(x.pct).replace('.', ',')}%` : h('span', { class: 'muted' }, 'mai')));
       })))),
-    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: 'Tornare alle probabilità predefinite?', text: 'Comune 60%, Raro 25%, Epico 11%, Leggendario 4%, peso 1 per tutti.', okLabel: 'Ripristina' })) save({ reset: true }, 'Probabilità predefinite'); } }, 'Ripristina i valori predefiniti')));
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async () => { if (await dialog({ title: 'Tornare alle probabilità predefinite?', text: 'Comune 60%, Raro 25%, Epico 11%, Leggendario 4%, rarità predefinite per tutti i doni.', okLabel: 'Ripristina' })) save({ reset: true }, 'Probabilità predefinite'); } }, 'Ripristina i valori predefiniti')));
 }
 
 async function editCatalogDialog(x) {
@@ -3856,10 +3839,10 @@ function viewCatalog() {
       x.type ? h('span', { class: 'chip' }, SKILL_TYPE[x.type] || x.type) : null, x.edited ? h('span', { class: 'chip chip-brass' }, 'modificato') : null,
       // Doni: quanto esce nell'estrazione casuale (o «mai a caso»).
       x.kind === 'gift' && c.odds ? (() => {
-        const od = c.odds.gifts.find((y) => y.id === x.id);
-        const tier = od && c.odds.tiers.find((y) => y.id === od.tier);
-        return od ? h('button', { type: 'button', class: `odds-badge ${od.pct ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Probabilità nell\'estrazione casuale: tocca per cambiarla', onclick: () => giftOddsDialog(c, x) },
-          od.pct ? `🎲 ${tier?.name || ''} · ${String(od.pct).replace('.', ',')}%` : '🚫 mai a caso') : null;
+        const tier = giftRarity(c, x.id);
+        if (tier === undefined) return null;
+        return h('button', { type: 'button', class: `odds-badge ${tier ? '' : 'off'}`, style: { '--c': tier?.color }, title: 'Rarità nell\'estrazione casuale (Dono a caso): tocca per cambiarla', onclick: (e) => giftRarityMenu(e, c, x) },
+          tier ? `◆ ${tier.name}` : '🚫 Non esce mai');
       })() : null),
     h('p', { class: 'small' }, x.preview ?? x.current.description),
     h('div', { class: 'tiny muted' }, [x.current.durationMin ? `Durata ${x.current.durationMin}′` : null, x.current.cooldownMin ? `Ricarica ${x.current.cooldownMin}′` : null].filter(Boolean).join(' · ') || ' '),
