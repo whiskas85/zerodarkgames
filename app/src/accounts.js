@@ -27,6 +27,7 @@ function publicAccount(a) {
   const staff = q.get('SELECT role FROM users WHERE accountId = ?', a.id)?.role || null;
   // ice: solo alla persona stessa (il suo profilo); alla regia arriva soltanto dentro un'emergenza chiamata da lei.
   return { id: a.id, username: a.username, name: a.name, nickname: a.nickname, softairTeam: a.softairTeam, phone: a.phone, needsPhone: !a.phone, hasPassword: !!a.passHash, ops, staff,
+    mustChangePassword: !!a.mustChangePassword,
     // Avatar nell'app: la foto del gestionale, se c'è (altrimenti le iniziali).
     picture: ops.find((o) => o.picture)?.picture || null,
     ice: { blood: a.iceBlood || '', conditions: a.iceConditions || '', contactName: a.iceContactName || '', contactPhone: a.iceContactPhone || '' } };
@@ -76,17 +77,43 @@ function updateProfile(account, data) {
     if (String(data.password).length < 8) throw err(400, 'La password deve avere almeno 8 caratteri');
     // Chi è entrato solo con il gestionale non ha ancora una password: la imposta senza quella attuale.
     if (account.passHash && !verifyPassword(String(data.currentPassword || ''), account.passHash)) throw err(403, 'La password attuale non è corretta');
-    q.run('UPDATE accounts SET passHash = ? WHERE id = ?', hashPassword(String(data.password)), account.id);
+    q.run('UPDATE accounts SET passHash = ?, mustChangePassword = 0 WHERE id = ?', hashPassword(String(data.password)), account.id);
   }
 }
 
-// La regia reimposta la password di un giocatore che l'ha dimenticata.
+// Password temporanea facile da leggere e da scrivere su WhatsApp (niente 0/O, 1/l/I).
+function tempPassword() {
+  const crypto = require('crypto');
+  const L = 'abcdefghjkmnpqrstuvwxyz';
+  const D = '23456789';
+  const pick = (s, n) => Array.from({ length: n }, () => s[crypto.randomInt(s.length)]).join('');
+  return `${pick(L, 4)}-${pick(D, 4)}`;
+}
+// La regia reimposta la password di chi l'ha dimenticata (solo account con username e password: chi entra con
+// Zero Dark Ops la gestisce lì). Senza password indicata ne genera una temporanea. Al primo accesso la persona
+// deve sceglierne una nuova; le sessioni aperte si chiudono (deve rientrare con quella nuova).
 function resetPassword(accountId, password, actor) {
   const a = q.get('SELECT * FROM accounts WHERE id = ?', Number(accountId));
   if (!a) throw err(404, 'Account non trovato');
-  if (String(password || '').length < 8) throw err(400, 'La password deve avere almeno 8 caratteri');
-  q.run('UPDATE accounts SET passHash = ? WHERE id = ?', hashPassword(String(password)), a.id);
+  if (q.get('SELECT 1 FROM account_identities WHERE accountId = ?', a.id)) throw err(409, 'Questa persona entra con Zero Dark Ops: la password si gestisce lì');
+  const pwd = password ? String(password) : tempPassword();
+  if (pwd.length < 8) throw err(400, 'La password deve avere almeno 8 caratteri');
+  q.run('UPDATE accounts SET passHash = ?, mustChangePassword = 1 WHERE id = ?', hashPassword(pwd), a.id);
+  q.run("DELETE FROM sessions WHERE kind = 'account' AND refId = ?", a.id);
+  q.run("DELETE FROM sessions WHERE kind = 'user' AND refId IN (SELECT id FROM users WHERE accountId = ?)", a.id);
   G.log(null, actor, 'account_password_reset', { username: a.username });
+  return { username: a.username, password: pwd, name: a.name, phone: a.phone || null };
+}
+
+// La persona sceglie la nuova password (obbligatorio dopo un reset della regia: senza quella attuale).
+function changePassword(account, data) {
+  const pwd = String(data?.password || '');
+  if (pwd.length < 8) throw err(400, 'La password deve avere almeno 8 caratteri');
+  if (!account.mustChangePassword && account.passHash && !verifyPassword(String(data?.currentPassword || ''), account.passHash)) throw err(403, 'La password attuale non è corretta');
+  if (account.mustChangePassword && verifyPassword(pwd, account.passHash)) throw err(400, 'Scegline una diversa da quella che ti ha dato la regia');
+  q.run('UPDATE accounts SET passHash = ?, mustChangePassword = 0 WHERE id = ?', hashPassword(pwd), account.id);
+  G.log(null, account.username, 'account_password_changed');
+  return { ok: true };
 }
 
 // L'iscrizione "attuale" dell'account: quella in una partita non finita (la più recente), altrimenti l'ultima.
@@ -199,6 +226,7 @@ function deleteAccount(id, actor) {
     q.run(`DELETE FROM players WHERE accountId = ? AND teamId IS NULL AND gameId IN (SELECT id FROM games WHERE status != 'ended')`, a.id);
     q.run('UPDATE players SET accountId = NULL WHERE accountId = ?', a.id);
     q.run("DELETE FROM sessions WHERE kind = 'account' AND refId = ?", a.id);
+  q.run("DELETE FROM sessions WHERE kind = 'user' AND refId IN (SELECT id FROM users WHERE accountId = ?)", a.id);
     q.run('DELETE FROM accounts WHERE id = ?', a.id);
   });
   G.log(null, actor, 'account_deleted', { username: a.username });
@@ -236,4 +264,4 @@ function deleteOrphanAccounts(actor) {
 }
 
 module.exports = {
-  cleanPhone, listAccounts, deleteAccount, deletePerson, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, currentPlayer, enrollments, enroll, pairToSingle, publicAccount };
+  cleanPhone, listAccounts, deleteAccount, deletePerson, deleteOrphanAccounts, register, authenticate, updateProfile, resetPassword, changePassword, tempPassword, currentPlayer, enrollments, enroll, pairToSingle, publicAccount };

@@ -7,6 +7,7 @@ import { omnibar, matches } from './omnibar.js';
 import { createFoodOrder } from './food-ui.js';
 import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, makeClock, fmtDuration, fmtTime, ghost, ghostWord, toast, dialog, modal, stream, vibrate, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec, scanQR, cameraSupported, wordCeremony , keepAwakeRow, dimRow , API_HEADERS, deviceIdOf } from './lib.js';
 import { withMinigame, playMinigame } from './minigame-ui.js';
+import { forcePasswordChange } from './pwchange.js';
 
 const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
 const clock = makeClock();
@@ -810,6 +811,8 @@ function banners() {
   if (c.status === 'truce') out.push(h('div', { class: 'banner banner-truce' }, h('strong', null, 'Tregua: nessun ingaggio'), h('span', null, 'La caccia si apre tra ', h('b', { class: 'mono', 'data-clock': 'hunt' }, '—'))));
   // Account senza telefono (obbligatorio): si chiede qui, senza bloccare il gioco.
   if (st.account?.needsPhone) out.push(phoneBanner());
+  // Password reimpostata dalla regia mentre l'app era aperta su un altro accesso: va cambiata subito.
+  if (st.account?.mustChangePassword && !forcePasswordChange.open) { forcePasswordChange.open = true; forcePasswordChange(st.account.username).then(() => { forcePasswordChange.open = false; refresh(); }); }
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
   // Nuova versione: in mappa tra gli avvisi in alto; altrove fissa sotto la barra (updateBar).
   if (document.body.dataset.view === 'mappa') { const u = updateBar(); if (u) out.push(u); }
@@ -1205,6 +1208,8 @@ function viewLogin() {
       const r = await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
       vibrate(80);
       if (r.inviteError) toast(r.inviteError, 'error', 8000);
+      // Password data dalla regia: prima di entrare se ne sceglie una nuova.
+      if (r.mustChange) await forcePasswordChange(r.username);
       // replace: tornando indietro non si rivede il login (si esce solo con «Esci»).
       if (r.role !== 'player') { location.replace(r.home); return; }
       await refresh();

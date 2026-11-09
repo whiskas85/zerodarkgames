@@ -132,6 +132,8 @@
       try {
         const r = await api('GET', '/api/account');
         S.account = r.account;
+        // Password reimpostata dalla regia: va cambiata prima di continuare.
+        if (S.account?.mustChangePassword) { await (await import('/js/pwchange.js')).forcePasswordChange(S.account.username); S.account.mustChangePassword = false; }
         S.enrollments = r.enrollments;
         S.games = r.games;
       } catch (e) {
@@ -182,6 +184,7 @@
         const fd = Object.fromEntries(new FormData(login).entries());
         try {
           const r = await api('POST', '/api/auth/login', fd);
+          if (r.mustChange) await (await import('/js/pwchange.js')).forcePasswordChange(r.username);
           if (r.role !== 'player') { location.replace(r.home); return; }
           await loadAccount();
           location.hash = 'scelta';

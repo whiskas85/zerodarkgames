@@ -232,8 +232,10 @@ app.post('/api/auth/login', loginLimit, wrap((req, res) => {
   const p = A.currentPlayer(a);
   if (p) G.log(p.gameId, `giocatore:${p.id}`, 'player_login', { playerId: p.id });
   const { staff, inviteError } = acceptPendingInvite(req, res, a);
-  if (staff) return { role: staff.role, username: a.username, home: St.homeOf(staff.role), inviteError };
-  return { role: 'player', username: a.username, home: '/#/home', inviteError };
+  // Password reimpostata dalla regia: prima di entrare va scelta una nuova (mustChange).
+  const mustChange = !!a.mustChangePassword;
+  if (staff) return { role: staff.role, username: a.username, home: St.homeOf(staff.role), inviteError, mustChange };
+  return { role: 'player', username: a.username, home: '/#/home', inviteError, mustChange };
 }));
 app.post('/api/auth/register', loginLimit, wrap((req, res) => {
   const a = A.register(req.body || {});
@@ -264,6 +266,7 @@ app.get('/api/account', needAccount, (req, res) => res.json({
   games: openGames(),
 }));
 app.patch('/api/account', needAccount, wrap((req) => { A.updateProfile(req.account, req.body || {}); return { ok: true }; }));
+app.post('/api/account/password', needAccount, loginLimit, wrap((req) => A.changePassword(req.account, req.body || {})));
 app.post('/api/account/enroll', needAccount, loginLimit, wrap((req) => A.enroll(req.account, req.body || {})));
 // Da Legato a Temerario Solitario: la propria iscrizione (dall'account o dall'accesso personale).
 app.post('/api/enrollment/:pid/single', needMember, wrap((req) => {
@@ -989,7 +992,7 @@ m.post('/games/:id/announce', wrap((req) => G.freeAnnouncement(gameId(req), req.
 m.get('/accounts', (_req, res) => res.json(A.listAccounts()));
 m.delete('/accounts/:aid', wrap((req) => { A.deleteAccount(req.params.aid, actor(req)); return { ok: true }; }));
 m.post('/accounts/cleanup', wrap((req) => A.deleteOrphanAccounts(actor(req))));
-m.post('/accounts/:aid/password', wrap((req) => { A.resetPassword(req.params.aid, req.body.password, actor(req)); return { ok: true }; }));
+m.post('/accounts/:aid/password', wrap((req) => A.resetPassword(req.params.aid, req.body?.password || null, actor(req))));
 m.get('/users', (_req, res) => res.json(q.all(`SELECT u.id, u.username, u.role, u.displayName, u.createdAt, u.accountId, a.username AS accountUsername,
     (SELECT group_concat(i.providerName, ' · ') FROM account_identities i WHERE i.accountId = u.accountId) AS ops
   FROM users u LEFT JOIN accounts a ON a.id = u.accountId ORDER BY u.role, u.username`)));
