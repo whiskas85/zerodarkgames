@@ -904,6 +904,8 @@ m.put('/games/:id/points/:pid/minigame', wrap((req) => {
   G.log(p.gameId, actor(req), 'point_minigame', { label: p.label, minigame: v });
   return { ok: true, minigame: v };
 }));
+m.get('/games/:id/minigames', wrap((req) => require('./minigames').list(G.getGame(gameId(req)))));
+m.put('/games/:id/minigames/:game', wrap((req) => require('./minigames').setEnabled(gameId(req), req.params.game, !!req.body?.on, actor(req))));
 m.post('/games/:id/points/free', wrap((req) => G.addFreePoints(gameId(req), req.body || {}, actor(req))));
 m.delete('/points/:pid', wrap((req) => { G.deletePoint(Number(req.params.pid), actor(req)); return { ok: true }; }));
 m.post('/games/:id/phrase', wrap((req) => { G.setPhrase(gameId(req), req.body.phrase, actor(req)); return { ok: true }; }));

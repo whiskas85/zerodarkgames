@@ -822,6 +822,8 @@ addColumn('games', 'giftOdds', 'TEXT');
 addColumn('games', 'altarMinigame', "TEXT NOT NULL DEFAULT 'off'");
 addColumn('games', 'beaconMinigame', "TEXT NOT NULL DEFAULT 'off'");
 addColumn('points', 'minigame', 'TEXT');
+// Minigiochi spenti dalla regia (JSON di id): non escono «a caso» e non si usano anche se scelti.
+addColumn('games', 'minigamesOff', 'TEXT');
 db.exec(`
 CREATE TABLE IF NOT EXISTS minigame_runs (
   id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE, ref TEXT NOT NULL,
