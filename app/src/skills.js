@@ -446,7 +446,7 @@ function applySkill(g, me, s, p) {
       const pt = q.get('SELECT * FROM points WHERE id = ? AND gameId = ?', Number(p.pointId), g.id);
       const v = pt && q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', me.id, pt.id);
       if (!v) throw err(400, 'Scegliete un Altare che avete già inquadrato');
-      const exp = G.scanExpiresAt(g, v.visitedAt, me);
+      const exp = G.scanExpiresAt(g, v.visitedAt, me, G.keptScan(g, me, pt));
       if (!exp || exp > Date.now()) throw err(409, 'La scansione di questo Altare è ancora valida');
       q.run('UPDATE team_visits SET visitedAt = ?, geoOk = 1 WHERE teamId = ? AND pointId = ?', Date.now(), me.id, pt.id);
       startEffect(me, 'skill', s.id, { pointId: pt.id });
@@ -593,7 +593,7 @@ function applyGift(g, me, type, p) {
       const f = pt && q.get('SELECT * FROM fragments WHERE pointId = ?', pt.id);
       if (!f) throw err(400, 'Scegliete un Altare che custodisce un frammento');
       const v = q.get('SELECT visitedAt FROM team_visits WHERE teamId = ? AND pointId = ?', me.id, pt.id);
-      const exp = v ? G.scanExpiresAt(g, v.visitedAt, me) : null;
+      const exp = v ? G.scanExpiresAt(g, v.visitedAt, me, G.keptScan(g, me, pt)) : null;
       if (!v || (exp && exp < now)) throw err(409, 'La Chiave Maestra funziona solo all\'Altare: inquadratene prima il QR');
       if (q.get('SELECT 1 FROM team_fragments WHERE teamId = ? AND fragmentId = ?', me.id, f.id)) throw err(409, 'Avete già il frammento di questo Altare');
       q.run("INSERT INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'gift', ?)", me.id, f.id, now);

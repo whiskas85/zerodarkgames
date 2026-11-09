@@ -347,6 +347,8 @@ addColumn('users', 'perms', 'TEXT');
 addColumn('users', 'lastGameId', 'INTEGER');
 // Scansione dell'Altare fatta con il controllo di posizione superato (1); quelle senza controllo non valgono quando lo si accende.
 addColumn('team_visits', 'geoOk', 'INTEGER NOT NULL DEFAULT 0');
+// Altare «tenuto»: inquadrato con una scansione valida conoscendo già il suo Sigillo → la scansione non scade più.
+addColumn('team_visits', 'keptAt', 'INTEGER');
 // Checklist dell'accettazione spuntata dal Consiglio (le voci non cambiate seguono lo stato rilevato dall'app).
 addColumn('players', 'checkinChecks', 'TEXT');
 // Repliche della persona per il test (null = le tre di base) e spunte delle repliche aggiunte (le tre di base hanno le loro colonne).

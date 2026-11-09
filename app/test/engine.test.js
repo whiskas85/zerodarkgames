@@ -3852,3 +3852,35 @@ test('Ristoro: ordina per altri (dall\'elenco o a mano), anche già chiuso e inc
   assert.ok(FD.people(gameId).guests.some((x) => x.name === 'Zia Pina'));
   assert.throws(() => FD.orderFor(gameId, { name: 'x', lines: [{ itemId: item.id, qty: 1 }] }, 'cucina'), /Scegli la persona/);
 });
+
+test('Altare tenuto: inquadrato conoscendo il Sigillo, la scansione non scade più', () => {
+  const g = setupGame(3);
+  G.updateGame(g.id, { altarScanMin: 10 }, 'test');
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  G.control(g.id, 'start', 'test');
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const pB = pointOf(g.id, B.sectorId);
+  const pC = pointOf(g.id, Cc.sectorId);
+  // A conosce il Sigillo di B (nel taccuino, giusto), non quello di C.
+  q.run("INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt) VALUES (?, ?, ?, 1, ?)", A.id, B.sectorId, codeOf(g.id, B.sectorId), Date.now());
+  const vB = G.visitPoint(A, pB.qrToken);
+  assert.equal(vB.kept, true);
+  assert.equal(vB.expiresAt, null);
+  const vC = G.visitPoint(A, pC.qrToken);
+  assert.equal(vC.kept, false);
+  // Un'ora dopo: B resta aperto (tenuto), C è scaduto.
+  q.run('UPDATE team_visits SET visitedAt = visitedAt - 3600000 WHERE teamId = ?', A.id);
+  const st = G.teamState(A);
+  assert.ok(st.visited.find((x) => x.pointId === pB.id).kept);
+  assert.equal(st.visited.find((x) => x.pointId === pB.id).expiresAt, null);
+  assert.ok(st.visited.find((x) => x.pointId === pC.id).expiresAt < Date.now());
+  assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).expired, true);
+  assert.equal(G.unlock(A, pB.qrToken, codeOf(g.id, B.sectorId)).ok, true);
+  // Scoprire il Sigillo DOPO che la scansione è scaduta non riapre l'Altare: bisogna tornarci.
+  q.run("INSERT INTO team_code_notes (teamId, sectorId, code, correct, addedAt) VALUES (?, ?, ?, 1, ?)", A.id, Cc.sectorId, codeOf(g.id, Cc.sectorId), Date.now());
+  assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).expired, true);
+  G.visitPoint(A, pC.qrToken);
+  q.run('UPDATE team_visits SET visitedAt = visitedAt - 3600000 WHERE teamId = ? AND pointId = ?', A.id, pC.id);
+  assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).ok, true);
+});

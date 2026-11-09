@@ -237,6 +237,8 @@ function setState(st, offset) {
     // Scansione rinnovata dal server (Memoria): la nuova scadenza vale anche qui.
     const loc = S.visits[v.qrToken];
     if (v.visitedAt && loc && (!loc.scannedAt || v.visitedAt > loc.scannedAt)) { loc.scannedAt = v.visitedAt; loc.expiresAt = v.expiresAt || null; store.set('zdg_visits', S.visits); }
+    // Altare tenuto (Sigillo conosciuto alla scansione): non scade più neanche su questo telefono.
+    if (v.kept && loc && (loc.expiresAt || !loc.kept)) { loc.expiresAt = null; loc.kept = true; store.set('zdg_visits', S.visits); }
   }
   if (prev && prev.clock.status !== st.clock.status && st.clock.status === 'paused') vibrate([600, 200, 600]);
   if (prev && (prev.team.id !== st.team.id || prev.team.kind !== st.team.kind)) {
@@ -3889,11 +3891,11 @@ function closeSeal() {
 
 function allVisited() {
   const map = {};
-  for (const [token, v] of Object.entries(S.visits)) map[token] = { qrToken: token, label: v.label, sectorName: v.sectorName, sectorId: v.sectorId, unlocked: false, at: v.at, expiresAt: v.expiresAt };
+  for (const [token, v] of Object.entries(S.visits)) map[token] = { qrToken: token, label: v.label, sectorName: v.sectorName, sectorId: v.sectorId, unlocked: false, at: v.at, expiresAt: v.kept ? null : v.expiresAt, kept: !!v.kept };
   for (const v of S.state?.visited || []) {
     const local = map[v.qrToken];
     // Vale la scansione più recente tra quella del server e quella ancora in coda su questo telefono.
-    map[v.qrToken] = { ...local, ...v, expiresAt: local?.expiresAt && v.expiresAt ? Math.max(local.expiresAt, v.expiresAt) : v.expiresAt ?? local?.expiresAt ?? null };
+    map[v.qrToken] = { ...local, ...v, expiresAt: v.kept ? null : local?.expiresAt && v.expiresAt ? Math.max(local.expiresAt, v.expiresAt) : v.expiresAt ?? local?.expiresAt ?? null };
   }
   return Object.values(map).sort((a, b) => (b.at || 0) - (a.at || 0));
 }
@@ -3912,6 +3914,7 @@ function viewAltars() {
         h('div', null, h('strong', null, v.label || 'Altare da riconoscere'), h('div', { class: 'muted small' }, v.sectorName ? `Settore ${v.sectorName}` : 'in attesa di rete')),
         v.unlocked ? h('span', { class: 'chip chip-ok' }, 'Sbloccato') : pending ? h('span', { class: 'chip chip-brass' }, 'In attesa di rete')
           : scanExpired(v) ? h('span', { class: 'chip chip-warn' }, 'Scansione scaduta')
+            : v.kept ? h('span', { class: 'chip chip-brass', title: 'Conoscete il suo Sigillo: la scansione non scade più' }, '🔒 Vostro')
             : v.expiresAt ? h('span', { class: 'chip' }, 'valida ', h('span', { class: 'mono', 'data-abs': v.expiresAt }, '—')) : h('span', { class: 'chip' }, 'Da sbloccare')));
     })) : h('p', { class: 'empty' }, 'Nessun Altare ancora inquadrato.'));
 }
@@ -4038,6 +4041,7 @@ function viewAltar(token, query) {
       h('div', { class: 'eyebrow' }, v.sectorName ? `Settore ${v.sectorName}` : 'Altare'),
       h('h2', { class: 'altar-title' }, v.label || 'Altare da riconoscere'),
       !v.label ? h('p', { class: 'muted small' }, 'Il nome apparirà appena torna la rete. Potete già inserire il Sigillo.') : null,
+      !fragment && v.kept ? h('p', { class: 'scan-valid small' }, '🔒 Altare vostro: conoscete il suo Sigillo, la scansione non scade più. Potete aprirlo quando volete.') : null,
       !fragment && !expired && v.expiresAt ? h('p', { class: 'scan-valid small' }, 'Scansione valida ancora ', h('strong', { class: 'mono', 'data-abs': v.expiresAt }, '—'), ` (fino alle ${fmtTime(v.expiresAt, true)})`) : null),
     fragment
       ? h('div', { class: 'fragment-reveal' },
