@@ -1421,6 +1421,19 @@ function registrationHero(ms, st, regUrl) {
         h('a', { class: 'btn btn-sm btn-ghost', href: '#impostazioni/coppie' }, 'Numero di coppie e temerari →'))));
 }
 
+// Omni search delle pagine Squadre Legati ed Eletti: cerca in tutto il testo delle schede.
+let teamsQ = '';
+let squadsQ = '';
+const personText = (m) => m ? [m.name, m.nickname, m.username, m.softairTeam, m.phone, m.email, m.accessCode] : [];
+const teamHay = (t) => {
+  const ms = R.ms;
+  const cb = ms.combat || {};
+  const ally = (cb.alliances || []).find((a) => a.members.some((m) => m.teamId === t.id));
+  return [t.roman, t.sectorName, `Settore ${t.sectorName}`, t.displayName, t.status === 'withdrawn' ? 'ritirata' : null, t.members.map(personText),
+    (ms.skills?.byTeam?.[t.id] || []).map((x) => x.name), (t.gifts || []).map((g) => [g.name, g.label]),
+    ally ? ['alleanza', ally.members.map((m) => [m.roman, m.sectorName])] : null];
+};
+
 function viewTeams() {
   const ms = R.ms;
   const st = ms.clock.status;
@@ -1442,7 +1455,10 @@ function viewTeams() {
   const sectorSel = h('select', { class: 'input', 'data-keep': 'pair-sector' }, freeSectors.map((s) => h('option', { value: s.id }, `${s.roman} · ${s.name}`)));
   const teamName = h('input', { class: 'input', 'data-keep': 'pair-name', placeholder: 'Nome della coppia (facoltativo)' });
 
+  const shownFree = free.filter((p) => matches(teamsQ, personText(p), p.requestedTeamName));
+  const shownTeams = ms.teams.filter((t) => matches(teamsQ, teamHay(t)));
   return h('div', { class: 'stack' },
+    omnibar({ keep: 'teams-q', value: teamsQ, placeholder: 'Cerca coppie e Legati: Settore, numero, nome, nick, team, telefono, Skill, doni…', count: shownTeams.length + (editable ? shownFree.length : 0), onInput: (v) => { teamsQ = v; render(); } }),
     // In cima lo stato delle iscrizioni e, in grande, quanti Settori restano da assegnare.
     editable ? registrationHero(ms, st, regUrl) : null,
     editable && pending.length ? h('a', { class: 'people-info people-link', href: '#persone' }, `${pending.length} ${pending.length === 1 ? 'iscrizione' : 'iscrizioni'} in attesa: si accettano nella pagina Persone →`) : null,
@@ -1467,7 +1483,7 @@ function viewTeams() {
         ] : h('p', { class: 'muted' }, 'Le coppie si formano prima di aprire il cerchio.'))) : null,
 
     !editable ? null : section(`Giocatori accettati senza coppia (${free.length})`,
-      free.length ? h('div', { class: 'players' }, free.map((p) => {
+      shownFree.length ? h('div', { class: 'players' }, shownFree.map((p) => {
         const grp = p.regGroup ? freeGroups[p.regGroup] : null;
         const sel = pairSel.has(p.id);
         return h('div', { class: `player ${sel ? 'sel' : ''} ${grp?.length === 2 ? 'grouped' : ''}` },
@@ -1480,12 +1496,12 @@ function viewTeams() {
             grp?.length === 2 && editable && grp[0].id === p.id ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => call('POST', G('/teams'), { playerIds: grp.map((x) => x.id) }, 'Coppia formata') }, 'Accoppia come richiesto') : null,
             resetBtn(p),
             h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il giocatore?', p.name, 'DELETE', `/api/m/players/${p.id}`, undefined, 'Eliminato', true) }, 'Elimina')));
-      })) : h('p', { class: 'empty' }, pending.length ? 'Nessun giocatore accettato libero: approva le iscrizioni qui sopra.' : 'Tutti i giocatori accettati sono in coppia o tra gli Eletti.')),
+      })) : h('p', { class: 'empty' }, free.length ? `Nessun Legato senza coppia per «${teamsQ}».` : pending.length ? 'Nessun giocatore accettato libero: approva le iscrizioni qui sopra.' : 'Tutti i giocatori accettati sono in coppia o tra gli Eletti.')),
 
 
     sectionActions(editable ? `Coppie (${ms.teams.length}/${ms.sectors.filter((x) => !x.archived).length})` : `Gestione delle coppie (${ms.teams.filter((t) => t.status === 'active').length} in gara)`,
       [h('a', { class: 'btn btn-sm btn-ghost', href: '#persone', title: 'Codici d\'accesso, QR, password, scioglimento: nella scheda «In coppia» di Persone' }, 'Accessi e credenziali → Persone')],
-      ms.teams.length ? h('div', { class: `teams ${editable ? '' : 'teams-live'}` }, ms.teams.map((t) => teamCard(t, editable))) : h('p', { class: 'empty' }, 'Nessuna coppia.')));
+      shownTeams.length ? h('div', { class: `teams ${editable ? '' : 'teams-live'}` }, shownTeams.map((t) => teamCard(t, editable))) : h('p', { class: 'empty' }, ms.teams.length ? `Nessuna coppia per «${teamsQ}».` : 'Nessuna coppia.')));
 }
 
 function teamCard(t, editable) {
@@ -3284,15 +3300,21 @@ function viewSquads() {
     return { pts, gifts, todo, tasksDone: sq.tasks.filter((t) => t.doneAt).length, tasksLive: sq.tasks.filter((t) => !t.cancelledAt).length };
   };
   const openTasks = d.openTasks || [];
+  const squadName = (id) => d.squads.find((x) => x.id === id)?.name;
+  const allCandidates = candidates;
+  const shownCand = allCandidates.filter((p) => matches(squadsQ, personText(p), p.note, 'candidatura'));
+  const shownSquads = d.squads.filter((sq) => { const pr = progress(sq); return matches(squadsQ, sq.name, `squadra ${sq.name}`, sq.members.map(personText), sq.tasks.map((t) => [t.text, t.targetLabel]), pr.pts.map((p) => p.label), pr.gifts.map((g) => [g.label, g.name])); });
+  const shownMembers = members.filter((m) => { const p = byId[m.id] || m; return matches(squadsQ, personText(m), p.accessCode, squadName(m.squadId), m.squadId ? `squadra ${squadName(m.squadId)}` : 'senza squadra'); });
 
   return h('div', { class: 'stack' },
     squadNav(page),
-    candidates.length ? h('div', { class: 'panel pending-panel' },
-      h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${candidates.length})`)),
+    omnibar({ keep: 'squads-q', value: squadsQ, placeholder: 'Cerca squadre ed Eletti: nome, nick, team, telefono, codice, incarichi, Altari, doni…', count: shownSquads.length + shownMembers.length + shownCand.length, onInput: (v) => { squadsQ = v; render(); } }),
+    shownCand.length ? h('div', { class: 'panel pending-panel' },
+      h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${allCandidates.length})`)),
       h('p', { class: 'muted tiny' }, 'Arrivano dal modulo di iscrizione. Accettando, la persona entra tra gli Eletti (nella squadra scelta) e il suo telefono passa subito all\'app degli Eletti con il suo accesso personale.'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
         h('thead', null, h('tr', null, ['Candidato', 'Team softair', 'Come vuole servire', 'Squadra', ''].map((x) => h('th', null, x)))),
-        h('tbody', null, candidates.map((p) => {
+        h('tbody', null, shownCand.map((p) => {
           const sel = h('select', { class: 'input input-sm', 'aria-label': `Squadra per ${p.name}` }, squadOptions(null));
           return h('tr', null,
             h('td', null, personLine(p), phoneLinks(p.phone), h('div', { class: 'tiny muted' }, fmtTime(p.createdAt))),
@@ -3308,7 +3330,7 @@ function viewSquads() {
 
     sectionActions(`Squadre degli Eletti (${d.squads.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newSquadDialog }, '+ Nuova squadra')],
       h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare o spostare Altari e Doni (dalle sezioni Altari e Doni) o a svolgere incarichi: liberi, raggiungere un punto o raggiungere una coppia (che la squadra vede in mappa finché l\'incarico è aperto). I membri ricevono una notifica e trovano tutto nella loro app, nella voce Incarichi.'),
-      d.squads.length ? h('div', { class: 'squads' }, d.squads.map((sq) => {
+      shownSquads.length ? h('div', { class: 'squads' }, shownSquads.map((sq) => {
       const pr = progress(sq);
       const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
       const taskTarget = targetSelect(`sq-target-${sq.id}`);
@@ -3329,7 +3351,7 @@ function viewSquads() {
           if (!taskIn.value.trim() && !taskTarget.value) return;
           if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value, target: taskTarget.value || null }, `Incarico inviato a ${sq.name}`)) { taskIn.value = ''; taskTarget.value = ''; }
         } }, taskIn, h('div', { class: 'row-actions' }, taskTarget, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia'))));
-    })) : h('p', { class: 'empty' }, 'Nessuna squadra: crea la prima con «+ Nuova squadra».')),
+    })) : h('p', { class: 'empty' }, d.squads.length ? `Nessuna squadra per «${squadsQ}».` : 'Nessuna squadra: crea la prima con «+ Nuova squadra».')),
 
 
     sectionActions(`Eletti del Consiglio (${members.length})`, [
@@ -3337,9 +3359,9 @@ function viewSquads() {
       members.length ? h('span', { class: 'chip' }, `${ms.elect.online} online · ${ms.elect.pushDevices} con notifiche`) : null,
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa accessi')],
       h('p', { class: 'muted tiny' }, 'Ogni Eletto entra con il proprio accesso personale (QR o codice): vede la sua squadra, i suoi incarichi e i messaggi della sua squadra. Non hanno Sigillo, non usano gli Altari e non sono in classifica.'),
-      members.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
+      shownMembers.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
         h('thead', null, h('tr', null, ['Eletto', 'Team softair', 'Squadra', 'Notifiche', 'Accesso personale', ''].map((x) => h('th', null, x)))),
-        h('tbody', null, members.map((m) => {
+        h('tbody', null, shownMembers.map((m) => {
           const p = byId[m.id] || m;
           const loginUrl = `${R.baseUrl}/login/${p.loginToken}`;
           return h('tr', null,
@@ -3355,7 +3377,7 @@ function viewSquads() {
                   h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                   ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)))),
             h('td', { class: 'row-actions' }, resetBtn(m), ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm', title: 'Sposta in una coppia, da solo o in scambio', onclick: () => moveToCoupleDialog(m) }, '↔ Settore…') : null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
-        })))) : h('p', { class: 'empty' }, candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')));
+        })))) : h('p', { class: 'empty' }, members.length ? `Nessun Eletto per «${squadsQ}».` : candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')));
 }
 
 // Incarichi: a sinistra le attività da svolgere (piazzamenti, spostamenti, incarichi); a destra le squadre.
