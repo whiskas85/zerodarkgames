@@ -1505,10 +1505,37 @@ function teamCard(t, editable) {
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
     h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? [' · ', phoneLinks(m.phone)] : null))),
     live ? teamLive(t) : h('div', { class: 'team-live-grid' }, skillsBlock(t), giftsBlock(t)),
-    h('div', { class: 'row-actions' },
+    // Footer con le azioni sulla coppia.
+    h('div', { class: 'row-actions team-foot' },
       t.status !== 'withdrawn' ? h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog(t) }, '🎁 Dai un Dono') : null,
+      h('button', { class: 'btn btn-sm', onclick: () => teamMessageDialog(t) }, t.unread ? `✉️ Messaggio (${t.unread})` : '✉️ Messaggio'),
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
 }
+
+// Messaggio alla coppia dalla regia (arriva nella sua chat con il Consiglio).
+async function teamMessageDialog(t) {
+  const ta = h('textarea', { class: 'input', rows: 4, maxlength: 1000, placeholder: 'Scrivi come Consiglio…', 'data-keep': `tmsg-${t.id}` });
+  const last = (R.ms.messages || []).filter((m) => m.teamId === t.id && !m.channel).slice(-3);
+  await modal({ title: `✉️ Messaggio a ${t.roman} · Settore ${t.sectorName}`, okLabel: 'Invia',
+    body: h('div', { class: 'stack-sm' },
+      last.length ? h('div', { class: 'stack-xs tl-msgs' }, h('div', { class: 'eyebrow' }, 'Ultimi messaggi'),
+        last.map((m) => h('div', { class: 'tiny' }, h('strong', null, m.fromRole === 'team' ? (m.author || 'coppia') : 'Consiglio'), ` · ${fmtTime(m.createdAt)} · `, m.text || (m.audioMime ? '🎤 vocale' : '')))) : null,
+      ta,
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => { e.target.closest('dialog')?.close(); R.chat = { kind: 'team', id: t.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, 'Apri la chat completa')),
+    onOpen: () => setTimeout(() => ta.focus(), 50),
+    onOk: async () => {
+      const text = ta.value.trim();
+      if (!text) { toast('Scrivi un messaggio', 'error'); return false; }
+      await api('POST', `/api/m/teams/${t.id}/message`, { text });
+      toast('Messaggio inviato', 'ok');
+      return true;
+    } });
+}
+
+// Blocchi a scomparsa della card: restano aperti/chiusi tra un aggiornamento e l'altro.
+const tlOpen = new Set();
+const tlFold = (key, summary, ...children) => h('details', { class: 'tl-fold', open: tlOpen.has(key), ontoggle: (e) => { if (e.target.open) tlOpen.add(key); else tlOpen.delete(key); } },
+  h('summary', { class: 'tiny' }, summary), ...children);
 
 // ---- Gestione in gara della coppia: ultimo ping con mappa rapida, Skill con ricarica, doni, taglie, effetti, zone.
 const pingAgo = (at) => { const m = Math.round((Date.now() - at) / 60000); return m < 1 ? 'adesso' : m < 60 ? `${m} min fa` : `${Math.floor(m / 60)} h ${m % 60} min fa`; };
@@ -1610,31 +1637,37 @@ function teamLive(t) {
   const elect = (cb.electFights || []).filter((f) => f.team?.teamId === t.id && f.status === 'confirmed');
   const otherSide = (e) => { const mine = (e.winners || []).some((x) => x.teamId === t.id) ? e.losers : e.winners; return (mine || []).map((x) => `${x.roman} ${x.sectorName}`).join(' + '); };
   const RES = { won: ['✅', 'vinto'], lost: ['❌', 'perso'], draw: ['➖', 'pareggio'] };
+  // Ingaggi conclusi (con le coppie e con gli Eletti), dal più recente.
+  const fights = [...done.map((e) => ({ at: e.resolvedAt || e.createdAt, e })), ...elect.map((f) => ({ at: f.resolvedAt || f.createdAt, f }))].sort((a, b) => b.at - a.at);
+  const fightRow = (x) => {
+    if (x.e) { const [ico, lab] = RES[res(x.e)]; return h('div', { class: 'small' }, `${ico} ${lab} contro ${otherSide(x.e)}`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(x.at)}`)); }
+    return h('div', { class: 'small' }, `${x.f.winner === 'couple' ? '✅ vinto' : '❌ perso'} contro gli Eletti (squadra ${x.f.squadName || '?'})`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(x.at)}`));
+  };
   return h('div', { class: 'team-live-grid' },
     block('📍 Ultimo ping',
       p ? h('div', { class: `small ${stale ? 'warn-text' : ''}` }, `${pingAgo(p.at)} · ${fmtTime(p.at)}${p.acc ? ` · ±${Math.round(p.acc)} m` : ''}`) : h('div', { class: 'small warn-text' }, 'Nessuna posizione ricevuta'),
-      p ? miniMap(p, t.color, () => teamMapDialog(t)) : null,
+      p ? h('div', { class: 'tiny' }, h('a', { href: `https://www.google.com/maps?q=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener', class: 'mono' }, `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`)) : null,
+      p ? tlFold(`map-${t.id}`, '🗺 Mappa rapida', miniMap(p, t.color, () => teamMapDialog(t))) : null,
       h('div', { class: 'tiny muted' }, `${t.online ? `🟢 ${t.online} online` : '⚫ offline'} · ❖ ${t.fragments}/${t.fragmentsTotal} frammenti · 🔑 ${t.codes ?? 0}/${t.codesTotal ?? 0} Sigilli`)),
     skillsBlock(t),
     giftsBlock(t),
-    block('🎯 Taglie e cacce',
-      bounties.length || (t.hunts || []).length || (t.bountyEvents || []).length ? h('div', { class: 'stack-xs' },
+    bounties.length || (t.hunts || []).length || (t.bountyEvents || []).length ? block('🎯 Taglie e cacce',
+      h('div', { class: 'stack-xs' },
         bounties.map((e) => h('div', { class: 'small bad-text' }, `🚨 Taglia del Settore ${e.teamName}${e.until ? ` fino alle ${fmtTime(e.until)}` : ''}`)),
         (t.hunts || []).map((x) => h('div', { class: 'small' }, `${HUNT[x.kind] || x.kind}${x.squadName ? ` · squadra ${x.squadName}` : ' · da assegnare'}${x.acceptedAt ? '' : ' (non ancora accettato)'}`)),
-        (t.bountyEvents || []).map((ev) => h('div', { class: 'small' }, `🏁 Taglia su sé stessi: «${ev.name}»`))) : h('div', { class: 'tiny muted' }, 'Nessuna')),
-    block('✨ Effetti',
-      otherFx.length ? h('div', { class: 'stack-xs' }, otherFx.map((e) => h('div', { class: 'small' }, e.teamId === t.id ? `▶ ${e.name}${e.targetName ? ` su ${e.targetName}` : ''}` : `◀ ${e.name} dal Settore ${e.teamName}`, e.until ? h('span', { class: 'tiny muted' }, ` · fino alle ${fmtTime(e.until)}`) : null))) : h('div', { class: 'tiny muted' }, 'Nessun effetto')),
-    block('⚑ Alleanza',
+        (t.bountyEvents || []).map((ev) => h('div', { class: 'small' }, `🏁 Taglia su sé stessi: «${ev.name}»`)))) : null,
+    otherFx.length ? block('✨ Effetti',
+      h('div', { class: 'stack-xs' }, otherFx.map((e) => h('div', { class: 'small' }, e.teamId === t.id ? `▶ ${e.name}${e.targetName ? ` su ${e.targetName}` : ''}` : `◀ ${e.name} dal Settore ${e.teamName}`, e.until ? h('span', { class: 'tiny muted' }, ` · fino alle ${fmtTime(e.until)}`) : null)))) : null,
+    ally || allyReqs.length ? block('⚑ Alleanza',
       ally ? h('div', { class: 'stack-xs' },
         h('div', { class: 'small' }, 'Alleata con ', ally.members.filter((m) => m.teamId !== t.id).map((m, i) => [i ? ', ' : '', h('strong', { style: m.color ? { color: m.color } : null }, `${m.roman} ${m.sectorName}`)])),
-        h('div', { class: 'tiny muted' }, `dalle ${fmtTime(ally.createdAt)} (${pingAgo(ally.createdAt).replace(' fa', '')})`)) : h('div', { class: 'tiny muted' }, 'Nessuna alleanza'),
-      allyReqs.map((r) => h('div', { class: 'tiny brass' }, `⏳ ${r.kind === 'break' ? 'Rottura' : 'Proposta'} ${r.from?.teamId === t.id ? `verso ${r.to?.roman} ${r.to?.sectorName}` : `da ${r.from?.roman} ${r.from?.sectorName}`}`))),
-    block(`⚔ Scontri (${wins} V · ${losses} P${draws ? ` · ${draws} pari` : ''}${elect.length ? ` · ${elect.length} con gli Eletti` : ''})`,
+        h('div', { class: 'tiny muted' }, `dalle ${fmtTime(ally.createdAt)} (${pingAgo(ally.createdAt).replace(' fa', '')})`)) : null,
+      allyReqs.map((r) => h('div', { class: 'tiny brass' }, `⏳ ${r.kind === 'break' ? 'Rottura' : 'Proposta'} ${r.from?.teamId === t.id ? `verso ${r.to?.roman} ${r.to?.sectorName}` : `da ${r.from?.roman} ${r.from?.sectorName}`}`))) : null,
+    block(`⚔ Ingaggi (${wins} V · ${losses} P${draws ? ` · ${draws} pari` : ''}${elect.length ? ` · ${elect.length} con gli Eletti` : ''})`,
       openE.length ? openE.map((e) => h('div', { class: 'small warn-text' }, `⏳ Da confermare: ${e.reporter?.roman} ${e.reporter?.sectorName} dichiara ${e.result === 'won' ? 'vinto' : e.result === 'lost' ? 'perso' : 'pari'} contro ${e.opponent?.roman} ${e.opponent?.sectorName}`)) : null,
-      done.length || elect.length ? h('div', { class: 'stack-xs' },
-        done.slice(0, 4).map((e) => { const [ico, lab] = RES[res(e)]; return h('div', { class: 'small' }, `${ico} ${lab} contro ${otherSide(e)}`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(e.resolvedAt || e.createdAt)}`)); }),
-        elect.slice(0, 2).map((f) => h('div', { class: 'small' }, `${f.winner === 'couple' ? '✅ vinto' : '❌ perso'} contro gli Eletti (squadra ${f.squadName || '?'})`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(f.resolvedAt || f.createdAt)}`))))
-        : openE.length ? null : h('div', { class: 'tiny muted' }, 'Nessuno scontro')),
+      fights.length ? [h('div', { class: 'tl-lastfight' }, fightRow(fights[0])),
+        fights.length > 1 ? tlFold(`eng-${t.id}`, `Ingaggi precedenti (${fights.length - 1})`, h('div', { class: 'stack-xs' }, fights.slice(1, 15).map(fightRow))) : null]
+        : openE.length ? null : h('div', { class: 'tiny muted' }, 'Nessun ingaggio')),
     block('⬡ Zone',
       zones.length ? h('div', { class: 'stack-xs' }, zones.map((z) => { const me = z.inside.find((x) => x.teamId === t.id); return h('div', { class: 'small' }, `${z.icon || ''} ${z.name || z.label}`, h('span', { class: 'tiny muted' }, ` · ${z.label}${me?.enteredAt ? ` · dentro da ${pingAgo(me.enteredAt).replace(' fa', '')}` : ''}${me?.immune ? ' · immune' : ''}`)); })) : h('div', { class: 'tiny muted' }, 'Fuori dalle zone')));
 }
