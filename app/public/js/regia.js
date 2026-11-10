@@ -3330,8 +3330,6 @@ function squadCard(sq, d) {
   const inv = score?.minesLeft ?? 0;
   const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id && (p.lat == null || p.moveRequestedAt));
   const gifts = d.gifts.filter((g) => g.squadId === sq.id && (g.status === 'draft' || g.moveRequestedAt));
-  const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
-  const taskTarget = targetSelect(`sq-target-${sq.id}`);
   const block = (title, ...children) => h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, title), ...children);
   const evRow = (ev) => h('li', { class: 'small' }, h('strong', null, `🏁 ${ev.name}`), h('span', { class: 'tiny muted' }, ` · ${EV_STATUS[ev.status] || ev.status}`),
     ev.status === 'running' && ev.endsAt ? h('span', { class: 'tiny' }, ' · finisce tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.endsAt}` }, '—')) : null,
@@ -3365,14 +3363,26 @@ function squadCard(sq, d) {
       h('ul', { class: 'squad-items' },
         pts.map((p) => h('li', null, '○ ', p.label, p.moveRequestedAt ? ' (da spostare)' : '', p.targetLat != null ? ' ⌖' : '')),
         gifts.map((g) => h('li', null, '○ ', `${g.label} · ${g.icon} ${g.name}`, g.moveRequestedAt ? ' (da spostare)' : '', g.targetLat != null ? ' ⌖' : '')))) : null,
-    h('form', { class: 'stack-sm squad-new-task', onsubmit: async (e) => {
-      e.preventDefault();
-      if (!taskIn.value.trim() && !taskTarget.value) return;
-      if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value, target: taskTarget.value || null }, `Incarico inviato a ${sq.name}`)) { taskIn.value = ''; taskTarget.value = ''; }
-    } }, taskIn, h('div', { class: 'row-actions' }, taskTarget, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia incarico'))),
     h('div', { class: 'row-actions team-foot' },
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => squadTaskDialog(sq) }, '＋ Nuovo incarico'),
       h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, sq.unread ? `✉️ Messaggio (${sq.unread})` : '✉️ Messaggio'),
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina squadra')));
+}
+
+// Nuovo incarico per una squadra: testo e bersaglio (facoltativo) in una finestra.
+async function squadTaskDialog(sq) {
+  const text = h('textarea', { class: 'input', rows: 3, maxlength: 300, placeholder: 'Es. presidiate il Cuore dalle 10' });
+  const target = targetSelect(`sq-target-dlg-${sq.id}`);
+  target.value = '';
+  await modal({ title: `＋ Nuovo incarico · ${sq.name}`, okLabel: 'Invia incarico',
+    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text),
+      h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo: un punto da raggiungere o una coppia)'), target),
+      h('p', { class: 'tiny muted' }, 'I membri della squadra ricevono una notifica e lo trovano in Incarichi; con una coppia come bersaglio la vedono in mappa finché l\'incarico è aperto.')),
+    onOpen: () => setTimeout(() => text.focus(), 50),
+    onOk: async () => {
+      if (!text.value.trim() && !target.value) { toast('Scrivi l\'incarico o scegli un bersaglio', 'error'); return false; }
+      return !!(await squadCall('POST', G('/tasks'), { squadId: sq.id, text: text.value, target: target.value || null }, `Incarico inviato a ${sq.name}`));
+    } });
 }
 
 // Persone → Eletti: candidature e gestione degli Eletti del Consiglio (squadra, accessi, notifiche, password, spostamenti).
