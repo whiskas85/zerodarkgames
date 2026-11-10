@@ -244,7 +244,10 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     const canRotate = rotate && !!L.Map.TouchRotate;
     // Zone e cerchi si disegnano ben oltre lo schermo (padding 1.5 = una volta e mezza la vista per lato): spostando o
     // girando la mappa non si vedono bordi tagliati che si ridisegnano.
-    map = L.map(el, { zoomControl: true, attributionControl: true, renderer: L.svg({ padding: 1.5 }), ...(canRotate ? { rotate: true, touchRotate: true, rotateControl: false, bearing: 0 } : {}) }).setView(ITALY, savedZoom || 6);
+    map = L.map(el, { zoomControl: true, attributionControl: true, renderer: L.svg({ padding: 1.5 }), ...(canRotate ? { rotate: true, touchRotate: true, rotateControl: false, bearing: 0, zoomSnap: 0.25 } : {}) }).setView(ITALY, savedZoom || 6);
+    // Gesto a due dita (zoom o rotazione): quando si alza un dito prima dell'altro, il dito rimasto non deve far
+    // scivolare la mappa per inerzia. L'inerzia si spegne con il secondo dito e torna al prossimo tocco con un dito solo.
+    if (canRotate) el.addEventListener('touchstart', (e) => { map.options.inertia = e.touches.length < 2; }, { passive: true, capture: true });
     // Bussola: l'ago punta al nord, sotto i gradi di rotazione; toccandola la mappa torna dritta (0°).
     if (canRotate) {
       const Compass = L.Control.extend({
