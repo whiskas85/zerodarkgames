@@ -1608,3 +1608,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .tl-fold > summary { cursor: pointer; color: var(--muted); user-select: none; list-style: revert; }
 .tl-fold[open] > summary { margin-bottom: 6px; }
 .tl-lastfight { padding-left: 6px; border-left: 2px solid var(--c, var(--line)); }
+/* Squadre Eletti in gara */
+.squads.squads-live { grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); align-items: stretch; }
+.squad-live { gap: 12px; grid-template-rows: auto; align-content: start; }
+.squad-live > .team-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 10px; }
+.squad-score { white-space: nowrap; padding: 2px 8px; border: 1px solid var(--c, var(--line)); border-radius: 999px; }
+.squad-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.squad-people li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.squad-people .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.squad-new-task { padding-top: 8px; border-top: 1px dashed var(--line); }

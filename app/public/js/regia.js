@@ -1774,7 +1774,7 @@ const PEOPLE_INFO = {
   attesa: 'Si sono iscritti e aspettano la decisione del Consiglio. «Accetta…» conferma il ruolo scelto o lo cambia (coppia ↔ Eletti), oppure lo porta nel Consiglio (se ha un account).',
   senza: 'Accettati ma non ancora in una coppia: accoppiali con qualcuno oppure tutti a caso.',
   coppie: 'Le coppie di Legati già formate, una per Settore.',
-  eletti: 'Gli Eletti del Consiglio, raggruppati per squadra.',
+  eletti: 'Gestione degli Eletti del Consiglio: candidature, squadra, accesso personale (QR e codice), notifiche, password, spostamenti. In gara le squadre si seguono in Squadre Eletti.',
   consiglio: 'Chi fa parte del Consiglio Zero (regia e staff): le azioni di ciascuno si scelgono nella pagina Consiglio.',
   tutti: 'Tutte le persone della partita e chi si è registrato senza iscriversi.',
 };
@@ -1867,7 +1867,7 @@ function viewPeople() {
     peopleTab === 'senza' && shown.length ? h('div', { class: 'people-bulk' },
       h('span', { class: 'small' }, `${shown.length === 1 ? '1 persona' : `${shown.length} persone`} accettate senza coppia.`),
       h('button', { class: 'btn btn-sm btn-primary', disabled: shown.length < 2, onclick: () => confirmCall('Accoppiare a caso?', 'Prima chi si è iscritto insieme, poi gli altri a caso. Ogni coppia riceve un Settore libero.', 'POST', `/api/m/games/${R.gameId}/auto-pair`, {}, 'Coppie formate') }, 'Accoppia tutti a caso')) : null,
-    accountsCache && !q && peopleTab === 'coppie' ? couplesBoard() : accountsCache && !q && peopleTab === 'eletti' ? electBoard() :
+    accountsCache && !q && peopleTab === 'coppie' ? couplesBoard() : accountsCache && peopleTab === 'eletti' ? electManage() :
     !accountsCache ? h('p', { class: 'empty' }, 'Caricamento…') : shown.length ? h('div', { class: 'people-list' }, shown.map((r) => h('div', { class: `person-row cat-${r.cat}`, draggable: ['daiscrivere', 'attesa', 'senza'].includes(r.cat) ? 'true' : null,
       ondragstart: (e) => { dragPerson = r; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', r.key); e.currentTarget.classList.add('dragging'); },
       ondragend: (e) => { e.currentTarget.classList.remove('dragging'); dragPerson = null; } },
@@ -1884,7 +1884,7 @@ function viewPeople() {
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => personDialog(r) }, 'Accetta…'),
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare l\'iscrizione?', `${r.name}: l'iscrizione verrà cancellata.`, 'POST', `/api/m/players/${r.pid}/review`, { decision: 'reject' }, 'Iscrizione rifiutata', true) }, 'Rifiuta')] : null,
         r.cat === 'daiscrivere' && r.phone ? h('a', { class: 'btn btn-sm', href: `${waUrl(r.phone)}?text=${encodeURIComponent(invite(r))}`, target: '_blank', rel: 'noopener' }, 'Invita su WhatsApp') : null,
-        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
+        r.cat === 'coppie' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#coppie' }, 'Coppie →') : r.cat === 'eletti' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre in gara →') : r.cat === 'consiglio' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#consiglio' }, 'Consiglio →') : null,
         r.accountId && !r.ops ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Password temporanea da mandare su WhatsApp', onclick: () => pwd(r) }, '🔑 Password') : null,
         r.cat === 'daiscrivere' ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => delAcc(r) }, 'Elimina') : null,
         r.pid ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => deletePersonDialog(r) }, 'Elimina…') : null))))
@@ -1978,16 +1978,6 @@ const memberDelBtn = (m, teamId) => {
     onclick: () => deletePersonDialog({ pid: m.id, name: m.name, accountId: p.accountId, username: p.username || (accountsCache || []).find((a) => a.id === p.accountId)?.username, teamId }) }, 'Elimina…');
 };
 // Eletti: raggruppati per squadra (e chi non ne ha ancora una).
-function electBoard() {
-  const ms = R.ms;
-  const members = ms.players.filter((p) => p.teamId === ms.elect?.id);
-  const groups = [...(ms.squads || []).map((sq) => ({ sq, list: members.filter((p) => p.squadId === sq.id) })), { sq: null, list: members.filter((p) => !p.squadId) }].filter((g) => g.sq || g.list.length);
-  if (!members.length && !(ms.squads || []).length) return h('p', { class: 'empty' }, 'Nessun Eletto.');
-  return h('div', { class: 'pair-board' }, groups.map(({ sq, list }) => h('div', { class: 'pair-card', style: sq?.color ? { '--c': sq.color } : null },
-    h('div', { class: 'pair-head' }, h('strong', null, sq ? `Squadra ${sq.name}` : 'Senza squadra'), h('span', { class: 'tiny muted' }, `${list.length} Eletti`)),
-    list.length ? h('ul', { class: 'pair-members' }, list.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null, memberDelBtn(m, ms.elect.id))))
-      : h('p', { class: 'tiny muted' }, 'Nessuno ancora.'))));
-}
 
 // Iscrivi (da iscrivere), Accetta (in attesa) o Accoppia (senza coppia): in una finestra, in poche scelte.
 // Drag & drop dalla lista alle schede: in attesa (torna in attesa), senza coppia (accettato), coppia, Eletti, Consiglio.
@@ -3236,7 +3226,7 @@ async function newElectDialog() {
 }
 
 // Squadre Eletti: due schede (#squadre, #squadre/incarichi); il Consiglio Zero ha la sua voce di menu.
-const SQUAD_PAGES = [['squadre', 'Squadre ed Eletti'], ['incarichi', 'Incarichi'], ['punteggio', 'Punteggio e mine']];
+const SQUAD_PAGES = [['squadre', 'Squadre in gara'], ['incarichi', 'Incarichi'], ['punteggio', 'Punteggio e mine']];
 const squadPage = () => { const k = location.hash.slice(1).split('/')[1]; return SQUAD_PAGES.some(([x]) => x === k) ? k : 'squadre'; };
 const squadNav = (page) => h('nav', { class: 'settings-nav', 'aria-label': 'Squadre Eletti' }, SQUAD_PAGES.map(([k, label]) => h('a', { href: k === 'squadre' ? '#squadre' : `#squadre/${k}`, class: k === page ? 'on' : '' }, label)));
 
@@ -3289,28 +3279,110 @@ function viewSquads() {
   if (page === 'incarichi') return h('div', { class: 'stack' }, squadNav(page), viewTaskBoard(d));
   if (page === 'punteggio') return h('div', { class: 'stack' }, squadNav(page), ...viewElectScores(d));
   const ms = R.ms;
-  const members = ms.elect.members;
-  const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
-  // A partita iniziata non si aggiungono più Eletti: le candidature in sospeso non si mostrano.
-  const candidates = PRE.includes(ms.clock.status) ? ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect') : [];
-  const progress = (sq) => {
-    const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id);
-    const gifts = d.gifts.filter((g) => g.squadId === sq.id && !['claimed', 'expired'].includes(g.status));
-    const todo = pts.filter((p) => p.lat == null || p.moveRequestedAt).length + gifts.filter((g) => g.status === 'draft' || g.moveRequestedAt).length;
-    return { pts, gifts, todo, tasksDone: sq.tasks.filter((t) => t.doneAt).length, tasksLive: sq.tasks.filter((t) => !t.cancelledAt).length };
-  };
   const openTasks = d.openTasks || [];
-  const squadName = (id) => d.squads.find((x) => x.id === id)?.name;
-  const allCandidates = candidates;
-  const shownCand = allCandidates.filter((p) => matches(squadsQ, personText(p), p.note, 'candidatura'));
-  const shownSquads = d.squads.filter((sq) => { const pr = progress(sq); return matches(squadsQ, sq.name, `squadra ${sq.name}`, sq.members.map(personText), sq.tasks.map((t) => [t.text, t.targetLabel]), pr.pts.map((p) => p.label), pr.gifts.map((g) => [g.label, g.name])); });
-  const shownMembers = members.filter((m) => { const p = byId[m.id] || m; return matches(squadsQ, personText(m), p.accessCode, squadName(m.squadId), m.squadId ? `squadra ${squadName(m.squadId)}` : 'senza squadra'); });
+  const shownSquads = d.squads.filter((sq) => matches(squadsQ, squadHay(sq, d)));
+  const free = (ms.elect?.members || []).filter((m) => !m.squadId);
+  const pendingElect = PRE.includes(ms.clock.status) ? ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect').length : 0;
 
   return h('div', { class: 'stack' },
     squadNav(page),
-    omnibar({ keep: 'squads-q', value: squadsQ, placeholder: 'Cerca squadre ed Eletti: nome, nick, team, telefono, codice, incarichi, Altari, doni…', count: shownSquads.length + shownMembers.length + shownCand.length, onInput: (v) => { squadsQ = v; render(); } }),
+    omnibar({ keep: 'squads-q', value: squadsQ, placeholder: 'Cerca nelle squadre: nome, Eletto, incarico, evento, Altare, dono…', count: shownSquads.length, onInput: (v) => { squadsQ = v; render(); } }),
+    openTasks.length ? h('a', { class: 'people-info people-link', href: '#squadre/incarichi' }, `${openTasks.length} ${openTasks.length === 1 ? 'incarico' : 'incarichi'} da assegnare: trascinali su una squadra in Incarichi →`) : null,
+    pendingElect ? h('a', { class: 'people-info people-link', href: '#persone' }, `${pendingElect} ${pendingElect === 1 ? 'candidatura' : 'candidature'} agli Eletti da approvare in Persone → Eletti →`) : null,
+    sectionActions(`Squadre degli Eletti in gara (${d.squads.length})`, [
+      h('button', { class: 'btn btn-sm btn-primary', onclick: newSquadDialog }, '+ Nuova squadra'),
+      h('a', { class: 'btn btn-sm btn-ghost', href: '#persone', onclick: () => { peopleTab = 'eletti'; } }, 'Eletti, accessi e credenziali → Persone')],
+      free.length ? h('p', { class: 'tiny warn-text' }, `${free.length} ${free.length === 1 ? 'Eletto senza squadra' : 'Eletti senza squadra'}: ${free.map((m) => m.nickname || m.name).join(', ')} (si assegnano in Persone → Eletti).`) : null,
+      shownSquads.length ? h('div', { class: 'squads squads-live' }, shownSquads.map((sq) => squadCard(sq, d)))
+        : h('p', { class: 'empty' }, d.squads.length ? `Nessuna squadra per «${squadsQ}».` : 'Nessuna squadra: crea la prima con «+ Nuova squadra».')));
+}
+
+// Testo cercabile di una squadra: membri, incarichi, eventi affidati, piazzamenti.
+function squadHay(sq, d) {
+  const evs = (R.ms.gameEvents?.list || []).filter((ev) => ev.squadId === sq.id);
+  return [sq.name, `squadra ${sq.name}`, sq.members.map((m) => [m.name, m.nickname]), sq.tasks.filter((t) => !t.cancelledAt).map((t) => [t.text, t.targetLabel]),
+    evs.map((ev) => ev.name), [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id).map((p) => p.label),
+    d.gifts.filter((g) => g.squadId === sq.id).map((g) => [g.label, g.name])];
+}
+
+// Card della squadra in gara: punteggio, Eletti (ultimo ping e mine), incarichi correnti e fatti, eventi affidati,
+// mine sul campo, piazzamenti da fare; in fondo il nuovo incarico e le azioni.
+const EV_STATUS = { draft: 'in preparazione', scheduled: 'programmato', open: 'candidature aperte', closing: 'conferme', running: 'in corso', truce: 'tregua', done: 'concluso', cancelled: 'annullato' };
+function squadCard(sq, d) {
+  const ms = R.ms;
+  const sc = ms.electScores;
+  const score = sc?.squads?.find((x) => x.id === sq.id);
+  const people = Object.fromEntries((sc?.people || []).map((p) => [p.id, p]));
+  const lastAt = Object.fromEntries((ms.squads.find((x) => x.id === sq.id)?.members || []).map((m) => [m.id, m.lastAt]));
+  const now = Date.now();
+  const tasks = sq.tasks.filter((t) => !t.cancelledAt);
+  const current = tasks.filter((t) => !t.doneAt);
+  const doneT = sq.tasks.filter((t) => t.doneAt || t.cancelledAt);
+  const evs = (ms.gameEvents?.list || []).filter((ev) => ev.squadId === sq.id);
+  const evLive = evs.filter((ev) => !['done', 'cancelled'].includes(ev.status));
+  const evDone = evs.filter((ev) => ['done', 'cancelled'].includes(ev.status));
+  const mines = (d.mines || []).filter((m) => m.squadId === sq.id);
+  const armed = mines.filter((m) => !m.triggeredAt);
+  const fired = mines.filter((m) => m.triggeredAt);
+  const inv = sq.members.reduce((n, m) => n + (people[m.id]?.minesLeft || 0), 0);
+  const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id && (p.lat == null || p.moveRequestedAt));
+  const gifts = d.gifts.filter((g) => g.squadId === sq.id && (g.status === 'draft' || g.moveRequestedAt));
+  const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
+  const taskTarget = targetSelect(`sq-target-${sq.id}`);
+  const block = (title, ...children) => h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, title), ...children);
+  const evRow = (ev) => h('li', { class: 'small' }, h('strong', null, `🏁 ${ev.name}`), h('span', { class: 'tiny muted' }, ` · ${EV_STATUS[ev.status] || ev.status}`),
+    ev.status === 'running' && ev.endsAt ? h('span', { class: 'tiny' }, ' · finisce tra ', h('span', { class: 'mono', 'data-clock': `abs:${ev.endsAt}` }, '—')) : null,
+    ev.startAt && ['draft', 'scheduled'].includes(ev.status) ? h('span', { class: 'tiny muted' }, ` · alle ${fmtTime(ev.startAt)}`) : null);
+  return h('div', { class: 'squad-card squad-live', style: { '--c': sq.color } },
+    h('div', { class: 'squad-head' },
+      h('input', { class: 'gt-color', type: 'color', value: sq.color, 'aria-label': 'Colore', onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { color: e.target.value }) }),
+      h('input', { class: 'input input-sm squad-name', value: sq.name, 'data-keep': `sq-n-${sq.id}`, onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { name: e.target.value }, 'Nome aggiornato') }),
+      score ? h('span', { class: 'squad-score', title: `${score.rank}° in classifica` }, h('strong', { class: 'mono' }, String(score.total)), h('span', { class: 'tiny muted' }, ` pt · ${score.rank}°`)) : null),
+    block(`⛨ Eletti (${sq.members.length})`,
+      sq.members.length ? h('ul', { class: 'squad-people' }, sq.members.map((m) => {
+        const at = lastAt[m.id];
+        const live = at && now - at < 5 * 60000;
+        const pp = people[m.id];
+        return h('li', null, h('span', { class: `dot ${live ? 'on' : ''}` }), h('strong', null, m.nickname || m.name),
+          h('span', { class: 'tiny muted' }, at ? ` · ping ${pingAgo(at)}` : ' · nessuna posizione'),
+          pp ? h('span', { class: `tiny ${pp.minesLeft ? 'muted' : 'warn-text'}` }, ` · 💣 ${pp.minesLeft}/${sc.mineCount}`) : null);
+      })) : h('div', { class: 'tiny muted' }, 'Nessun membro: assegnali in Persone → Eletti')),
+    block(`🎯 Incarichi correnti (${current.length})`,
+      current.length ? h('ul', { class: 'squad-tasks' }, current.map((t) => taskLine(t))) : h('div', { class: 'tiny muted' }, 'Nessun incarico in corso'),
+      doneT.length ? tlFold(`sq-done-${sq.id}`, `Fatti e annullati (${doneT.length})`, h('ul', { class: 'squad-tasks' }, doneT.map((t) => taskLine(t)))) : null),
+    block(`🏁 Eventi affidati (${evLive.length})`,
+      evLive.length ? h('ul', { class: 'squad-items' }, evLive.map(evRow)) : h('div', { class: 'tiny muted' }, 'Nessun evento in corso'),
+      evDone.length ? tlFold(`sq-ev-${sq.id}`, `Conclusi (${evDone.length})`, h('ul', { class: 'squad-items' }, evDone.map(evRow))) : null),
+    block(`💣 Mine (${inv} in inventario · ${armed.length} armate${fired.length ? ` · ${fired.length} scattate` : ''})`,
+      armed.length || fired.length ? h('ul', { class: 'squad-items' }, [...fired.slice(0, 3), ...armed].map((m) => h('li', { class: 'small' },
+        m.triggeredAt ? `💥 scattata alle ${fmtTime(m.triggeredAt)}${m.team ? ` · ${m.team.roman} ${m.team.sectorName}` : ''}` : `💣 armata alle ${fmtTime(m.placedAt)}${m.expiresAt ? ` · scade ${fmtTime(m.expiresAt)}` : ''}`,
+        h('span', { class: 'tiny muted' }, ` · ${m.author || ''}`)))) : h('div', { class: 'tiny muted' }, 'Nessuna mina sul campo')),
+    pts.length || gifts.length ? block(`📍 Piazzamenti da fare (${pts.length + gifts.length})`,
+      h('ul', { class: 'squad-items' },
+        pts.map((p) => h('li', null, '○ ', p.label, p.moveRequestedAt ? ' (da spostare)' : '', p.targetLat != null ? ' ⌖' : '')),
+        gifts.map((g) => h('li', null, '○ ', `${g.label} · ${g.icon} ${g.name}`, g.moveRequestedAt ? ' (da spostare)' : '', g.targetLat != null ? ' ⌖' : '')))) : null,
+    h('form', { class: 'stack-sm squad-new-task', onsubmit: async (e) => {
+      e.preventDefault();
+      if (!taskIn.value.trim() && !taskTarget.value) return;
+      if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value, target: taskTarget.value || null }, `Incarico inviato a ${sq.name}`)) { taskIn.value = ''; taskTarget.value = ''; }
+    } }, taskIn, h('div', { class: 'row-actions' }, taskTarget, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia incarico'))),
+    h('div', { class: 'row-actions team-foot' },
+      h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, sq.unread ? `✉️ Messaggio (${sq.unread})` : '✉️ Messaggio'),
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina squadra')));
+}
+
+// Persone → Eletti: candidature e gestione degli Eletti del Consiglio (squadra, accessi, notifiche, password, spostamenti).
+function electManage() {
+  const ms = R.ms;
+  const members = ms.elect.members;
+  const byId = Object.fromEntries(ms.players.map((p) => [p.id, p]));
+  const sqName = (id) => ms.squads.find((x) => x.id === id)?.name;
+  const candidates = PRE.includes(ms.clock.status) ? ms.players.filter((p) => p.status === 'pending' && p.requestedRole === 'elect') : [];
+  const shownCand = candidates.filter((p) => matches(peopleQ, personText(p), p.note));
+  const shownMembers = members.filter((m) => { const p = byId[m.id] || m; return matches(peopleQ, personText(m), p.accessCode, sqName(m.squadId), m.squadId ? `squadra ${sqName(m.squadId)}` : 'senza squadra'); });
+  return h('div', { class: 'stack' },
     shownCand.length ? h('div', { class: 'panel pending-panel' },
-      h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${allCandidates.length})`)),
+      h('div', { class: 'panel-head' }, h('h2', null, `Candidature agli Eletti da approvare (${candidates.length})`)),
       h('p', { class: 'muted tiny' }, 'Arrivano dal modulo di iscrizione. Accettando, la persona entra tra gli Eletti (nella squadra scelta) e il suo telefono passa subito all\'app degli Eletti con il suo accesso personale.'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
         h('thead', null, h('tr', null, ['Candidato', 'Team softair', 'Come vuole servire', 'Squadra', ''].map((x) => h('th', null, x)))),
@@ -3325,40 +3397,12 @@ function viewSquads() {
               h('button', { class: 'btn btn-sm btn-primary', onclick: () => squadCall('POST', `/api/m/players/${p.id}/review`, { decision: 'accept', squadId: Number(sel.value) || null }, `${p.name} è tra gli Eletti`) }, 'Accetta'),
               h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall('Rifiutare la candidatura?', `${p.name}: la candidatura verrà cancellata.`, 'POST', `/api/m/players/${p.id}/review`, { decision: 'reject' }, 'Candidatura rifiutata', true) }, 'Rifiuta')));
         }))))) : null,
-
-    openTasks.length ? h('a', { class: 'people-info people-link', href: '#squadre/incarichi' }, `${openTasks.length} ${openTasks.length === 1 ? 'incarico' : 'incarichi'} da assegnare: trascinali su una squadra in Incarichi →`) : null,
-
-    sectionActions(`Squadre degli Eletti (${d.squads.length})`, [h('button', { class: 'btn btn-sm btn-primary', onclick: newSquadDialog }, '+ Nuova squadra')],
-      h('p', { class: 'muted tiny' }, 'Dividi gli Eletti in squadre e manda ogni squadra a piazzare o spostare Altari e Doni (dalle sezioni Altari e Doni) o a svolgere incarichi: liberi, raggiungere un punto o raggiungere una coppia (che la squadra vede in mappa finché l\'incarico è aperto). I membri ricevono una notifica e trovano tutto nella loro app, nella voce Incarichi.'),
-      shownSquads.length ? h('div', { class: 'squads' }, shownSquads.map((sq) => {
-      const pr = progress(sq);
-      const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
-      const taskTarget = targetSelect(`sq-target-${sq.id}`);
-      return h('div', { class: 'squad-card', style: { '--c': sq.color } },
-        h('div', { class: 'squad-head' },
-          h('input', { class: 'gt-color', type: 'color', value: sq.color, 'aria-label': 'Colore', onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { color: e.target.value }) }),
-          h('input', { class: 'input input-sm squad-name', value: sq.name, 'data-keep': `sq-n-${sq.id}`, onchange: (e) => squadCall('PATCH', `/api/m/squads/${sq.id}`, { name: e.target.value }, 'Nome aggiornato') }),
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { R.chat = { kind: 'squad', id: sq.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, 'Scrivi'),
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina')),
-        h('div', { class: `tiny ${pr.todo ? 'bad' : 'muted'}` }, `${pr.todo} piazzamenti da fare · Incarichi fatti ${pr.tasksDone}/${pr.tasksLive}`),
-        h('div', { class: 'squad-members' }, sq.members.length ? sq.members.map((m) => h('span', { class: 'chip' }, m.nickname || m.name)) : h('span', { class: 'tiny muted' }, 'Nessun membro: assegnali qui sotto')),
-        pr.pts.length || pr.gifts.length ? h('ul', { class: 'squad-items' },
-          pr.pts.map((p) => { const todo = p.lat == null || p.moveRequestedAt; return h('li', { class: todo ? '' : 'done' }, todo ? '○ ' : '✓ ', p.label, p.moveRequestedAt ? ' (da spostare)' : '', p.targetLat != null && todo ? ' ⌖' : ''); }),
-          pr.gifts.map((g) => { const todo = g.status === 'draft' || g.moveRequestedAt; return h('li', { class: todo ? '' : 'done' }, todo ? '○ ' : '✓ ', `${g.label} · ${g.icon} ${g.name}`, g.moveRequestedAt ? ' (da spostare)' : '', g.targetLat != null && todo ? ' ⌖' : ''); })) : null,
-        sq.tasks.length ? h('ul', { class: 'squad-tasks' }, sq.tasks.map((t) => taskLine(t))) : null,
-        h('form', { class: 'stack-sm', onsubmit: async (e) => {
-          e.preventDefault();
-          if (!taskIn.value.trim() && !taskTarget.value) return;
-          if (await squadCall('POST', G('/tasks'), { squadId: sq.id, text: taskIn.value, target: taskTarget.value || null }, `Incarico inviato a ${sq.name}`)) { taskIn.value = ''; taskTarget.value = ''; }
-        } }, taskIn, h('div', { class: 'row-actions' }, taskTarget, h('button', { class: 'btn btn-sm btn-primary', type: 'submit' }, 'Invia'))));
-    })) : h('p', { class: 'empty' }, d.squads.length ? `Nessuna squadra per «${squadsQ}».` : 'Nessuna squadra: crea la prima con «+ Nuova squadra».')),
-
-
     sectionActions(`Eletti del Consiglio (${members.length})`, [
       h('button', { class: 'btn btn-sm btn-primary', onclick: newElectDialog }, '+ Aggiungi Eletto'),
       members.length ? h('span', { class: 'chip' }, `${ms.elect.online} online · ${ms.elect.pushDevices} con notifiche`) : null,
-      h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa accessi')],
-      h('p', { class: 'muted tiny' }, 'Ogni Eletto entra con il proprio accesso personale (QR o codice): vede la sua squadra, i suoi incarichi e i messaggi della sua squadra. Non hanno Sigillo, non usano gli Altari e non sono in classifica.'),
+      h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa accessi'),
+      h('a', { class: 'btn btn-sm btn-ghost', href: '#squadre' }, 'Squadre in gara →')],
+      h('p', { class: 'muted tiny' }, 'Ogni Eletto entra con il proprio accesso personale (QR o codice): vede la sua squadra, i suoi incarichi e i messaggi della sua squadra. Non hanno Sigillo, non usano gli Altari e non sono in classifica. Le squadre si creano in Squadre Eletti.'),
       shownMembers.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'elect-table' },
         h('thead', null, h('tr', null, ['Eletto', 'Team softair', 'Squadra', 'Notifiche', 'Accesso personale', ''].map((x) => h('th', null, x)))),
         h('tbody', null, shownMembers.map((m) => {
@@ -3367,8 +3411,8 @@ function viewSquads() {
           return h('tr', null,
             h('td', null, personLine(m), m.phone ? h('div', null, phoneLinks(m.phone)) : null),
             h('td', null, m.softairTeam || h('span', { class: 'muted' }, '—')),
-            h('td', null, d.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
-              : h('span', { class: 'tiny muted' }, 'crea una squadra')),
+            h('td', null, ms.squads.length ? h('select', { class: 'input input-sm', 'aria-label': `Squadra di ${m.name}`, onchange: (e) => squadCall('POST', `/api/m/players/${m.id}/squad`, { squadId: Number(e.target.value) || null }, Number(e.target.value) ? 'Eletto assegnato' : 'Tolto dalla squadra') }, squadOptions(m.squadId))
+              : h('a', { class: 'tiny', href: '#squadre' }, 'crea una squadra')),
             h('td', null, m.pushDevices ? h('span', { class: 'chip chip-ok' }, `attive (${m.pushDevices})`) : h('span', { class: 'chip chip-warn', title: 'Deve aprire l\'app e premere "Attiva le notifiche"' }, 'non attive')),
             h('td', null, h('div', { class: 'elect-access' },
               p.loginToken ? h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: `QR di accesso di ${m.name}`, width: 84, height: 84, loading: 'lazy' }) : null,
@@ -3377,7 +3421,7 @@ function viewSquads() {
                   h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
                   ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: 'Questo browser diventa questo Eletto' }, 'Apri app') : null)))),
             h('td', { class: 'row-actions' }, resetBtn(m), ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm', title: 'Sposta in una coppia, da solo o in scambio', onclick: () => moveToCoupleDialog(m) }, '↔ Settore…') : null, h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Togliere dagli Eletti?', `${m.name} torna tra i giocatori senza coppia.`, 'DELETE', `/api/m/elect/members/${m.id}`, undefined, 'Tolto dagli Eletti') }, 'Togli')));
-        })))) : h('p', { class: 'empty' }, members.length ? `Nessun Eletto per «${squadsQ}».` : candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')));
+        })))) : h('p', { class: 'empty' }, members.length ? `Nessun Eletto per «${peopleQ}».` : candidates.length ? 'Nessun Eletto: accetta le candidature qui sopra o aggiungili con «+ Aggiungi Eletto».' : 'Nessun Eletto: aggiungili con «+ Aggiungi Eletto».')));
 }
 
 // Incarichi: a sinistra le attività da svolgere (piazzamenti, spostamenti, incarichi); a destra le squadre.
