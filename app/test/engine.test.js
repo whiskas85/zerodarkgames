@@ -3984,3 +3984,18 @@ test('Dono dalla regia direttamente a una coppia: scelto o a caso tra alcune rar
   assert.throws(() => S.giftFromCouncil(A.id, { typeId: 'inesistente' }, 'regia'), /sconosciuto/);
   assert.ok(require('../src/field').teamGifts(A).some((x) => x.id === r.gift.id));
 });
+
+test('Dono dalla regia prima del via: la coppia lo vede ma non lo usa fino al via', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const g = setupGame(2);
+  G.control(g.id, 'ready', 'test');
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const r = S.giftFromCouncil(A.id, { typeId: 'sentinella' }, 'regia');
+  assert.ok(F.teamGifts(A).some((x) => x.id === r.gift.id && !x.usedAt));
+  assert.throws(() => F.useGift(A, r.gift.id), /partita in corso/);
+  G.control(g.id, 'circle', 'test');
+  assert.throws(() => F.useGift(A, r.gift.id), /partita in corso/);
+  G.control(g.id, 'start', 'test');
+  assert.equal(F.useGift(A, r.gift.id).ok, true);
+});
