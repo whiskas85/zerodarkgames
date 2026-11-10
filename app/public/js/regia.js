@@ -1434,9 +1434,10 @@ function viewTeams() {
 
   return h('div', { class: 'stack' },
     // In cima lo stato delle iscrizioni e, in grande, quanti Settori restano da assegnare.
-    registrationHero(ms, st, regUrl),
-    pending.length ? h('a', { class: 'people-info people-link', href: '#persone' }, `${pending.length} ${pending.length === 1 ? 'iscrizione' : 'iscrizioni'} in attesa: si accettano nella pagina Persone →`) : null,
-    h('div', null,
+    editable ? registrationHero(ms, st, regUrl) : null,
+    editable && pending.length ? h('a', { class: 'people-info people-link', href: '#persone' }, `${pending.length} ${pending.length === 1 ? 'iscrizione' : 'iscrizioni'} in attesa: si accettano nella pagina Persone →`) : null,
+    // Dal via la pagina diventa la gestione delle coppie: niente accoppiamento, solo le schede.
+    editable ? h('div', null,
       section('Accoppiamento',
         editable ? [
           h('p', { class: 'muted tiny' }, 'Seleziona due giocatori accettati, scegli il Settore (il suo Altare) e forma la coppia.'),
@@ -1453,9 +1454,9 @@ function viewTeams() {
           h('div', { class: 'row-actions' },
             h('button', { class: 'btn btn-sm', disabled: free.length < 2, onclick: () => confirmCall('Accoppiare automaticamente?', 'Solo i giocatori accettati: prima chi si è iscritto insieme, poi gli altri a caso. I Settori si assegnano in ordine.', 'POST', G('/auto-pair'), {}, 'Accoppiamento completato') }, 'Accoppia automaticamente'),
             pairSel.size ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { pairSel.clear(); render(); } }, 'Annulla selezione') : null),
-        ] : h('p', { class: 'muted' }, 'Le coppie si formano prima di aprire il cerchio.'))),
+        ] : h('p', { class: 'muted' }, 'Le coppie si formano prima di aprire il cerchio.'))) : null,
 
-    section(`Giocatori accettati senza coppia (${free.length})`,
+    !editable ? null : section(`Giocatori accettati senza coppia (${free.length})`,
       free.length ? h('div', { class: 'players' }, free.map((p) => {
         const grp = p.regGroup ? freeGroups[p.regGroup] : null;
         const sel = pairSel.has(p.id);
@@ -1472,15 +1473,16 @@ function viewTeams() {
       })) : h('p', { class: 'empty' }, pending.length ? 'Nessun giocatore accettato libero: approva le iscrizioni qui sopra.' : 'Tutti i giocatori accettati sono in coppia o tra gli Eletti.')),
 
 
-    sectionActions(`Coppie (${ms.teams.length}/${ms.sectors.filter((x) => !x.archived).length})`, [h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa credenziali')],
-      ms.teams.length ? h('div', { class: 'teams' }, ms.teams.map((t) => teamCard(t, editable))) : h('p', { class: 'empty' }, 'Nessuna coppia.')));
+    sectionActions(editable ? `Coppie (${ms.teams.length}/${ms.sectors.filter((x) => !x.archived).length})` : `Gestione delle coppie (${ms.teams.filter((t) => t.status === 'active').length} in gara)`,
+      [h('a', { class: 'btn btn-sm btn-ghost', href: '#persone', title: 'Codici d\'accesso, QR, password, scioglimento: nella scheda «In coppia» di Persone' }, 'Accessi e credenziali → Persone')],
+      ms.teams.length ? h('div', { class: `teams ${editable ? '' : 'teams-live'}` }, ms.teams.map((t) => teamCard(t, editable))) : h('p', { class: 'empty' }, 'Nessuna coppia.')));
 }
 
 function teamCard(t, editable) {
   const ms = R.ms;
-  const loginUrl = `${R.baseUrl}/login/${t.loginToken}`;
   const used = new Set(ms.teams.map((x) => x.sectorId));
-  return h('div', { class: `team-card ${t.status}` },
+  const live = !editable;
+  return h('div', { class: `team-card ${t.status} ${live ? 'team-live' : ''}`, style: t.color ? { '--c': t.color } : null },
     h('div', { class: 'team-head' },
       h('span', { class: 'team-roman' }, t.roman || '?'),
       teamLogo(t),
@@ -1488,22 +1490,101 @@ function teamCard(t, editable) {
         editable ? h('select', { class: 'input input-sm', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { sectorId: Number(e.target.value) }, 'Settore aggiornato') },
           ms.sectors.filter((s) => !s.archived || s.id === t.sectorId).map((s) => h('option', { value: s.id, selected: s.id === t.sectorId }, `${s.roman} · ${s.name}${used.has(s.id) && s.id !== t.sectorId ? ' (scambia)' : ''}`)))
           : h('strong', { class: 'team-sector' }, `Settore ${t.sectorName}`),
-        h('input', { class: 'input input-sm', 'data-keep': `tname-${t.id}`, value: t.displayName || '', placeholder: 'Nome della coppia', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { displayName: e.target.value }) })),
+        editable ? h('input', { class: 'input input-sm', 'data-keep': `tname-${t.id}`, value: t.displayName || '', placeholder: 'Nome della coppia', onchange: (e) => call('PATCH', `/api/m/teams/${t.id}`, { displayName: e.target.value }) })
+          : t.displayName ? h('div', { class: 'small muted' }, t.displayName) : null),
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
-    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? [' · ', phoneLinks(m.phone)] : null, resetBtn(m),
-      R.ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Sposta tra gli Eletti, da solo o in scambio', onclick: () => moveToElectDialog(m, t) }, '→ Eletti…') : null))),
-    teamSkills(t),
-    h('div', { class: 'team-access' },
-      h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso', width: 84, height: 84, loading: 'lazy' }),
-      h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso'), h('div', { class: 'mono access' }, t.accessCode),
-        h('div', { class: 'row-actions' },
-          h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
-          ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: "Questo browser diventa la coppia (tutte le schede dell'app coppie)" }, 'Apri app') : null))),
+    h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? [' · ', phoneLinks(m.phone)] : null))),
+    live ? teamLive(t) : teamSkills(t),
     h('div', { class: 'row-actions' },
-      editable ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Sciogliere la coppia?', 'I giocatori tornano nella lista senza coppia.', 'DELETE', `/api/m/teams/${t.id}`, undefined, 'Coppia sciolta', true) }, 'Sciogli') : null,
       t.status !== 'withdrawn' ? h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog(t) }, '🎁 Dai un Dono') : null,
-      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare l\'accesso?', 'Il vecchio QR e il vecchio codice smettono di funzionare e i dispositivi collegati escono.', 'POST', `/api/m/teams/${t.id}/regen-token`, {}, 'Accesso rigenerato', true) }, 'Rigenera accesso'),
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
+}
+
+// ---- Gestione in gara della coppia: ultimo ping con mappa rapida, Skill con ricarica, doni, taglie, effetti, zone.
+const pingAgo = (at) => { const m = Math.round((Date.now() - at) / 60000); return m < 1 ? 'adesso' : m < 60 ? `${m} min fa` : `${Math.floor(m / 60)} h ${m % 60} min fa`; };
+// Mappa rapida senza librerie: le tessere della mappa attorno all'ultimo ping, con il punto al centro.
+function miniMap(pos, color, onclick) {
+  const z = 16; const Wd = 280; const Ht = 150;
+  const n = 2 ** z;
+  const fx = ((pos.lng + 180) / 360) * n;
+  const r = (pos.lat * Math.PI) / 180;
+  const fy = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
+  const tiles = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    const tx = Math.floor(fx) + dx; const ty = Math.floor(fy) + dy;
+    tiles.push(h('img', { src: `/tiles/${z}/${tx}/${ty}.png`, alt: '', loading: 'lazy', draggable: 'false', onerror: (e) => { e.target.style.visibility = 'hidden'; },
+      style: { left: `${Math.round((tx - fx) * 256 + Wd / 2)}px`, top: `${Math.round((ty - fy) * 256 + Ht / 2)}px` } }));
+  }
+  // Raggio di precisione (a z16 ~2,4 m/pixel alla nostra latitudine).
+  const mpp = (156543.03 * Math.cos(r)) / n;
+  const accPx = pos.acc ? Math.min(70, Math.max(6, pos.acc / mpp)) : 0;
+  return h('button', { type: 'button', class: 'team-minimap', title: 'Apri sulla mappa', onclick, style: { '--c': color || '#e5484d' } }, tiles,
+    accPx ? h('span', { class: 'mm-acc', style: { width: `${accPx * 2}px`, height: `${accPx * 2}px` } }) : null, h('span', { class: 'mm-dot' }));
+}
+async function teamMapDialog(t) {
+  const p = t.lastPos;
+  const el = h('div', { class: 'team-map-big' });
+  const done = modal({ title: `📍 ${t.roman} · Settore ${t.sectorName}`, wide: true, okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' }, el, h('p', { class: 'tiny muted' }, `Ultimo ping ${pingAgo(p.at)} (${fmtTime(p.at)})${p.acc ? ` · precisione ±${Math.round(p.acc)} m` : ''} · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`),
+      h('a', { class: 'btn btn-sm', href: `https://www.google.com/maps?q=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener' }, 'Apri in Google Maps')) });
+  try {
+    const L = await loadLeaflet();
+    const map = L.map(el, { zoomControl: true }).setView([p.lat, p.lng], 17);
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17 }).addTo(map);
+    if (p.acc) L.circle([p.lat, p.lng], { radius: p.acc, color: t.color || '#e5484d', weight: 1, fillOpacity: 0.12 }).addTo(map);
+    L.circleMarker([p.lat, p.lng], { radius: 9, color: '#fff', weight: 2, fillColor: t.color || '#e5484d', fillOpacity: 1 }).addTo(map).bindTooltip(`${t.roman} ${t.sectorName}`, { permanent: true, direction: 'top' });
+    // Le altre coppie, piccole e grigie, per capire chi ha vicino.
+    for (const o of R.ms.teams) if (o.id !== t.id && o.lastPos && Date.now() - o.lastPos.at < 30 * 60000) L.circleMarker([o.lastPos.lat, o.lastPos.lng], { radius: 5, color: o.color || '#999', weight: 1, fillOpacity: 0.6 }).addTo(map).bindTooltip(`${o.roman} ${o.sectorName}`);
+    setTimeout(() => map.invalidateSize(), 150);
+  } catch { el.textContent = 'Mappa non disponibile'; }
+  await done;
+}
+function teamLive(t) {
+  const sk = R.ms.skills;
+  const now = Date.now();
+  const p = t.lastPos;
+  const stale = !p || now - p.at > 10 * 60000;
+  const block = (title, ...children) => h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, title), ...children);
+  // Skill con percentuale di ricarica.
+  const skills = (sk?.byTeam?.[t.id] || []).map((x) => {
+    const total = (x.cooldownMin || 0) * 60000;
+    const left = x.readyAt ? Math.max(0, x.readyAt - now) : 0;
+    const pct = x.kind === 'passive' ? 100 : !x.readyAt ? 100 : total ? Math.max(0, Math.min(100, Math.round(100 * (1 - left / total)))) : 0;
+    const state = x.kind === 'passive' ? 'passiva' : x.active ? `attiva${x.activeUntil ? ` fino alle ${fmtTime(x.activeUntil)}` : ''}` : x.readyAt ? `in ricarica · pronta alle ${fmtTime(x.readyAt)}` : 'pronta';
+    return h('div', { class: `tl-skill ${x.kind} ${x.active ? 'on' : ''}`, title: x.source === 'gift' ? 'Vinta con un dono' : 'Scelta prima del via' },
+      h('div', { class: 'tl-skill-head' }, h('span', null, `${x.icon} ${x.name}${x.source === 'gift' ? ' ✦' : ''}`), h('span', { class: 'mono tiny' }, x.kind === 'passive' ? '' : `${pct}%`)),
+      x.kind === 'passive' ? null : h('div', { class: 'tl-bar' }, h('i', { style: { width: `${pct}%` } })),
+      h('div', { class: 'tiny muted' }, state));
+  });
+  // Doni: da usare e già usati.
+  const gifts = t.gifts || [];
+  const unused = gifts.filter((g) => !g.usedAt);
+  const usedG = gifts.filter((g) => g.usedAt);
+  // Effetti: quelli usati dalla coppia e quelli che la colpiscono. Le taglie a parte.
+  const effects = (sk?.effects || []).filter((e) => e.teamId === t.id || e.targetTeamId === t.id);
+  const bounties = effects.filter((e) => e.code === 'taglia' && e.targetTeamId === t.id);
+  const otherFx = effects.filter((e) => !bounties.includes(e));
+  const HUNT = { hunt: '🎯 Caccia', bounty: '💰 Taglia degli Eletti', goto: '🧭 Incarico verso di loro', guard: '🛡️ Scorta' };
+  // Zone in cui si trova adesso.
+  const zones = (R.ms.mapZones?.list || []).filter((z) => (z.inside || []).some((x) => x.teamId === t.id));
+  return h('div', { class: 'team-live-grid' },
+    block('📍 Ultimo ping',
+      p ? h('div', { class: `small ${stale ? 'warn-text' : ''}` }, `${pingAgo(p.at)} · ${fmtTime(p.at)}${p.acc ? ` · ±${Math.round(p.acc)} m` : ''}`) : h('div', { class: 'small warn-text' }, 'Nessuna posizione ricevuta'),
+      p ? miniMap(p, t.color, () => teamMapDialog(t)) : null,
+      h('div', { class: 'tiny muted' }, `${t.online ? `🟢 ${t.online} online` : '⚫ offline'} · ❖ ${t.fragments}/${t.fragmentsTotal} frammenti · 🔑 ${t.codes ?? 0}/${t.codesTotal ?? 0} Sigilli`)),
+    block('✧ Skill', skills.length ? h('div', { class: 'tl-skills' }, skills) : h('div', { class: 'tiny muted' }, 'Nessuna Skill')),
+    block(`🎁 Doni (${unused.length} da usare)`,
+      unused.length ? h('div', { class: 'row-actions' }, unused.map((g) => h('span', { class: 'chip', title: g.label || '', style: g.color ? { borderColor: g.color } : null }, `${g.icon || '🎁'} ${g.name}`))) : h('div', { class: 'tiny muted' }, 'Nessun dono da usare'),
+      usedG.length ? h('div', { class: 'tiny muted' }, 'Usati: ', usedG.map((g) => `${g.icon || ''} ${g.name} (${fmtTime(g.usedAt)})`).join(' · ')) : null),
+    block('🎯 Taglie e cacce',
+      bounties.length || (t.hunts || []).length || (t.bountyEvents || []).length ? h('div', { class: 'stack-xs' },
+        bounties.map((e) => h('div', { class: 'small bad-text' }, `🚨 Taglia del Settore ${e.teamName}${e.until ? ` fino alle ${fmtTime(e.until)}` : ''}`)),
+        (t.hunts || []).map((x) => h('div', { class: 'small' }, `${HUNT[x.kind] || x.kind}${x.squadName ? ` · squadra ${x.squadName}` : ' · da assegnare'}${x.acceptedAt ? '' : ' (non ancora accettato)'}`)),
+        (t.bountyEvents || []).map((ev) => h('div', { class: 'small' }, `🏁 Taglia su sé stessi: «${ev.name}»`))) : h('div', { class: 'tiny muted' }, 'Nessuna')),
+    block('✨ Effetti',
+      otherFx.length ? h('div', { class: 'stack-xs' }, otherFx.map((e) => h('div', { class: 'small' }, e.teamId === t.id ? `▶ ${e.name}${e.targetName ? ` su ${e.targetName}` : ''}` : `◀ ${e.name} dal Settore ${e.teamName}`, e.until ? h('span', { class: 'tiny muted' }, ` · fino alle ${fmtTime(e.until)}`) : null))) : h('div', { class: 'tiny muted' }, 'Nessun effetto')),
+    block('⬡ Zone',
+      zones.length ? h('div', { class: 'stack-xs' }, zones.map((z) => { const me = z.inside.find((x) => x.teamId === t.id); return h('div', { class: 'small' }, `${z.icon || ''} ${z.name || z.label}`, h('span', { class: 'tiny muted' }, ` · ${z.label}${me?.enteredAt ? ` · dentro da ${pingAgo(me.enteredAt).replace(' fa', '')}` : ''}${me?.immune ? ' · immune' : ''}`)); })) : h('div', { class: 'tiny muted' }, 'Fuori dalle zone')));
 }
 
 // Skill della coppia (scelte prima del via o vinte con i Doni) ed effetti in corso.
@@ -1782,10 +1863,32 @@ async function addPlayerDialog() {
 function couplesBoard() {
   const teams = R.ms.teams.filter((t) => t.status !== 'withdrawn');
   if (!teams.length) return h('p', { class: 'empty' }, 'Nessuna coppia formata.');
-  return h('div', { class: 'pair-board' }, teams.map((t) => h('div', { class: 'pair-card', style: t.color ? { '--c': t.color } : null },
+  const card = (t) => h('div', { class: 'pair-card', style: t.color ? { '--c': t.color } : null },
     h('div', { class: 'pair-head' }, h('span', { class: 'mono roman' }, t.roman || '?'), h('strong', null, `Settore ${t.sectorName || '?'}`), t.displayName ? h('span', { class: 'tiny muted' }, t.displayName) : null,
       t.members.length < 2 ? h('span', { class: 'chip chip-warn' }, 'incompleta') : null),
-    h('ul', { class: 'pair-members' }, t.members.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null, memberDelBtn(m, t.id)))))));
+    h('ul', { class: 'pair-members' }, t.members.map((m) => h('li', null, h('strong', null, m.name), m.nickname ? h('span', { class: 'muted' }, ` «${m.nickname}»`) : null, m.phone ? phoneLinks(m.phone) : null,
+      resetBtn(m),
+      R.ms.game.status !== 'ended' ? h('button', { class: 'btn btn-sm btn-ghost', title: 'Sposta tra gli Eletti, da solo o in scambio', onclick: () => moveToElectDialog(m, t) }, '→ Eletti…') : null,
+      memberDelBtn(m, t.id)))),
+    teamAccess(t));
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: 'row-actions' }, h('a', { class: 'btn btn-sm', href: `/regia/stampa/credenziali/${R.gameId}`, target: '_blank' }, 'Stampa credenziali')),
+    h('div', { class: 'pair-board' }, teams.map(card)));
+}
+
+// Accesso della coppia (codice, QR, link) e scioglimento: in Persone, non nella pagina di gestione delle Coppie.
+function teamAccess(t) {
+  const ms = R.ms;
+  const loginUrl = `${R.baseUrl}/login/${t.loginToken}`;
+  const editable = ['created', 'draft', 'ready'].includes(ms.clock.status);
+  return h('div', { class: 'team-access' },
+    h('img', { src: `/api/m/qr.svg?text=${encodeURIComponent(loginUrl)}`, alt: 'QR di accesso', width: 72, height: 72, loading: 'lazy' }),
+    h('div', null, h('div', { class: 'eyebrow' }, 'Codice d\'accesso'), h('div', { class: 'mono access' }, t.accessCode),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { navigator.clipboard?.writeText(loginUrl); toast('Link di accesso copiato', 'ok'); } }, 'Copia link'),
+        ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: "Questo browser diventa la coppia (tutte le schede dell'app coppie)" }, 'Apri app') : null,
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare l\'accesso?', 'Il vecchio QR e il vecchio codice smettono di funzionare e i dispositivi collegati escono.', 'POST', `/api/m/teams/${t.id}/regen-token`, {}, 'Accesso rigenerato', true) }, 'Rigenera accesso'),
+        editable ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Sciogliere la coppia?', 'I giocatori tornano nella lista senza coppia.', 'DELETE', `/api/m/teams/${t.id}`, undefined, 'Coppia sciolta', true) }, 'Sciogli la coppia') : null)));
 }
 
 const memberDelBtn = (m, teamId) => {

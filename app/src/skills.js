@@ -1128,9 +1128,14 @@ function skillsState(me, now = Date.now()) {
 function masterSkills(gameId, now = Date.now()) {
   const rows = q.all("SELECT k.*, t.id AS tid FROM team_skills k JOIN teams t ON t.id = k.teamId WHERE t.gameId = ? ORDER BY k.id", gameId);
   const byTeam = {};
+  const g = G.getGame(gameId);
   for (const r of rows) {
     const s = skillById(r.skillId);
-    if (s) (byTeam[r.teamId] ||= []).push({ id: s.id, name: s.name, icon: s.icon, kind: s.kind, source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null });
+    // cooldownMin: per la percentuale di ricarica in regia; active: effetto della Skill in corso.
+    const fg = s ? forGame(s, g) : null;
+    const eff = s ? activeEffects(gameId, now).find((e) => e.teamId === r.teamId && e.code === s.id) : null;
+    if (s) (byTeam[r.teamId] ||= []).push({ id: s.id, name: s.name, icon: s.icon, kind: s.kind, source: r.source, readyAt: r.readyAt && r.readyAt > now ? r.readyAt : null,
+      cooldownMin: fg?.cooldownMin || null, activeUntil: eff ? eff.endsAt || null : null, active: !!eff });
   }
   const effects = activeEffects(gameId, now).map((e) => ({
     id: e.id, teamId: e.teamId, code: e.code, kind: e.kind, until: e.endsAt, targetTeamId: e.targetTeamId,
