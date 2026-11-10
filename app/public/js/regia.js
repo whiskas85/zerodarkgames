@@ -3231,6 +3231,11 @@ const squadPage = () => { const k = location.hash.slice(1).split('/')[1]; return
 const squadNav = (page) => h('nav', { class: 'settings-nav', 'aria-label': 'Squadre Eletti' }, SQUAD_PAGES.map(([k, label]) => h('a', { href: k === 'squadre' ? '#squadre' : `#squadre/${k}`, class: k === page ? 'on' : '' }, label)));
 
 // Punteggio degli Eletti (squadre e persone) e mine traccianti sul campo, con i parametri.
+// Scorta di mine di una squadra (in comune tra i suoi Eletti) con la ricarica dalla regia.
+const squadMinesTag = (x, sc) => h('span', { class: 'score-mines' },
+  h('span', { class: `tiny ${x.minesLeft ? 'muted' : 'warn-text'}` }, `💣 ${x.minesLeft}/${sc.mineCount} in inventario`),
+  h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: x.minesLeft >= sc.mineCount, onclick: () => call('POST', G('/mines/reload'), { squadId: x.id }, `Mine della squadra ${x.name} ricaricate`) }, 'Ricarica'));
+
 function viewElectScores(d) {
   const sc = R.ms.electScores;
   const g = R.ms.game;
@@ -3251,17 +3256,15 @@ function viewElectScores(d) {
     section('Classifica delle squadre',
       h('p', { class: 'muted tiny' }, 'Ogni azione riuscita vale i punti scelti qui sotto (anche per le azioni già fatte): ingaggio vinto (confermato), taglia riscossa (incarico taglia chiuso), Beacon riuscito (Altare disattivato o zona accesa), mina scattata. Gli Eletti vedono il punteggio nella loro app.'),
       legend,
-      sc.squads.length ? h('ol', { class: 'score-list' }, sc.squads.map((x) => row(x, h('span', { class: 'chip squad-chip', style: { '--c': x.color || '#d1ad62' } }, x.name)))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
+      sc.squads.length ? h('ol', { class: 'score-list' }, sc.squads.map((x) => row(x, [h('span', { class: 'chip squad-chip', style: { '--c': x.color || '#d1ad62' } }, x.name), squadMinesTag(x, sc)]))) : h('p', { class: 'empty' }, 'Nessuna squadra.')),
     section('Eletti',
       sc.people.length ? h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => confirmCall('Ricaricare le mine di tutti?', `Ogni Eletto torna a ${sc.mineCount} mine, ovunque si trovi.`, 'POST', G('/mines/reload'), {}, 'Mine ricaricate a tutti') }, '💣 Ricarica le mine a tutti')) : null,
-      sc.people.length ? h('ol', { class: 'score-list' }, sc.people.map((x) => row(x, [h('strong', null, x.name), x.squadId ? h('span', { class: 'tiny muted' }, ` · ${squadName(x.squadId) || ''}`) : null,
-        h('span', { class: 'score-mines' }, h('span', { class: `tiny ${x.minesLeft ? 'muted' : 'warn-text'}` }, `💣 ${x.minesLeft}/${sc.mineCount} mine`),
-          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', disabled: x.minesLeft >= sc.mineCount, onclick: () => call('POST', G('/mines/reload'), { playerId: x.id }, `Mine di ${x.name} ricaricate`) }, 'Ricarica'))]))) : h('p', { class: 'empty' }, 'Nessun Eletto.'),
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => confirmCall('Ricaricare le mine di tutte le squadre?', `Ogni squadra torna a ${sc.mineCount} mine, ovunque siano gli Eletti.`, 'POST', G('/mines/reload'), {}, 'Mine ricaricate a tutte le squadre') }, '💣 Ricarica le mine a tutte le squadre')) : null,
+      sc.people.length ? h('ol', { class: 'score-list' }, sc.people.map((x) => row(x, [h('strong', null, x.name), x.squadId ? h('span', { class: 'tiny muted' }, ` · ${squadName(x.squadId) || ''}`) : h('span', { class: 'tiny warn-text' }, ` · senza squadra · 💣 ${x.minesLeft}/${sc.mineCount}`)]))) : h('p', { class: 'empty' }, 'Nessun Eletto.'),
       sc.recent.length ? h('details', null, h('summary', { class: 'small' }, `Ultime azioni (${sc.recent.length})`),
         h('ul', { class: 'tiny' }, sc.recent.map((r) => h('li', null, `${fmtTime(r.at)} · ${sc.kinds[r.kind]?.icon || ''} ${r.label || sc.kinds[r.kind]?.label}${r.who ? ` · ${r.who}` : ''}${r.squadId ? ` · ${squadName(r.squadId) || ''}` : ''} · +${r.points}`)))) : null),
     section(`Mine traccianti sul campo (${armed.length} armate)`,
-      h('p', { class: 'muted tiny' }, 'Le vedono regia ed Eletti (in mappa: 💣 oro armata, rossa scattata). La prima coppia che passa nel raggio è marcata: tutti la vedono in mappa per i minuti scelti e lei lo scopre un minuto dopo. Ogni Eletto ha il suo numero di mine e le ricarica alla Base degli Eletti (Altari e Parola → Luoghi del gioco) oppure gliele ricarica la regia (qui sopra, in Eletti). Una mina non scattata scade dopo la durata scelta nei parametri.'),
+      h('p', { class: 'muted tiny' }, 'Le vedono regia ed Eletti (in mappa: 💣 oro armata, rossa scattata). La prima coppia che passa nel raggio è marcata: tutti la vedono in mappa per i minuti scelti e lei lo scopre un minuto dopo. Le mine sono della squadra: un\'unica scorta in comune che chiunque della squadra ricarica alla Base degli Eletti (Altari e Parola → Luoghi del gioco), oppure la ricarica la regia (qui sopra, nella classifica delle squadre). Una mina non scattata scade dopo la durata scelta nei parametri.'),
       mines.length ? h('ul', { class: 'stack-sm' }, [...fired, ...armed].map((m) => h('li', { class: 'row-actions' },
         h('span', { class: 'pin pin-trap' + (m.triggeredAt ? (m.markUntil ? ' pin-trap-marked' : ' pin-trap-spent') : '') }, '💣'),
         h('span', { class: 'grow small' }, m.triggeredAt ? `Scattata alle ${fmtTime(m.triggeredAt)}${m.team ? ` · ${m.team.roman} ${m.team.sectorName}` : ''}${m.markUntil ? ` · marcata fino alle ${fmtTime(m.markUntil)}` : ''}` : `Armata · posata alle ${fmtTime(m.placedAt)}${m.expiresAt ? ` · scade alle ${fmtTime(m.expiresAt)}` : ''}`,
@@ -3324,7 +3327,7 @@ function squadCard(sq, d) {
   const mines = (d.mines || []).filter((m) => m.squadId === sq.id);
   const armed = mines.filter((m) => !m.triggeredAt);
   const fired = mines.filter((m) => m.triggeredAt);
-  const inv = sq.members.reduce((n, m) => n + (people[m.id]?.minesLeft || 0), 0);
+  const inv = score?.minesLeft ?? 0;
   const pts = [...(d.landmarks || []), ...d.points].filter((p) => p.squadId === sq.id && (p.lat == null || p.moveRequestedAt));
   const gifts = d.gifts.filter((g) => g.squadId === sq.id && (g.status === 'draft' || g.moveRequestedAt));
   const taskIn = h('input', { class: 'input input-sm', 'data-keep': `sq-task-${sq.id}`, placeholder: 'Nuovo incarico (es. presidiate il Cuore dalle 10)', maxlength: 300 });
@@ -3345,7 +3348,7 @@ function squadCard(sq, d) {
         const pp = people[m.id];
         return h('li', null, h('span', { class: `dot ${live ? 'on' : ''}` }), h('strong', null, m.nickname || m.name),
           h('span', { class: 'tiny muted' }, at ? ` · ping ${pingAgo(at)}` : ' · nessuna posizione'),
-          pp ? h('span', { class: `tiny ${pp.minesLeft ? 'muted' : 'warn-text'}` }, ` · 💣 ${pp.minesLeft}/${sc.mineCount}`) : null);
+          pp?.total ? h('span', { class: 'tiny muted' }, ` · ${pp.total} pt`) : null);
       })) : h('div', { class: 'tiny muted' }, 'Nessun membro: assegnali in Persone → Eletti')),
     block(`🎯 Incarichi correnti (${current.length})`,
       current.length ? h('ul', { class: 'squad-tasks' }, current.map((t) => taskLine(t))) : h('div', { class: 'tiny muted' }, 'Nessun incarico in corso'),
@@ -3353,7 +3356,8 @@ function squadCard(sq, d) {
     block(`🏁 Eventi affidati (${evLive.length})`,
       evLive.length ? h('ul', { class: 'squad-items' }, evLive.map(evRow)) : h('div', { class: 'tiny muted' }, 'Nessun evento in corso'),
       evDone.length ? tlFold(`sq-ev-${sq.id}`, `Conclusi (${evDone.length})`, h('ul', { class: 'squad-items' }, evDone.map(evRow))) : null),
-    block(`💣 Mine (${inv} in inventario · ${armed.length} armate${fired.length ? ` · ${fired.length} scattate` : ''})`,
+    block(`💣 Mine della squadra (${armed.length} armate${fired.length ? ` · ${fired.length} scattate` : ''})`,
+      score ? squadMinesTag(score, sc) : null,
       armed.length || fired.length ? h('ul', { class: 'squad-items' }, [...fired.slice(0, 3), ...armed].map((m) => h('li', { class: 'small' },
         m.triggeredAt ? `💥 scattata alle ${fmtTime(m.triggeredAt)}${m.team ? ` · ${m.team.roman} ${m.team.sectorName}` : ''}` : `💣 armata alle ${fmtTime(m.placedAt)}${m.expiresAt ? ` · scade ${fmtTime(m.expiresAt)}` : ''}`,
         h('span', { class: 'tiny muted' }, ` · ${m.author || ''}`)))) : h('div', { class: 'tiny muted' }, 'Nessuna mina sul campo')),
@@ -6118,7 +6122,7 @@ function gameForm(g, isNew, only = null) {
       nodeScanMin: () => f('nodeScanMin', 'Validità scansione con Memoria del Nodo (min)', 'number', { def: 30, attrs: { min: 0 } }),
       eyeMin: () => f('eyeMin', 'Occhio del Consiglio: durata (min)', 'number', { def: 10, attrs: { min: 1 } }),
       eyeRadiusM: () => f('eyeRadiusM', 'Occhio del Consiglio: raggio (m)', 'number', { def: 500, attrs: { min: 50 } }),
-      mineCount: () => f('mineCount', 'Mine traccianti per Eletto (si ricaricano alla Base o dalla regia)', 'number', { def: 3, attrs: { min: 0, max: 20 } }),
+      mineCount: () => f('mineCount', 'Mine traccianti per squadra (scorta comune della squadra, si ricarica alla Base o dalla regia)', 'number', { def: 3, attrs: { min: 0, max: 20 } }),
       mineRadiusM: () => f('mineRadiusM', 'Raggio della mina (m)', 'number', { def: 20, attrs: { min: 5, max: 200 } }),
       mineMarkMin: () => f('mineMarkMin', 'Coppia marcata e visibile a tutti per (min)', 'number', { def: 5, attrs: { min: 1, max: 60 } }),
       mineLifeMin: () => f('mineLifeMin', 'Durata di una mina dalla posa (min, 0 = senza scadenza)', 'number', { def: 60, attrs: { min: 0, max: 1440 } }),

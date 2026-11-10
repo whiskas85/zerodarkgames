@@ -781,6 +781,8 @@ CREATE TABLE IF NOT EXISTS elect_mines (
 CREATE INDEX IF NOT EXISTS ix_mines_game ON elect_mines(gameId, triggeredAt, removedAt);
 `);
 addColumn('players', 'minesReloadAt', 'INTEGER');
+// Le mine sono della squadra: un'unica scorta per squadra, ricaricata alla Base o dalla regia.
+addColumn('elect_squads', 'minesReloadAt', 'INTEGER');
 addColumn('games', 'mineCount', 'INTEGER NOT NULL DEFAULT 3');
 addColumn('games', 'mineRadiusM', 'INTEGER NOT NULL DEFAULT 20');
 addColumn('games', 'mineMarkMin', 'INTEGER NOT NULL DEFAULT 5');

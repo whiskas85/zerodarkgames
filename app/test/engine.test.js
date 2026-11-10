@@ -3087,6 +3087,38 @@ test('nome della coppia dall\'app: si cambia fino al via, poi è bloccato', () =
   assert.equal(team().displayName, 'Ombre');
 });
 
+test('mine degli Eletti: la scorta è della squadra (condivisa), si ricarica per squadra', () => {
+  const F = require('../src/field');
+  const M = require('../src/mines');
+  const g = setupGame(2);
+  const e1 = G.addElectPerson(g.id, { name: 'Uno' }, 'test');
+  const e2 = G.addElectPerson(g.id, { name: 'Due' }, 'test');
+  const e3 = G.addElectPerson(g.id, { name: 'Tre' }, 'test');
+  const alfa = F.createSquad(g.id, { name: 'Alfa' }, 'test').id;
+  const beta = F.createSquad(g.id, { name: 'Beta' }, 'test').id;
+  F.setMemberSquad(e1, alfa, 'test'); F.setMemberSquad(e2, alfa, 'test'); F.setMemberSquad(e3, beta, 'test');
+  const elect = teamsOf(g.id).find((t) => t.kind === 'elect');
+  const P = (id) => q.get('SELECT * FROM players WHERE id = ?', id);
+  G.updateGame(g.id, { mineCount: 3 }, 'test');
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  M.placeMine(elect, P(e1), { lat: 45, lng: 9 });
+  M.placeMine(elect, P(e2), { lat: 45.01, lng: 9 });
+  // Uno e Due condividono la scorta di Alfa; Tre (Beta) ha la sua intera.
+  assert.equal(M.electMines(elect, P(e1)).left, 1);
+  assert.equal(M.electMines(elect, P(e2)).left, 1);
+  assert.equal(M.electMines(elect, P(e2)).squadName, 'Alfa');
+  assert.equal(M.electMines(elect, P(e3)).left, 3);
+  M.placeMine(elect, P(e1), { lat: 45.02, lng: 9 });
+  assert.throws(() => M.placeMine(elect, P(e2), { lat: 45.03, lng: 9 }), /Mine finite/);
+  const sc = M.scoresOf(g.id);
+  assert.equal(sc.squads.find((x) => x.id === alfa).minesLeft, 0);
+  assert.equal(sc.squads.find((x) => x.id === beta).minesLeft, 3);
+  // Ricarica dalla regia per squadra: torna piena per tutti quelli della squadra.
+  M.reloadByRegia(g.id, { squadId: alfa }, 'regia');
+  assert.equal(M.electMines(elect, P(e2)).left, 3);
+  assert.equal(M.electMines(elect, P(e1)).left, 3);
+});
+
 test('mine traccianti degli Eletti: si posano, marcano la coppia per 5 minuti (lo scopre dopo 1), si ricaricano alla Base; punteggio', () => {
   const F = require('../src/field');
   const K = require('../src/combat');

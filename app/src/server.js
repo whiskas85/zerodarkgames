@@ -766,7 +766,7 @@ m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? 
 m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 // Ricarica delle mine dalla regia: un Eletto ({ playerId }) o tutti (senza playerId).
-m.post('/games/:id/mines/reload', wrap((req) => MN.reloadByRegia(gameId(req), req.body?.playerId || null, actor(req))));
+m.post('/games/:id/mines/reload', wrap((req) => MN.reloadByRegia(gameId(req), { squadId: req.body?.squadId || null, playerId: req.body?.playerId || null }, actor(req))));
 m.put('/games/:id/radio', wrap((req) => G.setRadio(gameId(req), req.body || {}, actor(req))));
 m.post('/games/:id/action', wrap((req) => { G.control(gameId(req), req.body.action, actor(req)); return { ok: true }; }));
 
