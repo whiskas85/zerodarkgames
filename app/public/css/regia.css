@@ -138,7 +138,7 @@ tr.row-withdrawn td { opacity: .5; }
 .player.grouped { border-left: 5px solid var(--brass); }
 .player-main { all: unset; cursor: pointer; display: block; padding: 4px; }
 .player-main:focus-visible { outline: 3px solid var(--brass); }
-.teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 600px), 1fr)); gap: 12px; }
 .team-card { border: 2px solid var(--line); background: var(--bg); padding: 12px; display: grid; gap: 10px; }
 .team-card.won { border-color: var(--ok); }
 .team-card.withdrawn { opacity: .6; }
@@ -943,7 +943,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .chip.sev-grave { background: #d0021b; border-color: #ff3b2f; color: #fff; font-weight: 800; }
 .sos-comment-r { padding: 6px 10px; border-left: 4px solid #d0021b; background: rgba(208, 2, 27, .1); }
 /* Persone: coppie ed Eletti a schede, scelta del ruolo, accoppiamento in blocco */
-.pair-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.pair-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 10px; }
 .pair-card { display: grid; gap: 8px; padding: 10px 12px; border: 2px solid var(--line); border-left: 6px solid var(--c, var(--brass)); background: var(--paper); border-radius: 6px; }
 .pair-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .pair-head .roman { color: var(--c, var(--brass)); font-weight: 700; }
@@ -1560,3 +1560,22 @@ label.check { display: flex; align-items: center; gap: 8px; }
 
 .tv-formats { flex-wrap: wrap; border-radius: 14px; }
 .tv-stills-tall { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+
+/* Coppie in gara: pannello di gestione */
+.team-live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.tl-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tl-skills { display: grid; gap: 6px; }
+.tl-skill { padding: 6px 8px; border: 1px solid var(--line, #333); border-radius: 8px; }
+.tl-skill.on { border-color: #46c46a; }
+.tl-skill-head { display: flex; justify-content: space-between; gap: 6px; font-size: 14px; }
+.tl-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; margin: 4px 0 2px; }
+.tl-bar i { display: block; height: 100%; background: var(--c, #d1ad62); }
+.tl-skill.passive .tiny { color: #46c46a; }
+.team-minimap { position: relative; width: 100%; max-width: 280px; height: 150px; overflow: hidden; border-radius: 10px; border: 1px solid var(--line, #333); padding: 0; background: #111; cursor: zoom-in; }
+.team-minimap img { position: absolute; width: 256px; height: 256px; filter: saturate(.7) brightness(.85); pointer-events: none; }
+.team-minimap .mm-dot { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 0 10px var(--c); }
+.team-minimap .mm-acc { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: color-mix(in srgb, var(--c) 18%, transparent); border: 1px solid var(--c); }
+.team-map-big { height: min(65vh, 520px); border-radius: 10px; overflow: hidden; }
+.stack-xs { display: flex; flex-direction: column; gap: 3px; }
+.pair-card .team-access { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line, #333); }
+.pair-card .team-access .row-actions { flex-wrap: wrap; }

@@ -37,6 +37,17 @@ function teamsOf(gameId) {
                 WHERE t.gameId = ? AND t.kind = 'couple' ORDER BY COALESCE(s.ord, 99), t.id`, gameId);
 }
 
+// Per la regia: ultima posizione, inventario dei doni, cacce e taglie degli Eletti, eventi «taglia su sé stessi».
+function coupleOps(t) {
+  const lastPos = q.get('SELECT lat, lng, acc, at FROM positions WHERE teamId = ? ORDER BY at DESC LIMIT 1', t.id) || null;
+  const gifts = q.all('SELECT id, typeId, name, icon, color, label, claimedAt, usedAt FROM gifts WHERE claimedByTeamId = ? ORDER BY claimedAt', t.id);
+  const hunts = q.all(`SELECT k.id, k.kind, k.text, k.acceptedAt, s.name AS squadName FROM squad_tasks k LEFT JOIN elect_squads s ON s.id = k.squadId
+                       WHERE k.targetTeamId = ? AND k.kind IN ('hunt', 'bounty', 'goto', 'guard') AND k.doneAt IS NULL AND k.cancelledAt IS NULL ORDER BY k.id`, t.id);
+  const bountyEvents = q.all(`SELECT ev.id, ev.name, ev.startedAt, ev.durationMin FROM game_events ev JOIN event_entries e ON e.eventId = ev.id
+                              WHERE e.teamId = ? AND e.status = 'accepted' AND ev.mode = 'bounty' AND ev.status = 'running'`, t.id);
+  return { lastPos, gifts, hunts, bountyEvents };
+}
+
 function membersOf(teamId) {
   return q.all('SELECT id, name, nickname, phone, softairTeam, squadId FROM players WHERE teamId = ? ORDER BY id', teamId);
 }
@@ -2627,6 +2638,8 @@ function masterState(gameId) {
       // Sigilli conosciuti dalla coppia (proprio, rivelati, conquistati) sui Settori in gioco.
       codes: t.kind === 'couple' ? [...require('./combat').knownSectors(t)].filter((sid) => inPlaySectors.has(sid)).length : null, codesTotal: inPlaySectors.size,
       lastUnlock: lastUnlock[t.id] || null, online: online[t.id] || 0, unread: unread[t.id] || 0, owned: owned[t.id] || [], pushDevices: pushDevices[t.id] || 0,
+      // Gestione in gara: ultimo ping, doni, chi le dà la caccia.
+      ...(t.kind === 'couple' ? coupleOps(t) : {}),
     })),
     elect: {
       id: elect.id, displayName: elect.displayName, accessCode: elect.accessCode, loginToken: elect.loginToken,
