@@ -1591,3 +1591,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .tl-skill.charging .tl-bar i { background: linear-gradient(90deg, #d1ad62, #f0c674); }
 .tl-skill:not(.charging):not(.passive) .tl-bar i { background: #46c46a; }
 .tl-gift { padding: 5px 9px; border-radius: 8px; border-left: 3px solid var(--gc, #d1ad62); background: rgba(255,255,255,.03); }
+/* Card coppia: azioni nel footer, blocchi a scomparsa */
+.team-card { grid-template-rows: auto auto 1fr auto; }
+.team-card > .team-foot { border-top: 1px solid var(--line); padding-top: 10px; align-self: end; }
+.tl-fold > summary { cursor: pointer; color: var(--muted); user-select: none; list-style: revert; }
+.tl-fold[open] > summary { margin-bottom: 6px; }
+.tl-lastfight { padding-left: 6px; border-left: 2px solid var(--c, var(--line)); }
+.tl-msgs { padding: 8px; border: 1px solid var(--line); max-height: 160px; overflow: auto; }
