@@ -748,6 +748,15 @@ function tick() {
     }
     if (el.textContent !== t) el.textContent = t;
   }
+  // Barre di ricarica delle Skill (data-rc="inizio:fine"): avanzano da sole.
+  for (const el of document.querySelectorAll('[data-rc]')) {
+    const [a, b] = el.dataset.rc.split(':').map(Number);
+    const pct = b > a ? Math.max(0, Math.min(100, Math.round((100 * (clock.serverNow() - a)) / (b - a)))) : 100;
+    const w = `${pct}%`;
+    if (el.style.width !== w) el.style.width = w;
+    const lab = el.closest('.tl-skill')?.querySelector('.tl-pct');
+    if (lab && lab.textContent !== w) lab.textContent = w;
+  }
   // «x min fa» che avanza da solo (ultimo ping di Traccar…).
   for (const el of document.querySelectorAll('[data-ago]')) {
     const t = agoText(Number(el.dataset.ago));
@@ -1495,7 +1504,7 @@ function teamCard(t, editable) {
           : t.displayName ? h('div', { class: 'small muted' }, t.displayName) : null),
       t.status === 'won' ? h('span', { class: 'chip chip-ok' }, `${t.finishPosition}°`) : t.status === 'withdrawn' ? h('span', { class: 'chip' }, 'ritirata') : null),
     h('div', { class: 'team-members' }, t.members.map((m) => h('div', null, personLine(m), m.softairTeam ? h('span', { class: 'tiny muted' }, ` · ${m.softairTeam}`) : null, m.phone ? [' · ', phoneLinks(m.phone)] : null))),
-    live ? teamLive(t) : teamSkills(t),
+    live ? teamLive(t) : h('div', { class: 'team-live-grid' }, skillsBlock(t), giftsBlock(t)),
     h('div', { class: 'row-actions' },
       t.status !== 'withdrawn' ? h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog(t) }, '🎁 Dai un Dono') : null,
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
@@ -1540,27 +1549,44 @@ async function teamMapDialog(t) {
   } catch { el.textContent = 'Mappa non disponibile'; }
   await done;
 }
+// Skill della coppia: barra di ricarica e tempo che manca (avanzano da soli), attiva, pronta o passiva.
+function skillsBlock(t) {
+  const list = R.ms.skills?.byTeam?.[t.id] || [];
+  const now = clock.serverNow();
+  const rows = list.map((x) => {
+    const total = (x.cooldownMin || 0) * 60000;
+    const recharging = x.kind !== 'passive' && x.readyAt && x.readyAt > now;
+    const start = recharging ? x.readyAt - total : 0;
+    const pct = !recharging ? 100 : total ? Math.max(0, Math.min(100, Math.round((100 * (now - start)) / total))) : 0;
+    return h('div', { class: `tl-skill ${x.kind} ${x.active ? 'on' : ''} ${recharging ? 'charging' : ''}`, title: x.source === 'gift' ? 'Vinta con un dono' : 'Scelta prima del via' },
+      h('div', { class: 'tl-skill-head' }, h('span', null, `${x.icon} ${x.name}${x.source === 'gift' ? ' ✦' : ''}`), x.kind === 'passive' ? null : h('span', { class: 'mono tiny tl-pct' }, `${pct}%`)),
+      x.kind === 'passive' ? null : h('div', { class: 'tl-bar' }, h('i', { style: { width: `${pct}%` }, 'data-rc': recharging && total ? `${start}:${x.readyAt}` : null })),
+      h('div', { class: 'tiny muted' },
+        x.kind === 'passive' ? 'passiva · sempre attiva'
+          : x.active ? [`attiva${x.activeUntil ? ` · finisce tra ` : ''}`, x.activeUntil ? h('span', { class: 'mono', 'data-clock': `abs:${x.activeUntil}` }, '—') : null]
+            : recharging ? ['in ricarica · pronta tra ', h('strong', { class: 'mono', 'data-clock': `abs:${x.readyAt}` }, '—'), ` (alle ${fmtTime(x.readyAt)})`]
+              : 'pronta'));
+  });
+  return h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, '✧ Skill'), rows.length ? h('div', { class: 'tl-skills' }, rows) : h('div', { class: 'tiny muted' }, 'Nessuna Skill scelta'));
+}
+// Doni in possesso della coppia: da usare (con il motivo/etichetta) e già usati.
+function giftsBlock(t) {
+  const gifts = t.gifts || [];
+  const unused = gifts.filter((g) => !g.usedAt);
+  const usedG = gifts.filter((g) => g.usedAt);
+  return h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, `🎁 Doni in possesso (${unused.length} da usare)`),
+    unused.length ? h('div', { class: 'stack-xs' }, unused.map((g) => h('div', { class: 'tl-gift', style: g.color ? { '--gc': g.color } : null },
+      h('strong', null, `${g.icon || '🎁'} ${g.name}`), h('span', { class: 'tiny muted' }, ` · ${g.label || 'Dono'} · preso alle ${fmtTime(g.claimedAt)}`)))) : h('div', { class: 'tiny muted' }, 'Nessun dono da usare'),
+    usedG.length ? h('div', { class: 'tiny muted' }, 'Già usati: ', usedG.map((g) => `${g.icon || ''} ${g.name} (${fmtTime(g.usedAt)})`).join(' · ')) : null);
+}
+
 function teamLive(t) {
   const sk = R.ms.skills;
   const now = Date.now();
   const p = t.lastPos;
   const stale = !p || now - p.at > 10 * 60000;
   const block = (title, ...children) => h('div', { class: 'tl-block' }, h('div', { class: 'eyebrow' }, title), ...children);
-  // Skill con percentuale di ricarica.
-  const skills = (sk?.byTeam?.[t.id] || []).map((x) => {
-    const total = (x.cooldownMin || 0) * 60000;
-    const left = x.readyAt ? Math.max(0, x.readyAt - now) : 0;
-    const pct = x.kind === 'passive' ? 100 : !x.readyAt ? 100 : total ? Math.max(0, Math.min(100, Math.round(100 * (1 - left / total)))) : 0;
-    const state = x.kind === 'passive' ? 'passiva' : x.active ? `attiva${x.activeUntil ? ` fino alle ${fmtTime(x.activeUntil)}` : ''}` : x.readyAt ? `in ricarica · pronta alle ${fmtTime(x.readyAt)}` : 'pronta';
-    return h('div', { class: `tl-skill ${x.kind} ${x.active ? 'on' : ''}`, title: x.source === 'gift' ? 'Vinta con un dono' : 'Scelta prima del via' },
-      h('div', { class: 'tl-skill-head' }, h('span', null, `${x.icon} ${x.name}${x.source === 'gift' ? ' ✦' : ''}`), h('span', { class: 'mono tiny' }, x.kind === 'passive' ? '' : `${pct}%`)),
-      x.kind === 'passive' ? null : h('div', { class: 'tl-bar' }, h('i', { style: { width: `${pct}%` } })),
-      h('div', { class: 'tiny muted' }, state));
-  });
-  // Doni: da usare e già usati.
-  const gifts = t.gifts || [];
-  const unused = gifts.filter((g) => !g.usedAt);
-  const usedG = gifts.filter((g) => g.usedAt);
+
   // Effetti: quelli usati dalla coppia e quelli che la colpiscono. Le taglie a parte.
   const effects = (sk?.effects || []).filter((e) => e.teamId === t.id || e.targetTeamId === t.id);
   const bounties = effects.filter((e) => e.code === 'taglia' && e.targetTeamId === t.id);
@@ -1589,10 +1615,8 @@ function teamLive(t) {
       p ? h('div', { class: `small ${stale ? 'warn-text' : ''}` }, `${pingAgo(p.at)} · ${fmtTime(p.at)}${p.acc ? ` · ±${Math.round(p.acc)} m` : ''}`) : h('div', { class: 'small warn-text' }, 'Nessuna posizione ricevuta'),
       p ? miniMap(p, t.color, () => teamMapDialog(t)) : null,
       h('div', { class: 'tiny muted' }, `${t.online ? `🟢 ${t.online} online` : '⚫ offline'} · ❖ ${t.fragments}/${t.fragmentsTotal} frammenti · 🔑 ${t.codes ?? 0}/${t.codesTotal ?? 0} Sigilli`)),
-    block('✧ Skill', skills.length ? h('div', { class: 'tl-skills' }, skills) : h('div', { class: 'tiny muted' }, 'Nessuna Skill')),
-    block(`🎁 Doni (${unused.length} da usare)`,
-      unused.length ? h('div', { class: 'row-actions' }, unused.map((g) => h('span', { class: 'chip', title: g.label || '', style: g.color ? { borderColor: g.color } : null }, `${g.icon || '🎁'} ${g.name}`))) : h('div', { class: 'tiny muted' }, 'Nessun dono da usare'),
-      usedG.length ? h('div', { class: 'tiny muted' }, 'Usati: ', usedG.map((g) => `${g.icon || ''} ${g.name} (${fmtTime(g.usedAt)})`).join(' · ')) : null),
+    skillsBlock(t),
+    giftsBlock(t),
     block('🎯 Taglie e cacce',
       bounties.length || (t.hunts || []).length || (t.bountyEvents || []).length ? h('div', { class: 'stack-xs' },
         bounties.map((e) => h('div', { class: 'small bad-text' }, `🚨 Taglia del Settore ${e.teamName}${e.until ? ` fino alle ${fmtTime(e.until)}` : ''}`)),
