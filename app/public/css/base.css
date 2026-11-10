@@ -536,8 +536,14 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .zdg-nav-btn { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 0; border-radius: 6px; background: #3b82f6; color: #fff; font: 700 14px var(--f-ui, sans-serif); cursor: pointer; }
 .zdg-nav-label { background: none; border: 0; }
 .zdg-nav-dist { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 3px 9px; border-radius: 999px; background: #1d4ed8; color: #fff; font: 800 13px var(--f-ui, sans-serif); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); border: 2px solid #fff; }
-.zdg-nav-bar { position: absolute; z-index: 1000; bottom: 34px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 110px); padding: 6px 6px 6px 12px; border-radius: 999px; background: rgba(15, 23, 42, .92); color: #fff; font: 700 14px var(--f-ui, sans-serif); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); border: 2px solid #3b82f6; }
+.zdg-nav-bar { position: absolute; z-index: 1000; bottom: 34px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 140px); padding: 6px 6px 6px 12px; border-radius: 999px; background: rgba(15, 23, 42, .92); color: #fff; font: 700 14px var(--f-ui, sans-serif); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); border: 2px solid #3b82f6; }
 .zdg-nav-bar[hidden] { display: none; }
 .zdg-nav-bar.arrived { border-color: #22c55e; }
 .zdg-nav-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zdg-nav-stop { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .15); color: #fff; font-size: 15px; cursor: pointer; }
+/* Bussola della mappa ruotabile: ago verso il nord e gradi; tocco = di nuovo dritta (0°) */
+.zdg-compass { display: grid; justify-items: center; gap: 0; width: 46px; padding: 4px 0 3px; border: 2px solid rgba(0, 0, 0, .3); border-radius: 8px; background: rgba(15, 23, 42, .9); color: #fff; cursor: pointer; font: 700 11px var(--f-mono, monospace); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+.zdg-compass-rose { display: block; width: 26px; height: 26px; transition: transform .15s linear; }
+.zdg-compass-rose svg { display: block; }
+.zdg-compass-deg { line-height: 1.2; }
+.zdg-compass.turned { border-color: #e5484d; }

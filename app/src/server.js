@@ -1168,6 +1168,8 @@ app.get('/u/:token', sendPage('index.html'));
 app.get('/campo', sendPage('campo.html'));
 // Leaflet per le mappe OpenTopoMap (servito localmente: funziona anche con poca rete).
 app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve('leaflet/package.json')), 'dist'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
+// Rotazione della mappa (due dita e bussola) nelle app di coppie ed Eletti.
+app.use('/vendor/leaflet-rotate', express.static(path.join(path.dirname(require.resolve('leaflet-rotate/package.json')), 'dist'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 app.get('/regia', sendPage('regia.html'));
 app.get('/soglia', sendPage('soglia.html'));
 app.get('/armi', sendPage('armi.html'));
