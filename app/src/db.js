@@ -691,6 +691,8 @@ addColumn('zone_presence', 'outsideSince', 'INTEGER');
 addColumn('zone_presence', 'heldMs', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('zone_presence', 'runSince', 'INTEGER');
 addColumn('zone_presence', 'beaten', 'INTEGER NOT NULL DEFAULT 0');
+// Colpiti in una Conquista: fino a lockedUntil (15 minuti dopo) rientrare non rimette in gara.
+addColumn('zone_presence', 'lockedUntil', 'INTEGER');
 if (!getSetting('zone_hold_v1')) { db.exec('UPDATE zone_presence SET runSince = enteredAt WHERE inside = 1 AND runSince IS NULL'); setSetting('zone_hold_v1', '1'); }
 addColumn('map_zones', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
 // Accesa da un Beacon: resta accesa beaconOnMin minuti (NULL = finché non la spegne la regia), fino ad activeUntil.

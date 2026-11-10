@@ -2321,6 +2321,63 @@ test('zone: ingresso, immunità di chi è già dentro, Ombra contro Luce per str
   assert.throws(() => Z.reorderZones(g.id, [999999], 'test'), /non valido/);
 });
 
+test('zone: colpiti nel Santuario (esci e rientra) e nella Conquista (rientro dopo 15 minuti); le altre zone non cambiano', () => {
+  const S = require('../src/skills');
+  const F = require('../src/field');
+  const Z = require('../src/zones');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  S.chooseSkill(A, 'tracker', true);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  advanceTo(g.id, 6);
+  const pl = (t) => q.get('SELECT * FROM players WHERE teamId = ? ORDER BY id', t.id);
+  const go = (t, lat, lng) => F.recordPosition(t, pl(t), { deviceId: `dev-zhit-${t.id}`, lat, lng, acc: 5 });
+  const sq = (lat, lng, d = 0.001) => [[lat - d, lng - d], [lat - d, lng + d], [lat + d, lng + d], [lat + d, lng - d]];
+  go(A, 40, 9); go(B, 40, 9.5); go(Cc, 40, 9.9);
+  // Santuario: colpiti dentro, la ricarica veloce si ferma finché non si esce e rientra.
+  const sant = Z.createZone(g.id, { kind: 'santuario', points: sq(45, 9) }, 'test');
+  go(A, 45, 9);
+  assert.equal(Z.teamZones(A).recharge, 2);
+  Z.onDefeated([A.id]);
+  assert.equal(Z.teamZones(A).recharge, 1);
+  assert.equal(Z.teamZones(A).here.find((x) => x.id === sant.id).beaten, true);
+  S.useSkill(A, 'tracker', { teamId: Cc.id });
+  const ready = q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt;
+  const t0 = Date.now();
+  Z.tickAll(t0); Z.tickAll(t0 + 60000);
+  assert.equal(q.get("SELECT readyAt FROM team_skills WHERE teamId = ? AND skillId = 'tracker'", A.id).readyAt, ready);
+  assert.ok(q.get("SELECT 1 FROM event_log WHERE gameId = ? AND type = 'zone_sanctuary_lost'", g.id));
+  go(A, 40, 9); go(A, 45, 9);
+  assert.equal(Z.teamZones(A).recharge, 2);
+  assert.equal(Z.teamZones(A).here.find((x) => x.id === sant.id).beaten, false);
+  // Disturbo, Luce e Ombra: colpiti dentro, restano come prima.
+  const emp = Z.createZone(g.id, { kind: 'emp', points: sq(46, 9) }, 'test');
+  go(Cc, 46, 9);
+  Z.onDefeated([Cc.id]);
+  assert.equal(Z.inEmp(Cc.id), true);
+  assert.equal(Z.teamZones(Cc).here.find((x) => x.id === emp.id).beaten, false);
+  // Conquista: colpiti dentro, fuori dalla contesa; rientrare prima dei 15 minuti non rimette in gara.
+  const cq = Z.createZone(g.id, { kind: 'conquista', points: sq(47, 9), holdMin: 2 }, 'test');
+  go(B, 47, 9);
+  Z.onDefeated([B.id]);
+  let here = Z.teamZones(B).here.find((x) => x.id === cq.id);
+  assert.equal(here.beaten, true);
+  assert.ok(here.lockedUntil >= Date.now() + Z.CONQUEST_LOCK_MS - 5000);
+  go(B, 40, 9.5); go(B, 47, 9);
+  here = Z.teamZones(B).here.find((x) => x.id === cq.id);
+  assert.equal(here.beaten, true, 'rientro prima dei 15 minuti: ancora fuori dalla contesa');
+  assert.equal(here.runSince, null);
+  Z.tickAll(Date.now() + 5 * 60000);
+  assert.equal(q.get('SELECT winnerTeamId FROM map_zones WHERE id = ?', cq.id).winnerTeamId, null);
+  // Passati i 15 minuti: uscendo e rientrando torna in gara.
+  q.run('UPDATE zone_presence SET lockedUntil = ? WHERE zoneId = ? AND teamId = ?', Date.now() - 1000, cq.id, B.id);
+  assert.equal(Z.teamZones(B).here.find((x) => x.id === cq.id).beaten, true, 'serve uscire e rientrare');
+  go(B, 40, 9.5); go(B, 47, 9);
+  here = Z.teamZones(B).here.find((x) => x.id === cq.id);
+  assert.equal(here.beaten, false);
+  assert.ok(here.runSince);
+});
+
 test('zone: sul bordo il GPS che balla non fa entrare e uscire (isteresi, due telefoni)', () => {
   const F = require('../src/field');
   const Z = require('../src/zones');

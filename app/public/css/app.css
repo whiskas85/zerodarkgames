@@ -1352,3 +1352,6 @@ a.radio-card { display: block; color: inherit; text-decoration: none; }
 /* Nell'app delle coppie non si seleziona niente (così non si «allarga» la selezione fino a un Sigillo); nei campi sì. */
 body { -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable="true"], .allow-select { -webkit-user-select: text; user-select: text; }
+/* Santuario sospeso: colpiti dentro, si riattiva uscendo e rientrando */
+.zone-boost.zone-boost-off { border-color: #e5484d; color: #ffb3b0; background: rgba(40, 10, 10, .9); box-shadow: 0 0 14px rgba(229, 72, 77, .45); animation: none; }
+.note.warn { border-left-color: #e5484d; }

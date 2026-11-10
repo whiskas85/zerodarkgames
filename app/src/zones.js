@@ -16,8 +16,8 @@ const KINDS = {
   ombra: { label: 'Cono d\'Ombra', icon: '🌑', color: '#5b4b8a', effect: 'Finché restate dentro nessuna coppia vi vede sulla mappa, qualunque Skill o Dono usi (la regia sì).' },
   luce: { label: 'Campo di Luce', icon: '☀️', color: '#f0a020', effect: 'Finché restate dentro tutte le coppie vi vedono sulla mappa.' },
   emp: { label: 'Zona di Disturbo', icon: '⚡', color: '#22c3e6', effect: 'Dentro non funzionano le Skill attive e la mappa è oscurata.' },
-  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano più in fretta (×{rate}).' },
-  conquista: { label: 'Zona di Conquista', icon: '👑', color: '#e5484d', effect: 'La prima coppia che resta dentro {min} minuti di fila vince un Dono a caso.' },
+  santuario: { label: 'Santuario', icon: '🏛️', color: '#d1ad62', effect: 'Dentro le Skill in ricarica si ricaricano più in fretta (×{rate}). Se venite colpiti dentro non vale più: uscite e rientrate.' },
+  conquista: { label: 'Zona di Conquista', icon: '👑', color: '#e5484d', effect: 'La prima coppia che resta dentro {min} minuti di fila vince un Dono a caso. Se venite colpiti dentro, rientrate in gara solo uscendo e rientrando dopo 15 minuti.' },
   noplay: { label: 'Zona NO PLAY', icon: '⛔', color: '#ff2a2a', effect: 'Vietato entrare, per coppie ed Eletti. Chi si avvicina ha 30 secondi per allontanarsi, poi la regia viene avvisata.' },
 };
 // NO PLAY: scatta a 5 m dal bordo (il GPS sbaglia di qualche metro), finisce oltre 15 m fuori; 30 secondi per uscire.
@@ -31,6 +31,8 @@ const clampRate = (v) => (v == null || v === '' ? null : Math.max(1.1, Math.min(
 const fmtRate = (r) => String(r).replace('.', ',');
 // Devoto del Santuario (passiva): per chi ce l'ha il moltiplicatore del Santuario vale il triplo.
 const DEVOTO_FACTOR = 3;
+// Colpiti in una Zona di Conquista: si torna in gara solo rientrando dopo questo tempo.
+const CONQUEST_LOCK_MS = 15 * 60000;
 const devotoRate = (teamId, rate) => (rate > 1 && SK().hasSkill(teamId, 'devoto') ? rate * DEVOTO_FACTOR : rate);
 const effectOf = (z) => KINDS[z.kind].effect.replace('{min}', z.holdMin || 3).replace('{rate}', fmtRate(rateOf(z)));
 
@@ -202,8 +204,10 @@ function onPosition(team, pos, now = Date.now(), player = null) {
     const depth = Math.max(...devs.map((d) => edgeDepth(d, poly)));
     const pr = q.get('SELECT * FROM zone_presence WHERE zoneId = ? AND teamId = ?', z.id, team.id);
     if (!pr?.inside && depth >= ENTER_M) {
-      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt, outsideSince, heldMs, runSince, beaten) VALUES (?, ?, 1, 0, ?, NULL, NULL, 0, ?, 0)
-             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL, outsideSince = NULL, heldMs = 0, runSince = excluded.runSince, beaten = 0`, z.id, team.id, now, now);
+      // Rientro: gli effetti tornano a valere; nella Conquista solo se sono passati i 15 minuti dal colpo.
+      const locked = z.kind === 'conquista' && pr?.lockedUntil > now ? 1 : 0;
+      q.run(`INSERT INTO zone_presence (zoneId, teamId, inside, immune, enteredAt, leftAt, outsideSince, heldMs, runSince, beaten) VALUES (?, ?, 1, 0, ?, NULL, NULL, 0, ?, ?)
+             ON CONFLICT(zoneId, teamId) DO UPDATE SET inside = 1, immune = 0, enteredAt = excluded.enteredAt, leftAt = NULL, outsideSince = NULL, heldMs = 0, runSince = excluded.runSince, beaten = excluded.beaten`, z.id, team.id, now, locked ? null : now, locked);
       G.log(g.id, `coppia:${team.id}`, 'zone_enter', { teamId: team.id, zone: z.name, kind: z.kind, lat: pos.lat, lng: pos.lng });
       any = true;
     } else if (pr?.inside && depth >= 0) {
@@ -282,7 +286,7 @@ function noplayOf(t, player) {
 
 // Zone che agiscono su una coppia adesso (dentro e non immune), dalla priorità più bassa alla più alta.
 function appliedZones(teamId) {
-  return q.all(`SELECT z.*, p.enteredAt, p.heldMs, p.runSince, p.beaten FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id
+  return q.all(`SELECT z.*, p.enteredAt, p.heldMs, p.runSince, p.beaten, p.lockedUntil FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id
                 WHERE p.teamId = ? AND p.inside = 1 AND p.immune = 0 AND z.active = 1 AND z.enabled = 1 ORDER BY z.layer, z.id`, teamId);
 }
 
@@ -312,7 +316,7 @@ function tickAll(now = Date.now()) {
     if (dt) {
       // Dentro più Santuari vale il moltiplicatore più alto.
       for (const p of q.all(`SELECT p.teamId, MAX(COALESCE(z.rate, ${DEFAULT_RATE})) AS rate FROM zone_presence p JOIN map_zones z ON z.id = p.zoneId
-                             WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0 GROUP BY p.teamId`, gameId)) {
+                             WHERE z.gameId = ? AND z.active = 1 AND z.enabled = 1 AND z.kind = 'santuario' AND p.inside = 1 AND p.immune = 0 AND p.beaten = 0 GROUP BY p.teamId`, gameId)) {
         const rate = devotoRate(p.teamId, p.rate);
         q.run('UPDATE team_skills SET readyAt = MAX(?, readyAt - ?) WHERE teamId = ? AND readyAt > ?', now, dt * (rate - 1), p.teamId, now);
       }
@@ -347,16 +351,29 @@ function contest(z, now = Date.now()) {
   // Tutte le coppie dentro (anche le sconfitte) vedono subito il cambio.
   if (touched.length) { for (const p of q.all('SELECT teamId FROM zone_presence WHERE zoneId = ? AND inside = 1', z.id)) rt.toTeams(z.gameId, 'state', {}, p.teamId); rt.toStaff(z.gameId, 'zones'); }
 }
-// Scontro perso: la coppia sconfitta esce dalla contesa delle Conquiste in cui è dentro (il suo tempo si azzera;
-// conta di nuovo solo se esce e rientra) e il tempo di chi resta riparte.
+// Colpiti (scontro perso, con le coppie o con gli Eletti) dentro una zona:
+// - Santuario: la ricarica veloce non vale più finché la coppia non esce e rientra;
+// - Conquista: la coppia esce dalla contesa (tempo azzerato; il tempo di chi resta riparte) e torna in gara solo
+//   uscendo e rientrando dopo 15 minuti.
+// Disturbo, Campo di Luce e Cono d'Ombra non cambiano. La coppia riceve una notifica che spiega cosa fare.
 function onDefeated(teamIds, now = Date.now()) {
   for (const teamId of teamIds) {
-    for (const z of q.all("SELECT z.* FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id WHERE p.teamId = ? AND p.inside = 1 AND p.beaten = 0 AND z.kind = 'conquista' AND z.active = 1 AND z.winnerTeamId IS NULL", teamId)) {
-      q.run('UPDATE zone_presence SET beaten = 1, heldMs = 0, runSince = NULL WHERE zoneId = ? AND teamId = ?', z.id, teamId);
-      G.log(z.gameId, 'sistema', 'zone_contest_lost', { zone: z.name, teamId });
-      rt.toTeams(z.gameId, 'state', {}, teamId);
-      contest(z, now);
+    const hit = q.all(`SELECT z.* FROM map_zones z JOIN zone_presence p ON p.zoneId = z.id
+                       WHERE p.teamId = ? AND p.inside = 1 AND p.immune = 0 AND p.beaten = 0 AND z.active = 1 AND z.enabled = 1
+                         AND (z.kind = 'santuario' OR (z.kind = 'conquista' AND z.winnerTeamId IS NULL))`, teamId);
+    for (const z of hit) {
+      if (z.kind === 'santuario') {
+        q.run('UPDATE zone_presence SET beaten = 1 WHERE zoneId = ? AND teamId = ?', z.id, teamId);
+        G.log(z.gameId, 'sistema', 'zone_sanctuary_lost', { zone: z.name, teamId });
+        rt.pushTeams(z.gameId, { title: `${KINDS.santuario.icon} Colpiti nel Santuario`, body: `Siete stati colpiti dentro «${z.name}»: la ricarica veloce delle Skill non vale più. Uscite dall'area e rientrate per riattivarla.`, tag: `zona-hit-${z.id}`, url: '/#/mappa' }, teamId);
+      } else {
+        q.run('UPDATE zone_presence SET beaten = 1, heldMs = 0, runSince = NULL, lockedUntil = ? WHERE zoneId = ? AND teamId = ?', now + CONQUEST_LOCK_MS, z.id, teamId);
+        G.log(z.gameId, 'sistema', 'zone_contest_lost', { zone: z.name, teamId });
+        rt.pushTeams(z.gameId, { title: `${KINDS.conquista.icon} Colpiti nella Zona di Conquista`, body: `Siete stati colpiti dentro «${z.name}»: il vostro tempo è azzerato e siete fuori dalla contesa. Potete tornare in gara tra 15 minuti: uscite e rientrate dopo.`, tag: `zona-hit-${z.id}`, url: '/#/mappa' }, teamId);
+        contest(z, now);
+      }
     }
+    if (hit.length) { rt.toTeams(hit[0].gameId, 'state', {}, teamId); rt.toStaff(hit[0].gameId, 'zones'); }
   }
 }
 
@@ -519,7 +536,7 @@ function zoneOut(z) {
 
 function masterZones(gameId) {
   return { kinds: KINDS, list: zonesOf(gameId, false).map((z) => ({ ...zoneOut(z),
-    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt, p.heldMs, p.runSince, p.beaten FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id),
+    inside: q.all('SELECT p.teamId, p.immune, p.enteredAt, p.heldMs, p.runSince, p.beaten, p.lockedUntil FROM zone_presence p WHERE p.zoneId = ? AND p.inside = 1', z.id),
     violations: z.kind === 'noplay' ? q.all('SELECT * FROM noplay_hits WHERE zoneId = ? AND (leftAt IS NULL OR leftAt > ?) ORDER BY id DESC LIMIT 20', z.id, Date.now() - 3 * 3600000)
       .map((h) => ({ id: h.id, who: hitWho(h), teamId: h.teamId, playerId: h.playerId, enteredAt: h.enteredAt, alertedAt: h.alertedAt, leftAt: h.leftAt, lat: h.lat, lng: h.lng })) : [] })) };
 }
@@ -548,7 +565,9 @@ function teamZones(t, player = null) {
       return { id: z.id, kind: z.kind, name: z.name, enteredAt: z.enteredAt, holdMin: z.holdMin,
         holdUntil: cq && z.runSince && !z.beaten ? z.runSince - (z.heldMs || 0) + z.holdMin * 60000 : null,
         heldMs: cq ? heldOf(z, now) : null, runSince: cq ? z.runSince : null, holdMs: cq ? z.holdMin * 60000 : null,
-        contested: cq && !z.beaten && rivals > 0, beaten: cq && !!z.beaten };
+        contested: cq && !z.beaten && rivals > 0,
+        // Colpiti dentro: Santuario sospeso finché non escono e rientrano; Conquista fuori dalla contesa (lockedUntil: da quando rientrare).
+        beaten: (cq || z.kind === 'santuario') && !!z.beaten, lockedUntil: cq && z.beaten && z.lockedUntil > now ? z.lockedUntil : null };
     }),
     visibility: visibilityOf(t.id),
     // La regia sceglie se mostrare sulla mappa quanto manca allo spegnimento delle zone a tempo.
@@ -558,10 +577,10 @@ function teamZones(t, player = null) {
     immune: q.all('SELECT zoneId FROM zone_presence WHERE teamId = ? AND inside = 1 AND immune = 1', t.id).map((r) => r.zoneId),
     emp: mine.some((z) => z.kind === 'emp'),
     // Dentro un Santuario: la ricarica delle Skill corre più veloce (il moltiplicatore più alto).
-    recharge: devotoRate(t.id, Math.max(1, ...mine.filter((z) => z.kind === 'santuario').map(rateOf))),
+    recharge: devotoRate(t.id, Math.max(1, ...mine.filter((z) => z.kind === 'santuario' && !z.beaten).map(rateOf))),
     devoto: SK().hasSkill(t.id, 'devoto'),
     won: q.all('SELECT * FROM map_zones WHERE gameId = ? AND winnerTeamId = ? AND wonAt > ?', t.gameId, t.id, now - 30 * 60000).map((z) => ({ id: z.id, name: z.name, wonAt: z.wonAt, reward: JSON.parse(z.reward || 'null') })),
   };
 }
 
-module.exports = { onDefeated, contest, NOPLAY_GRACE_MS, KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };
+module.exports = { CONQUEST_LOCK_MS, onDefeated, contest, NOPLAY_GRACE_MS, KINDS, inside, reorderZones, launchBeacon, completeBeacon, electBeacon, createZone, updateZone, deleteZone, onPosition, appliedZones, visibilityOf, inEmp, tickAll, masterZones, teamZones };

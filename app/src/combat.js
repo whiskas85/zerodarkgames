@@ -376,7 +376,7 @@ function applyEngagement(e, by) {
     for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${mastery}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
     // Chi vince (con i suoi alleati) non può dichiarare un'altra vittoria finché dura il Blocco ingaggio.
     for (const w of winners) startTimer(w, 'blocco', `Vittoria contro ${names(losers).join(', ')}: tempo di non riattacco`);
-    // Zone di Conquista contese: chi perde esce dalla contesa e il tempo di chi resta riparte.
+    // Zone: chi perde dentro un Santuario lo perde finché non esce e rientra; nella Conquista esce dalla contesa (15 minuti).
     require('./zones').onDefeated(losers);
   });
   G.log(e.gameId, by, 'engagement_confirmed', { result: e.result, winners: names(winners), losers: names(losers) });
@@ -565,6 +565,8 @@ function applyElectFight(f, by) {
     if (f.winner === 'elect') {
       require('./mines').addScore(f.gameId, 'fight', `fight:${f.id}`, { squadId: f.squadId, playerId: f.playerId, label: `Ingaggio vinto: Settore ${t?.sectorName || '?'}` });
       startTimer(t.id, 'veglia', `Sconfitta contro gli Eletti (squadra ${sq?.name || '?'})`);
+      // Colpiti dagli Eletti dentro un Santuario o una Conquista: come uno scontro perso con una coppia.
+      require('./zones').onDefeated([t.id]);
       if (task && !task.doneAt && !task.cancelledAt) F().setTaskDone(task.id, true, by, f.gameId);
     } else if (task?.kind === 'bounty' && task.successMode === 'any' && !task.doneAt && !task.cancelledAt) {
       // Taglia «basta un ingaggio»: riuscita anche se la coppia ha vinto.
