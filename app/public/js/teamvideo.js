@@ -271,9 +271,13 @@ function drawTeam(ctx, t, dur, tm, st) {
   ctx.textBaseline = 'middle';
   // Impaginazione: orizzontale come sempre; verticale/quadrato tutto impilato e centrato in altezza.
   let yLabel = 110; let yTitle = 205; let yMotto = 290; let cy = H * 0.56; let R = 200;
+  // Verticale/quadrato: i nick vanno uno sotto l'altro e tutto il blocco (Settore, logo, nomi) sta centrato.
+  const nickCount = tm.nicks.filter(Boolean).length;
+  const below = (tm.displayName ? 75 : 30) + (nickCount === 2 ? 150 : 0) + 45;
   if (NARROW) {
-    R = Math.min(240 * U, (H - 465 * U - H * 0.12) / 2);
-    const total = 465 * U + 2 * R;
+    const rest = (15 + 115 + 85 + 70 + 80 + below) * U;
+    R = Math.min(240 * U, (H - rest - H * 0.1) / 2);
+    const total = rest + 2 * R;
     yLabel = (H - total) / 2 + 15 * U;
     yTitle = yLabel + 115 * U;
     yMotto = yTitle + 85 * U;
@@ -361,8 +365,20 @@ function drawTeam(ctx, t, dur, tm, st) {
     ctx.fillStyle = '#f2ead8';
     ctx.shadowColor = 'rgba(0,0,0,.9)';
     ctx.shadowBlur = 20 * U;
-    const yN = y0 + (tm.displayName ? 75 : 40) * U + 30 * U * (1 - n2);
-    if (nicks.length === 2) {
+    const yN = y0 + (tm.displayName ? 75 : (NARROW ? 30 : 40)) * U + 30 * U * (1 - n2);
+    if (nicks.length === 2 && NARROW) {
+      // Uno sotto l'altro, centrati, con la stella in mezzo; stessa grandezza per i due nick.
+      const [a1, a2] = nicks.map((n) => n.toUpperCase());
+      const longest = a1.length >= a2.length ? a1 : a2;
+      const size = fitFont(ctx, 900, 100 * U, FD, longest, W * 0.88, 4 * U);
+      ctx.font = `900 ${size}px ${FD}`;
+      spaced(ctx, a1, cx, yN, 4 * U);
+      spaced(ctx, a2, cx, yN + 150 * U, 4 * U);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = rgba(rgb, 1);
+      ctx.font = `900 ${50 * U}px ${FD}`;
+      ctx.fillText('✦', cx, yN + 75 * U);
+    } else if (nicks.length === 2) {
       const gap = 70 * U;
       const [a1, a2] = nicks.map((n) => n.toUpperCase());
       // Stessa grandezza per i due nick, che ciascuno stia nella sua metà.
@@ -391,7 +407,8 @@ function drawTeam(ctx, t, dur, tm, st) {
 // - sotto, un bordone grave e scuro che respira lentamente e un filo di vento;
 // - per ogni coppia: un risucchio grave che sale, poi un TONFO cupo all'apertura del logo,
 //   e sui nick un respiro e un tonfo sordo per nome, con il battito di cuore.
-function makeAudio() {
+// opts: { music: colonna sonora sì/no, thud: AudioBuffer del tonfo caricato (altrimenti quello sintetizzato) }.
+function makeAudio(opts = {}) {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
   const ac = new AC();
@@ -446,9 +463,19 @@ function makeAudio() {
   return {
     ac, dest,
     start() {
+      if (opts.music === false) return;
       const t = now();
       drone.gain.setTargetAtTime(0.22, t, 2);
       wg.gain.setTargetAtTime(0.025, t, 3);
+    },
+    // Tonfo caricato dalla regia: si suona il file (volume secondo power).
+    sample(power = 1, at = 0) {
+      if (!opts.thud) return false;
+      const t = now() + at;
+      const src = ac.createBufferSource(); src.buffer = opts.thud;
+      const g = ac.createGain(); g.gain.value = Math.min(1.5, power);
+      src.connect(g); send(g, 0.9, 0.15); src.start(t);
+      return true;
     },
     stop() {
       const t = now();
@@ -465,6 +492,7 @@ function makeAudio() {
     },
     // Il TONFO: un colpo cupo e profondo, come una porta di pietra che si chiude (niente metalli né archi).
     boom(power = 1) {
+      if (this.sample(power)) return;
       const t = now();
       const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(62, t); o.frequency.exponentialRampToValueAtTime(26, t + 1.1);
       const g = ac.createGain(); env(g, t, 0.006, 1.0 * power, 1.7); o.connect(g); g.connect(shaper); send(g, 0.5, 0.25); o.start(t); o.stop(t + 1.9);
@@ -481,6 +509,7 @@ function makeAudio() {
       const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
       n.connect(f); f.connect(g); send(g, 0.7, 0.3); n.start(t); n.stop(t + 1);
       for (let k = 0; k < Math.max(1, count); k++) {
+        if (opts.thud) { this.sample(0.6, 0.15 + k * 0.3); continue; }
         const tk = t + 0.15 + k * 0.3;
         const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(k ? 58 : 66, tk); o.frequency.exponentialRampToValueAtTime(30, tk + 0.35);
         const og = ac.createGain(); env(og, tk, 0.004, 0.8, 0.45); o.connect(og); send(og, 0.9, 0.2); o.start(tk); o.stop(tk + 0.55);
@@ -495,6 +524,16 @@ function makeAudio() {
       }
     },
   };
+}
+
+// Ascolta il tonfo (standard o il file caricato) prima di registrare.
+export async function previewThud(thudData = null) {
+  const aopts = { music: false, thud: null };
+  const a = makeAudio(aopts);
+  if (!a) return;
+  if (thudData) { try { aopts.thud = await a.ac.decodeAudioData(thudData.slice(0)); } catch { toast('Questo file audio non si legge', 'error'); } }
+  a.boom();
+  setTimeout(() => a.stop(), 3000);
 }
 
 function loadImg(src) {
@@ -535,7 +574,15 @@ export async function playTeamVideo(ms, opts = {}) {
   document.body.append(overlay);
   try { await overlay.requestFullscreen?.(); } catch { /* non obbligatorio */ }
   const grain = makeGrain();
-  const audio = opts.sound !== false ? makeAudio() : null;
+  // Audio: colonna sonora (bordone e vento) ed effetti (risucchio, tonfi, nomi) si accendono separatamente.
+  const music = opts.music ?? opts.sound !== false;
+  const fx = opts.fx ?? opts.sound !== false;
+  const aopts = { music, thud: null };
+  const audio = music || fx ? makeAudio(aopts) : null;
+  if (audio && fx && opts.thudData) {
+    try { aopts.thud = await audio.ac.decodeAudioData(opts.thudData.slice(0)); } catch { toast('Il file del tonfo non si legge: uso il tonfo standard', 'error', 6000); }
+  }
+  const sfx = fx && audio ? audio : null;
   const total = INTRO + teams.length * perTeam + OUTRO;
   let rec = null;
   const chunks = [];
@@ -563,16 +610,16 @@ export async function playTeamVideo(ms, opts = {}) {
       ctx.globalAlpha = 1;
       if (t < INTRO) {
         drawIntro(ctx, t, ms.game?.name || '', teams.length);
-        if (audio) { if (t > 0.6) cue('title', () => audio.boom()); }
+        if (sfx) { if (t > 0.6) cue('title', () => sfx.boom()); }
       }
       else if (t < INTRO + teams.length * perTeam) {
         const i = Math.floor((t - INTRO) / perTeam);
         const lt = t - INTRO - i * perTeam;
         states[i].dt = dt;
         drawTeam(ctx, lt, perTeam, teams[i], states[i]);
-        if (audio) { if (lt > 0.6) cue(`r${i}`, () => audio.riser(1.4)); if (lt > 2.0) cue(`b${i}`, () => audio.boom()); if (lt > 3.2) cue(`h${i}`, () => audio.names(teams[i].nicks.filter(Boolean).length)); }
+        if (sfx) { if (lt > 0.6) cue(`r${i}`, () => sfx.riser(1.4)); if (lt > 2.0) cue(`b${i}`, () => sfx.boom()); if (lt > 3.2) cue(`h${i}`, () => sfx.names(teams[i].nicks.filter(Boolean).length)); }
         status.textContent = `${i + 1}/${teams.length} · ${teams[i].roman} ${teams[i].sectorName}${rec ? ' · ⏺ registrazione' : ''}`;
-      } else { drawOutro(ctx, t - INTRO - teams.length * perTeam); if (audio) cue('end', () => audio.boom(1.2)); }
+      } else { drawOutro(ctx, t - INTRO - teams.length * perTeam); if (sfx) cue('end', () => sfx.boom(1.2)); }
       drawVignette(ctx);
       drawGrain(ctx, grain);
       requestAnimationFrame(frame);

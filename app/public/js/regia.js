@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
-import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS } from './teamvideo.js';
+import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS, previewThud } from './teamvideo.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -5127,7 +5127,9 @@ const viewOrdina = () => foodOrderR.view();
 // ---------------------------------------------------------------- VIDEO DELLE COPPIE
 // Presentazione delle coppie in tema Giochi del Buio (Settore, numero romano, motto, logo, nick): anteprima e
 // registrazione in un file video direttamente dal browser.
-const TV = { perTeam: 7, sound: true, format: 'landscape', stills: null, gid: null };
+const TV = { perTeam: 7, music: true, fx: true, format: 'landscape', thud: null, stills: null, gid: null };
+// Tonfo caricato: resta su questo computer (se non è troppo grande) per le prossime volte.
+try { const t = store.get('zdg_tv_thud', null); if (t?.b64) TV.thud = { name: t.name, data: Uint8Array.from(atob(t.b64), (c) => c.charCodeAt(0)).buffer }; } catch { /* niente */ }
 function viewTeamVideo() {
   const ms = R.ms;
   const couples = (ms.teams || []).filter((t) => t.sectorId);
@@ -5137,9 +5139,32 @@ function viewTeamVideo() {
   const durText = () => { const s = VIDEO_TIMING.INTRO + couples.length * (TV.perTeam || 7) + VIDEO_TIMING.OUTRO; return `Durata: ${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`; };
   const dur = h('span', { class: 'chip' }, durText());
   // Colonna sonora sì/no: interruttore ben visibile.
-  const soundSeg = h('div', { class: 'tv-seg', role: 'group', 'aria-label': 'Colonna sonora' });
-  const paintSound = () => soundSeg.replaceChildren(...[[true, '🔊 Sì'], [false, '🔇 No']].map(([v, l]) => h('button', { type: 'button', class: TV.sound === v ? 'on' : '', 'aria-pressed': String(TV.sound === v), onclick: () => { TV.sound = v; paintSound(); } }, l)));
-  paintSound();
+  // Audio in due parti: colonna sonora (bordone e vento) ed effetti (risucchio, tonfi, nomi). Sì/No per ciascuna.
+  const yesNo = (key, label) => {
+    const seg = h('div', { class: 'tv-seg', role: 'group', 'aria-label': label });
+    const paint = () => seg.replaceChildren(...[[true, '🔊 Sì'], [false, '🔇 No']].map(([v, l]) => h('button', { type: 'button', class: TV[key] === v ? 'on' : '', 'aria-pressed': String(TV[key] === v), onclick: () => { TV[key] = v; paint(); thudRow.hidden = !TV.fx; } }, l)));
+    paint();
+    return seg;
+  };
+  const thudName = h('span', { class: 'small' });
+  const paintThud = () => { thudName.textContent = TV.thud ? `🎵 ${TV.thud.name}` : 'Standard (tonfo cupo sintetizzato)'; resetThud.hidden = !TV.thud; };
+  const thudFile = h('input', { type: 'file', accept: 'audio/*', hidden: true, onchange: async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 8e6) { toast('File troppo grande: usa un suono corto (max 8 MB)', 'error'); return; }
+    TV.thud = { name: f.name, data: await f.arrayBuffer() };
+    try {
+      if (f.size < 2.5e6) { let bin = ''; const u = new Uint8Array(TV.thud.data); for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode(...u.subarray(i, i + 0x8000)); store.set('zdg_tv_thud', { name: f.name, b64: btoa(bin) }); } else store.del('zdg_tv_thud');
+    } catch { /* memoria del browser piena: vale solo per questa sessione */ }
+    paintThud(); e.target.value = '';
+  } });
+  const resetThud = h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { TV.thud = null; try { store.del('zdg_tv_thud'); } catch { /* */ } paintThud(); } }, 'Torna allo standard');
+  const thudRow = h('div', { class: 'field', hidden: !TV.fx }, h('span', null, 'Suono del tonfo (apertura del logo, titolo, chiusura e nomi)'),
+    h('div', { class: 'row-actions' }, thudName,
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => thudFile.click() }, '⤒ Carica un suono…'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => previewThud(TV.thud?.data || null) }, '▶ Ascolta'),
+      resetThud, thudFile));
+  paintThud();
   const type = pickRecorderType();
   // Formato: orizzontale o per Instagram (Reel/Storia 9:16, post 4:5, quadrato).
   const fmtSeg = h('div', { class: 'tv-seg tv-formats', role: 'group', 'aria-label': 'Formato' });
@@ -5162,11 +5187,13 @@ function viewTeamVideo() {
       noNick.length ? h('p', { class: 'small warn-text' }, `Senza due nick: ${noNick.map((t) => `${t.roman} ${t.sectorName}`).join(', ')} (al posto del nick va il nome).`) : null,
       h('div', { class: 'form-grid' },
         h('label', { class: 'field' }, h('span', null, 'Secondi per coppia'), per),
-        h('div', { class: 'field' }, h('span', null, 'Colonna sonora horror (bordone e tonfi)'), soundSeg)),
+        h('div', { class: 'field' }, h('span', null, 'Colonna sonora (bordone e vento)'), yesNo('music', 'Colonna sonora')),
+        h('div', { class: 'field' }, h('span', null, 'Effetti audio (risucchio, tonfi, nomi)'), yesNo('fx', 'Effetti audio'))),
+      thudRow,
       h('div', { class: 'field' }, h('span', null, 'Formato'), fmtSeg),
       h('div', { class: 'row-actions' }, dur,
-        h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, format: TV.format }) }, '▶ Guarda a schermo intero'),
-        h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, format: TV.format, record: true }) }, '⏺ Registra e scarica il video')),
+        h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, music: TV.music, fx: TV.fx, thudData: TV.thud?.data || null, format: TV.format }) }, '▶ Guarda a schermo intero'),
+        h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, music: TV.music, fx: TV.fx, thudData: TV.thud?.data || null, format: TV.format, record: true }) }, '⏺ Registra e scarica il video')),
       h('p', { class: 'tiny muted' }, type ? `La registrazione avviene in tempo reale (dura quanto il video) e alla fine scarica il file ${type.includes('mp4') ? 'MP4' : 'WebM'}. Tieni la scheda aperta e in primo piano finché non finisce.` : 'Questo browser non sa registrare video: usa Chrome o Edge sul computer. Puoi comunque guardarlo a schermo intero.'))),
     section('Anteprima', grid));
 }
