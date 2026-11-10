@@ -41,7 +41,8 @@ const codeOf = (gameId, sectorId) => q.get('SELECT code FROM sector_codes WHERE 
 const scanUnlock = (t, token, code) => { G.visitPoint(t, token); return G.unlock(t, token, code); };
 const pointOf = (gameId, sectorId) => q.get('SELECT * FROM points WHERE gameId = ? AND sectorId = ?', gameId, sectorId);
 // «Perso» va confermato da chi ha vinto: lo dichiara lo sconfitto, il vincitore conferma.
-const lose = (K, loser, winner, opts) => { const r = K.reportEngagement(loser, winner.id, 'lost', opts); if (r.status === 'pending') K.respondEngagement(winner, r.id, true); return r; };
+// Tra uno scontro e l'altro passa il tempo di non riattacco (il blocco dopo una vittoria si dà per scaduto).
+const lose = (K, loser, winner, opts) => { q.run("UPDATE team_timers SET startedAt = startedAt - 3600000 WHERE timerId = 'blocco' AND reason LIKE 'Vittoria%'"); const r = K.reportEngagement(loser, winner.id, 'lost', opts); if (r.status === 'pending') K.respondEngagement(winner, r.id, true); return r; };
 
 test('1. calendario con 8 coppie: 6 rivelazioni a 35..210, 2 mai rivelati', () => {
   const g = setupGame(8);
@@ -3908,4 +3909,61 @@ test('Altare con il Sigillo in mano: la lettura lo sblocca (frammento subito, o 
   assert.ok(r.minigame);
   assert.equal(MG.done(A, null, r.minigame.id, { answer: r.minigame.params.code }).ok, true);
   assert.equal(G.unlock(A, pC.qrToken, codeOf(g.id, Cc.sectorId)).ok, true);
+});
+
+test('Alleanza contro alleanza: Vittoria e Sigilli a tutti i vincitori, Sconfitta a tutti gli sconfitti; poi tempo di non riattacco', () => {
+  const K = require('../src/combat');
+  const S = require('../src/skills');
+  const g = setupGame(5);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  advanceTo(g.id, 6);
+  const [A, B, Cc, D, E] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const ally = (x, y) => { const r = K.requestAlliance(x, y.id); K.respondRequest(y, r.id ?? r.request?.id ?? q.get("SELECT id FROM alliance_requests WHERE fromTeamId = ? AND status = 'pending' ORDER BY id DESC", x.id).id, true); };
+  ally(A, B); ally(Cc, D);
+  // D ha la Reliquia Antica attiva: il suo Sigillo resta coperto.
+  q.run("INSERT INTO skill_effects (gameId, teamId, kind, code, startedAt, endsAt) VALUES (?, ?, 'gift', 'reliquia', ?, ?)", g.id, D.id, Date.now(), Date.now() + 1800000);
+  const r = K.reportEngagement(A, Cc.id, 'won');
+  K.respondEngagement(Cc, r.id, true);
+  for (const w of [A, B]) {
+    const v = K.combatState(w).victories[0];
+    assert.ok(v, `vittoria per ${w.sectorName}`);
+    assert.equal(v.seals.find((x) => x.sectorId === Cc.sectorId).code, codeOf(g.id, Cc.sectorId));
+    assert.equal(v.seals.find((x) => x.sectorId === D.sectorId).code, null);
+    assert.ok(K.knownSectors(w).has(Cc.sectorId) && !K.knownSectors(w).has(D.sectorId));
+  }
+  for (const l of [Cc, D]) assert.ok(K.serverTimers(l.id).some((t) => t.timerId === 'veglia' && /^Sconfitta/.test(t.reason)), `sconfitta per ${l.sectorName}`);
+  // Tempo di non riattacco: né A né il suo alleato B possono dichiarare (o farsi dare) un'altra vittoria.
+  assert.throws(() => K.reportEngagement(A, E.id, 'won'), /non riattacco/);
+  assert.throws(() => K.reportEngagement(B, E.id, 'won'), /non riattacco/);
+  assert.throws(() => K.reportEngagement(E, B.id, 'lost'), /non riattacco/);
+  // Scaduto il blocco si torna a vincere.
+  q.run("UPDATE team_timers SET startedAt = startedAt - 3600000 WHERE timerId = 'blocco'");
+  assert.equal(K.reportEngagement(A, E.id, 'won').status, 'pending');
+  void S;
+});
+
+test('Eventi e alleanze: la coppia alleata si iscrive da sola; l\'alleanza entra solo se confermano tutte', () => {
+  const K = require('../src/combat');
+  const EV = require('../src/events');
+  const g = setupGame(3);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  advanceTo(g.id, 6);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  K.respondRequest(B, K.requestAlliance(A, B.id).id, true);
+  // Da sola: entra solo A, l'alleata B resta fuori.
+  const e1 = EV.createEvent(g.id, { name: 'Da soli', slots: 4, launch: true }, 'test');
+  EV.joinEvent(A, null, e1.id);
+  assert.equal(EV.teamEvents(A).find((x) => x.id === e1.id).mine.status, 'accepted');
+  assert.equal(EV.teamEvents(B).find((x) => x.id === e1.id).mine, null);
+  EV.startEvent(e1.id, { master: true, actor: 'test' });
+  assert.deepEqual(EV.masterEvents(g.id).list.find((x) => x.id === e1.id).entries.map((x) => x.teamId), [A.id]);
+  // In alleanza: B non conferma → all'avvio l'alleanza decade, entra solo chi si è iscritto da solo (C).
+  const e2 = EV.createEvent(g.id, { name: 'In alleanza', slots: 4, launch: true }, 'test');
+  EV.joinEvent(A, null, e2.id, { alliance: true });
+  EV.joinEvent(Cc, null, e2.id);
+  assert.equal(EV.teamEvents(B).find((x) => x.id === e2.id).mine.status, 'pending');
+  EV.startEvent(e2.id, { master: true, actor: 'test' });
+  const ins = EV.masterEvents(g.id).list.find((x) => x.id === e2.id).entries;
+  assert.deepEqual(ins.map((x) => x.teamId), [Cc.id]);
+  assert.equal(ins[0].status, 'accepted');
 });

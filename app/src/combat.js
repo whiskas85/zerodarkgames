@@ -49,6 +49,15 @@ function startTimer(teamId, timerId, reason, minutes = null) {
 }
 const presetMin = (gameId, timerId) => ((JSON.parse(G.getGame(gameId).timers || 'null') || C.DEFAULT_TIMERS).find((t) => t.id === timerId)?.minutes) || 0;
 
+// Tempo di non riattacco: dopo una vittoria (anche dell'alleato) la coppia non può ottenere un'altra vittoria
+// per la durata del Blocco ingaggio. Restituisce quando finisce, o null.
+function winBlockUntil(teamId, gameId) {
+  const r = q.get("SELECT startedAt, minutes FROM team_timers WHERE teamId = ? AND timerId = 'blocco' AND reason LIKE 'Vittoria%' ORDER BY id DESC LIMIT 1", teamId);
+  if (!r) return null;
+  const until = r.startedAt + (r.minutes || presetMin(gameId, 'blocco') || 5) * 60000;
+  return until > Date.now() ? until : null;
+}
+
 // Il Sigillo di un Settore arriva nel taccuino di una coppia (se non lo conosce già).
 function giveCode(toTeamId, fromTeamId, source) {
   const to = team(toTeamId);
@@ -365,6 +374,8 @@ function applyEngagement(e, by) {
     const face = team([e.reporterTeamId, e.opponentTeamId].find((id) => winners.includes(id)))?.sectorName || '';
     const mastery = e.skill === 'maestria' ? ' ⚔ Maestria delle repliche' : '';
     for (const l of losers) startTimer(l, 'veglia', `Sconfitta contro ${face}${mastery}${forced ? ` · ${forcedText}` : ''}`, vegliaMin);
+    // Chi vince (con i suoi alleati) non può dichiarare un'altra vittoria finché dura il Blocco ingaggio.
+    for (const w of winners) startTimer(w, 'blocco', `Vittoria contro ${names(losers).join(', ')}: tempo di non riattacco`);
     // Zone di Conquista contese: chi perde esce dalla contesa e il tempo di chi resta riparte.
     require('./zones').onDefeated(losers);
   });
@@ -395,6 +406,17 @@ function reportEngagement(me, opponentTeamId, result, opts = {}) {
   const theirs = sideOf(opp.id);
   const winners = result === 'lost' ? theirs : mine;
   const losers = result === 'lost' ? mine : theirs;
+  // Tempo di non riattacco: chi ha appena vinto non può vincere di nuovo finché non scade.
+  if (result !== 'draw') {
+    for (const w of winners) {
+      const until = winBlockUntil(w, me.gameId);
+      if (!until) continue;
+      const min = Math.ceil((until - Date.now()) / 60000);
+      throw err(409, w === me.id || mine.includes(w)
+        ? `Avete appena vinto uno scontro: per altri ${min} minuti (tempo di non riattacco) non potete dichiarare un'altra vittoria`
+        : `Il Settore ${team(w)?.sectorName} ha appena vinto uno scontro: per altri ${min} minuti (tempo di non riattacco) non può vincerne un altro`);
+    }
+  }
   // "Vinto" va confermato dallo sconfitto, "perso" dal vincitore; il pareggio vale subito.
   // Perso con Maestria delle repliche: l'avversario vede un normale «perso» da confermare (crede di aver vinto);
   // alla conferma lo scontro si ribalta e a lui compare la Sconfitta, con la Maestria ben in vista.
@@ -739,6 +761,8 @@ function combatState(me, player = null) {
     incoming: q.all("SELECT * FROM alliance_requests WHERE toTeamId = ? AND status = 'pending' ORDER BY id", me.id)
       .map((r) => ({ ...reqOut(r), team: teamLite(r.fromTeamId) })),
     outgoing: q.all("SELECT * FROM alliance_requests WHERE fromTeamId = ? AND status = 'pending' ORDER BY id", me.id).map((r) => ({ ...reqOut(r), team: teamLite(r.toTeamId) })),
+    // Tempo di non riattacco dopo una vittoria: fino a quando non si può dichiarare un'altra vittoria.
+    winBlockedUntil: sideOf(me.id).map((id) => winBlockUntil(id, me.gameId)).filter(Boolean).sort((x, y) => y - x)[0] || null,
     toConfirm: recent.filter((e) => e.status === 'pending' && (JSON.parse(e.winners).includes(e.reporterTeamId) ? JSON.parse(e.losers) : JSON.parse(e.winners)).includes(me.id))
       .map((e) => engagementOut(e, me.id)),
     // Vittorie appena confermate (anche degli alleati): il telefono mostra la Vittoria con i Sigilli di tutta
@@ -779,4 +803,4 @@ function masterCombat(gameId) {
   };
 }
 
-module.exports = { reportElectFight, respondElectFight, resolveElectFight, poison, knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
+module.exports = { winBlockUntil, reportElectFight, respondElectFight, resolveElectFight, poison, knownSectors, tickAlliances, FAR_M, FAR_MS, stealCode, requestAlliance, requestBreak, respondRequest, cancelRequest, reportEngagement, respondEngagement, resolveEngagement, combatState, serverTimers, masterCombat, allianceOf, MAX_ALLIANCE };
