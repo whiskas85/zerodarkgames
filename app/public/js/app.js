@@ -3450,7 +3450,8 @@ function viewMyGifts() {
     h('p', { class: 'muted small' }, 'Doni presi scansionando i loro QR nel bosco (o ricevuti con una Skill). Ognuno si usa una volta sola: l\'effetto parte appena lo usate.'),
     list.length ? list.map((g) => h('div', { class: 'stack-sm' }, giftCard(g),
       g.usedAt ? h('p', { class: 'muted small' }, `Usato alle ${fmtTime(g.usedAt)}`) : giftType(g) ? h('div', { class: 'row' },
-        h('button', { class: 'btn btn-primary', disabled: !ACTIVE.includes(S.state?.clock.status), onclick: () => useGiftFlow(g) }, 'Usa il dono')) : h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', disabled: !ACTIVE.includes(S.state?.clock.status), onclick: () => useGiftFlow(g) }, 'Usa il dono'),
+        !ACTIVE.includes(S.state?.clock.status) ? h('span', { class: 'small muted' }, PRE.includes(S.state?.clock.status) ? 'Si potrà usare dopo il VIA.' : 'Si usa a partita in corso.') : null) : h('div', { class: 'row' },
         h('button', { class: 'btn btn-primary', onclick: () => showGift(g) }, 'Mostra'),
         h('button', { class: 'btn', onclick: async () => {
           if (!(await dialog({ title: `Usare ${g.name}?`, text: 'Il dono verrà segnato come usato.', okLabel: 'Usato' }))) return;
