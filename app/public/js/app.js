@@ -3203,14 +3203,18 @@ function zoneHud() {
   // il telefono vi ha visti entrare (uscendo si azzera).
   const cqZone = hereZones().find((z) => z.kind === 'conquista' && !z.winnerTeamId);
   const srv = cqZone ? (zs?.here || []).find((x) => x.id === cqZone.id && x.holdMs) : null;
-  const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', rateText(zs.recharge)) : null;
+  // Santuario: ricarica veloce; colpiti dentro: sospesa finché non si esce e rientra.
+  const santHit = (zs?.recharge || 1) <= 1 && (zs?.here || []).some((x) => x.kind === 'santuario' && x.beaten);
+  const boost = (zs?.recharge || 1) > 1 ? h('a', { class: 'zone-boost', href: '#/skill', role: 'status', title: 'Santuario: la ricarica delle Skill è più veloce' }, '🏛️ Ricarica ×', rateText(zs.recharge))
+    : santHit ? h('a', { class: 'zone-boost zone-boost-off', href: '#/mappa', role: 'status', title: 'Colpiti nel Santuario: uscite e rientrate per riattivare la ricarica veloce' }, '🏛️ Colpiti · uscite e rientrate') : null;
   // Contesa (un'altra coppia dentro): l'anello si ferma, cambia colore e pulsa finché una delle due non perde lo scontro.
   if (srv && (srv.beaten || srv.contested || !srv.runSince)) {
     const p = Math.round(Math.min(1, (srv.heldMs || 0) / srv.holdMs) * 100);
+    const lock = srv.beaten && srv.lockedUntil > clock.serverNow() ? srv.lockedUntil : null;
     return [h('a', { class: `zone-ring ${srv.beaten ? 'zr-beaten' : 'zr-contested'}`, href: '#/mappa', style: `--p:${srv.beaten ? 0 : p}%`,
-      title: srv.beaten ? 'Avete perso lo scontro: uscite e rientrate per tornare in gara' : 'Zona contesa: il tempo è fermo finché non sconfiggete l\'altra coppia' },
+      title: lock ? `Colpiti: fuori dalla contesa. Potete tornare in gara dalle ${fmtTime(lock)}, uscendo e rientrando` : srv.beaten ? 'Colpiti: uscite e rientrate per tornare in gara' : 'Zona contesa: il tempo è fermo finché non sconfiggete l\'altra coppia' },
       h('span', { class: 'zr-ico', 'aria-hidden': 'true' }, srv.beaten ? '✖' : '⚔️'),
-      h('span', { class: 'mono zr-time' }, srv.beaten ? 'FUORI' : 'CONTESA')), boost];
+      lock ? h('span', { class: 'mono zr-time', 'data-abs': lock }, '—') : h('span', { class: 'mono zr-time' }, srv.beaten ? 'RIENTRA' : 'CONTESA')), boost];
   }
   const since = srv ? srv.runSince - (srv.heldMs || 0) : LZ.get(cqZone?.id)?.since;
   const cq = cqZone && since ? { enteredAt: since, holdUntil: srv ? srv.holdUntil : since + (cqZone.holdMin || 3) * 60000, holdMin: cqZone.holdMin || 3 } : null;
@@ -3238,7 +3242,12 @@ function zoneEvents(prev, st) {
       if (!was) continue;
       if (z.contested && !was.contested) { vibrate([200, 100, 200, 100, 200]); toast(`⚔️ «${z.name}» è contesa: il tempo si ferma finché non sconfiggete l'altra coppia`, 'error', 8000); }
       else if (was.contested && !z.contested && !z.beaten) { vibrate([120, 60, 300]); toast(`👑 «${z.name}»: il conteggio riparte`, 'ok', 6000); }
-      if (z.beaten && !was.beaten) toast(`✖ Avete perso lo scontro: per «${z.name}» uscite e rientrate`, 'error', 8000);
+      if (z.beaten && !was.beaten) { vibrate([300, 100, 300]); toast(`✖ Colpiti in «${z.name}»: siete fuori dalla contesa. Potete tornare in gara dalle ${fmtTime(z.lockedUntil || Date.now())}: uscite e rientrate dopo quell'ora.`, 'error', 12000); }
+    }
+    // Santuario: colpiti dentro, la ricarica veloce si ferma finché non si esce e rientra.
+    for (const z of zs.here.filter((x) => x.kind === 'santuario')) {
+      const was = (prev.zones?.here || []).find((x) => x.id === z.id);
+      if (was && z.beaten && !was.beaten) { vibrate([300, 100, 300]); toast(`🏛️ Colpiti nel Santuario «${z.name}»: la ricarica veloce non vale più. Uscite dall'area e rientrate.`, 'error', 12000); }
     }
   }
   for (const w of zs.won || []) {
@@ -3784,7 +3793,8 @@ function viewSkills() {
     skillSlots(sk),
     skillBar(mineHit.length + others.length),
     q && !mineHit.length && !others.length ? noSkillHit() : null,
-    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rateText(rechargeRate())}${S.state?.zones?.devoto ? ' (triplicata da Devoto del Santuario)' : ''} finché restate dentro.`) : null,
+    rechargeRate() > 1 ? h('div', { class: 'note boost-note' }, `🏛️ Siete in un Santuario: la ricarica delle Skill è velocizzata ×${rateText(rechargeRate())}${S.state?.zones?.devoto ? ' (triplicata da Devoto del Santuario)' : ''} finché restate dentro.`)
+      : (S.state?.zones?.here || []).some((x) => x.kind === 'santuario' && x.beaten) ? h('div', { class: 'note warn' }, '🏛️ Siete stati colpiti nel Santuario: la ricarica veloce non vale. Uscite dall\'area e rientrate per riattivarla.') : null,
     timed.length || sk.dirty ? h('div', { class: 'note' }, timed.map((e) => h('div', null, `${e.name}${e.targetName ? ` · ${e.targetName}` : ''}: ancora `, left(e.until))), sk.dirty ? dirtyLine(sk.dirty) : null) : null,
     sk.mine.length ? ['active', 'ultimate', 'passive'].map((kind) => {
       const list = mineHit.filter((s) => s.kind === kind);
