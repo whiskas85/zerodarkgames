@@ -3570,8 +3570,36 @@ const TASK_OPS = [
   { k: 'bounty', icon: '💰', label: 'Taglia', hint: 'Una coppia da ingaggiare: la squadra la vede in mappa e la trova negli Scontri. Si chiude da sola quando lo scontro è confermato.', groups: ['coppie'], need: 'Scegli la coppia della taglia' },
   { k: 'beacon', icon: '📡', label: 'Beacon', hint: 'Accendere una zona o disattivare un Altare con il Beacon. Si chiude da sola quando ci riescono.', groups: ['zone', 'altari'], need: 'Scegli la zona o l\'Altare' },
 ];
+// Operazioni in più del Nuovo incarico: piazzamenti (non sono incarichi del server, si affidano con /api/m/assign).
+const PLACE_OPS = [
+  { k: 'placegift', icon: '🎁', label: 'Piazza un dono', hint: 'Spunta i doni da piazzare (o spostare) e scegli la squadra: ricevono l\'incarico con una notifica. Con «Punto…» indichi dove sulla mappa.', place: 'gift' },
+  { k: 'placealtar', icon: '📍', label: 'Piazza Altare o luogo', hint: 'Spunta gli Altari e i luoghi del gioco da piazzare (o spostare) e scegli la squadra. Con «Punto…» indichi dove sulla mappa.', place: 'altar' },
+];
+// Elenco dei piazzamenti da fare, da spuntare (doni, oppure Altari e luoghi). picks() = [[kind, item], …] spuntati.
+function placePicker(which, onLeave) {
+  const d = fieldData;
+  const sqName = (id) => d.squads.find((x) => x.id === id)?.name;
+  const list = which === 'gift'
+    ? d.gifts.filter((g) => !['claimed', 'expired'].includes(g.status) && (g.status === 'draft' || g.moveRequestedAt)).map((g) => ['gift', g, g.icon || '🎁', `${g.label} · ${g.name}`])
+    : [...(d.landmarks || []).map((x) => ['landmark', x, landmarkIcon(x.kind), x.label]), ...d.points.map((x) => ['point', x, x.roman, x.label])].filter(([, x]) => x.lat == null || x.moveRequestedAt);
+  const chosen = new Set();
+  const el = h('div', { class: 'stack-sm' },
+    list.length ? h('ul', { class: 'place-list' }, list.map(([kind, x, icon, title]) => h('li', { class: 'place-row' },
+      h('label', { class: 'grow' }, h('input', { type: 'checkbox', onchange: (e) => { const k = `${kind}:${x.id}`; if (e.target.checked) chosen.add(k); else chosen.delete(k); } }),
+        h('span', { class: 'place-ico' }, icon), h('span', null, h('strong', null, title),
+          h('span', { class: 'tiny muted' }, ` · ${x.moveRequestedAt ? 'da spostare' : 'da piazzare'}${x.squadId ? ` · ora a ${sqName(x.squadId) || '?'}` : ' · da affidare'}${x.targetLat != null ? ' · ⌖ punto indicato' : ''}`))),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', title: 'Scegli il punto sulla mappa (e la squadra)', onclick: async () => { onLeave?.(); await assignDialog(kind, x, !!x.moveRequestedAt); } }, 'Punto…'))))
+      : h('p', { class: 'empty' }, which === 'gift' ? 'Nessun dono da piazzare.' : 'Nessun Altare o luogo da piazzare.'),
+    which === 'gift' ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { onLeave?.(); createGiftDialog(); } }, '＋ Crea un nuovo dono') : null);
+  return { el, picks: () => list.filter(([kind, x]) => chosen.has(`${kind}:${x.id}`)).map(([kind, x]) => [kind, x]) };
+}
+
 async function newTaskDialog() {
+  if (!fieldData) await loadField(false);
   let op = TASK_OPS[0];
+  let leave = null;
+  const pickers = { gift: placePicker('gift', () => leave?.()), altar: placePicker('altar', () => leave?.()) };
+  const placeWrap = h('div', { class: 'field', hidden: true });
   const text = h('input', { class: 'input', placeholder: 'es. Presidiate il Cuore dalle 10', maxlength: 300 });
   const target = targetSelect('new-task-target', () => op.groups, () => (op.need ? `⌖ ${op.need}…` : '⌖ Bersaglio: nessuno'));
   target.value = '';
@@ -3584,8 +3612,9 @@ async function newTaskDialog() {
     h('label', { class: 'check' }, any, ' c\'è un ingaggio con la coppia, qualsiasi esito'));
   const hint = h('p', { class: 'tiny muted' }, op.hint);
   const cards = h('div', { class: 'op-cards' });
+  const textWrap = h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text);
   const paintOps = () => {
-    cards.replaceChildren(...TASK_OPS.map((o) => h('button', { type: 'button', class: `op-card ${o.k === op.k ? 'on' : ''}`, onclick: () => {
+    cards.replaceChildren(...[...TASK_OPS, ...PLACE_OPS].map((o) => h('button', { type: 'button', class: `op-card ${o.k === op.k ? 'on' : ''}`, onclick: () => {
       op = o;
       // Il bersaglio scelto resta solo se va bene anche per la nuova operazione.
       if (target.value && !(o.groups && targetOptions(o.groups).some((g) => g.items.some((x) => x.value === target.value)))) target.value = '';
@@ -3593,25 +3622,41 @@ async function newTaskDialog() {
     } }, h('span', { class: 'op-ico', 'aria-hidden': 'true' }, o.icon), h('strong', null, o.label))));
     targetWrap.hidden = !op.groups;
     bountyWrap.hidden = op.k !== 'bounty';
+    // Piazzamenti: al posto di testo e tempo, l'elenco da spuntare.
+    placeWrap.hidden = !op.place;
+    if (op.place) placeWrap.replaceChildren(h('span', null, op.place === 'gift' ? 'Doni da piazzare' : 'Altari e luoghi da piazzare'), pickers[op.place].el);
+    textWrap.hidden = !!op.place; minutesWrap.hidden = !!op.place; noSquadNote.hidden = !!op.place;
     hint.textContent = op.hint;
     text.placeholder = op.k === 'text' ? 'es. Presidiate il Cuore dalle 10' : 'Facoltativo: se vuoto si scrive da solo dal bersaglio';
     target.repaint();
   };
-  paintOps();
   // Squadra: di base nessuna (l'incarico resta «Da affidare»); si sceglie cercando la squadra o un suo Eletto.
   const squad = squadSelect(null);
   // Tempo per svolgerlo: parte quando la squadra lo accetta nella sua app; vuoto = senza limite.
   const minutes = h('input', { class: 'input', type: 'number', min: 1, max: 600, placeholder: 'senza limite' });
+  const minutesWrap = h('label', { class: 'field' }, h('span', null, 'Tempo (minuti da quando lo accettano)'), minutes);
+  const noSquadNote = h('p', { class: 'tiny muted' }, 'Senza squadra compare tra quelli «Da affidare»: lo trascini sulla squadra che deve svolgerlo.');
+  paintOps();
   await modal({
     title: 'Nuovo incarico', okLabel: 'Crea', wide: true, tall: true,
+    onOpen: (dlg) => { leave = () => { dlg.close(); dlg.remove(); }; },
     body: h('div', { class: 'stack-sm' },
       h('div', { class: 'field' }, h('span', null, 'Operazione'), cards), hint,
-      targetWrap, bountyWrap,
-      h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text),
-      h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad),
-        h('label', { class: 'field' }, h('span', null, 'Tempo (minuti da quando lo accettano)'), minutes)),
-      h('p', { class: 'tiny muted' }, 'Senza squadra compare tra quelli «Da affidare»: lo trascini sulla squadra che deve svolgerlo.')),
+      targetWrap, bountyWrap, placeWrap,
+      textWrap,
+      h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('span', null, 'Squadra (facoltativa)'), squad), minutesWrap),
+      noSquadNote),
     onOk: async () => {
+      if (op.place) {
+        const list = pickers[op.place].picks();
+        if (!list.length) throw new Error(op.place === 'gift' ? 'Spunta almeno un dono' : 'Spunta almeno un Altare o luogo');
+        const sid = Number(squad.value) || null;
+        if (!sid) throw new Error('Scegli la squadra che deve piazzarli (senza squadra restano già «Da affidare»)');
+        for (const [kind, x] of list) await api('POST', '/api/m/assign', { kind, id: x.id, squadId: sid, move: !!x.moveRequestedAt });
+        toast(`${list.length === 1 ? 'Piazzamento affidato' : `${list.length} piazzamenti affidati`} alla squadra`, 'ok');
+        await Promise.all([load(), loadField(false)]);
+        return true;
+      }
       const v = target.value || '';
       if (op.groups && !v) throw new Error(op.need);
       if (op.k === 'text' && !text.value.trim()) throw new Error('Scrivi l\'incarico');
