@@ -99,7 +99,7 @@ const EDGE_MIN_PX = 1;
 // remember: chiave per ricordare lo zoom della mappa tra un'apertura e l'altra (anche tra una sessione e l'altra).
 // Con uno zoom ricordato, all'apertura la mappa si centra sul puntatore (la vostra posizione) o, senza, al centro
 // di ciò che c'è da vedere, sempre a quello zoom. La prima volta in assoluto inquadra tutto come sempre.
-export function createMapView({ className = '', remember = null } = {}) {
+export function createMapView({ className = '', remember = null, nav = false } = {}) {
   const zoomKey = remember ? `zdg_mapzoom_${remember}` : null;
   const savedZoom = (() => { try { const z = zoomKey && Number(localStorage.getItem(zoomKey)); return z >= 3 && z <= 20 ? z : null; } catch { return null; } })();
   // Una richiesta esplicita (mostra un incarico, un punto…) vince sulla centratura automatica dell'apertura.
@@ -111,6 +111,60 @@ export function createMapView({ className = '', remember = null } = {}) {
   const circles = new Map();
   const polys = new Map();
   const badges = new Map();
+  // Naviga: linea «magnetica» tra la mia posizione e un segnaposto, con i metri che mancano (si aggiorna da sola).
+  let navKey = null; let navLine = null; let navLabel = null; let navBar = null;
+  const fmtDist = (m) => (m >= 1000 ? `${(m / 1000).toFixed(m >= 10000 ? 0 : 1).replace('.', ',')} km` : `${Math.round(m)} m`);
+  function navStop() {
+    navKey = null;
+    navLine?.remove(); navLabel?.remove(); navLine = null; navLabel = null;
+    if (navBar) navBar.hidden = true;
+  }
+  function navDraw() {
+    if (!map || !navKey) return;
+    const t = markers.get(navKey);
+    if (!t) { navStop(); return; }
+    if (!navBar) {
+      navBar = document.createElement('div');
+      navBar.className = 'zdg-nav-bar';
+      navBar.innerHTML = '<span class="zdg-nav-ico" aria-hidden="true">🧭</span><span class="zdg-nav-txt"></span><button type="button" class="zdg-nav-stop" aria-label="Smetti di navigare">✕</button>';
+      navBar.querySelector('.zdg-nav-stop').addEventListener('click', (e) => { e.stopPropagation(); navStop(); });
+      L.DomEvent.disableClickPropagation(navBar);
+      el.appendChild(navBar);
+    }
+    navBar.hidden = false;
+    const txt = navBar.querySelector('.zdg-nav-txt');
+    const name = t._zdgTitle || 'il punto';
+    if (!me) { txt.textContent = `Verso ${name}: in attesa della vostra posizione…`; navLine?.remove(); navLabel?.remove(); navLine = null; navLabel = null; return; }
+    const a = me.getLatLng(); const b = t.getLatLng();
+    const d = distM({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng });
+    const here = d <= Math.max(10, Math.min(30, meAcc || 0));
+    txt.textContent = here ? `${name}: siete arrivati` : `${name} · ${fmtDist(d)}`;
+    navBar.classList.toggle('arrived', here);
+    if (!navLine) navLine = L.polyline([a, b], { color: '#3b82f6', weight: 4, opacity: 0.9, dashArray: '10 8', interactive: false }).addTo(map);
+    else navLine.setLatLngs([a, b]);
+    const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+    const html = `<span class="zdg-nav-dist">${fmtDist(d)}</span>`;
+    if (!navLabel) navLabel = L.marker(mid, { icon: L.divIcon({ className: 'zdg-nav-label', html, iconSize: null }), interactive: false, zIndexOffset: 9000 }).addTo(map);
+    else { navLabel.setLatLng(mid); navLabel.setIcon(L.divIcon({ className: 'zdg-nav-label', html, iconSize: null })); }
+  }
+  function navStart(key) {
+    navKey = key;
+    for (const m of markers.values()) m.closePopup();
+    navDraw();
+    const t = markers.get(key);
+    if (t && me) { auto = false; focusAt = Date.now(); clearTimeout(fitTimer); map.fitBounds(L.latLngBounds([me.getLatLng(), t.getLatLng()]).pad(0.25), { maxZoom: 18 }); }
+  }
+  // Pulsante «Naviga» in fondo al popup di ogni segnaposto.
+  function addNavButton(m) {
+    const c = m.getPopup()?.getElement()?.querySelector('.leaflet-popup-content');
+    if (!c || c.querySelector('.zdg-nav-btn')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zdg-nav-btn';
+    b.textContent = navKey === m._zdgKey ? '✕ Smetti di navigare' : '🧭 Naviga';
+    b.addEventListener('click', (e) => { e.stopPropagation(); if (navKey === m._zdgKey) { navStop(); m.closePopup(); } else navStart(m._zdgKey); });
+    c.appendChild(b);
+  }
   // Etichette sul bordo (conto alla rovescia): sul lato che si vede, ruotate come il lato.
   const edgeBadges = new Map();
   // Fra i lati della zona che si vedono sullo schermo si sceglie quello col tratto visibile più lungo: l'etichetta
@@ -222,6 +276,7 @@ export function createMapView({ className = '', remember = null } = {}) {
           m._zdgZ = zOf(it);
           // Tocco su un segnaposto: se chi usa la mappa lo gestisce (true), niente popup.
           m.on('click', (e) => { if (onMarkerTap?.(m._zdgKey, m.getLatLng())) { L.DomEvent.stop(e); setTimeout(() => m.closePopup(), 0); } });
+          if (nav) m.on('popupopen', () => addNavButton(m));
           markers.set(it.key, m);
           changed = true;
         } else {
@@ -229,9 +284,12 @@ export function createMapView({ className = '', remember = null } = {}) {
           if (outOfView(m.getLatLng())) changed = true;
           if (m._zdgHtml !== html) { m.setIcon(L.divIcon({ className: 'zdg-pin', html, iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })); m._zdgHtml = html; }
         }
-        if (it.popup) { if (m.getPopup()) m.setPopupContent(it.popup); else m.bindPopup(it.popup, { maxWidth: 260 }); }
+        m._zdgTitle = it.title || '';
+        if (it.popup) { if (m.getPopup()) { m.setPopupContent(it.popup); if (nav && m.isPopupOpen()) addNavButton(m); } else m.bindPopup(it.popup, { maxWidth: 260 }); }
+        else if (nav && !m.getPopup() && !it.noNav) m.bindPopup(`<strong>${esc(it.title || '')}</strong>`, { maxWidth: 260 });
       }
       for (const [k, m] of markers) if (!keep.has(k)) { m.remove(); markers.delete(k); changed = true; }
+      if (navKey) navDraw();
       if (!fitted && keep.size) { view.fit(); fitted = true; } else if (savedZoom && !placed && keep.size) { placed = true; autoFit(); } else if (changed) autoFit();
     },
     // Aree circolari (posizioni sfocate, presagi, copertura degli Altari): [{ key, lat, lng, radius, color, title, fill, weight, dash, interactive }]
@@ -326,7 +384,11 @@ export function createMapView({ className = '', remember = null } = {}) {
         meCircle.setLatLng(ll).setRadius(pos.acc || 10);
       }
       if ((first || outOfView(me.getLatLng())) && (meAcc == null || meAcc <= 300)) autoFit();
+      if (navKey) navDraw();
     },
+    // Naviga verso un segnaposto (per chiave) o smetti (null).
+    navigate(key) { if (key) navStart(key); else navStop(); },
+    get navigating() { return navKey; },
     // "Dove siamo": scelta esplicita, la centratura automatica si ferma fino alla prossima apertura.
     // Centra su un punto qualsiasi (es. il bersaglio di un incarico): la centratura automatica si ferma.
     centerOn(lat, lng, zoom = 17) { if (!map) return; auto = false; focusAt = Date.now(); clearTimeout(fitTimer); map.setView([lat, lng], Math.max(map.getZoom(), zoom)); },
