@@ -26,6 +26,7 @@ const TABS = [
   ['emergenze', 'Emergenze'],
   ['persone', 'Persone'],
   ['coppie', 'Squadre Legati'],
+  ['alleanze', 'Alleanze'],
   ['squadre', 'Squadre Eletti'],
   ['consiglio', 'Consiglio Zero'],
   ['notifiche', 'Pronti per la gara'],
@@ -61,7 +62,7 @@ const TABS = [
 // Icone (MDI) del menu della regia; Emergenze è rossa.
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
-  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', video: 'play', minigiochi: 'puzzle', catalogo: 'starFourPoints',
+  accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', alleanze: 'accountGroup', video: 'play', minigiochi: 'puzzle', catalogo: 'starFourPoints',
   doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
   rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', 'ristoro-altri': 'accountPlus', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
@@ -325,7 +326,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, alleanze: viewAlliances, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
@@ -1567,6 +1568,22 @@ function teamLive(t) {
   const HUNT = { hunt: '🎯 Caccia', bounty: '💰 Taglia degli Eletti', goto: '🧭 Incarico verso di loro', guard: '🛡️ Scorta' };
   // Zone in cui si trova adesso.
   const zones = (R.ms.mapZones?.list || []).filter((z) => (z.inside || []).some((x) => x.teamId === t.id));
+  // Alleanza in corso e richieste in attesa.
+  const cb = R.ms.combat || {};
+  const ally = (cb.alliances || []).find((a) => a.members.some((m) => m.teamId === t.id));
+  const allyReqs = (cb.requests || []).filter((r) => r.from?.teamId === t.id || r.to?.teamId === t.id);
+  // Scontri della coppia (con le coppie e con gli Eletti).
+  const inEng = (e) => [...(e.winners || []), ...(e.losers || [])].some((x) => x?.teamId === t.id) || e.reporter?.teamId === t.id || e.opponent?.teamId === t.id;
+  const engs = (cb.timeline || []).filter(inEng);
+  const done = engs.filter((e) => e.status === 'confirmed');
+  const res = (e) => (e.result === 'draw' ? 'draw' : (e.winners || []).some((x) => x.teamId === t.id) ? 'won' : 'lost');
+  const wins = done.filter((e) => res(e) === 'won').length;
+  const losses = done.filter((e) => res(e) === 'lost').length;
+  const draws = done.filter((e) => res(e) === 'draw').length;
+  const openE = engs.filter((e) => ['pending', 'contested'].includes(e.status));
+  const elect = (cb.electFights || []).filter((f) => f.team?.teamId === t.id && f.status === 'confirmed');
+  const otherSide = (e) => { const mine = (e.winners || []).some((x) => x.teamId === t.id) ? e.losers : e.winners; return (mine || []).map((x) => `${x.roman} ${x.sectorName}`).join(' + '); };
+  const RES = { won: ['✅', 'vinto'], lost: ['❌', 'perso'], draw: ['➖', 'pareggio'] };
   return h('div', { class: 'team-live-grid' },
     block('📍 Ultimo ping',
       p ? h('div', { class: `small ${stale ? 'warn-text' : ''}` }, `${pingAgo(p.at)} · ${fmtTime(p.at)}${p.acc ? ` · ±${Math.round(p.acc)} m` : ''}`) : h('div', { class: 'small warn-text' }, 'Nessuna posizione ricevuta'),
@@ -1583,6 +1600,17 @@ function teamLive(t) {
         (t.bountyEvents || []).map((ev) => h('div', { class: 'small' }, `🏁 Taglia su sé stessi: «${ev.name}»`))) : h('div', { class: 'tiny muted' }, 'Nessuna')),
     block('✨ Effetti',
       otherFx.length ? h('div', { class: 'stack-xs' }, otherFx.map((e) => h('div', { class: 'small' }, e.teamId === t.id ? `▶ ${e.name}${e.targetName ? ` su ${e.targetName}` : ''}` : `◀ ${e.name} dal Settore ${e.teamName}`, e.until ? h('span', { class: 'tiny muted' }, ` · fino alle ${fmtTime(e.until)}`) : null))) : h('div', { class: 'tiny muted' }, 'Nessun effetto')),
+    block('⚑ Alleanza',
+      ally ? h('div', { class: 'stack-xs' },
+        h('div', { class: 'small' }, 'Alleata con ', ally.members.filter((m) => m.teamId !== t.id).map((m, i) => [i ? ', ' : '', h('strong', { style: m.color ? { color: m.color } : null }, `${m.roman} ${m.sectorName}`)])),
+        h('div', { class: 'tiny muted' }, `dalle ${fmtTime(ally.createdAt)} (${pingAgo(ally.createdAt).replace(' fa', '')})`)) : h('div', { class: 'tiny muted' }, 'Nessuna alleanza'),
+      allyReqs.map((r) => h('div', { class: 'tiny brass' }, `⏳ ${r.kind === 'break' ? 'Rottura' : 'Proposta'} ${r.from?.teamId === t.id ? `verso ${r.to?.roman} ${r.to?.sectorName}` : `da ${r.from?.roman} ${r.from?.sectorName}`}`))),
+    block(`⚔ Scontri (${wins} V · ${losses} P${draws ? ` · ${draws} pari` : ''}${elect.length ? ` · ${elect.length} con gli Eletti` : ''})`,
+      openE.length ? openE.map((e) => h('div', { class: 'small warn-text' }, `⏳ Da confermare: ${e.reporter?.roman} ${e.reporter?.sectorName} dichiara ${e.result === 'won' ? 'vinto' : e.result === 'lost' ? 'perso' : 'pari'} contro ${e.opponent?.roman} ${e.opponent?.sectorName}`)) : null,
+      done.length || elect.length ? h('div', { class: 'stack-xs' },
+        done.slice(0, 4).map((e) => { const [ico, lab] = RES[res(e)]; return h('div', { class: 'small' }, `${ico} ${lab} contro ${otherSide(e)}`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(e.resolvedAt || e.createdAt)}`)); }),
+        elect.slice(0, 2).map((f) => h('div', { class: 'small' }, `${f.winner === 'couple' ? '✅ vinto' : '❌ perso'} contro gli Eletti (squadra ${f.squadName || '?'})`, h('span', { class: 'tiny muted' }, ` · ${fmtTime(f.resolvedAt || f.createdAt)}`))))
+        : openE.length ? null : h('div', { class: 'tiny muted' }, 'Nessuno scontro')),
     block('⬡ Zone',
       zones.length ? h('div', { class: 'stack-xs' }, zones.map((z) => { const me = z.inside.find((x) => x.teamId === t.id); return h('div', { class: 'small' }, `${z.icon || ''} ${z.name || z.label}`, h('span', { class: 'tiny muted' }, ` · ${z.label}${me?.enteredAt ? ` · dentro da ${pingAgo(me.enteredAt).replace(' fa', '')}` : ''}${me?.immune ? ' · immune' : ''}`)); })) : h('div', { class: 'tiny muted' }, 'Fuori dalle zone')));
 }
@@ -5228,6 +5256,58 @@ function viewRistoro() {
 // Ristoro: ordina — la regia ordina per sé, come chiunque nel Consiglio.
 const foodOrderR = createFoodOrder({ base: '/api/v/food', query: () => `?g=${R.gameId}`, rerender: () => render() });
 const viewOrdina = () => foodOrderR.view();
+
+// ---------------------------------------------------------------- ALLEANZE
+// Le alleanze della partita: in corso (chi c'è, da quando), richieste in attesa, quelle finite.
+function viewAlliances() {
+  const cb = R.ms.combat || {};
+  const hist = cb.allianceHistory || [];
+  const live = hist.filter((a) => !a.endedAt);
+  const ended = hist.filter((a) => a.endedAt);
+  const dur = (from, to) => { const m = Math.round(((to || Date.now()) - from) / 60000); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+  const chip = (m, gone = false) => h('span', { class: `ally-member ${gone ? 'gone' : ''}`, style: m.color ? { '--c': m.color } : null },
+    h('strong', null, `${m.roman} ${m.sectorName}`), m.displayName ? h('span', { class: 'tiny muted' }, ` ${m.displayName}`) : null, m.diplomat ? h('span', { class: 'tiny', title: 'Entrata con il Diplomatico: il suo Sigillo non è stato condiviso' }, ' 🤝') : null);
+  const card = (a) => h('div', { class: `ally-card ${a.endedAt ? 'ended' : ''}` },
+    h('div', { class: 'ally-head' }, h('strong', null, a.endedAt ? 'Alleanza finita' : `Alleanza di ${a.members.filter((m) => !m.leftAt).length} coppie`),
+      h('span', { class: 'tiny muted' }, a.endedAt ? `${fmtTime(a.createdAt)} → ${fmtTime(a.endedAt)} · ${dur(a.createdAt, a.endedAt)}` : `dalle ${fmtTime(a.createdAt)} · da ${dur(a.createdAt)}`)),
+    h('div', { class: 'ally-members' }, a.members.map((m) => chip(m, !!m.leftAt && !a.endedAt))),
+    a.members.some((m) => m.leftAt && !a.endedAt) ? h('div', { class: 'tiny muted' }, 'Uscite: ', a.members.filter((m) => m.leftAt).map((m) => `${m.roman} ${m.sectorName} alle ${fmtTime(m.leftAt)}`).join(' · ')) : null,
+    h('div', { class: 'tiny muted' }, 'Entrate: ', a.members.map((m) => `${m.roman} alle ${fmtTime(m.joinedAt)}`).join(' · ')),
+    allyFights(a));
+  // Scontri fatti dall'alleanza: quelli in cui c'era almeno una sua coppia, mentre l'alleanza era in piedi.
+  function allyFights(a) {
+    const ids = new Set(a.members.map((m) => m.teamId));
+    const from = a.createdAt; const to = a.endedAt || Infinity;
+    const list = (cb.timeline || []).filter((e) => e.status !== 'cancelled' && e.createdAt >= from - 1000 && e.createdAt <= to
+      && [...(e.winners || []), ...(e.losers || [])].some((x) => ids.has(x?.teamId)));
+    if (!list.length) return h('div', { class: 'tiny muted' }, '⚔ Nessuno scontro dell\'alleanza');
+    const side = (e) => ((e.winners || []).some((x) => ids.has(x.teamId)) ? 'won' : 'lost');
+    const done = list.filter((e) => e.status === 'confirmed');
+    const w = done.filter((e) => e.result !== 'draw' && side(e) === 'won').length;
+    const l = done.filter((e) => e.result !== 'draw' && side(e) === 'lost').length;
+    const d = done.filter((e) => e.result === 'draw').length;
+    const names = (arr) => (arr || []).map((x) => `${x.roman} ${x.sectorName}`).join(' + ');
+    return h('div', { class: 'ally-fights' },
+      h('div', { class: 'eyebrow' }, `⚔ Scontri dell'alleanza · ${w} vinti · ${l} persi${d ? ` · ${d} pari` : ''}`),
+      list.map((e) => {
+        const mine = side(e) === 'won' ? e.winners : e.losers;
+        const them = side(e) === 'won' ? e.losers : e.winners;
+        const ico = e.status !== 'confirmed' ? '⏳' : e.result === 'draw' ? '➖' : side(e) === 'won' ? '✅' : '❌';
+        const lab = e.status !== 'confirmed' ? 'da confermare' : e.result === 'draw' ? 'pareggio' : side(e) === 'won' ? 'vinto' : 'perso';
+        return h('div', { class: 'small' }, `${ico} ${names(mine)} ${lab} contro ${names(them)}`, e.skill ? h('span', { class: 'tiny brass' }, ` · ${e.skill === 'maestria' ? '⚔ Maestria' : '🧿 Immunità'}`) : null, h('span', { class: 'tiny muted' }, ` · ${fmtTime(e.resolvedAt || e.createdAt)}`));
+      }));
+  }
+  const reqs = cb.requests || [];
+  const inAlliance = new Set(live.flatMap((a) => a.members.filter((m) => !m.leftAt).map((m) => m.teamId)));
+  const solo = (R.ms.teams || []).filter((t) => t.status === 'active' && !inAlliance.has(t.id));
+  return h('div', { class: 'stack' },
+    section(`Alleanze in corso (${live.length})`,
+      live.length ? h('div', { class: 'ally-grid' }, live.map(card)) : h('p', { class: 'empty' }, 'Nessuna alleanza in corso.'),
+      solo.length ? h('p', { class: 'small muted' }, `Da sole: ${solo.map((t) => `${t.roman} ${t.sectorName}`).join(' · ')}`) : null),
+    reqs.length ? section(`Richieste in attesa (${reqs.length})`, h('div', { class: 'stack-xs' }, reqs.map((r) => h('div', { class: 'small' },
+      r.kind === 'break' ? '💔 Rottura: ' : '🤝 Proposta: ', h('strong', null, `${r.from?.roman} ${r.from?.sectorName}`), ' → ', h('strong', null, `${r.to?.roman} ${r.to?.sectorName}`), h('span', { class: 'tiny muted' }, ` · alle ${fmtTime(r.createdAt)}`))))) : null,
+    section(`Alleanze finite (${ended.length})`, ended.length ? h('div', { class: 'ally-grid' }, ended.map(card)) : h('p', { class: 'empty' }, 'Nessuna alleanza finita.')));
+}
 
 // ---------------------------------------------------------------- VIDEO DELLE COPPIE
 // Presentazione delle coppie in tema Giochi del Buio (Settore, numero romano, motto, logo, nick): anteprima e

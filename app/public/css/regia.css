@@ -1579,3 +1579,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .stack-xs { display: flex; flex-direction: column; gap: 3px; }
 .pair-card .team-access { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line, #333); }
 .pair-card .team-access .row-actions { flex-wrap: wrap; }
+/* Alleanze */
+.ally-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+.ally-card { border: 1px solid var(--line, #333); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-left: 4px solid #46c46a; }
+.ally-card.ended { border-left-color: #777; opacity: .8; }
+.ally-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.ally-members { display: flex; flex-wrap: wrap; gap: 6px; }
+.ally-member { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--c, #666); background: color-mix(in srgb, var(--c, #666) 15%, transparent); }
+.ally-member.gone { opacity: .45; text-decoration: line-through; }
+.ally-fights { border-top: 1px dashed var(--line, #333); padding-top: 8px; display: flex; flex-direction: column; gap: 3px; }
