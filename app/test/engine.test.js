@@ -3967,3 +3967,20 @@ test('Eventi e alleanze: la coppia alleata si iscrive da sola; l\'alleanza entra
   assert.deepEqual(ins.map((x) => x.teamId), [Cc.id]);
   assert.equal(ins[0].status, 'accepted');
 });
+
+test('Dono dalla regia direttamente a una coppia: scelto o a caso tra alcune rarità', () => {
+  const S = require('../src/skills');
+  const g = setupGame(2);
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const r = S.giftFromCouncil(A.id, { typeId: 'scudo', note: 'Per il coraggio' }, 'regia');
+  assert.equal(r.gift.typeId, 'scudo');
+  const row = q.get('SELECT * FROM gifts WHERE id = ?', r.gift.id);
+  assert.equal(row.claimedByTeamId, A.id);
+  assert.equal(row.label, 'Per il coraggio');
+  const r2 = S.giftFromCouncil(A.id, { rarity: 'leggendario' }, 'regia');
+  assert.equal(S.giftOdds(G.getGame(g.id)).gifts.find((x) => x.id === r2.gift.typeId).tier, 'leggendario');
+  assert.equal(q.get('SELECT label FROM gifts WHERE id = ?', r2.gift.id).label, 'Dono del Consiglio');
+  assert.throws(() => S.giftFromCouncil(A.id, { typeId: 'inesistente' }, 'regia'), /sconosciuto/);
+  assert.ok(require('../src/field').teamGifts(A).some((x) => x.id === r.gift.id));
+});
