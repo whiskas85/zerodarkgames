@@ -2646,7 +2646,7 @@ function masterState(gameId) {
       members: membersOf(elect.id).map((m) => ({ ...m, pushDevices: q.get('SELECT COUNT(*) AS n FROM push_subs WHERE playerId = ?', m.id).n })), online: online[elect.id] || 0, unread: unread[elect.id] || 0, pushDevices: pushDevices[elect.id] || 0,
     },
     squads: q.all('SELECT id, name, color FROM elect_squads WHERE gameId = ? ORDER BY id', g.id).map((x) => ({
-      ...x, members: q.all('SELECT id, name, nickname FROM players WHERE squadId = ?', x.id), unread: unreadSquad[x.id] || 0,
+      ...x, members: q.all('SELECT p.id, p.name, p.nickname, (SELECT MAX(at) FROM positions WHERE playerId = p.id) AS lastAt FROM players p WHERE p.squadId = ?', x.id), unread: unreadSquad[x.id] || 0,
     })),
     notices: (() => {
       const nTeams = q.all('SELECT id, kind, sectorId, gameId FROM teams WHERE gameId = ?', g.id);
