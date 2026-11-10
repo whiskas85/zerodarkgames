@@ -1508,28 +1508,8 @@ function teamCard(t, editable) {
     // Footer con le azioni sulla coppia.
     h('div', { class: 'row-actions team-foot' },
       t.status !== 'withdrawn' ? h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog(t) }, '🎁 Dai un Dono') : null,
-      h('button', { class: 'btn btn-sm', onclick: () => teamMessageDialog(t) }, t.unread ? `✉️ Messaggio (${t.unread})` : '✉️ Messaggio'),
+      h('button', { class: 'btn btn-sm', onclick: () => { R.chat = { kind: 'team', id: t.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, t.unread ? `✉️ Messaggio (${t.unread})` : '✉️ Messaggio'),
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
-}
-
-// Messaggio alla coppia dalla regia (arriva nella sua chat con il Consiglio).
-async function teamMessageDialog(t) {
-  const ta = h('textarea', { class: 'input', rows: 4, maxlength: 1000, placeholder: 'Scrivi come Consiglio…', 'data-keep': `tmsg-${t.id}` });
-  const last = (R.ms.messages || []).filter((m) => m.teamId === t.id && !m.channel).slice(-3);
-  await modal({ title: `✉️ Messaggio a ${t.roman} · Settore ${t.sectorName}`, okLabel: 'Invia',
-    body: h('div', { class: 'stack-sm' },
-      last.length ? h('div', { class: 'stack-xs tl-msgs' }, h('div', { class: 'eyebrow' }, 'Ultimi messaggi'),
-        last.map((m) => h('div', { class: 'tiny' }, h('strong', null, m.fromRole === 'team' ? (m.author || 'coppia') : 'Consiglio'), ` · ${fmtTime(m.createdAt)} · `, m.text || (m.audioMime ? '🎤 vocale' : '')))) : null,
-      ta,
-      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => { e.target.closest('dialog')?.close(); R.chat = { kind: 'team', id: t.id }; R.chatOpen = true; location.hash = 'comunicazioni'; } }, 'Apri la chat completa')),
-    onOpen: () => setTimeout(() => ta.focus(), 50),
-    onOk: async () => {
-      const text = ta.value.trim();
-      if (!text) { toast('Scrivi un messaggio', 'error'); return false; }
-      await api('POST', `/api/m/teams/${t.id}/message`, { text });
-      toast('Messaggio inviato', 'ok');
-      return true;
-    } });
 }
 
 // Blocchi a scomparsa della card: restano aperti/chiusi tra un aggiornamento e l'altro.
