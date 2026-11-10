@@ -242,7 +242,9 @@ export function createMapView({ className = '', remember = null, nav = false, ro
   const ready = loadLeaflet().then((lib) => {
     L = lib;
     const canRotate = rotate && !!L.Map.TouchRotate;
-    map = L.map(el, { zoomControl: true, attributionControl: true, ...(canRotate ? { rotate: true, touchRotate: true, rotateControl: false, bearing: 0 } : {}) }).setView(ITALY, savedZoom || 6);
+    // Zone e cerchi si disegnano ben oltre lo schermo (padding 1.5 = una volta e mezza la vista per lato): spostando o
+    // girando la mappa non si vedono bordi tagliati che si ridisegnano.
+    map = L.map(el, { zoomControl: true, attributionControl: true, renderer: L.svg({ padding: 1.5 }), ...(canRotate ? { rotate: true, touchRotate: true, rotateControl: false, bearing: 0 } : {}) }).setView(ITALY, savedZoom || 6);
     // Bussola: l'ago punta al nord, sotto i gradi di rotazione; toccandola la mappa torna dritta (0°).
     if (canRotate) {
       const Compass = L.Control.extend({
@@ -361,8 +363,12 @@ export function createMapView({ className = '', remember = null, nav = false, ro
         let pg = polys.get(z.key);
         const style = { color: z.color || '#d1ad62', weight: z.weight ?? 2, fillOpacity: z.fill ?? 0.18, dashArray: z.dash || null, interactive: !!(z.title || z.popup) };
         // Con un popup (tocco sulla zona) niente tooltip: sul telefono si sovrapporrebbero.
-        if (!pg) { pg = L.polygon(z.points, style).addTo(map); pg.on('click', () => onShapeTap?.(z.key)); if (z.popup) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
-        else { pg.setLatLngs(z.points); pg.setStyle(style); if (z.popup) { if (pg.getPopup()) pg.setPopupContent(z.popup); else pg.bindPopup(z.popup, { maxWidth: 260 }); } else if (z.title) pg.setTooltipContent(z.title); }
+        if (!pg) { pg = L.polygon(z.points, style).addTo(map); pg._zdgSig = JSON.stringify([z.points, style]); pg.on('click', () => onShapeTap?.(z.key)); if (z.popup) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (z.title) pg.bindTooltip(z.title, { sticky: true }); polys.set(z.key, pg); }
+        else {
+          // Si ridisegna solo se la forma o lo stile sono cambiati davvero (niente sfarfallio a ogni aggiornamento).
+          const sig = JSON.stringify([z.points, style]);
+          if (pg._zdgSig !== sig) { pg.setLatLngs(z.points); pg.setStyle(style); pg._zdgSig = sig; }
+          if (z.popup) { if (!pg.getPopup()) pg.bindPopup(z.popup, { maxWidth: 260 }); else if (pg._zdgPop !== z.popup) pg.setPopupContent(z.popup); pg._zdgPop = z.popup; } else if (z.title && pg._zdgTip !== z.title) { pg.setTooltipContent(z.title); pg._zdgTip = z.title; } }
       }
       for (const [k, pg] of polys) if (!keep.has(k)) { pg.remove(); polys.delete(k); }
       // Etichetta di una zona (es. conto alla rovescia): z.badge è HTML. badgeEdge: sul lato visibile, inclinata come
