@@ -532,3 +532,12 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .food-person:hover { border-color: var(--brass, #d1ad62); }
 .food-manual { border-style: dashed; }
 .food-for { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--brass, #d1ad62); border-radius: 12px; }
+/* Naviga (mappa di coppie ed Eletti): linea verso il punto con i metri che mancano */
+.zdg-nav-btn { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 0; border-radius: 6px; background: #3b82f6; color: #fff; font: 700 14px var(--f-ui, sans-serif); cursor: pointer; }
+.zdg-nav-label { background: none; border: 0; }
+.zdg-nav-dist { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 3px 9px; border-radius: 999px; background: #1d4ed8; color: #fff; font: 800 13px var(--f-ui, sans-serif); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); border: 2px solid #fff; }
+.zdg-nav-bar { position: absolute; z-index: 1000; bottom: 34px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 110px); padding: 6px 6px 6px 12px; border-radius: 999px; background: rgba(15, 23, 42, .92); color: #fff; font: 700 14px var(--f-ui, sans-serif); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); border: 2px solid #3b82f6; }
+.zdg-nav-bar[hidden] { display: none; }
+.zdg-nav-bar.arrived { border-color: #22c55e; }
+.zdg-nav-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zdg-nav-stop { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .15); color: #fff; font-size: 15px; cursor: pointer; }
