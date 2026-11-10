@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
-import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING } from './teamvideo.js';
+import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS } from './teamvideo.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -5127,7 +5127,7 @@ const viewOrdina = () => foodOrderR.view();
 // ---------------------------------------------------------------- VIDEO DELLE COPPIE
 // Presentazione delle coppie in tema Giochi del Buio (Settore, numero romano, motto, logo, nick): anteprima e
 // registrazione in un file video direttamente dal browser.
-const TV = { perTeam: 7, sound: true, stills: null, gid: null };
+const TV = { perTeam: 7, sound: true, format: 'landscape', stills: null, gid: null };
 function viewTeamVideo() {
   const ms = R.ms;
   const couples = (ms.teams || []).filter((t) => t.sectorId);
@@ -5141,12 +5141,20 @@ function viewTeamVideo() {
   const paintSound = () => soundSeg.replaceChildren(...[[true, '🔊 Sì'], [false, '🔇 No']].map(([v, l]) => h('button', { type: 'button', class: TV.sound === v ? 'on' : '', 'aria-pressed': String(TV.sound === v), onclick: () => { TV.sound = v; paintSound(); } }, l)));
   paintSound();
   const type = pickRecorderType();
+  // Formato: orizzontale o per Instagram (Reel/Storia 9:16, post 4:5, quadrato).
+  const fmtSeg = h('div', { class: 'tv-seg tv-formats', role: 'group', 'aria-label': 'Formato' });
+  const paintFmt = () => fmtSeg.replaceChildren(...Object.entries(FORMATS).map(([k, f]) => h('button', { type: 'button', class: TV.format === k ? 'on' : '', 'aria-pressed': String(TV.format === k), title: f.hint,
+    onclick: () => { TV.format = k; paintFmt(); drawStills(); } }, f.label)));
+  paintFmt();
   const grid = h('div', { class: 'tv-stills' });
   // Anteprime: un fotogramma per coppia.
-  (async () => {
-    const list = await teamsForVideo(ms);
-    grid.replaceChildren(...list.map((t) => { const c = h('canvas', { width: 1920, height: 1080, class: 'tv-still', title: `${t.roman} ${t.sectorName}` }); try { drawStill(c, t, TV.perTeam); } catch { /* font non pronto */ } return c; }));
-  })();
+  let list = null;
+  const drawStills = async () => {
+    list ||= await teamsForVideo(ms);
+    grid.classList.toggle('tv-stills-tall', TV.format !== 'landscape');
+    grid.replaceChildren(...list.map((t) => { const c = h('canvas', { class: 'tv-still', title: `${t.roman} ${t.sectorName}` }); try { drawStill(c, t, TV.perTeam, TV.format); } catch { /* font non pronto */ } return c; }));
+  };
+  drawStills();
   return h('div', { class: 'stack' },
     section(`Video di presentazione delle coppie (${couples.length})`, h('div', { class: 'stack-sm' },
       h('p', { class: 'muted small' }, 'Intro «I Giochi del Buio», poi una coppia alla volta in ordine di Settore: numero romano, Settore con l\'effetto del suo elemento (braci per il Fuoco, vento per l\'Aria, polvere per la Terra…), motto, il logo che si apre con un lampo e sotto i nick dei due membri. Chiusura del Consiglio. Formato 1920×1080; colonna sonora horror facoltativa: bordone grave e scuro, e per ogni coppia un risucchio che sale fino a un tonfo cupo all\'apertura del logo, poi un tonfo sordo per ogni nick.'),
@@ -5155,9 +5163,10 @@ function viewTeamVideo() {
       h('div', { class: 'form-grid' },
         h('label', { class: 'field' }, h('span', null, 'Secondi per coppia'), per),
         h('div', { class: 'field' }, h('span', null, 'Colonna sonora horror (bordone e tonfi)'), soundSeg)),
+      h('div', { class: 'field' }, h('span', null, 'Formato'), fmtSeg),
       h('div', { class: 'row-actions' }, dur,
-        h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound }) }, '▶ Guarda a schermo intero'),
-        h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, record: true }) }, '⏺ Registra e scarica il video')),
+        h('button', { class: 'btn', onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, format: TV.format }) }, '▶ Guarda a schermo intero'),
+        h('button', { class: 'btn btn-primary', disabled: !type, onclick: () => playTeamVideo(ms, { perTeam: TV.perTeam, sound: TV.sound, format: TV.format, record: true }) }, '⏺ Registra e scarica il video')),
       h('p', { class: 'tiny muted' }, type ? `La registrazione avviene in tempo reale (dura quanto il video) e alla fine scarica il file ${type.includes('mp4') ? 'MP4' : 'WebM'}. Tieni la scheda aperta e in primo piano finché non finisce.` : 'Questo browser non sa registrare video: usa Chrome o Edge sul computer. Puoi comunque guardarlo a schermo intero.'))),
     section('Anteprima', grid));
 }

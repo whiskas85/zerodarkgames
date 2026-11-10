@@ -3,8 +3,36 @@
 // registrare in un file video direttamente dal browser (MediaRecorder), con una colonna sonora sintetizzata.
 import { h, toast } from './lib.js';
 
-const W = 1920;
-const H = 1080;
+// Formati: orizzontale (proiettore, YouTube) e verticali/quadrati per Instagram.
+export const FORMATS = {
+  landscape: { w: 1920, h: 1080, label: 'Orizzontale 16:9', hint: 'proiettore, YouTube' },
+  reel: { w: 1080, h: 1920, label: 'Instagram Reel / Storia 9:16', hint: 'verticale a tutto schermo' },
+  post: { w: 1080, h: 1350, label: 'Instagram post 4:5', hint: 'nel feed' },
+  square: { w: 1080, h: 1080, label: 'Quadrato 1:1', hint: 'feed e WhatsApp' },
+};
+let W = 1920;
+let H = 1080;
+let U = 1; // scala dei testi e degli elementi
+let NARROW = false; // verticale o quadrato: impaginazione impilata
+function setFormat(key) {
+  const f = FORMATS[key] || FORMATS.landscape;
+  W = f.w; H = f.h;
+  NARROW = W < H * 1.3;
+  U = NARROW ? Math.min(W / 1000, H / 1300) : W / 1920;
+  return f;
+}
+// Imposta il carattere e lo rimpicciolisce finché il testo (con la spaziatura) sta in maxW.
+// Rimpicciolisce in proporzione anche la spaziatura tra le lettere (la usa spaced() per lo stesso testo).
+let lastFit = { text: null, scale: 1 };
+function fitFont(ctx, weight, size, family, text, maxW, spacing = 0) {
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.font = `${weight} ${size}px ${family}`;
+  const w = ctx.measureText(text).width + spacing * Math.max(0, [...text].length - 1);
+  const scale = w > maxW ? maxW / w : 1;
+  if (scale < 1) { size = Math.floor(size * scale); ctx.font = `${weight} ${size}px ${family}`; }
+  lastFit = { text, scale };
+  return size;
+}
 const FD = '"Big Shoulders Stencil Display", Impact, "Arial Narrow", sans-serif';
 const FM = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
 const INTRO = 5;
@@ -157,6 +185,7 @@ function makeGrain() {
 
 // Testo con spaziatura tra le lettere (canvas non la supporta ovunque).
 function spaced(ctx, text, x, y, spacing) {
+  if (lastFit.text === text) spacing *= lastFit.scale;
   if ('letterSpacing' in ctx) { ctx.letterSpacing = `${spacing}px`; ctx.fillText(text, x, y); ctx.letterSpacing = '0px'; return; }
   const chars = [...text];
   const total = chars.reduce((t, ch) => t + ctx.measureText(ch).width + spacing, -spacing);
@@ -177,21 +206,28 @@ function drawIntro(ctx, t, game, count) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = rgba([232, 220, 196], 0.85 * span(t, 0.2, 1.2));
-  ctx.font = `600 30px ${FM}`;
-  spaced(ctx, 'IL CONSIGLIO ZERO PRESENTA', W / 2, H * 0.3, 14);
+  fitFont(ctx, 600, 30 * U, FM, 'IL CONSIGLIO ZERO PRESENTA', W * 0.9, 14 * U);
+  const big = (190 + 10 * easeOut(span(t, 0.6, 4))) * U * (NARROW ? 1.15 : 1);
+  // Verticale: il titolo va su due righe.
+  const lines = NARROW ? ['I GIOCHI', 'DEL BUIO'] : ['I GIOCHI DEL BUIO'];
+  const yMid = H * (NARROW ? 0.46 : 0.47);
+  const yTitle0 = yMid - (lines.length - 1) * big * 0.5;
+  const yTop = yTitle0 - big * 0.5;
+  const yBottom = yTitle0 + (lines.length - 1) * big + big * 0.5;
+  spaced(ctx, 'IL CONSIGLIO ZERO PRESENTA', W / 2, NARROW ? yTop - 60 * U : H * 0.3, 14 * U);
   ctx.shadowColor = rgba([226, 72, 50], 0.9);
-  ctx.shadowBlur = 50 * a;
+  ctx.shadowBlur = 50 * a * U;
   ctx.fillStyle = rgba([240, 230, 210], a);
-  ctx.font = `900 ${190 + 10 * easeOut(span(t, 0.6, 4))}px ${FD}`;
-  spaced(ctx, 'I GIOCHI DEL BUIO', W / 2, H * 0.47, 6);
+  lines.forEach((l, i) => { fitFont(ctx, 900, big, FD, l, W * 0.92, 6 * U); spaced(ctx, l, W / 2, yTitle0 + i * big, 6 * U); });
   ctx.shadowBlur = 0;
   ctx.fillStyle = rgba(rgb, span(t, 2, 3));
-  ctx.font = `600 34px ${FM}`;
-  spaced(ctx, `LE ${count} COPPIE · ${String(game || '').toUpperCase()}`.slice(0, 70), W / 2, H * 0.62, 10);
+  const sub = `LE ${count} COPPIE · ${String(game || '').toUpperCase()}`.slice(0, 70);
+  fitFont(ctx, 600, 34 * U, FM, sub, W * 0.9, 10 * U);
+  spaced(ctx, sub, W / 2, NARROW ? yBottom + 90 * U : H * 0.62, 10 * U);
   // Linea che si allarga.
-  const lw = 700 * easeOut(span(t, 1.2, 2.6));
+  const lw = Math.min(700 * U, W * 0.7) * easeOut(span(t, 1.2, 2.6));
   ctx.fillStyle = rgba(rgb, 0.8);
-  ctx.fillRect(W / 2 - lw / 2, H * 0.555, lw, 3);
+  ctx.fillRect(W / 2 - lw / 2, NARROW ? yBottom + 40 * U : H * 0.555, lw, Math.max(2, 3 * U));
   ctx.restore();
 }
 
@@ -204,13 +240,16 @@ function drawOutro(ctx, t) {
   ctx.globalAlpha = a;
   ctx.fillStyle = '#efe6d2';
   ctx.shadowColor = 'rgba(226,72,50,.8)';
-  ctx.shadowBlur = 40;
-  ctx.font = `900 120px ${FD}`;
-  spaced(ctx, 'CHE IL BUIO VI ACCOLGA', W / 2, H * 0.45, 4);
+  ctx.shadowBlur = 40 * U;
+  const size = 120 * U * (NARROW ? 1.3 : 1);
+  const lines = NARROW ? ['CHE IL BUIO', 'VI ACCOLGA'] : ['CHE IL BUIO VI ACCOLGA'];
+  const y0 = H * 0.45 - (lines.length - 1) * size * 0.5;
+  lines.forEach((l, i) => { fitFont(ctx, 900, size, FD, l, W * 0.92, 4 * U); spaced(ctx, l, W / 2, y0 + i * size, 4 * U); });
   ctx.shadowBlur = 0;
   ctx.fillStyle = '#d1ad62';
-  ctx.font = `600 32px ${FM}`;
-  spaced(ctx, 'SOLO UNA COPPIA VARCHERÀ LA SOGLIA', W / 2, H * 0.58, 12);
+  const sub = 'SOLO UNA COPPIA VARCHERÀ LA SOGLIA';
+  fitFont(ctx, 600, 32 * U, FM, sub, W * 0.9, 12 * U);
+  spaced(ctx, sub, W / 2, y0 + (lines.length - 1) * size + size * 0.5 + 70 * U, 12 * U);
   ctx.restore();
 }
 
@@ -230,44 +269,52 @@ function drawTeam(ctx, t, dur, tm, st) {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Impaginazione: orizzontale come sempre; verticale/quadrato tutto impilato e centrato in altezza.
+  let yLabel = 110; let yTitle = 205; let yMotto = 290; let cy = H * 0.56; let R = 200;
+  if (NARROW) {
+    R = Math.min(240 * U, (H - 465 * U - H * 0.12) / 2);
+    const total = 465 * U + 2 * R;
+    yLabel = (H - total) / 2 + 15 * U;
+    yTitle = yLabel + 115 * U;
+    yMotto = yTitle + 85 * U;
+    cy = yMotto + 70 * U + R;
+  }
   // Numero romano gigante, dietro a tutto.
   const rn = easeOut(span(t, 0.2, 1.6));
   ctx.globalAlpha = 0.14 * vis * rn;
   ctx.fillStyle = rgba(rgb, 1);
-  ctx.font = `900 ${700 + 80 * (1 - rn)}px ${FD}`;
-  ctx.fillText(tm.roman, W / 2, H * 0.47);
+  ctx.font = `900 ${(700 + 80 * (1 - rn)) * Math.min(W, H) / 1080}px ${FD}`;
+  ctx.fillText(tm.roman, W / 2, NARROW ? cy : H * 0.47);
   // In alto: Settore, numero romano ed elemento.
   ctx.globalAlpha = vis * span(t, 0.4, 1.2);
   ctx.fillStyle = rgba(rgb, 1);
-  ctx.font = `600 30px ${FM}`;
-  spaced(ctx, `${tm.roman} · SETTORE`, W / 2, 110, 16);
+  ctx.font = `600 ${30 * U}px ${FM}`;
+  spaced(ctx, `${tm.roman} · SETTORE`, W / 2, yLabel, 16 * U);
   ctx.globalAlpha = vis * easeOut(span(t, 0.6, 1.5));
   ctx.fillStyle = '#f2ead8';
   ctx.shadowColor = rgba(rgb, 0.9);
-  ctx.shadowBlur = 40;
-  ctx.font = `900 ${150 - 10 * easeOut(span(t, 0.6, 1.5))}px ${FD}`;
-  spaced(ctx, tm.sectorName.toUpperCase(), W / 2, 205, 10);
+  ctx.shadowBlur = 40 * U;
+  fitFont(ctx, 900, (150 - 10 * easeOut(span(t, 0.6, 1.5))) * U, FD, tm.sectorName.toUpperCase(), W * 0.9, 10 * U);
+  spaced(ctx, tm.sectorName.toUpperCase(), W / 2, yTitle, 10 * U);
   ctx.shadowBlur = 0;
   if (tm.motto) {
     ctx.globalAlpha = vis * span(t, 1.2, 2);
     ctx.fillStyle = 'rgba(242,234,216,.7)';
-    ctx.font = `italic 400 30px Georgia, "Times New Roman", serif`;
-    ctx.fillText(`«${tm.motto}»`, W / 2, 290);
+    fitFont(ctx, 'italic 400', 30 * U, 'Georgia, "Times New Roman", serif', `«${tm.motto}»`, W * 0.9);
+    ctx.fillText(`«${tm.motto}»`, W / 2, yMotto);
   }
   // Logo: cerchio che si apre con un lampo.
   const cx = W / 2;
-  const cy = H * 0.56;
-  const R = 200;
   const open = easeOut(span(t, 2.0, 2.7));
   if (open > 0) {
     ctx.globalAlpha = vis;
     // Anello del colore del Settore.
     ctx.strokeStyle = rgba(rgb, 0.9);
-    ctx.lineWidth = 6;
+    ctx.lineWidth = Math.max(3, 6 * R / 200);
     ctx.shadowColor = rgba(rgb, 1);
-    ctx.shadowBlur = 40;
+    ctx.shadowBlur = 40 * U;
     ctx.beginPath();
-    ctx.arc(cx, cy, R + 14, -Math.PI / 2, -Math.PI / 2 + 6.2832 * open);
+    ctx.arc(cx, cy, R + 14 * R / 200, -Math.PI / 2, -Math.PI / 2 + 6.2832 * open);
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.save();
@@ -283,8 +330,8 @@ function drawTeam(ctx, t, dur, tm, st) {
       ctx.drawImage(tm.img, cx - iw / 2, cy - ih / 2, iw, ih);
     } else {
       ctx.fillStyle = rgba(rgb, 1);
-      ctx.font = `900 220px ${FD}`;
-      ctx.fillText(tm.roman, cx, cy + 10);
+      ctx.font = `900 ${220 * R / 200}px ${FD}`;
+      ctx.fillText(tm.roman, cx, cy + 10 * R / 200);
     }
     ctx.restore();
     // Lampo all'apertura.
@@ -299,12 +346,13 @@ function drawTeam(ctx, t, dur, tm, st) {
   }
   // Nome della coppia (se ce l'ha) e nick dei due membri, sotto il logo.
   const nk = easeOut(span(t, 2.9, 3.7));
-  const y0 = cy + R + 80;
+  const y0 = cy + R + 80 * U;
   if (tm.displayName) {
     ctx.globalAlpha = vis * nk;
     ctx.fillStyle = rgba(rgb, 1);
-    ctx.font = `600 30px ${FM}`;
-    spaced(ctx, tm.displayName.toUpperCase().slice(0, 48), cx, y0 - 10 + 20 * (1 - nk), 12);
+    const dn = tm.displayName.toUpperCase().slice(0, 48);
+    fitFont(ctx, 600, 30 * U, FM, dn, W * 0.9, 12 * U);
+    spaced(ctx, dn, cx, y0 - 10 * U + 20 * U * (1 - nk), 12 * U);
   }
   const nicks = tm.nicks.filter(Boolean);
   if (nicks.length) {
@@ -312,21 +360,29 @@ function drawTeam(ctx, t, dur, tm, st) {
     ctx.globalAlpha = vis * n2;
     ctx.fillStyle = '#f2ead8';
     ctx.shadowColor = 'rgba(0,0,0,.9)';
-    ctx.shadowBlur = 20;
-    ctx.font = `900 92px ${FD}`;
-    const yN = y0 + (tm.displayName ? 75 : 40) + 30 * (1 - n2);
+    ctx.shadowBlur = 20 * U;
+    const yN = y0 + (tm.displayName ? 75 : 40) * U + 30 * U * (1 - n2);
     if (nicks.length === 2) {
-      const gap = 70;
+      const gap = 70 * U;
+      const [a1, a2] = nicks.map((n) => n.toUpperCase());
+      // Stessa grandezza per i due nick, che ciascuno stia nella sua metà.
+      const longest = a1.length >= a2.length ? a1 : a2;
+      const size = fitFont(ctx, 900, 92 * U, FD, longest, W / 2 - gap - W * 0.05, 4 * U);
+      ctx.font = `900 ${size}px ${FD}`;
       ctx.textAlign = 'right';
-      spaced(ctx, nicks[0].toUpperCase(), cx - gap, yN, 4);
+      spaced(ctx, a1, cx - gap, yN, 4 * U);
       ctx.textAlign = 'left';
-      spaced(ctx, nicks[1].toUpperCase(), cx + gap, yN, 4);
+      spaced(ctx, a2, cx + gap, yN, 4 * U);
       ctx.textAlign = 'center';
       ctx.shadowBlur = 0;
       ctx.fillStyle = rgba(rgb, 1);
-      ctx.font = `900 60px ${FD}`;
+      ctx.font = `900 ${Math.min(60 * U, size * 0.7)}px ${FD}`;
       ctx.fillText('✦', cx, yN);
-    } else spaced(ctx, nicks.join('  ✦  ').toUpperCase(), cx, yN, 4);
+    } else {
+      const txt = nicks.join('  ✦  ').toUpperCase();
+      fitFont(ctx, 900, 92 * U, FD, txt, W * 0.9, 4 * U);
+      spaced(ctx, txt, cx, yN, 4 * U);
+    }
   }
   ctx.restore();
 }
@@ -465,6 +521,8 @@ export function pickRecorderType() {
 // Riproduzione (e registrazione) a schermo intero. opts: { perTeam, sound, record }.
 export async function playTeamVideo(ms, opts = {}) {
   const perTeam = Math.max(5, Math.min(15, Number(opts.perTeam) || 7));
+  const fmtKey = FORMATS[opts.format] ? opts.format : 'landscape';
+  setFormat(fmtKey);
   if (document.fonts?.load) await Promise.all([document.fonts.load(`900 100px ${FD}`), document.fonts.load(`600 30px ${FM}`)]).catch(() => {});
   const teams = await teamsForVideo(ms);
   if (!teams.length) { toast('Nessuna coppia con un Settore in questa partita', 'error'); return; }
@@ -526,7 +584,7 @@ export async function playTeamVideo(ms, opts = {}) {
     await new Promise((r) => { rec.onstop = r; rec.stop(); });
     if (!stopped) {
       const blob = new Blob(chunks, { type: type.split(';')[0] });
-      const a = h('a', { href: URL.createObjectURL(blob), download: `presentazione-coppie.${type.includes('mp4') ? 'mp4' : 'webm'}` });
+      const a = h('a', { href: URL.createObjectURL(blob), download: `presentazione-coppie-${fmtKey === 'landscape' ? '16x9' : fmtKey === 'reel' ? 'reel-9x16' : fmtKey === 'post' ? 'post-4x5' : '1x1'}.${type.includes('mp4') ? 'mp4' : 'webm'}` });
       document.body.append(a); a.click(); a.remove();
       toast(`Video pronto: ${Math.round(blob.size / 1e6)} MB scaricati`, 'ok', 8000);
     } else toast('Registrazione interrotta', 'info');
@@ -536,7 +594,9 @@ export async function playTeamVideo(ms, opts = {}) {
 }
 
 // Una sola immagine (per l'anteprima nella pagina): la coppia i al momento in cui compaiono i nick.
-export function drawStill(canvas, team, perTeam = 7) {
+export function drawStill(canvas, team, perTeam = 7, format = 'landscape') {
+  const f = setFormat(format);
+  canvas.width = f.w; canvas.height = f.h;
   const ctx = canvas.getContext('2d');
   const st = { particles: makeParticles(team.element), dt: 0 };
   drawTeam(ctx, 5, perTeam, team, st);
