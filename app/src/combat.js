@@ -798,6 +798,11 @@ function masterCombat(gameId) {
         .map((x) => ({ team: teamLite(x.teamId), sectorName: x.sectorName, chosen: !!x.chosenAt })),
     })),
     electFights: q.all('SELECT * FROM elect_fights WHERE gameId = ? ORDER BY id DESC LIMIT 60', gameId).map(electFightOut),
+    // Pagina Alleanze della regia: tutte le alleanze della partita, in corso e finite, con chi c'era e quando.
+    allianceHistory: q.all('SELECT * FROM alliances WHERE gameId = ? ORDER BY id DESC', gameId).map((a) => ({
+      id: a.id, createdAt: a.createdAt, endedAt: a.endedAt || null,
+      members: q.all('SELECT teamId, joinedAt, leftAt, hideCode FROM alliance_members WHERE allianceId = ? ORDER BY joinedAt', a.id).map((m) => ({ ...teamLite(m.teamId), joinedAt: m.joinedAt, leftAt: m.leftAt || null, diplomat: !!m.hideCode })),
+    })).filter((a) => a.members.length > 1),
     requests: q.all("SELECT * FROM alliance_requests WHERE gameId = ? AND status = 'pending' ORDER BY id", gameId)
       .map((r) => ({ id: r.id, kind: r.kind, from: teamLite(r.fromTeamId), to: teamLite(r.toTeamId), createdAt: r.createdAt })),
   };
