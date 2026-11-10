@@ -1616,3 +1616,14 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .squad-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .squad-people li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .squad-people .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.gift-card[hidden], .omnibar [hidden] { display: none; }
+/* Nuovo incarico a schede (Incarico · Piazza un dono · Piazza un Altare o luogo) */
+.dlg .seg-tabs { display: flex; flex-wrap: wrap; gap: 0; border: 2px solid var(--line); }
+.dlg .seg-tabs button { flex: 1 1 160px; padding: 10px 8px; background: transparent; border: 0; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.dlg .seg-tabs button + button { border-left: 2px solid var(--line); }
+.dlg .seg-tabs button.on { background: var(--blood); color: #fff; }
+.place-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
+.place-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); }
+.place-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
+.place-row .place-ico { flex: none; width: 28px; text-align: center; font-weight: 800; }
+.place-row .place-ico img, .place-row .place-ico svg { width: 26px; height: 26px; }

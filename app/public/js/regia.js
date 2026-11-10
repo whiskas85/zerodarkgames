@@ -3369,19 +3369,70 @@ function squadCard(sq, d) {
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare la squadra?', `${sq.name}: membri e incarichi di piazzamento tornano liberi, gli incarichi liberi vengono cancellati.`, 'DELETE', `/api/m/squads/${sq.id}`, undefined, 'Squadra eliminata', true).then(() => loadField()) }, 'Elimina squadra')));
 }
 
-// Nuovo incarico per una squadra: testo e bersaglio (facoltativo) in una finestra.
-async function squadTaskDialog(sq) {
+// Nuovo incarico per una squadra, in una finestra a schede:
+// - Incarico: testo e bersaglio facoltativo (un punto da raggiungere o una coppia);
+// - Piazza un dono / Piazza un Altare o luogo: si spuntano i piazzamenti da fare (anche da spostare) e si affidano
+//   alla squadra; «Punto…» per indicare il punto sulla mappa; dai doni anche «Crea un nuovo dono» già per la squadra.
+async function squadTaskDialog(sq, tab = 'task') {
+  if (!fieldData) await loadField(false);
+  const d = fieldData;
   const text = h('textarea', { class: 'input', rows: 3, maxlength: 300, placeholder: 'Es. presidiate il Cuore dalle 10' });
   const target = targetSelect(`sq-target-dlg-${sq.id}`);
   target.value = '';
-  await modal({ title: `＋ Nuovo incarico · ${sq.name}`, okLabel: 'Invia incarico',
-    body: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text),
+  const todoGift = (g) => !['claimed', 'expired'].includes(g.status) && (g.status === 'draft' || g.moveRequestedAt);
+  const todoPlace = (x) => x.lat == null || x.moveRequestedAt;
+  const gifts = d.gifts.filter(todoGift);
+  const places = [...(d.landmarks || []).map((x) => ['landmark', x]), ...d.points.map((x) => ['point', x])].filter(([, x]) => todoPlace(x));
+  const chosen = new Set();
+  let done = null;
+  const sqName = (id) => d.squads.find((x) => x.id === id)?.name;
+  const row = (kind, x, icon, title) => {
+    const key = `${kind}:${x.id}`;
+    const cb = h('input', { type: 'checkbox', checked: chosen.has(key) || x.squadId === sq.id, onchange: (e) => { if (e.target.checked) chosen.add(key); else chosen.delete(key); } });
+    if (x.squadId === sq.id) chosen.add(key);
+    return h('li', { class: 'place-row' }, h('label', { class: 'grow' }, cb, h('span', { class: 'place-ico' }, icon), h('span', null, h('strong', null, title),
+      h('span', { class: 'tiny muted' }, ` · ${x.moveRequestedAt ? 'da spostare' : 'da piazzare'}${x.squadId ? ` · ${x.squadId === sq.id ? 'già affidato a questa squadra' : `ora a ${sqName(x.squadId) || '?'}`}` : ''}${x.targetLat != null ? ' · ⌖ punto indicato' : ''}`))),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', title: 'Scegli il punto sulla mappa (e la squadra)', onclick: async () => { done?.(); await assignDialog(kind, x, !!x.moveRequestedAt); } }, 'Punto…'));
+  };
+  const panes = {
+    task: h('div', { class: 'stack-sm' }, h('label', { class: 'field' }, h('span', null, 'Cosa devono fare'), text),
       h('div', { class: 'field' }, h('span', null, 'Bersaglio (facoltativo: un punto da raggiungere o una coppia)'), target),
       h('p', { class: 'tiny muted' }, 'I membri della squadra ricevono una notifica e lo trovano in Incarichi; con una coppia come bersaglio la vedono in mappa finché l\'incarico è aperto.')),
-    onOpen: () => setTimeout(() => text.focus(), 50),
+    gift: h('div', { class: 'stack-sm' },
+      gifts.length ? h('ul', { class: 'place-list' }, gifts.map((g) => row('gift', g, g.icon || '🎁', `${g.label} · ${g.name}`))) : h('p', { class: 'empty' }, 'Nessun dono da piazzare.'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { done?.(); createGiftDialog({ squadId: sq.id }); } }, '＋ Crea un nuovo dono per questa squadra'),
+      h('p', { class: 'tiny muted' }, 'Spunta i doni da far piazzare (o spostare): la squadra riceve l\'incarico con una notifica. Con «Punto…» indichi dove sulla mappa.')),
+    place: h('div', { class: 'stack-sm' },
+      places.length ? h('ul', { class: 'place-list' }, places.map(([k, x]) => row(k, x, k === 'point' ? x.roman : landmarkIcon(x.kind), x.label))) : h('p', { class: 'empty' }, 'Nessun Altare o luogo da piazzare.'),
+      h('p', { class: 'tiny muted' }, 'Spunta gli Altari e i luoghi del gioco da far piazzare (o spostare). Con «Punto…» indichi dove sulla mappa.')),
+  };
+  const TABS = [['task', '☰ Incarico'], ['gift', `🎁 Piazza un dono${gifts.length ? ` (${gifts.length})` : ''}`], ['place', `📍 Piazza un Altare o luogo${places.length ? ` (${places.length})` : ''}`]];
+  const tabsEl = h('div', { class: 'seg-tabs', role: 'tablist' });
+  const body = h('div');
+  const show = (k) => {
+    tab = k;
+    tabsEl.replaceChildren(...TABS.map(([kk, label]) => h('button', { type: 'button', role: 'tab', class: kk === k ? 'on' : '', onclick: () => show(kk) }, label)));
+    body.replaceChildren(panes[k]);
+    if (k === 'task') setTimeout(() => text.focus(), 30);
+  };
+  show(tab);
+  await modal({ title: `＋ Nuovo incarico · ${sq.name}`, okLabel: 'Invia', wide: true, tall: true,
+    onOpen: (dlg) => { done = () => { dlg.close(); dlg.remove(); }; },
+    body: h('div', { class: 'stack-sm' }, tabsEl, body),
     onOk: async () => {
-      if (!text.value.trim() && !target.value) { toast('Scrivi l\'incarico o scegli un bersaglio', 'error'); return false; }
-      return !!(await squadCall('POST', G('/tasks'), { squadId: sq.id, text: text.value, target: target.value || null }, `Incarico inviato a ${sq.name}`));
+      if (tab === 'task') {
+        if (!text.value.trim() && !target.value) { toast('Scrivi l\'incarico o scegli un bersaglio', 'error'); return false; }
+        return !!(await squadCall('POST', G('/tasks'), { squadId: sq.id, text: text.value, target: target.value || null }, `Incarico inviato a ${sq.name}`));
+      }
+      const pool = tab === 'gift' ? gifts.map((g) => ['gift', g]) : places;
+      const pickList = pool.filter(([k, x]) => chosen.has(`${k}:${x.id}`) && x.squadId !== sq.id);
+      if (!pickList.length) { toast(tab === 'gift' ? 'Spunta almeno un dono' : 'Spunta almeno un Altare o luogo', 'error'); return false; }
+      try {
+        for (const [kind, x] of pickList) await api('POST', '/api/m/assign', { kind, id: x.id, squadId: sq.id, move: !!x.moveRequestedAt });
+      } catch (e) { toast(e.message, 'error', 6000); return false; }
+      toast(`${pickList.length === 1 ? 'Piazzamento affidato' : `${pickList.length} piazzamenti affidati`} a ${sq.name}`, 'ok');
+      await Promise.all([load(), loadField(false)]); render();
+      return true;
     } });
 }
 
@@ -4166,12 +4217,12 @@ function giftRevealCell(g) {
 }
 
 // Crea dono: una card per tipo (titolo e descrizione); scelto il tipo, squadra, annuncio, ritardo, scadenza e cartello.
-async function createGiftDialog() {
+async function createGiftDialog({ squadId = null } = {}) {
   const d = fieldData;
   let type = null;
   const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1 });
   const title = h('input', { class: 'input', maxlength: 36, placeholder: 'es. Cassa del bosco (vuoto: Dono N)' });
-  const squadSel = h('select', { class: 'input' }, squadOptions(null, 'Nessuna (la assegno dopo)'));
+  const squadSel = h('select', { class: 'input' }, squadOptions(squadId, 'Nessuna (la assegno dopo)'));
   const mode = h('select', { class: 'input' },
     h('option', { value: 'manual' }, 'Lo annuncio io (dalla tabella: ora, tra X minuti o a un orario)'),
     h('option', { value: 'onplace' }, 'Appena viene piazzato'));
@@ -4205,10 +4256,25 @@ async function createGiftDialog() {
     h('span', { class: 'gift-card-ico', 'aria-hidden': 'true' }, t.icon),
     h('strong', null, t.name),
     h('span', { class: 'tiny' }, t.description));
+    card.dataset.hay = [t.name, t.description, t.id].join(' ');
     return card;
   }));
+  // Omnibar: filtra le card per nome ed effetto (senza accenti né maiuscole; più parole = tutte).
+  const none = h('p', { class: 'empty', hidden: true }, 'Nessun dono con questa ricerca.');
+  const countEl = h('span', { class: 'omni-count', hidden: true });
+  const filter = (v) => {
+    let n = 0;
+    for (const c of cards.children) { const ok = matches(v, c.dataset.hay); c.hidden = !ok; if (ok) n += 1; }
+    countEl.hidden = !v.trim(); countEl.textContent = String(n);
+    clearBtn.hidden = !v; none.hidden = n > 0;
+  };
+  const search = h('input', { class: 'omni-input', type: 'search', placeholder: 'Cerca un dono: nome o effetto (es. sigillo, mappa, skill)…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Cerca un dono',
+    oninput: (e) => filter(e.target.value), onkeydown: (e) => { if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.stopPropagation(); e.target.value = ''; filter(''); } } });
+  const clearBtn = h('button', { class: 'omni-clear', type: 'button', hidden: true, 'aria-label': 'Cancella la ricerca', onclick: () => { search.value = ''; filter(''); search.focus(); } }, mdi('close', 18));
+  const bar = h('div', { class: 'omnibar' }, h('span', { class: 'omni-ico', 'aria-hidden': 'true' }, mdi('magnify', 20)), search, countEl, clearBtn);
   return modal({ title: 'Crea dono', wide: true, tall: true, okLabel: 'Crea',
-    body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), cards, chosen, opts),
+    onOpen: () => setTimeout(() => search.focus(), 50),
+    body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), bar, cards, none, chosen, opts),
     onOk: async () => {
       if (!type) { toast('Scegli prima il dono', 'error'); return false; }
       const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
@@ -4418,7 +4484,7 @@ function viewGiftsQR() {
 
   return h('div', { class: 'stack' },
     sectionActions(`Doni in gioco (${live.length})`, [
-      h('button', { class: 'btn btn-sm btn-primary', onclick: createGiftDialog }, '+ Crea dono'),
+      h('button', { class: 'btn btn-sm btn-primary', onclick: () => createGiftDialog() }, '+ Crea dono'),
       h('button', { class: 'btn btn-sm', onclick: () => nfcGeneratorDialog(live.filter((g) => g.qrToken)) }, '📶 Generatore NFC'),
       h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog() }, '🎁 Dai un Dono a una coppia'),
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
