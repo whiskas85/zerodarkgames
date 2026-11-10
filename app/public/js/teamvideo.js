@@ -198,6 +198,19 @@ function spaced(ctx, text, x, y, spacing) {
 // Sfarfallio da insegna che si accende.
 const flicker = (t, start) => { const k = t - start; if (k < 0) return 0; if (k > 0.9) return 1; return Math.sin(k * 60) > -0.2 ? clamp(k * 1.4) : 0.15; };
 
+// Data dell'evento (dalla data di inizio della partita): «DOMENICA 15 NOVEMBRE 2026».
+let EVENT_DATE = '';
+export function eventDateText(scheduledStart) {
+  const v = String(scheduledStart || '').trim();
+  if (!v) return '';
+  let d = null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (m) d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  else if (Number.isFinite(Number(v))) d = new Date(Number(v));
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Rome' }).toUpperCase();
+}
+
 function drawIntro(ctx, t, game, count) {
   const rgb = [209, 173, 98];
   drawBackdrop(ctx, [120, 20, 20], 0.6 * span(t, 0, 2), t);
@@ -221,9 +234,21 @@ function drawIntro(ctx, t, game, count) {
   lines.forEach((l, i) => { fitFont(ctx, 900, big, FD, l, W * 0.92, 6 * U); spaced(ctx, l, W / 2, yTitle0 + i * big, 6 * U); });
   ctx.shadowBlur = 0;
   ctx.fillStyle = rgba(rgb, span(t, 2, 3));
-  const sub = `LE ${count} COPPIE · ${String(game || '').toUpperCase()}`.slice(0, 70);
-  fitFont(ctx, 600, 34 * U, FM, sub, W * 0.9, 10 * U);
-  spaced(ctx, sub, W / 2, NARROW ? yBottom + 90 * U : H * 0.62, 10 * U);
+  // Con la data dell'evento: la data in evidenza e sotto le coppie; senza, come prima con il nome della partita.
+  const ySub = NARROW ? yBottom + 90 * U : H * 0.62;
+  if (EVENT_DATE) {
+    ctx.fillStyle = rgba([240, 230, 210], 0.95 * span(t, 1.6, 2.6));
+    fitFont(ctx, 900, 64 * U, FD, EVENT_DATE, W * 0.9, 6 * U);
+    spaced(ctx, EVENT_DATE, W / 2, ySub + 5 * U, 6 * U);
+    ctx.fillStyle = rgba(rgb, span(t, 2, 3));
+    const sub = `LE ${count} COPPIE`;
+    fitFont(ctx, 600, 34 * U, FM, sub, W * 0.9, 10 * U);
+    spaced(ctx, sub, W / 2, ySub + 80 * U, 10 * U);
+  } else {
+    const sub = `LE ${count} COPPIE · ${String(game || '').toUpperCase()}`.slice(0, 70);
+    fitFont(ctx, 600, 34 * U, FM, sub, W * 0.9, 10 * U);
+    spaced(ctx, sub, W / 2, ySub, 10 * U);
+  }
   // Linea che si allarga.
   const lw = Math.min(700 * U, W * 0.7) * easeOut(span(t, 1.2, 2.6));
   ctx.fillStyle = rgba(rgb, 0.8);
@@ -249,7 +274,13 @@ function drawOutro(ctx, t) {
   ctx.fillStyle = '#d1ad62';
   const sub = 'SOLO UNA COPPIA VARCHERÀ LA SOGLIA';
   fitFont(ctx, 600, 32 * U, FM, sub, W * 0.9, 12 * U);
-  spaced(ctx, sub, W / 2, y0 + (lines.length - 1) * size + size * 0.5 + 70 * U, 12 * U);
+  const ySub = y0 + (lines.length - 1) * size + size * 0.5 + 70 * U;
+  spaced(ctx, sub, W / 2, ySub, 12 * U);
+  if (EVENT_DATE) {
+    ctx.fillStyle = '#efe6d2';
+    fitFont(ctx, 900, 56 * U, FD, EVENT_DATE, W * 0.9, 6 * U);
+    spaced(ctx, EVENT_DATE, W / 2, ySub + 90 * U, 6 * U);
+  }
   ctx.restore();
 }
 
@@ -399,6 +430,15 @@ function drawTeam(ctx, t, dur, tm, st) {
       fitFont(ctx, 900, 92 * U, FD, txt, W * 0.9, 4 * U);
       spaced(ctx, txt, cx, yN, 4 * U);
     }
+  }
+  // In fondo, discreta: il nome dei Giochi e la data (utile quando il video gira a pezzi sui social).
+  if (EVENT_DATE) {
+    ctx.globalAlpha = 0.55 * vis;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#efe6d2';
+    const foot = `I GIOCHI DEL BUIO · ${EVENT_DATE}`;
+    fitFont(ctx, 600, 22 * U, FM, foot, W * 0.9, 8 * U);
+    spaced(ctx, foot, W / 2, H - 50 * U, 8 * U);
   }
   ctx.restore();
 }
@@ -562,6 +602,7 @@ export async function playTeamVideo(ms, opts = {}) {
   const perTeam = Math.max(5, Math.min(15, Number(opts.perTeam) || 7));
   const fmtKey = FORMATS[opts.format] ? opts.format : 'landscape';
   setFormat(fmtKey);
+  EVENT_DATE = eventDateText(ms.game?.scheduledStart);
   if (document.fonts?.load) await Promise.all([document.fonts.load(`900 100px ${FD}`), document.fonts.load(`600 30px ${FM}`)]).catch(() => {});
   const teams = await teamsForVideo(ms);
   if (!teams.length) { toast('Nessuna coppia con un Settore in questa partita', 'error'); return; }
@@ -641,8 +682,9 @@ export async function playTeamVideo(ms, opts = {}) {
 }
 
 // Una sola immagine (per l'anteprima nella pagina): la coppia i al momento in cui compaiono i nick.
-export function drawStill(canvas, team, perTeam = 7, format = 'landscape') {
+export function drawStill(canvas, team, perTeam = 7, format = 'landscape', scheduledStart = null) {
   const f = setFormat(format);
+  EVENT_DATE = eventDateText(scheduledStart);
   canvas.width = f.w; canvas.height = f.h;
   const ctx = canvas.getContext('2d');
   const st = { particles: makeParticles(team.element), dt: 0 };
