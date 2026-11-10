@@ -1501,6 +1501,7 @@ function teamCard(t, editable) {
           ms.game.isDemo ? h('a', { class: 'btn btn-sm', href: loginUrl, target: '_blank', title: "Questo browser diventa la coppia (tutte le schede dell'app coppie)" }, 'Apri app') : null))),
     h('div', { class: 'row-actions' },
       editable ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Sciogliere la coppia?', 'I giocatori tornano nella lista senza coppia.', 'DELETE', `/api/m/teams/${t.id}`, undefined, 'Coppia sciolta', true) }, 'Sciogli') : null,
+      t.status !== 'withdrawn' ? h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog(t) }, '🎁 Dai un Dono') : null,
       h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Rigenerare l\'accesso?', 'Il vecchio QR e il vecchio codice smettono di funzionare e i dispositivi collegati escono.', 'POST', `/api/m/teams/${t.id}/regen-token`, {}, 'Accesso rigenerato', true) }, 'Rigenera accesso'),
       !editable && t.status !== 'won' ? h('button', { class: 'btn btn-sm btn-danger', onclick: () => confirmCall(t.status === 'withdrawn' ? 'Rimettere in gioco?' : 'Ritirare la coppia?', teamLabel(t), 'POST', `/api/m/teams/${t.id}/withdraw`, { restore: t.status === 'withdrawn' }, 'Fatto', t.status !== 'withdrawn') }, t.status === 'withdrawn' ? 'Rimetti in gioco' : 'Ritira') : null));
 }
@@ -4171,6 +4172,7 @@ function viewGiftsQR() {
     sectionActions(`Doni in gioco (${live.length})`, [
       h('button', { class: 'btn btn-sm btn-primary', onclick: createGiftDialog }, '+ Crea dono'),
       h('button', { class: 'btn btn-sm', onclick: () => nfcGeneratorDialog(live.filter((g) => g.qrToken)) }, '📶 Generatore NFC'),
+      h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog() }, '🎁 Dai un Dono a una coppia'),
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
     live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco: crealo con «+ Crea dono».')),
     gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null,
@@ -5404,7 +5406,7 @@ function eventChatBox(ev, x) {
 }
 
 // Scelta del Dono premio: schede con icona, nome e cosa fa, con ricerca. '' = a caso; undefined se si annulla.
-async function pickGiftTypeDialog(types, current = '') {
+async function pickGiftTypeDialog(types, current = '', { title = 'Dono premio', randomText = 'Ogni coppia vincente riceve un Dono diverso, estratto a caso.' } = {}) {
   let chosen = current || '';
   let q = '';
   const grid = h('div', { class: 'gift-pick' });
@@ -5414,12 +5416,45 @@ async function pickGiftTypeDialog(types, current = '') {
   const draw = () => {
     const list = types.filter((x) => !q || `${x.name} ${x.description}`.toLowerCase().includes(q));
     grid.replaceChildren(
-      ...(q ? [] : [card({ id: '', icon: '🎲', name: 'A caso', description: 'Ogni coppia vincente riceve un Dono diverso, estratto a caso.' })]),
+      ...(q ? [] : [card({ id: '', icon: '🎲', name: 'A caso', description: randomText })]),
       ...(list.length ? list.map(card) : [h('p', { class: 'tiny muted' }, 'Nessun Dono con questo nome.')]));
   };
   draw();
-  const ok = await modal({ title: 'Dono premio', wide: true, tall: true, okLabel: 'Usa questo', body: h('div', { class: 'stack-sm' }, search, grid) });
+  const ok = await modal({ title, wide: true, tall: true, okLabel: 'Usa questo', body: h('div', { class: 'stack-sm' }, search, grid) });
   return ok ? chosen : undefined;
+}
+
+// Dono diretto dalla regia a una coppia: scelto o a caso (anche solo tra alcune rarità), con un messaggio facoltativo.
+async function giveGiftDialog(team = null) {
+  const ms = R.ms;
+  const types = ms.gameEvents?.giftTypes || fieldData?.giftTypes || [];
+  const couples = (ms.teams || []).filter((t) => t.sectorId && t.status !== 'withdrawn');
+  if (!couples.length) { toast('Nessuna coppia in questa partita', 'error'); return; }
+  const who = h('select', { class: 'input' }, couples.map((t) => h('option', { value: t.id, selected: team?.id === t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` · ${t.displayName}` : ''}`)));
+  let giftId = '';
+  const giftBtn = h('button', { type: 'button', class: 'btn target-pick', onclick: async () => {
+    const r = await pickGiftTypeDialog(types, giftId, { title: 'Quale Dono?', randomText: 'Estratto a caso con le probabilità della partita (o solo tra le rarità scelte qui sotto).' });
+    if (r !== undefined) { giftId = r; paint(); }
+  } });
+  const rarity = h('select', { class: 'input' }, [['', 'Qualsiasi rarità'], ['comune', 'Solo Comune'], ['raro', 'Solo Raro'], ['epico', 'Solo Epico'], ['leggendario', 'Solo Leggendario'], ['comune-raro', 'Da Comune a Raro'], ['raro-epico', 'Da Raro a Epico'], ['epico-leggendario', 'Da Epico a Leggendario']].map(([v, l]) => h('option', { value: v }, l)));
+  const rarityWrap = h('label', { class: 'field' }, h('span', null, 'Rarità del dono a caso'), rarity);
+  const paint = () => { const x = types.find((y) => y.id === giftId); giftBtn.textContent = x ? `${x.icon} ${x.name}` : '🎲 A caso'; rarityWrap.hidden = !!x; };
+  paint();
+  const note = h('input', { class: 'input', maxlength: 140, placeholder: 'es. Per il coraggio alla Radura (facoltativo, la coppia lo legge)' });
+  await modal({ title: '🎁 Dai un Dono a una coppia', okLabel: 'Dai il Dono',
+    body: h('div', { class: 'stack-sm' },
+      h('label', { class: 'field' }, h('span', null, 'Coppia'), who),
+      h('div', { class: 'field' }, h('span', null, 'Dono'), giftBtn),
+      rarityWrap,
+      h('label', { class: 'field' }, h('span', null, 'Messaggio'), note),
+      h('p', { class: 'tiny muted' }, 'Il Dono arriva subito tra i doni della coppia, con una notifica sul telefono. Resta nel registro.')),
+    onOk: async () => {
+      try {
+        const r = await api('POST', `/api/m/teams/${who.value}/gift`, { typeId: giftId || null, rarity: giftId ? null : rarity.value || null, note: note.value });
+        toast(`${r.gift.icon} ${r.gift.name} dato al Settore ${r.team.sectorName}`, 'ok', 6000);
+        return true;
+      } catch (e) { toast(e.message, 'error', 7000); return false; }
+    } });
 }
 
 // Nuovo evento in una finestra: salvarlo per lanciarlo più tardi dall'elenco, o lanciarlo subito alle coppie.

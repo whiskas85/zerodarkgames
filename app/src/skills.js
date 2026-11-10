@@ -521,6 +521,22 @@ function endNow(gameId, teamId, code) {
 
 // Un Dono senza QR (Autorità, premio di un evento): finisce subito tra i doni della coppia.
 // typeId: un tipo preciso (se disponibile), altrimenti a caso.
+// La regia dà un Dono direttamente a una coppia: scelto, o a caso (anche solo tra alcune rarità). Arriva tra i suoi doni.
+function giftFromCouncil(teamId, data = {}, actor = 'regia') {
+  const t = team(teamId);
+  if (!t || t.kind !== 'couple') throw err(404, 'Coppia non trovata');
+  const g = G.getGame(t.gameId);
+  if (g.status === 'ended') throw err(409, 'La partita è finita');
+  const typeId = data.typeId && giftById(data.typeId) ? data.typeId : null;
+  if (data.typeId && !typeId) throw err(400, 'Dono sconosciuto');
+  const note = String(data.note || '').trim().slice(0, 140);
+  const gift = grantVirtualGift(t, (note || 'Dono del Consiglio').slice(0, 36), typeId, typeId ? null : cleanRarity(data.rarity));
+  rt.pushTeams(g.id, { title: '🎁 Un Dono dal Consiglio', body: `${gift.icon} ${gift.name} è tra i vostri doni${note ? `: ${note}` : '.'}`, tag: `council-gift-${gift.id}`, url: '/#/doni' }, t.id);
+  rt.toTeams(g.id, 'state', {}, t.id);
+  G.log(g.id, actor, 'gift_given', { team: `${t.roman} ${t.sectorName}`, gift: gift.name, note: note || null });
+  return { ok: true, gift, team: { id: t.id, roman: t.roman, sectorName: t.sectorName } };
+}
+
 function grantVirtualGift(me, label, typeId = null, rarity = null) {
   // Senza un tipo preciso: estrazione con le probabilità della partita (prima la rarità, poi il dono), eventualmente solo tra alcune rarità.
   const pick = typeId && giftById(typeId) && available(giftById(typeId)) ? giftById(typeId) : drawGift(G.getGame(me.gameId), Math.random, rarity);
@@ -1264,5 +1280,5 @@ module.exports = {
   migrateCatalogTags,
   SKILLS, GIFTS, skillById, giftById, chooseSkill, useSkill, useGift, skillsState, masterSkills, sightingsFor, protectedSeals,
   onGiftRevealed, onAltarUnlocked, tickAll, resetGame, limitsOf, hasSkill, checkSkill, consumeSkill, reliquiaOn, immune, hiddenTeam: hidden, hiddenSince: (t, now = Date.now()) => effectOn(t.gameId, t.id, 'ombra', now)?.startedAt ?? null,
-  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, rarityRange, cleanRarity, rarityLabel, nearTeams, cancelSteals, completeSteal, grantVirtualGift, availableGift: available,
+  editableCatalog, editCatalog, giftOdds, drawGift, setGiftOdds, RARITIES, giftForGame, distM, rarityRange, cleanRarity, rarityLabel, nearTeams, cancelSteals, completeSteal, grantVirtualGift, giftFromCouncil, availableGift: available,
 };

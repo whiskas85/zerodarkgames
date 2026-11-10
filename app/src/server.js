@@ -838,6 +838,7 @@ m.post('/games/:id/people/assign', wrap((req) => G.assignPerson(gameId(req), req
 m.patch('/teams/:tid', wrap((req) => { G.updateTeam(Number(req.params.tid), req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/teams/:tid', wrap((req) => { G.dissolveTeam(Number(req.params.tid), actor(req)); return { ok: true }; }));
 m.post('/teams/:tid/withdraw', wrap((req) => { G.withdrawTeam(Number(req.params.tid), actor(req), !!req.body.restore); return { ok: true }; }));
+m.post('/teams/:tid/gift', wrap((req) => S.giftFromCouncil(Number(req.params.tid), req.body || {}, actor(req))));
 m.post('/teams/:tid/regen-token', wrap((req) => { G.regenTeamToken(Number(req.params.tid), actor(req)); return { ok: true }; }));
 m.post('/teams/:tid/fragments', wrap((req) => { G.correctFragments(Number(req.params.tid), req.body || {}, actor(req)); return { ok: true }; }));
 m.post('/teams/:tid/message', wrap((req) => {
