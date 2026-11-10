@@ -2663,7 +2663,8 @@ function masterState(gameId) {
     landmarks: landmarksOf(g.id),
     emergencies: require('./emergency').list(g.id),
     // Incarichi generati dalle coppie (Maestro della caccia, Alleanze sporche) ancora senza squadra: banner in ogni pagina.
-    pendingTasks: q.all('SELECT id, kind, targetLabel, text, createdAt FROM squad_tasks WHERE gameId = ? AND squadId IS NULL AND doneAt IS NULL AND cancelledAt IS NULL ORDER BY id', g.id),
+    // Solo quelli generati da Skill e Doni: quelli creati dalla regia li trova già in Incarichi.
+    pendingTasks: q.all("SELECT id, kind, targetLabel, text, createdAt, source, sourceTeamId FROM squad_tasks WHERE gameId = ? AND squadId IS NULL AND doneAt IS NULL AND cancelledAt IS NULL AND COALESCE(source, 'regia') <> 'regia' ORDER BY id", g.id),
     skills: require('./skills').masterSkills(g.id),
     supply: q.all("SELECT * FROM supply_drops WHERE gameId = ? ORDER BY status = 'closed', COALESCE(scheduledMin, 99999), COALESCE(scheduledAt, 0), id", g.id),
     announcements: q.all('SELECT * FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 100', g.id),

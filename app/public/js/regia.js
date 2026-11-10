@@ -470,10 +470,10 @@ function goTick() {
 // Incarichi chiesti dalle coppie (Maestro della caccia…) ancora da assegnare: banner in ogni pagina finché restano aperti.
 function taskBanner() {
   const list = R.ms?.pendingTasks || [];
-  if (!list.length || tab() === 'squadre') return null;
-  return h('a', { class: 'task-banner', href: '#squadre' },
+  if (!list.length || location.hash.startsWith('#squadre/incarichi')) return null;
+  return h('a', { class: 'task-banner', href: '#squadre/incarichi' },
     h('strong', null, `🎯 ${list.length === 1 ? 'Incarico da assegnare' : `${list.length} incarichi da assegnare`}`),
-    h('span', null, ' — ', list.map((t) => `${t.text || t.targetLabel || 'Incarico'} (chiesto alle ${fmtTime(t.createdAt)})`).join(' · ')));
+    h('span', null, ' — ', list.map((t) => `${t.text || t.targetLabel || 'Incarico'} (${TASK_SOURCE[t.source] || ''}${t.sourceTeamId ? ` del Settore ${R.ms?.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'}` : ''}, alle ${fmtTime(t.createdAt)})`).join(' · ')));
 }
 
 function emergencyBanner() {
@@ -3184,6 +3184,33 @@ const TASK_KIND = { text: '', goto: '⌖ ', guard: '🛡 ', hunt: '🎯 ', meet:
 // Operazione dell'incarico, scritta sulla scheda (es. «Presidia», «Raggiungi»).
 const TASK_OP = { goto: 'Raggiungi', guard: 'Presidia', hunt: 'Caccia', meet: 'Alleanza sporca', beacon: 'Beacon', bounty: 'Taglia' };
 const TASK_SOURCE = { skill: 'da una Skill', gift: 'da un Dono', regia: 'dalla regia' };
+// Riga descrittiva di un incarico: operazione, bersaglio, chi l'ha creato e quando.
+const taskWhat = (t) => [TASK_OP[t.kind] || 'Incarico libero', t.targetLabel ? `→ ${t.targetLabel}` : null,
+  `${TASK_SOURCE[t.source || 'regia'] || 'dalla regia'}${t.sourceTeamId ? ` (Settore ${R.ms?.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'})` : ''}`,
+  t.createdAt ? `creato alle ${fmtTime(t.createdAt)}` : null].filter(Boolean).join(' · ');
+// Scheda di un incarico: tutto quello che si sa, con Annulla ed Elimina.
+async function taskInfoDialog(t) {
+  const sq = t.squadId ? (R.ms.squads || []).find((x) => x.id === t.squadId) : null;
+  const row = (k, v) => (v ? h('div', { class: 'info-row' }, h('span', { class: 'tiny muted' }, k), h('strong', null, v)) : null);
+  const state = t.doneAt ? `fatto alle ${fmtTime(t.doneAt)}` : t.cancelledAt ? `annullato alle ${fmtTime(t.cancelledAt)}` : !t.squadId ? 'da affidare a una squadra' : t.acceptedAt ? `accettato alle ${fmtTime(t.acceptedAt)}` : 'affidato, da accettare';
+  let act = null;
+  const r = await modal({ title: `${TASK_OP[t.kind] || 'Incarico'} · dettagli`, okLabel: 'Chiudi', cancelLabel: null,
+    body: h('div', { class: 'stack-sm' },
+      row('Cosa devono fare', t.text || '—'),
+      row('Operazione', TASK_OP[t.kind] || 'Incarico libero'),
+      row('Bersaglio', t.targetLabel || (t.kind === 'beacon' ? 'nessuno indicato' : null)),
+      row('Creato', `${TASK_SOURCE[t.source || 'regia'] || 'dalla regia'}${t.sourceTeamId ? ` · Settore ${R.ms.teams.find((x) => x.id === t.sourceTeamId)?.sectorName || '?'}` : ''} · alle ${fmtTime(t.createdAt)}`),
+      row('Squadra', sq ? sq.name : 'nessuna'),
+      row('Tempo', t.timeMin ? `${t.timeMin} minuti da quando la squadra lo accetta` : null),
+      row('Stato', state),
+      t.kind === 'beacon' ? h('p', { class: 'tiny muted' }, 'Beacon: la squadra deve accendere la zona o disattivare l\'Altare indicato con il Beacon; l\'incarico si chiude da solo quando ci riescono.') : null,
+      h('div', { class: 'row-actions' },
+        !t.doneAt && !t.cancelledAt ? h('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => { act = 'cancel'; e.target.closest('form').requestSubmit(); } }, 'Annulla l\'incarico') : null,
+        h('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: (e) => { act = 'delete'; e.target.closest('form').requestSubmit(); } }, 'Elimina'))) });
+  if (!r || !act) return;
+  if (act === 'cancel') await squadCall('POST', `/api/m/tasks/${t.id}/cancel`, {}, 'Incarico annullato');
+  else if (await dialog({ title: 'Eliminare l\'incarico?', text: t.text || TASK_OP[t.kind] || 'Incarico', okLabel: 'Elimina', danger: true })) await squadCall('DELETE', `/api/m/tasks/${t.id}`, undefined, 'Incarico eliminato');
+}
 
 function taskLine(t, { assign = false } = {}) {
   const closed = t.doneAt || t.cancelledAt;
@@ -3505,7 +3532,7 @@ function viewTaskBoard(d) {
   }));
   const allTasks = [...(d.openTasks || []), ...d.squads.flatMap((sq) => sq.tasks.map((t) => ({ ...t, squadId: sq.id })))]
     .filter((t) => !t.doneAt && !t.cancelledAt)
-    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', guard: '🛡', hunt: '🎯', meet: '🤝', beacon: '📡', bounty: '💰' }[t.kind] || '☰', title: t.text, what: [TASK_OP[t.kind] || 'Incarico', t.source === 'skill' ? 'da una Skill' : t.source === 'gift' ? 'da un Dono' : null].filter(Boolean).join(' · ') }));
+    .map((t) => ({ key: `task${t.id}`, kind: 'task', x: t, squadId: t.squadId || null, icon: { goto: '⌖', guard: '🛡', hunt: '🎯', meet: '🤝', beacon: '📡', bounty: '💰' }[t.kind] || '☰', title: t.text || t.targetLabel || 'Incarico', what: taskWhat(t) }));
   // Eventi non conclusi: senza squadra li segue la regia (stanno in «Da affidare»), si affidano come gli altri.
   const evs = (R.ms?.gameEvents?.list || []).filter((ev) => ev.status !== 'done').map((ev) => ({ key: `event${ev.id}`, kind: 'event', x: ev, squadId: ev.squadId || null, icon: '🏁', title: ev.name,
     what: `Evento · ${(EVENT_STATUS[ev.status] || [ev.status])[0]}${ev.startAt ? ` · ${fmtWhen(ev.startAt)}` : ''}${ev.squadId ? '' : ' · lo segue la regia'}` }));
@@ -3534,6 +3561,7 @@ function viewTaskBoard(d) {
     h('div', { class: 'task-actions' },
       it.kind === 'task' || it.kind === 'event' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Scegli la squadra e il punto sulla mappa', onclick: () => assignDialog(it.kind, it.x, !!it.x.moveRequestedAt) }, 'Punto…'),
       it.kind === 'event' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#eventi' }, 'Apri') : null,
+      it.kind === 'task' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => taskInfoDialog(it.x) }, 'Dettagli') : null,
       // Affida a una squadra: finestra con ricerca per squadra o per Eletto (dal telefono, al posto del trascinamento).
       h('button', { class: 'btn btn-sm', type: 'button', 'aria-label': 'Affida a una squadra', onclick: async () => {
         const r = await pickSquadDialog(it.squadId || null, { noneLabel: it.squadId ? (it.kind === 'event' ? 'Alla regia' : 'Togli dalla squadra') : 'Nessuna squadra' });
