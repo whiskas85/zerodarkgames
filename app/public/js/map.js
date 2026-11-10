@@ -13,7 +13,14 @@ export function loadLeaflet() {
     document.head.append(css);
     const s = document.createElement('script');
     s.src = '/vendor/leaflet/leaflet.js';
-    s.onload = () => resolve(window.L);
+    // Dopo Leaflet il plugin della rotazione (due dita, bussola); senza, la mappa funziona lo stesso (non ruota).
+    s.onload = () => {
+      const r = document.createElement('script');
+      r.src = '/vendor/leaflet-rotate/leaflet-rotate.js';
+      r.onload = () => resolve(window.L);
+      r.onerror = () => resolve(window.L);
+      document.head.append(r);
+    };
     s.onerror = () => { leafletLoading = null; reject(new Error('Mappa non disponibile senza rete')); };
     document.head.append(s);
   });
@@ -99,7 +106,7 @@ const EDGE_MIN_PX = 1;
 // remember: chiave per ricordare lo zoom della mappa tra un'apertura e l'altra (anche tra una sessione e l'altra).
 // Con uno zoom ricordato, all'apertura la mappa si centra sul puntatore (la vostra posizione) o, senza, al centro
 // di ciò che c'è da vedere, sempre a quello zoom. La prima volta in assoluto inquadra tutto come sempre.
-export function createMapView({ className = '', remember = null, nav = false } = {}) {
+export function createMapView({ className = '', remember = null, nav = false, rotate = false } = {}) {
   const zoomKey = remember ? `zdg_mapzoom_${remember}` : null;
   const savedZoom = (() => { try { const z = zoomKey && Number(localStorage.getItem(zoomKey)); return z >= 3 && z <= 20 ? z : null; } catch { return null; } })();
   // Una richiesta esplicita (mostra un incarico, un punto…) vince sulla centratura automatica dell'apertura.
@@ -234,7 +241,33 @@ export function createMapView({ className = '', remember = null, nav = false } =
 
   const ready = loadLeaflet().then((lib) => {
     L = lib;
-    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(ITALY, savedZoom || 6);
+    const canRotate = rotate && !!L.Map.TouchRotate;
+    map = L.map(el, { zoomControl: true, attributionControl: true, ...(canRotate ? { rotate: true, touchRotate: true, rotateControl: false, bearing: 0 } : {}) }).setView(ITALY, savedZoom || 6);
+    // Bussola: l'ago punta al nord, sotto i gradi di rotazione; toccandola la mappa torna dritta (0°).
+    if (canRotate) {
+      const Compass = L.Control.extend({
+        options: { position: 'bottomright' },
+        onAdd() {
+          const b = L.DomUtil.create('button', 'zdg-compass');
+          b.type = 'button';
+          b.title = 'Riporta la mappa con il nord in alto (0°)';
+          b.setAttribute('aria-label', b.title);
+          b.innerHTML = '<span class="zdg-compass-rose" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2 L16 12 L12 10.5 L8 12 Z" fill="#e5484d"/><path d="M12 22 L8 12 L12 13.5 L16 12 Z" fill="#cbd5e1"/><text x="12" y="7.6" text-anchor="middle" font-size="4.2" font-weight="700" fill="#fff">N</text></svg></span><span class="zdg-compass-deg">0°</span>';
+          L.DomEvent.disableClickPropagation(b);
+          L.DomEvent.on(b, 'click', (e) => { L.DomEvent.stop(e); map.setBearing(0); });
+          const paint = () => {
+            const deg = ((Math.round(map.getBearing()) % 360) + 360) % 360;
+            b.querySelector('.zdg-compass-rose').style.transform = `rotate(${-deg}deg)`;
+            b.querySelector('.zdg-compass-deg').textContent = `${deg}°`;
+            b.classList.toggle('turned', deg !== 0);
+          };
+          map.on('rotate', paint);
+          paint();
+          return b;
+        },
+      });
+      map.addControl(new Compass());
+    }
     if (savedZoom) fitted = true;
     if (zoomKey) map.on('zoomend', () => { try { localStorage.setItem(zoomKey, String(map.getZoom())); } catch { /* */ } });
     // OpenTopoMap arriva al 17: oltre si ingrandiscono le sue immagini (zoom digitale) fino al 20.
