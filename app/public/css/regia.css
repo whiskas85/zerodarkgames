@@ -1597,4 +1597,3 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .tl-fold > summary { cursor: pointer; color: var(--muted); user-select: none; list-style: revert; }
 .tl-fold[open] > summary { margin-bottom: 6px; }
 .tl-lastfight { padding-left: 6px; border-left: 2px solid var(--c, var(--line)); }
-.tl-msgs { padding: 8px; border: 1px solid var(--line); max-height: 160px; overflow: auto; }
