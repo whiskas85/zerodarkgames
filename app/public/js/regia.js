@@ -4780,8 +4780,15 @@ function viewComms() {
   R.chat = { kind: cur.kind, id: cur.id };
   if (cur.unread) api('POST', `${cur.url}/read`).catch(() => {});
   const on = (kind, id) => cur.kind === kind && (id == null || cur.id === id);
-  const node = (kind, id, label, sub, unread, opts = {}) => h('button', { class: `tree-item ${opts.child ? 'child' : 'root'} ${opts.sub ? 'grandchild' : ''} ${on(kind, id) ? 'on' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: () => { R.chat = { kind, id }; R.chatOpen = true; render(); } },
-    h('span', { class: 'tree-label' }, label, sub ? h('span', { class: 'tiny muted' }, sub) : null), unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
+  const open = (kind, id) => () => { R.chat = { kind, id }; R.chatOpen = true; render(); };
+  // Riga di conversazione in stile app di messaggi: «avatar» (icona o numero romano), titolo, sottotitolo, non letti.
+  const node = (kind, id, avatar, label, sub, unread, opts = {}) => h('button', { type: 'button', class: `tree-item ${on(kind, id) ? 'on' : ''} ${unread ? 'has-unread' : ''}`, style: opts.color ? { '--c': opts.color } : null, onclick: open(kind, id) },
+    h('span', { class: `tree-av ${opts.icon ? 'icon' : ''}` }, avatar),
+    h('span', { class: 'tree-label' }, h('span', { class: 'tree-title' }, label), sub ? h('span', { class: 'tree-sub' }, sub) : null),
+    unread ? h('span', { class: 'badge badge-alert' }, unread) : null);
+  // Componenti della coppia: chat private, come pillole sotto la coppia.
+  const people = (t) => h('div', { class: 'tree-people' }, h('span', { class: 'tree-people-k' }, 'solo a'),
+    t.members.map((m) => { const u = ms.unreadDirect?.[m.id] || 0; return h('button', { type: 'button', class: `tree-pill ${on('player', m.id) ? 'on' : ''}`, title: `Chat privata con ${m.nickname || m.name}: il compagno non la vede`, onclick: open('player', m.id) }, m.nickname || m.name, u ? h('span', { class: 'badge badge-alert' }, u) : null); }));
 
   // Tutte le coppie: broadcast (annunci). Coppie: chat privata. Eletti e squadre: canali di gruppo.
   const list = cur.kind === 'all'
@@ -4804,12 +4811,14 @@ function viewComms() {
   // Sul telefono: elenco delle conversazioni oppure la conversazione aperta, come nelle app di messaggi.
   return h('div', { class: `comms ${R.chatOpen ? 'chat-open' : ''}` },
     h('nav', { class: 'comms-tree', 'aria-label': 'Destinatari' },
-      node('all', null, '📣 Tutte le coppie', 'annuncio a tutti'),
-      ms.teams.map((t) => [node('team', t.id, `${t.roman} ${t.sectorName}`, t.displayName || 'chat con la coppia', t.unread, { child: true }),
-        // Sotto ogni coppia: i singoli componenti (chat che il compagno non vede).
-        t.kind !== 'elect' && t.members.length > 1 ? t.members.map((m) => node('player', m.id, `↳ ${m.nickname || m.name}`, 'solo questa persona', ms.unreadDirect?.[m.id] || 0, { child: true, sub: true })) : null]),
-      node('elect', ms.elect.id, '⛨ Tutti gli Eletti', `canale · ${ms.elect.members.length} persone`, ms.elect.unread),
-      ms.squads.map((s) => node('squad', s.id, `Squadra ${s.name}`, `canale · ${s.members.length} Eletti`, s.unread, { child: true, color: s.color })),
+      node('all', null, '📣', 'Tutte le coppie', 'annuncio a tutti', 0, { icon: true }),
+      h('div', { class: 'tree-sec' }, 'Coppie'),
+      ms.teams.map((t) => h('div', { class: 'tree-group', style: t.color ? { '--c': t.color } : null },
+        node('team', t.id, t.roman || '?', `Settore ${t.sectorName}`, t.displayName || t.members.map((m) => m.nickname || m.name).join(' · '), t.unread, { color: t.color }),
+        t.kind !== 'elect' && t.members.length > 1 ? people(t) : null)),
+      h('div', { class: 'tree-sec' }, 'Eletti'),
+      node('elect', ms.elect.id, '⛨', 'Tutti gli Eletti', `canale · ${ms.elect.members.length} persone`, ms.elect.unread, { icon: true }),
+      ms.squads.map((sq) => node('squad', sq.id, (sq.name || '?').slice(0, 1).toUpperCase(), `Squadra ${sq.name}`, `canale · ${sq.members.length} Eletti`, sq.unread, { color: sq.color })),
       ms.squads.length ? null : h('p', { class: 'tiny muted tree-hint' }, 'Le squadre degli Eletti compaiono qui quando le crei.')),
     h('section', { class: 'wa-pane', style: cur.color ? { '--c': cur.color } : null },
       h('header', { class: 'wa-head' }, h('button', { class: 'btn btn-sm btn-ghost wa-back', type: 'button', onclick: () => { R.chatOpen = false; render(); } }, '‹ Conversazioni'), h('strong', null, cur.title), h('span', { class: 'tiny muted' }, cur.sub)),
