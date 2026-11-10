@@ -1,7 +1,7 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
 import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
-import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS, previewThud } from './teamvideo.js';
+import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS, previewThud, eventDateText } from './teamvideo.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
 import { createFoodAdmin, createFoodOrder } from './food-ui.js';
@@ -5179,12 +5179,13 @@ function viewTeamVideo() {
   const drawStills = async () => {
     list ||= await teamsForVideo(ms);
     grid.classList.toggle('tv-stills-tall', TV.format !== 'landscape');
-    grid.replaceChildren(...list.map((t) => { const c = h('canvas', { class: 'tv-still', title: `${t.roman} ${t.sectorName}` }); try { drawStill(c, t, TV.perTeam, TV.format); } catch { /* font non pronto */ } return c; }));
+    grid.replaceChildren(...list.map((t) => { const c = h('canvas', { class: 'tv-still', title: `${t.roman} ${t.sectorName}` }); try { drawStill(c, t, TV.perTeam, TV.format, ms.game?.scheduledStart); } catch { /* font non pronto */ } return c; }));
   };
   drawStills();
   return h('div', { class: 'stack' },
     section(`Video di presentazione delle coppie (${couples.length})`, h('div', { class: 'stack-sm' },
       h('p', { class: 'muted small' }, 'Intro «I Giochi del Buio», poi una coppia alla volta in ordine di Settore: numero romano, Settore con l\'effetto del suo elemento (braci per il Fuoco, vento per l\'Aria, polvere per la Terra…), motto, il logo che si apre con un lampo e sotto i nick dei due membri. Chiusura del Consiglio. Formato 1920×1080; colonna sonora horror facoltativa: bordone grave e scuro, e per ogni coppia un risucchio che sale fino a un tonfo cupo all\'apertura del logo, poi un tonfo sordo per ogni nick.'),
+      ms.game?.scheduledStart ? h('p', { class: 'small' }, `📅 Data nel video: ${eventDateText(ms.game.scheduledStart).toLowerCase()} (da «Data e ora previste» in Impostazioni → Partita).`) : h('p', { class: 'small warn-text' }, '📅 La partita non ha una data di inizio: nel video al posto della data c\'è il nome della partita. Impostala in Impostazioni → Partita («Data e ora previste»).'),
       noLogo.length ? h('p', { class: 'small warn-text' }, `Senza logo (al suo posto il numero romano): ${noLogo.map((t) => `${t.roman} ${t.sectorName}`).join(', ')}. Il logo si carica in Coppie.`) : null,
       noNick.length ? h('p', { class: 'small warn-text' }, `Senza due nick: ${noNick.map((t) => `${t.roman} ${t.sectorName}`).join(', ')} (al posto del nick va il nome).`) : null,
       h('div', { class: 'form-grid' },
