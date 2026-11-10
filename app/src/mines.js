@@ -58,13 +58,13 @@ const baseOf = (gameId) => q.get("SELECT * FROM landmarks WHERE gameId = ? AND k
 function squadMinesLeft(squadId, g) {
   const sq = q.get('SELECT * FROM elect_squads WHERE id = ?', squadId);
   if (!sq) return 0;
-  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE squadId = ? AND gameId = ? AND placedAt >= ?', sq.id, g.id, sq.minesReloadAt || 0).n;
+  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE squadId = ? AND gameId = ? AND placedAt > ?', sq.id, g.id, sq.minesReloadAt || 0).n;
   return Math.max(0, cfg(g).count - used);
 }
 // Mine a disposizione di un Eletto: quelle della sua squadra (senza squadra: una scorta sua).
 function minesLeft(player, g = G.getGame(player.gameId)) {
   if (player.squadId) return squadMinesLeft(player.squadId, g);
-  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND squadId IS NULL AND placedAt >= ?', player.id, g.id, player.minesReloadAt || 0).n;
+  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND squadId IS NULL AND placedAt > ?', player.id, g.id, player.minesReloadAt || 0).n;
   return Math.max(0, cfg(g).count - used);
 }
 const reloadPool = (pl, now) => (pl.squadId ? q.run('UPDATE elect_squads SET minesReloadAt = ? WHERE id = ?', now, pl.squadId) : q.run('UPDATE players SET minesReloadAt = ? WHERE id = ?', now, pl.id));
