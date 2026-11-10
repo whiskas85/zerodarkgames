@@ -16,7 +16,7 @@
     "express": "5.1.0",
     "jsqr": "1.4.0",
     "leaflet": "1.9.4",
-    "leaflet-rotate": "0.2.8",
+    "leaflet-rotate": "0.5.0",
     "qrcode": "1.5.4",
     "web-push": "3.6.7"
   }
