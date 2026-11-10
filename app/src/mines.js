@@ -4,8 +4,9 @@
 // Mine: un Eletto posa una mina dove si trova (GPS). La vede solo il Consiglio (regia ed Eletti). La prima coppia che
 // passa entro il raggio (mineRadiusM, di base 20 m) la fa scattare: la coppia è marcata e per mineMarkMin minuti
 // (di base 5) tutti la vedono in mappa, coppie ed Eletti; la coppia lo scopre sempre il minuto dopo (notifica e
-// simbolo della mina nella sua app). Ogni Eletto ha mineCount mine (di base 3): finite, si ricaricano alla Base degli
-// Eletti (un luogo del gioco da piazzare come la Soglia). Chi è nascosto (Skill Ombra, Cono d'Ombra) non fa scattare
+// simbolo della mina nella sua app). Le mine sono della squadra: ogni squadra ha mineCount mine (di base 3) in comune,
+// chiunque della squadra le posa; finite, si ricaricano alla Base degli Eletti (un luogo del gioco da piazzare come la
+// Soglia) o dalla regia. Un Eletto senza squadra ha una scorta sua. Chi è nascosto (Skill Ombra, Cono d'Ombra) non fa scattare
 // le mine: restano armate.
 //
 // Punteggio: ogni azione riuscita degli Eletti è una riga di elect_scores (squadra e persona); i punti per tipo li
@@ -53,11 +54,22 @@ function readPos(body) {
 }
 const baseOf = (gameId) => q.get("SELECT * FROM landmarks WHERE gameId = ? AND kind = 'base' AND lat IS NOT NULL", gameId);
 
-// Mine posate da questa persona dopo l'ultima ricarica (scattate o no: una mina posata è spesa).
-function minesLeft(player, g = G.getGame(player.gameId)) {
-  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND placedAt >= ?', player.id, g.id, player.minesReloadAt || 0).n;
+// Scorta della squadra: mine posate da chiunque della squadra dopo l'ultima ricarica (scattate o no: una mina posata è spesa).
+function squadMinesLeft(squadId, g) {
+  const sq = q.get('SELECT * FROM elect_squads WHERE id = ?', squadId);
+  if (!sq) return 0;
+  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE squadId = ? AND gameId = ? AND placedAt >= ?', sq.id, g.id, sq.minesReloadAt || 0).n;
   return Math.max(0, cfg(g).count - used);
 }
+// Mine a disposizione di un Eletto: quelle della sua squadra (senza squadra: una scorta sua).
+function minesLeft(player, g = G.getGame(player.gameId)) {
+  if (player.squadId) return squadMinesLeft(player.squadId, g);
+  const used = q.get('SELECT COUNT(*) AS n FROM elect_mines WHERE playerId = ? AND gameId = ? AND squadId IS NULL AND placedAt >= ?', player.id, g.id, player.minesReloadAt || 0).n;
+  return Math.max(0, cfg(g).count - used);
+}
+const reloadPool = (pl, now) => (pl.squadId ? q.run('UPDATE elect_squads SET minesReloadAt = ? WHERE id = ?', now, pl.squadId) : q.run('UPDATE players SET minesReloadAt = ? WHERE id = ?', now, pl.id));
+// Telefoni da avvisare per una scorta: tutta la squadra (o la persona senza squadra).
+const poolSubs = (pl) => (pl.squadId ? q.all('SELECT ps.* FROM push_subs ps JOIN players p ON p.id = ps.playerId WHERE p.squadId = ?', pl.squadId) : q.all('SELECT * FROM push_subs WHERE playerId = ?', pl.id));
 
 function changed(gameId, { couples = false } = {}) {
   const elect = G.electOf(gameId);
@@ -75,7 +87,7 @@ function placeMine(team, player, body) {
   const pos = readPos(body);
   if (pos.acc != null && pos.acc > 50) throw err(409, `GPS troppo impreciso (±${pos.acc} m): aspettate qualche secondo all'aperto e riprovate`);
   const pl = q.get('SELECT * FROM players WHERE id = ?', player.id);
-  if (!minesLeft(pl, g)) throw err(409, baseOf(g.id) ? 'Mine finite: ricaricatele alla Base degli Eletti' : 'Mine finite: la Base degli Eletti non è ancora sulla mappa, chiedete alla regia');
+  if (!minesLeft(pl, g)) throw err(409, baseOf(g.id) ? `Mine finite${pl.squadId ? ' (sono della squadra)' : ''}: ricaricatele alla Base degli Eletti` : 'Mine finite: la Base degli Eletti non è ancora sulla mappa, chiedete alla regia');
   const { radius, lifeMin } = cfg(g);
   const now = Date.now();
   const id = Number(q.run('INSERT INTO elect_mines (gameId, squadId, playerId, author, lat, lng, radiusM, placedAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -96,26 +108,40 @@ function reloadMines(team, player, body) {
   if (d > reach) throw err(409, `Siete a ${Math.round(d)} m dalla Base: avvicinatevi (entro ${BASE_RADIUS_M} m) per ricaricare`);
   const pl = q.get('SELECT * FROM players WHERE id = ?', player.id);
   const before = minesLeft(pl, g);
-  q.run('UPDATE players SET minesReloadAt = ? WHERE id = ?', Date.now(), pl.id);
+  reloadPool(pl, Date.now());
   G.log(g.id, `giocatore:${pl.id}`, 'mines_reloaded', { by: electName(pl), from: before, to: cfg(g).count });
+  // Gli altri della squadra lo sanno: la scorta è di tutti.
+  if (pl.squadId) rt.pushSubs(poolSubs(pl).filter((x) => x.playerId !== pl.id), { title: '💣 Mine ricaricate', body: `${electName(pl)} ha ricaricato le mine della squadra alla Base: ne avete ${cfg(g).count}.`, tag: 'mines-reload', url: '/#/mine' });
   changed(g.id);
   return { ok: true, left: cfg(g).count, before };
 }
 
-// Ricarica dalla regia: un Eletto (playerId) o tutti gli Eletti della partita, ovunque siano.
-function reloadByRegia(gameId, playerId, actor) {
+// Ricarica dalla regia, ovunque siano: una squadra (squadId), la scorta di un Eletto (playerId: quella della sua squadra)
+// o tutte le squadre (e gli Eletti senza squadra).
+function reloadByRegia(gameId, target, actor) {
   const g = G.getGame(gameId);
-  const list = playerId
-    ? q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.id = ? AND p.gameId = ? AND t.kind = 'elect'", Number(playerId), g.id)
-    : q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.gameId = ? AND t.kind = 'elect'", g.id);
-  if (!list.length) throw err(404, playerId ? 'Eletto non trovato' : 'Nessun Eletto');
+  const t = target && typeof target === 'object' ? target : { playerId: target };
+  const elects = q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.gameId = ? AND t.kind = 'elect'", g.id);
+  let pools;
+  if (t.squadId) {
+    const sq = q.get('SELECT * FROM elect_squads WHERE id = ? AND gameId = ?', Number(t.squadId), g.id);
+    if (!sq) throw err(404, 'Squadra non trovata');
+    pools = [{ squadId: sq.id, id: null, label: `squadra ${sq.name}` }];
+  } else if (t.playerId) {
+    const pl = elects.find((p) => p.id === Number(t.playerId));
+    if (!pl) throw err(404, 'Eletto non trovato');
+    pools = [{ ...pl, label: pl.squadId ? `squadra ${q.get('SELECT name FROM elect_squads WHERE id = ?', pl.squadId)?.name || ''}` : electName(pl) }];
+  } else {
+    pools = [...q.all('SELECT id AS squadId, name FROM elect_squads WHERE gameId = ?', g.id).map((sq) => ({ squadId: sq.squadId, id: null, label: `squadra ${sq.name}` })),
+      ...elects.filter((p) => !p.squadId).map((p) => ({ ...p, label: electName(p) }))];
+    if (!pools.length) throw err(404, 'Nessun Eletto');
+  }
   const now = Date.now();
-  for (const p of list) q.run('UPDATE players SET minesReloadAt = ? WHERE id = ?', now, p.id);
-  G.log(g.id, actor, 'mines_reloaded', { by: actor, who: playerId ? electName(list[0]) : 'tutti gli Eletti', to: cfg(g).count });
   const push = { title: '💣 Mine ricaricate', body: `Il Consiglio vi ha ricaricato le mine: ne avete ${cfg(g).count}.`, tag: 'mines-reload', url: '/#/mine' };
-  rt.pushSubs(q.all(`SELECT * FROM push_subs WHERE playerId IN (${list.map(() => '?').join(',')})`, ...list.map((p) => p.id)), push);
+  for (const pl of pools) { reloadPool(pl, now); rt.pushSubs(poolSubs(pl), push); }
+  G.log(g.id, actor, 'mines_reloaded', { by: actor, who: t.squadId || t.playerId ? pools[0].label : 'tutte le squadre', to: cfg(g).count });
   changed(g.id);
-  return { ok: true, count: list.length, mines: cfg(g).count };
+  return { ok: true, count: pools.length, mines: cfg(g).count };
 }
 
 function removeMine(gameId, mineId, actor) {
@@ -227,6 +253,7 @@ function electMines(team, player) {
   const base = baseOf(g.id);
   return {
     count: c.count, radius: c.radius, markMin: c.markMin, lifeMin: c.lifeMin, left: pl ? minesLeft(pl, g) : 0, personal: !!pl,
+    squadName: pl?.squadId ? q.get('SELECT name FROM elect_squads WHERE id = ?', pl.squadId)?.name || null : null,
     canPlace: PLACE_STATUSES.includes(g.status),
     base: base ? { lat: base.lat, lng: base.lng, radius: BASE_RADIUS_M, label: base.label } : null,
     list: minesOf(g.id).map((m) => ({ ...m, mine: !!pl && m.playerId === pl.id, squad: !!pl?.squadId && m.squadId === pl.squadId })),
@@ -271,7 +298,7 @@ function scoresOf(gameId) {
   const zero = () => Object.fromEntries(Object.keys(SCORE_KINDS).map((k) => [k, 0]));
   const sum = (list) => { const counts = zero(); for (const r of list) counts[r.kind] += 1; return { counts, total: Object.entries(counts).reduce((a, [k, n]) => a + n * val[k], 0) }; };
   const rank = (list) => list.sort((a, b) => b.total - a.total || a.id - b.id).map((x, i, arr) => ({ ...x, rank: arr.filter((y) => y.total > x.total).length + 1, _i: i }));
-  const squadList = rank(squads.map((s) => ({ ...s, ...sum(rows.filter((r) => r.squadId === s.id)) })));
+  const squadList = rank(squads.map((s) => ({ ...s, minesLeft: squadMinesLeft(s.id, g), ...sum(rows.filter((r) => r.squadId === s.id)) })));
   const full = Object.fromEntries(q.all("SELECT p.* FROM players p JOIN teams t ON t.id = p.teamId WHERE p.gameId = ? AND t.kind = 'elect'", g.id).map((p) => [p.id, p]));
   const personList = rank(people.map((p) => ({ id: p.id, name: p.nickname || p.name, squadId: p.squadId, minesLeft: full[p.id] ? minesLeft(full[p.id], g) : 0, ...sum(rows.filter((r) => r.playerId === p.id)) })));
   return {
