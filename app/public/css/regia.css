@@ -1625,5 +1625,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .place-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
 .place-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); }
 .place-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
-.place-row .place-ico { flex: none; width: 28px; text-align: center; font-weight: 800; }
-.place-row .place-ico img, .place-row .place-ico svg { width: 26px; height: 26px; }
+.place-row .place-ico { flex: none; width: 36px; height: 36px; font-size: 18px; font-weight: 800; border-width: 2px; line-height: 1; overflow: hidden; }
+.place-row .place-ico img, .place-row .place-ico svg { width: 22px; height: 22px; }
+.place-row label > span:last-child { min-width: 0; }
