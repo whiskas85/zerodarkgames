@@ -930,6 +930,40 @@ test('notifiche: chi le ha sul suo telefono, solo su quello della coppia, o per 
   assert.ok(Array.isArray(rep.staff));
 });
 
+test('QR dei doni da abbinare: si creano liberi, non si prendono finché non sono abbinati, poi valgono per il dono', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const [A] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  const made = F.createGiftBlanks(g.id, 3, 'test');
+  assert.deepEqual([made.from, made.to, made.ids.length], [1, 3, 3]);
+  const blanks = F.giftBlanks(g.id);
+  const gifts = F.createGifts(g.id, { typeId: 'scudo', count: 2 }, 'test');
+  const [g1, g2] = q.all('SELECT * FROM gifts WHERE gameId = ? ORDER BY id', g.id);
+  G.control(g.id, 'ready', 'test'); G.control(g.id, 'circle', 'test'); G.control(g.id, 'start', 'test');
+  // Libero: chi lo scansiona legge «non ancora attivo».
+  assert.throws(() => F.claimGift(A, blanks[0].token), /non è ancora attivo/);
+  assert.equal(F.resolveToken(g.id, `https://x/d/${blanks[0].token}`).kind, 'blank');
+  // Abbinato al dono 1 (letto come link): il dono prende quel QR.
+  const r = F.bindGiftBlank(g.id, `https://x/d/${blanks[0].token}`, g1.id, 'test');
+  assert.equal(r.n, 1);
+  assert.equal(q.get('SELECT qrToken FROM gifts WHERE id = ?', g1.id).qrToken, blanks[0].token);
+  assert.equal(F.resolveToken(g.id, `https://x/d/${blanks[0].token}`).kind, 'gift');
+  // Lo stesso QR spostato sul dono 2: il dono 1 prende un QR nuovo, il dono 2 quello stampato.
+  F.bindGiftBlank(g.id, blanks[0].token, g2.id, 'test');
+  assert.equal(q.get('SELECT qrToken FROM gifts WHERE id = ?', g2.id).qrToken, blanks[0].token);
+  assert.notEqual(q.get('SELECT qrToken FROM gifts WHERE id = ?', g1.id).qrToken, blanks[0].token);
+  // Un altro QR libero sul dono 2: il primo torna libero.
+  F.bindGiftBlank(g.id, blanks[1].token, g2.id, 'test');
+  const after = F.giftBlanks(g.id);
+  assert.equal(after.find((b) => b.n === 1).giftId, null);
+  assert.equal(after.find((b) => b.n === 2).giftId, g2.id);
+  // Il QR stampato di un dono non è un QR libero; un QR abbinato non si elimina.
+  assert.throws(() => F.bindGiftBlank(g.id, q.get('SELECT qrToken FROM gifts WHERE id = ?', g1.id).qrToken, g2.id, 'test'), /cartello stampato/);
+  assert.throws(() => F.deleteGiftBlank(g.id, blanks[1].id), /abbinato/);
+  assert.equal(F.deleteGiftBlank(g.id, blanks[2].id).ok, true);
+  void gifts;
+});
+
 test('Traccar: al terzo segnale il server lo verifica da solo, anche senza finire la prova nel wizard', () => {
   const F = require('../src/field');
   const g = setupGame(2);

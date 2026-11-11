@@ -179,6 +179,19 @@ async function credentials(g, base, sel) {
   };
 }
 
+const GIFT_CSS = `
+.gifts{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6mm;padding:8mm}
+.gifts .gift{border:1.2mm solid #1C211E;outline:.5mm solid #7D6226;outline-offset:-3mm;padding:6mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2.5mm}
+.gifts .ghead{display:flex;align-items:center;gap:2mm}
+.gifts .plogo{width:9mm;height:9mm}
+.gifts .top{font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:#5B615A}
+.gifts .title{font-size:10mm;font-weight:900;line-height:1}
+.gifts .qr{width:58mm;height:58mm;background:#fff;padding:2mm}
+.gifts .label{font-size:8mm;font-weight:800;color:#7D6226}
+.gifts p{margin:0;font-size:9.5pt}
+.gifts .sign{margin-top:auto;width:100%;padding:2mm;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.06em;border:.6mm solid #1C211E}
+.gifts .sign.remove{background:#1C211E;color:#fff}`;
+
 // Cartelli dei doni QR: 4 per foglio. Il tipo non è stampato: si scopre solo prendendo il dono.
 const giftRows = (g) => q.all("SELECT * FROM gifts WHERE gameId = ? AND parentGiftId IS NULL AND NOT (status = 'claimed' AND lat IS NULL AND placedAt IS NULL) ORDER BY id", g.id);
 async function gifts(g, base, sel) {
@@ -196,18 +209,7 @@ async function gifts(g, base, sel) {
   for (let i = 0; i < cards.length; i += 4) sheets.push(`<section class="sheet gifts">${cards.slice(i, i + 4).join('')}</section>`);
   return {
     title: 'Cartelli Doni', count: list.length, note: 'Il tipo del dono non è stampato.', empty: 'Nessun dono: creali nella sezione Doni QR della regia.', sheets,
-    css: `
-.gifts{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6mm;padding:8mm}
-.gifts .gift{border:1.2mm solid #1C211E;outline:.5mm solid #7D6226;outline-offset:-3mm;padding:6mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2.5mm}
-.gifts .ghead{display:flex;align-items:center;gap:2mm}
-.gifts .plogo{width:9mm;height:9mm}
-.gifts .top{font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:#5B615A}
-.gifts .title{font-size:10mm;font-weight:900;line-height:1}
-.gifts .qr{width:58mm;height:58mm;background:#fff;padding:2mm}
-.gifts .label{font-size:8mm;font-weight:800;color:#7D6226}
-.gifts p{margin:0;font-size:9.5pt}
-.gifts .sign{margin-top:auto;width:100%;padding:2mm;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.06em;border:.6mm solid #1C211E}
-.gifts .sign.remove{background:#1C211E;color:#fff}`,
+    css: GIFT_CSS,
   };
 }
 
@@ -263,7 +265,25 @@ async function stations(g, _base, sel) {
   };
 }
 
-const GROUPS = { settori: stations, altari: altars, doni: gifts, uscita: exitSign, credenziali: credentials };
+// QR dei doni da abbinare sul campo: stessi cartelli dei doni (il dono non c'è ancora), con il numero piccolo in basso.
+// Senza selezione si stampano quelli non ancora abbinati.
+async function giftBlanksPrint(g, base, sel) {
+  const lg = logoTag();
+  const all = q.all('SELECT * FROM gift_blanks WHERE gameId = ? ORDER BY n', g.id);
+  const list = sel ? all.filter((b) => pick(sel, `b${b.id}`)) : all.filter((b) => !b.giftId);
+  const cards = await Promise.all(list.map(async (b) => `<div class="gift">
+      <div class="ghead">${lg}<div class="mono top">Consiglio Zero · ${esc(g.name)}</div></div>
+      <div class="display title">Dono del Consiglio</div>
+      <div class="qr">${await qr(`${base}/d/${b.token}`)}</div>
+      <p>Scansionatelo con l'app dei Giochi («Scansiona»). Chi arriva primo lo prende.</p>
+      <div class="mono top" style="margin-top:auto">Q${b.n}</div>
+    </div>`));
+  const sheets = [];
+  for (let i = 0; i < cards.length; i += 4) sheets.push(`<section class="sheet gifts">${cards.slice(i, i + 4).join('')}</section>`);
+  return { title: 'QR dei doni da abbinare', count: list.length, note: 'QR senza dono: abbinali sul campo inquadrandoli (Doni QR → «📷 Abbina QR»).', empty: 'Nessun QR libero: creane in Doni QR → «QR da abbinare».', sheets, css: GIFT_CSS };
+}
+
+const GROUPS = { settori: stations, altari: altars, doni: gifts, qrliberi: giftBlanksPrint, uscita: exitSign, credenziali: credentials };
 
 function doc(g, parts, title) {
   const count = parts.reduce((n, p) => n + p.count, 0);
@@ -281,7 +301,8 @@ async function page(kind, g, base, selText = '') {
   const sel = selText ? new Set(String(selText).split(',').map((s) => s.trim()).filter(Boolean)) : null;
   if (kind === 'tutto') {
     const parts = [];
-    for (const k of Object.keys(GROUPS)) parts.push(await GROUPS[k](g, base, sel));
+    // I QR liberi si stampano in «tutto» solo se scelti.
+    for (const k of Object.keys(GROUPS)) if (k !== 'qrliberi' || [...(sel || [])].some((x) => x.startsWith('b'))) parts.push(await GROUPS[k](g, base, sel));
     return doc(g, parts, 'Tutte le stampe');
   }
   const fn = GROUPS[kind];
@@ -303,6 +324,7 @@ async function catalog(g, base) {
       { kind: 'settori', title: 'Postazioni nel Cerchio', hint: 'Un cartello A4 per Settore (tutti i Settori attivi): dove ogni coppia lascia il suo armamentario nel Cerchio.', items: sectorList().map((s) => { const t = G.teamsOf(g.id).find((x) => x.sectorId === s.id); return { key: `s${s.id}`, title: `${s.roman} Settore ${s.name}`, sub: t ? (t.displayName || 'Coppia formata') : 'Postazione', svg: sectorEmblem(s, 100) }; }) },
       { kind: 'altari', title: 'Altari', hint: 'Un cartello A4 per Altare, con «Non rimuovere».', items: await Promise.all(altarsList.map((p) => item(`a${p.id}`, p.label, `Settore ${p.s.roman} · ${p.s.name}`, `${base}/a/${p.qrToken}`))) },
       { kind: 'doni', title: 'Doni', hint: 'Quattro cartelli per foglio. Il tipo del dono non è stampato.', items: await Promise.all(giftRows(g).map((d) => item(`g${d.id}`, d.label, d.removeSign === 0 ? 'Non rimuovere il cartello' : 'Da rimuovere dopo la scansione', `${base}/d/${d.qrToken}`))) },
+      { kind: 'qrliberi', title: 'QR dei doni da abbinare', hint: 'QR senza dono (quelli non ancora abbinati): si abbinano sul campo inquadrandoli da Doni QR.', items: await Promise.all(q.all('SELECT * FROM gift_blanks WHERE gameId = ? AND giftId IS NULL ORDER BY n', g.id).map((b) => item(`b${b.id}`, `QR libero n° ${b.n}`, 'Da abbinare a un dono', `${base}/d/${b.token}`))) },
       { kind: 'uscita', title: 'Soglia', hint: 'Il codice di uscita da appendere alla Soglia.', items: soglia ? [await item(`u${soglia.id}`, 'Codice di uscita', 'La Soglia', `${base}/u/${soglia.exitToken}`)] : [] },
       { kind: 'credenziali', title: 'Credenziali', hint: 'Quattro tessere per foglio: accesso delle coppie e personale degli Eletti.', items: [
         ...await Promise.all(G.teamsOf(g.id).filter((t) => t.sectorId).map((t) => item(`t${t.id}`, `${t.roman} Settore ${t.sectorName}`, 'Accesso della coppia', `${base}/login/${t.loginToken}`))),

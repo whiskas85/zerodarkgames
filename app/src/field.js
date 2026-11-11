@@ -358,6 +358,8 @@ function resolveToken(gameId, text, anyGame = false) {
   if (d) {
     const g = q.get('SELECT id, label FROM gifts WHERE gameId = ? AND qrToken = ?', Number(gameId), d[1]);
     if (g) return { kind: 'gift', id: g.id, label: g.label };
+    const b = q.get('SELECT id, n FROM gift_blanks WHERE gameId = ? AND token = ?', Number(gameId), d[1]);
+    if (b) return { kind: 'blank', id: b.id, label: `QR libero n° ${b.n}`, n: b.n };
   }
   throw err(404, 'Cartello non riconosciuto per questa partita');
 }
@@ -387,6 +389,8 @@ function fieldState(gameId) {
     points,
     // Alla regia anche il token del QR: il cartello si vede (e si stampa) dalla tabella.
     gifts: q.all('SELECT * FROM gifts WHERE gameId = ? AND parentGiftId IS NULL ORDER BY id', game.id).map((g) => ({ ...giftOut(g), qrToken: g.qrToken })),
+    // QR stampati senza dono, da abbinare.
+    giftBlanks: giftBlanks(game.id),
     giftTypes: giftTypes(game),
     squads: squadsOf(game.id),
     // Incarichi generati da Skill e Doni (o creati senza squadra): da assegnare.
@@ -1146,11 +1150,65 @@ function teamGifts(team) {
 
 // ---------------------------------------------------------------- azioni delle coppie
 
+// ---------------------------------------------------------------- QR dei doni da abbinare
+
+// Crea N cartelli QR senza dono (numerati), da stampare e abbinare sul campo.
+function createGiftBlanks(gameId, count, actor) {
+  const g = G.getGame(gameId);
+  const n = Math.max(1, Math.min(100, Math.round(Number(count)) || 0));
+  if (!Number(count)) throw err(400, 'Quanti QR vuoi stampare?');
+  const start = q.get('SELECT COALESCE(MAX(n), 0) AS n FROM gift_blanks WHERE gameId = ?', g.id).n;
+  const ids = tx(() => Array.from({ length: n }, (_, i) => Number(q.run('INSERT INTO gift_blanks (gameId, n, token, createdAt) VALUES (?, ?, ?, ?)', g.id, start + i + 1, randomToken(18), Date.now()).lastInsertRowid)));
+  G.log(g.id, actor, 'gift_blanks_created', { count: n, from: start + 1, to: start + n });
+  rt.toStaff(g.id, 'gifts');
+  return { ids, from: start + 1, to: start + n };
+}
+function giftBlanks(gameId) {
+  return q.all(`SELECT b.id, b.n, b.token, b.giftId, b.boundAt, b.boundBy, g.label AS giftLabel, g.name AS giftName, g.icon AS giftIcon, g.status AS giftStatus
+                FROM gift_blanks b LEFT JOIN gifts g ON g.id = b.giftId WHERE b.gameId = ? ORDER BY b.n`, Number(gameId));
+}
+// Abbina un QR libero (letto con la fotocamera: link o codice) a un dono: il dono prende quel QR (il suo QR di
+// prima non vale più). Un QR già abbinato a un altro dono non ancora preso passa al nuovo dono.
+function bindGiftBlank(gameId, text, giftId, actor) {
+  const g = G.getGame(gameId);
+  const s = String(text || '').trim();
+  const token = (s.match(/\/d\/([\w-]+)/) || [])[1] || s;
+  const b = q.get('SELECT * FROM gift_blanks WHERE gameId = ? AND token = ?', g.id, token);
+  if (!b) throw err(404, q.get('SELECT 1 FROM gifts WHERE gameId = ? AND qrToken = ?', g.id, token) ? 'Questo QR è già il cartello stampato di un dono: usa un QR libero' : 'Non è un QR libero di questa partita');
+  const gift = q.get('SELECT * FROM gifts WHERE id = ? AND gameId = ? AND parentGiftId IS NULL', Number(giftId), g.id);
+  if (!gift) throw err(404, 'Dono non trovato');
+  if (['claimed', 'expired'].includes(gift.status)) throw err(409, 'Il dono è già stato preso o è svanito');
+  if (b.giftId === gift.id) return { ok: true, n: b.n, label: gift.label, already: true };
+  tx(() => {
+    if (b.giftId) {
+      const prev = q.get('SELECT * FROM gifts WHERE id = ?', b.giftId);
+      if (prev && prev.status === 'claimed') throw err(409, `Questo QR è già stato usato: il dono «${prev.label}» è stato preso`);
+      if (prev) q.run('UPDATE gifts SET qrToken = ? WHERE id = ?', randomToken(18), prev.id);
+    }
+    // Il QR libero che il dono aveva prima torna libero.
+    q.run('UPDATE gift_blanks SET giftId = NULL, boundAt = NULL, boundBy = NULL WHERE giftId = ? AND id != ?', gift.id, b.id);
+    q.run('UPDATE gifts SET qrToken = ? WHERE id = ?', b.token, gift.id);
+    q.run('UPDATE gift_blanks SET giftId = ?, boundAt = ?, boundBy = ? WHERE id = ?', gift.id, Date.now(), String(actor || ''), b.id);
+  });
+  G.log(g.id, actor, 'gift_blank_bound', { n: b.n, label: gift.label, type: gift.name });
+  rt.toStaff(g.id, 'gifts');
+  return { ok: true, n: b.n, label: gift.label };
+}
+function deleteGiftBlank(gameId, id) {
+  const b = q.get('SELECT * FROM gift_blanks WHERE id = ? AND gameId = ?', Number(id), Number(gameId));
+  if (!b) throw err(404, 'QR non trovato');
+  if (b.giftId) throw err(409, 'QR abbinato a un dono: non si elimina');
+  q.run('DELETE FROM gift_blanks WHERE id = ?', b.id);
+  rt.toStaff(Number(gameId), 'gifts');
+  return { ok: true };
+}
+
 function claimGift(team, token) {
   if (team.kind === 'elect') throw err(403, 'Gli Eletti piazzano i doni, non li prendono');
   const game = G.getGame(team.gameId);
   if (!C.ACTIVE.includes(game.status)) throw err(409, game.status === 'paused' ? 'Partita sospesa' : 'I doni si prendono a partita in corso');
   const g = q.get('SELECT * FROM gifts WHERE gameId = ? AND qrToken = ?', game.id, String(token || ''));
+  if (!g && q.get('SELECT 1 FROM gift_blanks WHERE gameId = ? AND token = ? AND giftId IS NULL', game.id, String(token || ''))) throw err(409, 'Questo cartello non è ancora attivo: il Consiglio non ci ha ancora abbinato un dono');
   if (!g) throw err(404, 'Dono non riconosciuto per questa partita');
   // Un dono letto non si riprende: a chi lo rilegge risulta scaduto.
   const mine = g.claimedByTeamId === team.id || (g.multi && q.get('SELECT 1 FROM gifts WHERE parentGiftId = ? AND claimedByTeamId = ?', g.id, team.id));
@@ -1202,5 +1260,5 @@ function useGift(team, giftId, params = {}) {
 module.exports = {
   recordTraccar, parseTraccar, trackingInfo, trackingStatus, verifyTracking, recordPosition, positionsOf, electVisiblePositions, electVisibleTeams, trackingActive, squadsOf, createSquad, updateSquad, deleteSquad, setMemberSquad, assignToSquad, createTask, assignTask, acceptTask, expireTasks, cancelTask, notifySquadPublic: notifySquad, taskTargetPositions, setTaskDone, deleteTask, electSummary,
   giftTypes, createGifts, scheduleGiftReveal, updateGift, deleteGift, resetGift, resetAllGifts, revealGift, tickAll,
-  createPoi, updatePoi, deletePoi, createGuide, updateGuide, deleteGuide, teamGuide, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
+  createPoi, updatePoi, deletePoi, createGuide, updateGuide, deleteGuide, teamGuide, orgKmz, teamKmz, placePoint, placeGift, placeLandmark, resolveToken, createGiftBlanks, giftBlanks, bindGiftBlank, deleteGiftBlank, photoFile, fieldState, teamMap, teamGifts, claimGift, useGift,
 };

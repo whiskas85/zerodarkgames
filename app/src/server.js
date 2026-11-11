@@ -986,6 +986,10 @@ m.get('/games/:id/catalog', wrap((req) => S.editableCatalog(gameId(req))));
 m.put('/games/:id/gift-odds', wrap((req) => S.setGiftOdds(gameId(req), req.body || {}, actor(req))));
 m.put('/games/:id/catalog/:kind/:item', wrap((req) => S.editCatalog(gameId(req), req.params.kind, req.params.item, req.body || {}, actor(req))));
 m.post('/games/:id/gifts', wrap((req) => F.createGifts(gameId(req), req.body || {}, actor(req))));
+// QR dei doni da abbinare sul campo: creare (e poi stampare), abbinare a un dono inquadrandoli, eliminare i liberi.
+m.post('/games/:id/gift-blanks', wrap((req) => F.createGiftBlanks(gameId(req), req.body?.count, actor(req))));
+m.post('/games/:id/gift-blanks/bind', wrap((req) => F.bindGiftBlank(gameId(req), req.body?.text, req.body?.giftId, actor(req))));
+m.delete('/games/:id/gift-blanks/:bid', wrap((req) => F.deleteGiftBlank(gameId(req), req.params.bid)));
 m.patch('/gifts/:gid', wrap((req) => { F.updateGift(req.params.gid, req.body || {}, actor(req)); return { ok: true }; }));
 m.delete('/gifts/:gid', wrap((req) => { F.deleteGift(req.params.gid, actor(req)); return { ok: true }; }));
 m.post('/gifts/:gid/reveal', wrap((req) => { F.revealGift(req.params.gid, actor(req)); return { ok: true }; }));
