@@ -869,6 +869,18 @@ function recordTraccar(query, body) {
   // Secondo segnale (o primo dopo un silenzio): l'app di quella persona si aggiorna e toglie o rimette l'avviso «accendi Traccar».
   const pings = q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, now - G.TRACK_PINGS_WINDOW_MS).n;
   if ((wasQuiet || pings === G.TRACK_ON_PINGS) && player.teamId) { rt.toTeamsWhere(player.gameId, 'state', {}, (c) => c.playerId === player.id || c.teamId === player.teamId); rt.toStaff(player.gameId, 'traccar'); }
+  // Verifica automatica: al terzo segnale arrivato da Traccar (negli ultimi 15 minuti) il server considera Traccar
+  // provato, anche se la persona non ha finito la prova nel wizard, ha chiuso la schermata o l'app.
+  if (!player.trackVerifiedAt) {
+    const recent = q.get('SELECT COUNT(*) AS n FROM track_pings WHERE playerId = ? AND at > ?', player.id, now - TRACK_AUTO_WINDOW_MS).n;
+    if (recent >= TRACK_AUTO_PINGS) {
+      q.run('UPDATE players SET trackVerifiedAt = ? WHERE id = ?', now, player.id);
+      G.log(player.gameId, `giocatore:${player.id}`, 'traccar_verified', { name: player.name, pings: recent, auto: true });
+      rt.toTeamsWhere(player.gameId, 'state', {}, (c) => c.playerId === player.id || (player.teamId && c.teamId === player.teamId));
+      rt.toStaff(player.gameId, 'traccar');
+      rt.pushSubs(q.all('SELECT * FROM push_subs WHERE playerId = ?', player.id), { title: '📍 Traccar funziona', body: 'Il Consiglio ha ricevuto 3 segnali da Traccar Client: la configurazione è confermata, puoi chiudere la prova.', tag: 'traccar-ok', url: '/#/traccar' });
+    }
+  }
   q.run('DELETE FROM track_pings WHERE playerId = ? AND id NOT IN (SELECT id FROM track_pings WHERE playerId = ? ORDER BY id DESC LIMIT 60)', player.id, player.id);
   const team = player.teamId ? q.get('SELECT * FROM teams WHERE id = ?', player.teamId) : null;
   if (!team) return { ok: true, tracking: false };
@@ -877,6 +889,9 @@ function recordTraccar(query, body) {
 
 // Identificativo per Traccar Client (creato alla prima richiesta), stato della verifica e segnali ricevuti
 // dall'inizio della prova (since).
+// Verifica automatica (senza finire la prova nel wizard): 3 segnali negli ultimi 15 minuti.
+const TRACK_AUTO_PINGS = 3;
+const TRACK_AUTO_WINDOW_MS = 15 * 60000;
 const TRACK_TEST_MIN_PINGS = 2;
 const TRACK_TEST_MIN_MS = 45000;
 function trackingInfo(player, since = null) {
