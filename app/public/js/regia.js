@@ -4297,7 +4297,7 @@ async function createGiftDialog({ squadId = null, forBlank = null, onCreated = n
   const title = h('input', { class: 'input', maxlength: 36, placeholder: 'es. Cassa del bosco (vuoto: Dono N)' });
   const squadSel = h('select', { class: 'input' }, squadOptions(squadId, 'Nessuna (la assegno dopo)'));
   const mode = h('select', { class: 'input' },
-    h('option', { value: 'manual' }, 'Lo annuncio io (dalla tabella: ora, tra X minuti o a un orario)'),
+    h('option', { value: 'manual' }, 'Lo annuncio io (dalla tabella dei doni)'),
     h('option', { value: 'onplace' }, 'Appena viene piazzato'));
   const delay = h('input', { class: 'input', type: 'number', min: 0, step: 1, placeholder: 'nessuno' });
   const exp = h('input', { class: 'input', type: 'number', min: 1, step: 1, placeholder: 'mai' });
@@ -4308,23 +4308,18 @@ async function createGiftDialog({ squadId = null, forBlank = null, onCreated = n
   const sign = h('select', { class: 'input' },
     h('option', { value: '1' }, 'Cartello da rimuovere (dopo la scansione)'),
     h('option', { value: '0' }, 'Non rimuovere il cartello'));
-  const opts = h('div', { class: 'form-grid gift-opts', hidden: true },
-    h('label', { class: 'field' }, h('span', null, 'Titolo (sul cartello)'), title),
-    forBlank ? null : h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
-    h('label', { class: 'field' }, h('span', null, forBlank ? 'Squadra che lo piazza' : 'Squadra che li piazza'), squadSel),
-    h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
-    h('label', { class: 'field' }, h('span', null, 'Ritardo all\'annuncio (min)'), delay),
-    h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
-    h('label', { class: 'field' }, h('span', null, 'Dopo la lettura'), after),
-    h('label', { class: 'field' }, h('span', null, 'Cartello stampato'), sign),
-    h('p', { class: 'tiny muted gift-opts-note' }, 'Ritardo all\'annuncio: quando annunci il dono, compare sulla mappa delle coppie N minuti dopo il tuo annuncio (non al piazzamento). Resta attivo: ogni coppia lo prende una volta sola, e chi lo rilegge lo trova scaduto.'));
-  const chosen = h('p', { class: 'gift-chosen', hidden: true });
+  // Procedura guidata: 1) quale dono, 2) il cartello, 3) quando compare e quanto dura.
+  const fld = (label, input, hint) => h('label', { class: 'field' }, h('span', null, label), input, hint ? h('small', { class: 'tiny muted field-hint' }, hint) : null);
+  const steps = ['Il dono', 'Il cartello', 'Annuncio e durata'];
+  const finalLabel = forBlank ? 'Crea e abbina' : 'Crea';
+  let okBtn = null;
+  const stepBar = h('ol', { class: 'wiz-steps' });
+  const chosenBox = h('div', { class: 'wiz-chosen', hidden: true });
   const cards = h('div', { class: 'gift-cards' }, d.giftTypes.map((t) => {
     const card = h('button', { type: 'button', class: 'gift-card', style: { '--c': t.color }, onclick: () => {
       type = t;
       for (const c of cards.children) c.classList.toggle('on', c === card);
-      chosen.hidden = false; chosen.textContent = `${t.icon} ${t.name}`;
-      opts.hidden = false;
+      show(1);
     } },
     h('span', { class: 'gift-card-ico', 'aria-hidden': 'true' }, t.icon),
     h('strong', null, t.name),
@@ -4345,11 +4340,38 @@ async function createGiftDialog({ squadId = null, forBlank = null, onCreated = n
     oninput: (e) => filter(e.target.value), onkeydown: (e) => { if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.stopPropagation(); e.target.value = ''; filter(''); } } });
   const clearBtn = h('button', { class: 'omni-clear', type: 'button', hidden: true, 'aria-label': 'Cancella la ricerca', onclick: () => { search.value = ''; filter(''); search.focus(); } }, mdi('close', 18));
   const bar = h('div', { class: 'omnibar' }, h('span', { class: 'omni-ico', 'aria-hidden': 'true' }, mdi('magnify', 20)), search, countEl, clearBtn);
-  return modal({ title: forBlank ? `Nuovo dono per il QR n° ${forBlank.n}` : 'Crea dono', wide: true, tall: true, okLabel: forBlank ? 'Crea e abbina' : 'Crea',
-    onOpen: () => setTimeout(() => search.focus(), 50),
-    body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), bar, cards, none, chosen, opts),
+  const page1 = h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Tocca il dono che vuoi mettere in gioco. Il tipo non è scritto sul cartello: per le coppie è una sorpresa.'), bar, cards, none);
+  const page2 = h('div', { class: 'form-grid wiz-grid' },
+    fld('Titolo sul cartello', title, 'L\'unica cosa scritta sul cartello stampato. Se lo lasci vuoto: «Dono N».'),
+    forBlank ? null : fld('Quanti cartelli', count, 'Stesso dono, un cartello con il suo QR per ognuno.'),
+    fld(forBlank ? 'Squadra che lo piazza' : 'Squadra che li piazza', squadSel, 'Facoltativo: la squadra Eletti riceve l\'incarico di piazzarlo. Puoi sceglierla anche dopo.'),
+    fld('Cartello stampato', sign, 'Da rimuovere: chi lo legge stacca il cartello. Non rimuovere: resta lì.'));
+  const page3 = h('div', { class: 'form-grid wiz-grid' },
+    fld('Quando compare sulla mappa delle coppie', mode, 'Lo annuncio io: compare quando premi «Annuncia…» nella tabella dei doni. Appena piazzato: compare da solo quando la squadra lo piazza.'),
+    fld('Ritardo dopo l\'annuncio (minuti)', delay, 'Vuoto: compare subito. Es. 3: compare 3 minuti dopo l\'annuncio.'),
+    fld('Scadenza (minuti dopo la comparsa)', exp, 'Vuoto: non scade. Es. 20: se nessuno lo prende in 20 minuti, sparisce.'),
+    fld('Dopo che una coppia lo legge', after, 'Scade: lo prende solo la prima coppia. Resta attivo: ogni coppia lo prende una volta sola.'));
+  const pages = [page1, page2, page3];
+  function show(n) {
+    pages.forEach((pg, i) => { pg.hidden = i !== n; });
+    stepBar.replaceChildren(...steps.map((t, i) => h('li', { class: i === n ? 'on' : i < n ? 'done' : '' },
+      i < n ? h('button', { type: 'button', onclick: () => show(i) }, `${i < n ? '✓' : i + 1} ${t}`) : h('span', null, `${i + 1} ${t}`))));
+    chosenBox.hidden = n === 0 || !type;
+    if (type) chosenBox.replaceChildren(h('span', { class: 'wiz-chosen-ico', 'aria-hidden': 'true' }, type.icon),
+      h('span', { class: 'wiz-chosen-txt' }, h('strong', null, type.name), h('span', { class: 'tiny muted' }, type.description)),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => show(0) }, 'Cambia'));
+    if (okBtn) okBtn.textContent = n === 2 ? finalLabel : 'Avanti →';
+    show.step = n;
+    if (n === 0) setTimeout(() => search.focus(), 30);
+    else setTimeout(() => (n === 1 ? title : mode).focus(), 30);
+  }
+  show.step = 0;
+  return modal({ title: forBlank ? `Nuovo dono per il QR n° ${forBlank.n}` : 'Crea dono', wide: true, tall: true, okLabel: 'Avanti →',
+    onOpen: (dlg) => { okBtn = dlg.querySelector('.dlg-actions .btn-primary'); show(0); },
+    body: h('div', { class: 'stack wiz' }, stepBar, chosenBox, page1, page2, page3),
     onOk: async () => {
-      if (!type) { toast('Scegli prima il dono', 'error'); return false; }
+      if (!type) { toast('Scegli prima il dono', 'error'); show(0); return false; }
+      if (show.step < 2) { show(show.step + 1); return false; }
       const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: forBlank ? 1 : count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
         squadId: Number(squadSel.value) || null, removeSign: sign.value === '1', multi: after.value === '1' });
       if (!forBlank) toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
