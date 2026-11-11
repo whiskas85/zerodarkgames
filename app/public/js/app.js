@@ -4934,6 +4934,12 @@ const STORE = {
 
 async function loadTracking(since = trk().since) {
   try { trackInfo = await api('GET', `/api/team/tracking${since ? `?since=${since}` : ''}`); } catch (e) { trackInfo = { error: e.message }; }
+  // Durante la prova il server può aver già verificato Traccar da solo (al terzo segnale): la prova è finita.
+  if (trk().step === 4 && since && trackInfo?.verifiedAt >= since) {
+    toast('📍 Traccar funziona: verificato in automatico dal Consiglio (3 segnali ricevuti)', 'ok', 6000);
+    setTrk({ step: 0, since: null });
+    return;
+  }
   render();
 }
 
@@ -5093,6 +5099,7 @@ function viewTraccar() {
         h('li', null, 'Torna qui e premi ', h('strong', null, '«Inizia la prova»'), '.'),
         h('li', null, h('strong', null, 'Blocca lo schermo'), ' e metti il telefono in tasca per ', h('strong', null, 'un minuto'), '.'),
         h('li', null, 'Riapri questa pagina: se sono arrivati almeno 2 segnali, Traccar è verificato.')),
+      h('p', { class: 'small muted' }, 'Non serve restare qui: al terzo segnale ricevuto il Consiglio conferma Traccar da solo, anche se hai chiuso la pagina o l\'app (ti arriva una notifica).'),
       since ? h('div', { class: `card stack-sm track-test ${ready ? 'ok' : ''}` },
         h('div', { class: 'eyebrow' }, `Prova iniziata alle ${fmtTime(since)} · ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}′ ` : ''}${elapsed % 60}″`),
         h('div', { class: 'track-count' }, h('span', { class: 'mono' }, pings), ` ${pings === 1 ? 'segnale ricevuto' : 'segnali ricevuti'}`),

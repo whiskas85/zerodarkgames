@@ -930,6 +930,29 @@ test('notifiche: chi le ha sul suo telefono, solo su quello della coppia, o per 
   assert.ok(Array.isArray(rep.staff));
 });
 
+test('Traccar: al terzo segnale il server lo verifica da solo, anche senza finire la prova nel wizard', () => {
+  const F = require('../src/field');
+  const g = setupGame(2);
+  const pl = q.get('SELECT * FROM players WHERE gameId = ? AND teamId IS NOT NULL LIMIT 1', g.id);
+  const info = F.trackingInfo(pl);
+  const verified = () => q.get('SELECT trackVerifiedAt FROM players WHERE id = ?', pl.id).trackVerifiedAt;
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1' }, {});
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1' }, {});
+  assert.equal(verified(), null, 'con due segnali non ancora');
+  F.recordTraccar({ id: info.deviceId, lat: '45.1', lon: '9.1' }, {});
+  assert.ok(verified(), 'al terzo segnale è verificato');
+  assert.equal(F.trackingInfo(pl).state, 'ok');
+  assert.ok(q.get("SELECT 1 FROM event_log WHERE gameId = ? AND type = 'traccar_verified' AND json_extract(data, '$.auto') = 1", g.id));
+  // Segnali vecchi (oltre 15 minuti) non contano.
+  const other = q.get('SELECT * FROM players WHERE gameId = ? AND teamId IS NOT NULL AND id != ? LIMIT 1', g.id, pl.id);
+  const oi = F.trackingInfo(other);
+  F.recordTraccar({ id: oi.deviceId, lat: '45.1', lon: '9.1' }, {});
+  F.recordTraccar({ id: oi.deviceId, lat: '45.1', lon: '9.1' }, {});
+  q.run('UPDATE track_pings SET at = ? WHERE playerId = ?', Date.now() - 20 * 60000, other.id);
+  F.recordTraccar({ id: oi.deviceId, lat: '45.1', lon: '9.1' }, {});
+  assert.equal(q.get('SELECT trackVerifiedAt FROM players WHERE id = ?', other.id).trackVerifiedAt, null);
+});
+
 test('Traccar: segnali anche prima del via, verifica con la prova a schermo spento, avviso se smette', () => {
   const F = require('../src/field');
   const g = setupGame(2);
