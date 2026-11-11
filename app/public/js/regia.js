@@ -1,6 +1,6 @@
 // Dashboard della regia (utente MASTER): preparazione, motore di gioco, comunicazioni.
 import * as CKUI from './checkin-ui.js';
-import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase } from './lib.js';
+import { cropSquare, parseWall, wallInput, zoneParts, zoneTime, h, mount, md, mdEditor, api, makeClock, fmtDuration, fmtTime, fmtMin, ghost, toast, dialog, modal, stream, enablePush, store, STATUS_LABELS, voiceSupported, startRecording, uploadAudio, voicePlayer, fmtSec , keepAwakeRow, dimRow, nfcSupported, nfcWriteUrl, nfcErase, scanQR } from './lib.js';
 import { playTeamVideo, teamsForVideo, drawStill, pickRecorderType, VIDEO_TIMING, FORMATS, previewThud, eventDateText } from './teamvideo.js';
 import { createMapView, positionItem, landmarkItem, landmarkIcon, mineItems, mineCircles, groupPositions, loadLeaflet, tilesFor } from './map.js';
 import { mdi, GUIDE_ICONS } from './mdi.js';
@@ -4514,6 +4514,67 @@ async function nfcGeneratorDialog(list) {
   else if (chosen) writeNfcDialog(chosen);
 }
 
+// ---- QR dei doni da abbinare: si stampano senza dono e si abbinano sul campo inquadrandoli.
+function giftBlanksSection(d) {
+  const list = d.giftBlanks || [];
+  const free = list.filter((b) => !b.giftId);
+  const count = h('input', { class: 'input input-sm', type: 'number', min: 1, max: 100, value: 8, style: { width: '80px' }, 'aria-label': 'Quanti QR' });
+  const create = async () => {
+    try {
+      const r = await api('POST', G('/gift-blanks'), { count: Number(count.value) });
+      toast(`Creati i QR n° ${r.from}–${r.to}`, 'ok');
+      window.open(`/regia/stampa/qrliberi/${R.gameId}?sel=${r.ids.map((id) => `b${id}`).join(',')}`, '_blank');
+      loadField();
+    } catch (e) { toast(e.message, 'error', 6000); }
+  };
+  return sectionActions(`QR da abbinare (${free.length} liberi${list.length - free.length ? ` · ${list.length - free.length} abbinati` : ''})`, [
+    h('button', { class: 'btn btn-sm btn-primary', onclick: () => bindBlankFlow(null) }, '📷 Abbina QR'),
+    free.length ? h('a', { class: 'btn btn-sm', href: `/regia/stampa/qrliberi/${R.gameId}`, target: '_blank' }, '🖨 Stampa i liberi') : null],
+    h('p', { class: 'muted tiny' }, 'Stampa dei QR senza dono e decidi sul campo quale dono abbinare: con «📷 Abbina QR» inquadri il QR con la fotocamera del PC o del telefono e scegli il dono (oppure, dalla riga di un dono, «📷 Abbina QR» lo abbina a quel dono). Il dono prende quel QR: il suo cartello di prima non vale più. Finché non è abbinato, chi lo scansiona legge «cartello non ancora attivo».'),
+    h('div', { class: 'row-actions' }, h('span', { class: 'small' }, 'Nuovi QR:'), count, h('button', { class: 'btn btn-sm', onclick: create }, 'Crea e stampa')),
+    list.length ? h('div', { class: 'blank-chips' }, list.map((b) => h('span', { class: `chip ${b.giftId ? 'chip-brass' : ''}`, title: b.giftId ? `Abbinato alle ${fmtTime(b.boundAt)}` : 'Libero' },
+      `Q${b.n} `, b.giftId ? `→ ${b.giftIcon || '🎁'} ${b.giftLabel}` : 'libero',
+      b.giftId ? null : h('button', { class: 'chip-x', type: 'button', 'aria-label': `Elimina il QR n° ${b.n}`, onclick: () => call('DELETE', G(`/gift-blanks/${b.id}`), undefined, `QR n° ${b.n} eliminato`).then(() => loadField()) }, '✕')))) : null);
+}
+
+// Inquadra un QR libero e lo abbina a un dono (quello dato, o scelto dall'elenco). Si può continuare con il successivo.
+async function bindBlankFlow(gift) {
+  if (!fieldData) await loadField(false);
+  for (;;) {
+    const text = await scanQR({ title: gift ? `QR per «${gift.label}»` : 'Inquadra il QR libero', hint: 'Il QR stampato senza dono (Q1, Q2…)', accept: (t) => /\/d\/[\w-]+/.test(t) });
+    if (!text) return;
+    const token = (String(text).match(/\/d\/([\w-]+)/) || [])[1];
+    const b = (fieldData.giftBlanks || []).find((x) => x.token === token);
+    if (!b) { toast(fieldData.gifts.some((g) => g.qrToken === token) ? 'Questo è il cartello stampato di un dono, non un QR libero' : 'Non è un QR libero di questa partita', 'error', 6000); return; }
+    const target = gift || await pickGiftForBlank(b);
+    if (!target) return;
+    try {
+      const r = await api('POST', G('/gift-blanks/bind'), { text, giftId: target.id });
+      toast(r.already ? `Il QR n° ${r.n} era già di «${r.label}»` : `QR n° ${r.n} abbinato a «${r.label}»`, 'ok', 5000);
+      await loadField(false); render();
+    } catch (e) { toast(e.message, 'error', 7000); return; }
+    if (gift) return;
+    if (!(await dialog({ title: 'Abbinare un altro QR?', text: 'Inquadra il prossimo QR libero.', okLabel: '📷 Avanti' }))) return;
+  }
+}
+// Scelta del dono da abbinare: doni non ancora presi, con ricerca.
+async function pickGiftForBlank(b) {
+  const gifts = fieldData.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
+  if (!gifts.length) { toast('Nessun dono da abbinare: crealo prima con «+ Crea dono»', 'error', 6000); return null; }
+  let chosen = null;
+  const listEl = h('div', { class: 'stack-xs pick-gift-list' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca un dono…', oninput: () => draw() });
+  const draw = () => listEl.replaceChildren(...gifts.filter((g) => matches(search.value, g.label, g.name)).map((g) => {
+    const cur = (fieldData.giftBlanks || []).find((x) => x.giftId === g.id);
+    return h('button', { type: 'button', class: 'btn btn-block pick-gift', onclick: (e) => { chosen = g; e.target.closest('form').requestSubmit(); } },
+      h('span', null, `${g.icon} `, h('strong', null, g.label), ` · ${g.name}`), h('span', { class: 'tiny muted' }, cur ? ` · ora ha il QR n° ${cur.n}` : g.status === 'draft' ? ' · da piazzare' : ' · piazzato'));
+  }));
+  draw();
+  const ok = await modal({ title: `QR n° ${b.n}${b.giftId ? ` (ora di «${b.giftLabel}»)` : ''}: a quale dono?`, okLabel: 'Annulla', cancelLabel: null, tall: true,
+    onOpen: () => setTimeout(() => search.focus(), 50), body: h('div', { class: 'stack-sm' }, search, listEl) });
+  return ok && chosen ? chosen : null;
+}
+
 function viewGiftsQR() {
   const d = fieldData;
   if (!d) { loadField(); return h('p', { class: 'empty' }, 'Caricamento dei doni…'); }
@@ -4536,6 +4597,7 @@ function viewGiftsQR() {
       h('div', { style: { color: g.color } }, `${g.icon} ${g.name}`),
       h('div', { class: 'tiny muted' }, g.removeSign ? 'Cartello da rimuovere' : 'Non rimuovere il cartello'),
       g.nfcTags ? h('div', { class: 'tiny muted' }, `📶 ${g.nfcTags === 1 ? '1 tag NFC scritto' : `${g.nfcTags} tag NFC scritti`}`) : null,
+      (() => { const b = (d.giftBlanks || []).find((x) => x.giftId === g.id); return b ? h('div', { class: 'tiny brass' }, `🏷 QR libero n° ${b.n} abbinato`) : null; })(),
       g.multi ? h('div', { class: 'tiny gift-multi' }, `♾ Resta attivo${g.takenBy?.length ? ` · preso da ${g.takenBy.join(', ')}` : ''}`) : null),
     h('td', null, g.status === 'claimed' ? h('span', { class: 'chip chip-brass' }, `Preso da ${g.claimedBy} alle ${fmtTime(g.claimedAt)}${g.usedAt ? ' · usato' : ''}`)
       : g.status === 'expired' ? h('span', { class: 'chip' }, `Svanito alle ${fmtTime(g.expiredAt)}`)
@@ -4545,6 +4607,7 @@ function viewGiftsQR() {
     h('td', { class: 'row-actions' },
       !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm', onclick: () => editGiftDialog(g) }, '✎ Modifica') : null,
       !['claimed', 'expired'].includes(g.status) && g.qrToken ? h('button', { class: 'btn btn-sm', title: 'Scrivi il dono su un tag NFC', onclick: () => writeNfcDialog(g) }, '📶 NFC') : null,
+      !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-sm', title: 'Inquadra un QR libero stampato: diventa il QR di questo dono', onclick: () => bindBlankFlow(g) }, '📷 Abbina QR') : null,
       ['draft', 'placed'].includes(g.status) ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => scheduleGiftDialog(g) }, ['at', 'onplace', 'time'].includes(g.revealMode) ? '◷ Cambia annuncio' : '◷ Annuncia…') : null,
       ['draft', 'placed'].includes(g.status) && ['at', 'onplace', 'time'].includes(g.revealMode) ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => call('POST', `/api/m/gifts/${g.id}/schedule`, { mode: 'cancel' }, 'Annuncio annullato').then(() => loadField()) }, 'Annulla annuncio') : null,
       ['draft', 'placed', 'revealed'].includes(g.status) ? placementButtons('gift', g, g.status !== 'draft') : null,
@@ -4562,6 +4625,7 @@ function viewGiftsQR() {
       h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog() }, '🎁 Dai un Dono a una coppia'),
       h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
     live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco: crealo con «+ Crea dono».')),
+    giftBlanksSection(d),
     gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null,
     h('details', { class: 'panel how-gifts' }, h('summary', null, 'Come funzionano i doni'),
       h('ol', { class: 'how-steps' },

@@ -1629,3 +1629,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .place-row .place-ico img, .place-row .place-ico svg { width: 22px; height: 22px; }
 .place-row label > span:last-child { min-width: 0; }
 .info-row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
+/* QR dei doni da abbinare */
+.blank-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.blank-chips .chip { display: inline-flex; align-items: center; gap: 4px; }
+.chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; font-size: 12px; opacity: .7; }
+.chip-x:hover { opacity: 1; }
+.pick-gift { display: flex; justify-content: space-between; gap: 8px; text-align: left; }
+.pick-gift-list { max-height: 55vh; overflow: auto; }

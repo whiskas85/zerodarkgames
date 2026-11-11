@@ -743,6 +743,12 @@ addColumn('games', 'votePrize3', 'TEXT');
 addColumn('games', 'votePrizedAt', 'INTEGER');
 // Premi del voto assegnati prima dell'apertura del cerchio: si consegnano (doni, notifiche, annuncio) quando si apre.
 addColumn('games', 'votePrizesPending', 'TEXT');
+// QR dei doni stampati senza dono: si abbinano sul campo a un dono inquadrandoli (il dono prende quel QR).
+db.exec(`CREATE TABLE IF NOT EXISTS gift_blanks (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  n INTEGER NOT NULL, token TEXT UNIQUE NOT NULL, createdAt INTEGER NOT NULL,
+  giftId INTEGER REFERENCES gifts(id) ON DELETE SET NULL, boundAt INTEGER, boundBy TEXT
+)`);
 addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
 // Logo della coppia (immagine caricata dalla regia): compare nel voto del pubblico.
 addColumn('teams', 'logoFile', 'TEXT');
