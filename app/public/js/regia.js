@@ -4290,7 +4290,7 @@ function giftRevealCell(g) {
 }
 
 // Crea dono: una card per tipo (titolo e descrizione); scelto il tipo, squadra, annuncio, ritardo, scadenza e cartello.
-async function createGiftDialog({ squadId = null } = {}) {
+async function createGiftDialog({ squadId = null, forBlank = null, onCreated = null } = {}) {
   const d = fieldData;
   let type = null;
   const count = h('input', { class: 'input', type: 'number', min: 1, max: 50, value: 1 });
@@ -4310,8 +4310,8 @@ async function createGiftDialog({ squadId = null } = {}) {
     h('option', { value: '0' }, 'Non rimuovere il cartello'));
   const opts = h('div', { class: 'form-grid gift-opts', hidden: true },
     h('label', { class: 'field' }, h('span', null, 'Titolo (sul cartello)'), title),
-    h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
-    h('label', { class: 'field' }, h('span', null, 'Squadra che li piazza'), squadSel),
+    forBlank ? null : h('label', { class: 'field' }, h('span', null, 'Quanti'), count),
+    h('label', { class: 'field' }, h('span', null, forBlank ? 'Squadra che lo piazza' : 'Squadra che li piazza'), squadSel),
     h('label', { class: 'field' }, h('span', null, 'Annuncio'), mode),
     h('label', { class: 'field' }, h('span', null, 'Ritardo all\'annuncio (min)'), delay),
     h('label', { class: 'field' }, h('span', null, 'Scadenza: minuti dopo la comparsa'), exp),
@@ -4345,14 +4345,15 @@ async function createGiftDialog({ squadId = null } = {}) {
     oninput: (e) => filter(e.target.value), onkeydown: (e) => { if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.stopPropagation(); e.target.value = ''; filter(''); } } });
   const clearBtn = h('button', { class: 'omni-clear', type: 'button', hidden: true, 'aria-label': 'Cancella la ricerca', onclick: () => { search.value = ''; filter(''); search.focus(); } }, mdi('close', 18));
   const bar = h('div', { class: 'omnibar' }, h('span', { class: 'omni-ico', 'aria-hidden': 'true' }, mdi('magnify', 20)), search, countEl, clearBtn);
-  return modal({ title: 'Crea dono', wide: true, tall: true, okLabel: 'Crea',
+  return modal({ title: forBlank ? `Nuovo dono per il QR n° ${forBlank.n}` : 'Crea dono', wide: true, tall: true, okLabel: forBlank ? 'Crea e abbina' : 'Crea',
     onOpen: () => setTimeout(() => search.focus(), 50),
     body: h('div', { class: 'stack' }, h('p', { class: 'muted tiny' }, 'Scegli il dono: il tipo non è stampato sul cartello, è una sorpresa.'), bar, cards, none, chosen, opts),
     onOk: async () => {
       if (!type) { toast('Scegli prima il dono', 'error'); return false; }
-      const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
+      const r = await api('POST', G('/gifts'), { typeId: type.id, label: title.value, count: forBlank ? 1 : count.value, revealMode: mode.value, revealDelayMin: delay.value, expiresAfterMin: exp.value,
         squadId: Number(squadSel.value) || null, removeSign: sign.value === '1', multi: after.value === '1' });
-      toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
+      if (!forBlank) toast(`${r.ids.length === 1 ? 'Dono creato' : `${r.ids.length} doni creati`}${Number(squadSel.value) ? ': la squadra è stata avvisata' : ''}`, 'ok');
+      onCreated?.(r.ids, type);
       loadField();
       return true;
     } });
@@ -4565,8 +4566,14 @@ async function bindBlankFlow(gift) {
 // Scelta del dono da abbinare: doni non ancora presi, con ricerca.
 async function pickGiftForBlank(b) {
   const gifts = fieldData.gifts.filter((g) => !['claimed', 'expired'].includes(g.status));
-  if (!gifts.length) { toast('Nessun dono da abbinare: crealo prima con «+ Crea dono»', 'error', 6000); return null; }
   let chosen = null;
+  // Nuovo dono creato qui: diventa subito il dono di questo QR.
+  const createNew = async () => {
+    let made = null;
+    await createGiftDialog({ forBlank: b, onCreated: (ids, type) => { made = { id: ids[0], label: '', name: type.name }; } });
+    return made;
+  };
+  if (!gifts.length) return createNew();
   const listEl = h('div', { class: 'stack-xs pick-gift-list' });
   const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca un dono…', oninput: () => draw() });
   const draw = () => listEl.replaceChildren(...gifts.filter((g) => matches(search.value, g.label, g.name)).map((g) => {
@@ -4575,8 +4582,10 @@ async function pickGiftForBlank(b) {
       h('span', null, `${g.icon} `, h('strong', null, g.label), ` · ${g.name}`), h('span', { class: 'tiny muted' }, cur ? ` · ora ha il QR n° ${cur.n}` : g.status === 'draft' ? ' · da piazzare' : ' · piazzato'));
   }));
   draw();
+  const newBtn = h('button', { type: 'button', class: 'btn btn-block btn-primary', onclick: (e) => { chosen = 'new'; e.target.closest('form').requestSubmit(); } }, '＋ Crea un nuovo dono per questo QR');
   const ok = await modal({ title: `QR n° ${b.n}${b.giftId ? ` (ora di «${b.giftLabel}»)` : ''}: a quale dono?`, okLabel: 'Annulla', cancelLabel: null, tall: true,
-    onOpen: () => setTimeout(() => search.focus(), 50), body: h('div', { class: 'stack-sm' }, search, listEl) });
+    onOpen: () => setTimeout(() => search.focus(), 50), body: h('div', { class: 'stack-sm' }, newBtn, search, listEl) });
+  if (ok && chosen === 'new') return createNew();
   return ok && chosen ? chosen : null;
 }
 
