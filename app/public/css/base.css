@@ -547,3 +547,22 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .zdg-compass-rose svg { display: block; }
 .zdg-compass-deg { line-height: 1.2; }
 .zdg-compass.turned { border-color: #e5484d; }
+
+/* Scanner QR (lib.js scanQR): usato dall'app, dal campo e dalla regia. */
+.scanner { position: fixed; inset: 0; z-index: 5000; background: #000; color: #fff; overflow: hidden; }
+.scanner-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scanner-frame { position: absolute; left: 50%; top: 45%; width: min(70vw, 300px); aspect-ratio: 1; transform: translate(-50%, -50%); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); border-radius: 14px; }
+.scanner-frame i { position: absolute; width: 38px; height: 38px; border: 5px solid var(--brass); }
+.scanner-frame i:nth-child(1) { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+.scanner-frame i:nth-child(2) { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+.scanner-frame i:nth-child(3) { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+.scanner-frame i:nth-child(4) { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+.scanner-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(12px + env(safe-area-inset-top)) 16px 12px; }
+.scanner-top strong { font-family: var(--f-display); font-size: 26px; text-transform: uppercase; }
+.scanner-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: grid; justify-items: center; gap: 10px; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); text-align: center; }
+.scanner-bottom p { margin: 0; color: #ddd; font-size: 15px; max-width: 34ch; }
+.scanner-status { font-weight: 700; font-size: 17px; background: rgba(0, 0, 0, .6); padding: 8px 14px; border-radius: 999px; max-width: 92vw; }
+.scanner-status.bad { background: var(--danger); color: #fff; }
+.scanner-btn { width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .5); color: #fff; font-size: 22px; display: grid; place-items: center; cursor: pointer; }
+.scanner-btn.on { background: var(--brass); color: #000; border-color: var(--brass); }
+.scanner-cam { justify-self: center; max-width: 92vw; min-height: 44px; padding: 8px 12px; border-radius: 22px; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-weight: 700; }
