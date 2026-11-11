@@ -2911,7 +2911,8 @@ function viewMap(focus = null) {
         // In orizzontale restano solo le icone, in colonna sotto lo zoom.
         h('button', { class: 'btn btn-sm', title: 'Dove siamo', 'aria-label': 'Dove siamo', onclick: () => teamMapView.centerMe() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '◎'), h('span', { class: 'mt-label' }, 'Dove siamo')),
         h('button', { class: 'btn btn-sm', title: 'Tutto il campo', 'aria-label': 'Tutto il campo', onclick: () => teamMapView.autoCenter() }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⛶'), h('span', { class: 'mt-label' }, 'Tutto il campo')),
-        h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))));
+        // KMZ (ATAK, Google Earth): solo per gli Eletti, le coppie non scaricano la mappa.
+        !isElect() ? null : h('a', { class: 'btn btn-sm', href: '/api/team/map.kmz', download: '', title: 'Scarica KMZ: i punti della vostra mappa per ATAK o Google Earth', 'aria-label': 'Scarica KMZ' }, h('span', { class: 'mt-ico', 'aria-hidden': 'true' }, '⇩'), h('span', { class: 'mt-label' }, 'KMZ')))));
 }
 
 // ---------------------------------------------------------------- Zone della mappa
