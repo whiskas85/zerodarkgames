@@ -89,7 +89,9 @@ function placeMine(team, player, body) {
   const pl = q.get('SELECT * FROM players WHERE id = ?', player.id);
   if (!minesLeft(pl, g)) throw err(409, baseOf(g.id) ? `Mine finite${pl.squadId ? ' (sono della squadra)' : ''}: ricaricatele alla Base degli Eletti` : 'Mine finite: la Base degli Eletti non è ancora sulla mappa, chiedete alla regia');
   const { radius, lifeMin } = cfg(g);
-  const now = Date.now();
+  // Sempre dopo l'ultima ricarica, anche se cade nello stesso millisecondo: altrimenti la mina non sarebbe contata come spesa.
+  const reloadAt = (pl.squadId ? q.get('SELECT minesReloadAt FROM elect_squads WHERE id = ?', pl.squadId)?.minesReloadAt : pl.minesReloadAt) || 0;
+  const now = Math.max(Date.now(), reloadAt + 1);
   const id = Number(q.run('INSERT INTO elect_mines (gameId, squadId, playerId, author, lat, lng, radiusM, placedAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     g.id, pl.squadId || null, pl.id, electName(pl), pos.lat, pos.lng, radius, now, lifeMin ? now + lifeMin * MIN : null).lastInsertRowid);
   G.log(g.id, `giocatore:${pl.id}`, 'mine_placed', { by: electName(pl), radius, lat: pos.lat, lng: pos.lng });
