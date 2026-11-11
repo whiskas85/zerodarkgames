@@ -419,7 +419,8 @@ app.post('/api/team/logout', wrap((req, res) => {
 
 // ---- API coppia
 // La mappa della coppia per ATAK / Google Earth: solo ciò che vede nell'app.
-app.get('/api/team/map.kmz', needTeam, (req, res, next) => { try { sendKmz(res, F.teamKmz(req.team)); } catch (e) { next(e); } });
+// KMZ della mappa: solo per gli Eletti (le coppie non possono scaricarla).
+app.get('/api/team/map.kmz', needTeam, (req, res, next) => { try { if (req.team.kind !== 'elect') throw new HttpError(403, 'Il KMZ non è disponibile per le coppie'); sendKmz(res, F.teamKmz(req.team)); } catch (e) { next(e); } });
 // Voce «Consiglio Zero» nell'app: per chi è entrato con Zero Dark Ops o è già nell'organizzazione.
 const councilFlag = (req) => !!req.account && (!!St.staffOf(req.account.id) || St.councilStatus(req.account).canRequest);
 app.get('/api/team/state', needMember, wrap((req) => {
