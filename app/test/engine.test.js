@@ -3055,11 +3055,20 @@ test('voto del pubblico: coppie votabili, un voto per dispositivo, limite per re
   assert.equal(VO.annulVotes(g.id, sp.ids, 'test').annulled, 5);
   assert.equal(VO.masterVote(g.id).spikes.length, 0);
   // Premi ai primi tre (con i voti rimasti: B e C), poi il voto si chiude.
+  // Prima dell'apertura del cerchio: il podio si fissa e il voto si chiude, ma doni e annuncio aspettano il cerchio.
   const r = VO.awardPrizes(g.id, 'test');
-  assert.equal(r.given.length, 2);
-  assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Favore del pubblico%'", B.id));
+  assert.equal(r.pending, true);
+  assert.equal(r.podium.length, 2);
+  assert.equal(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Favore del pubblico%'", B.id), undefined);
+  assert.equal(VO.masterVote(g.id).prizesPending, true);
   assert.equal(VO.publicState('dev-1', null).open, false);
   assert.throws(() => VO.awardPrizes(g.id, 'test'), /già assegnati/);
+  const annBefore = q.get('SELECT COUNT(*) AS n FROM announcements WHERE gameId = ?', g.id).n;
+  G.control(g.id, 'ready', 'test');
+  G.control(g.id, 'circle', 'test');
+  assert.ok(q.get("SELECT 1 FROM gifts WHERE claimedByTeamId = ? AND label LIKE 'Favore del pubblico%'", B.id), 'all\'apertura del cerchio il dono arriva');
+  assert.equal(VO.masterVote(g.id).prizesPending, false);
+  assert.equal(q.get('SELECT COUNT(*) AS n FROM announcements WHERE gameId = ?', g.id).n, annBefore + 1);
   // Senza chiusura scelta, il voto chiude all'inizio previsto della partita (e il conto alla rovescia punta lì).
   const g2 = setupGame(2);
   const [X] = teamsOf(g2.id).filter((t) => t.kind === 'couple');

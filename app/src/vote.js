@@ -225,7 +225,7 @@ function masterVote(gameId) {
   return {
     enabled: !!g.voteEnabled, open: isOpen(g), opensAt: g.voteOpensAt || null, closesAt: g.voteClosesAt || null, title: g.voteTitle || '',
     netDailyMax: g.voteNetDailyMax ?? 3,
-    prizes: [g.votePrize1 || null, g.votePrize2 || null, g.votePrize3 || null], prizedAt: g.votePrizedAt || null,
+    prizes: [g.votePrize1 || null, g.votePrize2 || null, g.votePrize3 || null], prizedAt: g.votePrizedAt || null, prizesPending: !!g.votePrizesPending,
     turnstile: !!turnstile().secret && !!turnstile().siteKey, turnstileSiteKey: turnstile().siteKey || '', turnstileFromEnv: !!process.env.TURNSTILE_SECRET,
     giftTypes: SK().GIFTS.filter(SK().availableGift).map((x) => ({ id: x.id, name: x.name, icon: x.icon, color: x.color || null,
       description: String(x.description || '').replace('{durata}', x.durationMin || '').replace('{raggio}', x.radiusM || '') })),
@@ -346,24 +346,51 @@ function suspicious(gameId, { teamId = null, level = 'strong' } = {}) {
 }
 
 // Premi: un Dono alla prima, alla seconda e alla terza coppia (quelli scelti dalla regia, o a caso), annuncio a tutti.
+// Assegnati prima dell'apertura del cerchio, il podio si fissa e la votazione si chiude subito, ma doni, notifiche e
+// annuncio partono quando la regia preme «Apri il cerchio».
+const MEDALS = ['🥇', '🥈', '🥉'];
+const BEFORE_CIRCLE = ['created', 'draft', 'ready'];
 function awardPrizes(gameId, actor) {
   const g = G.getGame(gameId);
   if (g.votePrizedAt) throw err(409, 'Premi già assegnati');
   const top = results(g.id).list.filter((t) => t.score > 0).slice(0, 3);
   if (!top.length) throw err(409, 'Nessun voto: niente premi da assegnare');
-  const medals = ['🥇', '🥈', '🥉'];
-  const given = tx(() => top.map((t, i) => {
-    const team = q.get('SELECT * FROM teams WHERE id = ?', t.id);
-    const gift = SK().grantVirtualGift(team, `Favore del pubblico · ${i + 1}°`, g[`votePrize${i + 1}`] || null);
-    rt.pushTeams(g.id, { title: `${medals[i]} Favore del pubblico: ${i + 1}° posto`, body: `Il pubblico vi ha votati (${t.pct}%): ${gift.icon} ${gift.name} è tra i vostri doni.`, tag: `vote-${g.id}`, url: '/#/doni' }, t.id);
-    return { teamId: t.id, place: i + 1, pct: t.pct, gift: gift.name };
-  }));
+  const podium = top.map((t, i) => ({ teamId: t.id, place: i + 1, pct: t.pct, typeId: g[`votePrize${i + 1}`] || null }));
+  if (BEFORE_CIRCLE.includes(g.status)) {
+    q.run('UPDATE games SET votePrizedAt = ?, votePrizesPending = ? WHERE id = ?', Date.now(), JSON.stringify(podium), g.id);
+    G.log(g.id, actor, 'vote_prized_pending', { podium: podium.map((p) => ({ teamId: p.teamId, place: p.place, pct: p.pct })) });
+    rt.toStaff(g.id, 'vote');
+    rt.toTeams(g.id, 'state', {});
+    return { pending: true, podium };
+  }
   q.run('UPDATE games SET votePrizedAt = ? WHERE id = ?', Date.now(), g.id);
-  G.freeAnnouncement(g.id, `Il favore del pubblico: ${top.map((t, i) => `${medals[i]} ${t.roman} Settore ${t.sectorName} (${t.pct}%)`).join(' · ')}. Le prime tre coppie ricevono un Dono.`, actor);
-  G.log(g.id, actor, 'vote_prized', { given });
+  return { given: deliverPrizes(g.id, podium, actor) };
+}
+
+// Consegna: un Dono a ogni coppia del podio, notifica a ciascuna e annuncio a tutte.
+function deliverPrizes(gameId, podium, actor) {
+  const g = G.getGame(gameId);
+  const given = tx(() => podium.map((p) => {
+    const team = q.get('SELECT t.*, s.name AS sectorName, s.roman FROM teams t LEFT JOIN sectors s ON s.id = t.sectorId WHERE t.id = ?', p.teamId);
+    if (!team) return null;
+    const gift = SK().grantVirtualGift(team, `Favore del pubblico · ${p.place}°`, p.typeId || null);
+    rt.pushTeams(g.id, { title: `${MEDALS[p.place - 1]} Favore del pubblico: ${p.place}° posto`, body: `Il pubblico vi ha votati (${p.pct}%): ${gift.icon} ${gift.name} è tra i vostri doni.`, tag: `vote-${g.id}`, url: '/#/doni' }, team.id);
+    return { teamId: team.id, place: p.place, pct: p.pct, gift: gift.name, label: `${team.roman} Settore ${team.sectorName}` };
+  }).filter(Boolean));
+  q.run('UPDATE games SET votePrizesPending = NULL WHERE id = ?', g.id);
+  G.freeAnnouncement(g.id, `Il favore del pubblico: ${given.map((x) => `${MEDALS[x.place - 1]} ${x.label} (${x.pct}%)`).join(' · ')}. Le prime tre coppie ricevono un Dono.`, actor);
+  G.log(g.id, actor, 'vote_prized', { given: given.map(({ label, ...x }) => x) });
   rt.toStaff(g.id, 'vote');
   rt.toTeams(g.id, 'state', {});
-  return { given };
+  return given;
+}
+// Apertura del cerchio: consegna i premi rimasti in attesa.
+function deliverPendingPrizes(gameId, actor) {
+  const g = G.getGame(gameId);
+  if (!g?.votePrizesPending) return null;
+  let podium = [];
+  try { podium = JSON.parse(g.votePrizesPending) || []; } catch { /* */ }
+  return deliverPrizes(g.id, podium, actor);
 }
 
 // Per l'app della coppia: la sua posizione nel voto del pubblico (se è tra le votabili della partita col voto acceso).
@@ -388,7 +415,7 @@ function liveVote(gameId) {
   const g = G.getGame(gameId);
   if (!g.voteEnabled) return null;
   const r = results(g.id);
-  return { open: isOpen(g), prizedAt: g.votePrizedAt || null, closesAt: closeAt(g), total: r.total,
+  return { open: isOpen(g), prizedAt: g.votePrizedAt || null, prizesPending: !!g.votePrizesPending, closesAt: closeAt(g), total: r.total,
     votes: q.get('SELECT COUNT(*) AS n FROM votes WHERE gameId = ? AND annulledAt IS NULL', g.id).n,
     list: r.list.map((t) => ({ id: t.id, roman: t.roman, sectorName: t.sectorName, displayName: t.displayName || null, color: t.color, logo: logoUrl(t), pct: t.pct, score: t.score, votes: t.votes, heavy: t.heavy })) };
 }
@@ -443,4 +470,4 @@ function voteAnalysis(gameId, teamId) {
 }
 
 module.exports = {
-  simulate, suspicious, voteAnalysis, uaShort, netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };
+  simulate, suspicious, voteAnalysis, uaShort, netOf, setTorList, isTor, refreshTor, liveVote, teamVote, publicState, castVote, masterVote, updateVote, setVotable, annulVotes, awardPrizes, deliverPendingPrizes, isOpen, VOTES_PER_NET, VERIFIED_WEIGHT };

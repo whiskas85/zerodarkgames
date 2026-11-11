@@ -4716,7 +4716,7 @@ function liveVotePanel() {
   const name = (t) => t.displayName || `Settore ${t.sectorName}`;
   return sectionActions('Voto del pubblico', [h('a', { class: 'btn btn-sm', href: '#voto' }, 'Gestisci'), h('a', { class: 'btn btn-sm btn-ghost', href: '/vota', target: '_blank', rel: 'noopener' }, 'Apri la pagina')],
     h('div', { class: 'vote-state' },
-      h('span', { class: `chip ${v.open ? 'chip-ok' : ''}` }, v.prizedAt ? `Chiusa · premi ${fmtTime(v.prizedAt)}` : v.open ? 'Aperta' : 'Chiusa'),
+      h('span', { class: `chip ${v.open ? 'chip-ok' : ''}` }, v.prizedAt ? (v.prizesPending ? 'Chiusa · premi all\'apertura del cerchio' : `Chiusa · premi ${fmtTime(v.prizedAt)}`) : v.open ? 'Aperta' : 'Chiusa'),
       h('span', { class: 'small muted' }, `${v.votes} voti`),
       v.open && v.closesAt ? h('span', { class: 'small' }, 'chiude tra ', h('strong', { class: 'mono', 'data-clock': `abs:${v.closesAt}` }, '—'), ` (${fmtTime(v.closesAt)})`) : null),
     top.length ? h('ol', { class: 'live-vote' }, v.list.map((t, i) => h('li', { style: { '--c': t.color } },
@@ -4911,13 +4911,13 @@ function viewVote() {
         h('li', null, 'Stessa rete: dopo il primo voto, 3, poi 10, poi 30 minuti di attesa tra voti nuovi.'),
         h('li', null, 'Tetto giornaliero: al massimo ', h('input', { class: 'input input-sm vote-cap', type: 'number', min: 0, max: 100, value: V.netDailyMax ?? 3, onchange: (e) => patch({ netDailyMax: Number(e.target.value) }, 'Tetto salvato') }), ' voti nuovi in 24 ore dalla stessa rete (0 = senza tetto). Chi vota con l\'account non ha tetto.'))),
     section('Premi',
-      h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude.'),
+      h('p', { class: 'muted tiny' }, 'Un Dono a ciascuna delle prime tre coppie, consegnato nell\'app con una notifica, più un annuncio a tutti con il podio. Assegnando i premi la votazione si chiude; se il cerchio non è ancora aperto, doni, notifiche e annuncio partono quando premi «Apri il cerchio».'),
       h('div', { class: 'row-actions' }, [0, 1, 2].map(prizeBtn)),
-      V.prizedAt ? h('p', { class: 'small ok-text' }, `Premi assegnati alle ${fmtTime(V.prizedAt)}.`)
+      V.prizedAt ? h('p', { class: `small ${V.prizesPending ? 'warn-text' : 'ok-text'}` }, V.prizesPending ? `Podio fissato alle ${fmtTime(V.prizedAt)}: doni, notifiche e annuncio partono quando premi «Apri il cerchio».` : `Premi assegnati alle ${fmtTime(V.prizedAt)}.`)
         : h('button', { class: 'btn btn-primary', disabled: !V.total, onclick: async () => {
           const top = V.ranking.filter((t) => t.score > 0).slice(0, 3);
-          if (!(await dialog({ title: 'Assegnare i premi?', text: `${top.map((t, i) => `${['🥇', '🥈', '🥉'][i]} ${t.roman} ${t.sectorName} (${String(t.pct).replace('.', ',')}%)`).join(' · ')}. La votazione si chiude e parte l'annuncio a tutte le coppie.`, okLabel: 'Assegna i premi' }))) return;
-          try { await api('POST', G('/vote/award')); toast('Premi assegnati', 'ok'); await loadVote(); load(); } catch (e) { toast(e.message, 'error', 6000); }
+          if (!(await dialog({ title: 'Assegnare i premi?', text: `${top.map((t, i) => `${['🥇', '🥈', '🥉'][i]} ${t.roman} ${t.sectorName} (${String(t.pct).replace('.', ',')}%)`).join(' · ')}. La votazione si chiude.${['created', 'draft', 'ready'].includes(R.ms?.game?.status) ? ' I doni, le notifiche e l\'annuncio partono quando premi «Apri il cerchio».' : ' Parte subito l\'annuncio a tutte le coppie.'}`, okLabel: 'Assegna i premi' }))) return;
+          try { const r = await api('POST', G('/vote/award')); toast(r?.pending ? 'Podio fissato: i premi partono all\'apertura del cerchio' : 'Premi assegnati', 'ok', 5000); await loadVote(); load(); } catch (e) { toast(e.message, 'error', 6000); }
         } }, '🏆 Assegna i premi e chiudi')),
     section('Voti da Tor',
       h('p', { class: 'muted tiny' }, 'Con il browser Tor ogni voto arriva da un indirizzo diverso e salta il limite per rete. Il server scarica ogni ora l\'elenco pubblico dei nodi di uscita di Tor: da lì non si vota più. Qui sotto i voti già arrivati da quegli indirizzi.'),
