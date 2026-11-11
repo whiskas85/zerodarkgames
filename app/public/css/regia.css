@@ -1655,3 +1655,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .wiz-grid[hidden] { display: none; }
 .field-hint { display: block; line-height: 1.35; text-transform: none; letter-spacing: 0; font-family: var(--f-ui, inherit); }
 .wiz > [hidden] { display: none !important; }
+/* Un solo scorrimento: le card dei doni scorrono con la finestra, la ricerca resta in cima. */
+.wiz .gift-cards { max-height: none; overflow: visible; }
+.wiz .omnibar { position: sticky; top: 0; z-index: 3; box-shadow: 0 -14px 0 var(--paper), 0 8px 0 var(--paper); }
