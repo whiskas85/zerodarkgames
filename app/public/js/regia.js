@@ -4514,6 +4514,8 @@ async function nfcGeneratorDialog(list) {
   else if (chosen) writeNfcDialog(chosen);
 }
 
+// Doni e QR liberi selezionati in Doni QR per la stampa (chiavi g<id>, b<id> come in Stampe).
+const giftPrintSel = new Set();
 // ---- QR dei doni da abbinare: si stampano senza dono e si abbinano sul campo inquadrandoli.
 function giftBlanksSection(d) {
   const list = d.giftBlanks || [];
@@ -4529,12 +4531,15 @@ function giftBlanksSection(d) {
   };
   return sectionActions(`QR da abbinare (${free.length} liberi${list.length - free.length ? ` · ${list.length - free.length} abbinati` : ''})`, [
     h('button', { class: 'btn btn-sm btn-primary', onclick: () => bindBlankFlow(null) }, '📷 Abbina QR'),
-    free.length ? h('a', { class: 'btn btn-sm', href: `/regia/stampa/qrliberi/${R.gameId}`, target: '_blank' }, '🖨 Stampa i liberi') : null],
+    free.length ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { const keys = free.map((b) => `b${b.id}`); const all = keys.every((k) => giftPrintSel.has(k)); for (const k of keys) { if (all) giftPrintSel.delete(k); else giftPrintSel.add(k); } render(); } }, free.every((b) => giftPrintSel.has(`b${b.id}`)) ? 'Deseleziona i QR' : 'Seleziona i QR') : null,
+    [...giftPrintSel].some((k) => k.startsWith('b')) ? h('button', { class: 'btn btn-sm', onclick: () => window.open(`/regia/stampa/qrliberi/${R.gameId}?sel=${[...giftPrintSel].filter((k) => k.startsWith('b')).join(',')}`, '_blank') }, `🖨 Stampa i QR selezionati (${[...giftPrintSel].filter((k) => k.startsWith('b')).length})`) : null,
+    free.length ? h('a', { class: 'btn btn-sm', href: `/regia/stampa/qrliberi/${R.gameId}`, target: '_blank' }, '🖨 Stampa tutti i liberi') : null],
     h('p', { class: 'muted tiny' }, 'Stampa dei QR senza dono e decidi sul campo quale dono abbinare: con «📷 Abbina QR» inquadri il QR con la fotocamera del PC o del telefono e scegli il dono (oppure, dalla riga di un dono, «📷 Abbina QR» lo abbina a quel dono). Il dono prende quel QR: il suo cartello di prima non vale più. Finché non è abbinato, chi lo scansiona legge «cartello non ancora attivo».'),
     h('div', { class: 'row-actions' }, h('span', { class: 'small' }, 'Nuovi QR:'), count, h('button', { class: 'btn btn-sm', onclick: create }, 'Crea e stampa')),
     list.length ? h('div', { class: 'blank-chips' }, list.map((b) => h('span', { class: `chip ${b.giftId ? 'chip-brass' : ''}`, title: b.giftId ? `Abbinato alle ${fmtTime(b.boundAt)}` : 'Libero' },
+      b.giftId ? null : h('input', { type: 'checkbox', 'aria-label': `Seleziona il QR n° ${b.n} per la stampa`, checked: giftPrintSel.has(`b${b.id}`), onchange: (e) => { if (e.target.checked) giftPrintSel.add(`b${b.id}`); else giftPrintSel.delete(`b${b.id}`); render(); } }),
       `Q${b.n} `, b.giftId ? `→ ${b.giftIcon || '🎁'} ${b.giftLabel}` : 'libero',
-      b.giftId ? null : h('button', { class: 'chip-x', type: 'button', 'aria-label': `Elimina il QR n° ${b.n}`, onclick: () => call('DELETE', G(`/gift-blanks/${b.id}`), undefined, `QR n° ${b.n} eliminato`).then(() => loadField()) }, '✕')))) : null);
+      b.giftId ? null : h('button', { class: 'chip-x', type: 'button', 'aria-label': `Elimina il QR n° ${b.n}`, onclick: () => { giftPrintSel.delete(`b${b.id}`); call('DELETE', G(`/gift-blanks/${b.id}`), undefined, `QR n° ${b.n} eliminato`).then(() => loadField()); } }, '✕')))) : null);
 }
 
 // Inquadra un QR libero e lo abbina a un dono (quello dato, o scelto dall'elenco). Si può continuare con il successivo.
@@ -4587,7 +4592,7 @@ function viewGiftsQR() {
       h('img', { class: 'gift-qr', src: `/api/m/qr.svg?text=${encodeURIComponent(url)}`, alt: `QR ${g.label}`, width: 84, height: 84, loading: 'lazy' }));
   };
   const row = (g) => h('tr', { class: `gift-row-${g.status}` },
-    h('td', null, giftQr(g)),
+    h('td', { class: 'gift-sel' }, h('label', { title: 'Seleziona per la stampa' }, h('input', { type: 'checkbox', checked: giftPrintSel.has(`g${g.id}`), onchange: (e) => { if (e.target.checked) giftPrintSel.add(`g${g.id}`); else giftPrintSel.delete(`g${g.id}`); render(); } }), giftQr(g))),
     h('td', null, h('div', { class: 'gift-title' }, h('strong', null, g.label),
       !['claimed', 'expired'].includes(g.status) ? h('button', { class: 'btn btn-xs btn-ghost', title: 'Cambia titolo', 'aria-label': `Cambia il titolo di ${g.label}`, onclick: async () => {
         const v = await dialog({ title: 'Titolo del dono', text: 'È il nome stampato sul cartello (il tipo resta segreto). Se il cartello è già stampato, ristampalo.', input: { value: g.label }, okLabel: 'Salva' });
@@ -4623,7 +4628,10 @@ function viewGiftsQR() {
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => createGiftDialog() }, '+ Crea dono'),
       h('button', { class: 'btn btn-sm', onclick: () => nfcGeneratorDialog(live.filter((g) => g.qrToken)) }, '📶 Generatore NFC'),
       h('button', { class: 'btn btn-sm', onclick: () => giveGiftDialog() }, '🎁 Dai un Dono a una coppia'),
-      h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa cartelli')],
+      giftPrintSel.size ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => window.open(`/regia/stampa/tutto/${R.gameId}?sel=${[...giftPrintSel].join(',')}`, '_blank') }, `🖨 Stampa selezionati (${giftPrintSel.size})`) : null,
+      giftPrintSel.size ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { giftPrintSel.clear(); render(); } }, 'Deseleziona') : null,
+      h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { const keys = live.map((g) => `g${g.id}`); const all = keys.every((k) => giftPrintSel.has(k)); for (const k of keys) { if (all) giftPrintSel.delete(k); else giftPrintSel.add(k); } render(); } }, live.length && live.every((g) => giftPrintSel.has(`g${g.id}`)) ? 'Deseleziona i doni' : 'Seleziona i doni'),
+      h('a', { class: 'btn btn-sm', href: `/regia/stampa/doni/${R.gameId}`, target: '_blank' }, 'Stampa tutti i cartelli')],
     live.length ? table(live) : h('p', { class: 'empty' }, 'Nessun dono in gioco: crealo con «+ Crea dono».')),
     giftBlanksSection(d),
     gone.length ? section(`Doni presi o svaniti (${gone.length})`, table(gone)) : null,
@@ -5745,7 +5753,10 @@ function viewPrints() {
     h('input', { type: 'checkbox', checked: printSel.has(it.key), onchange: (e) => { if (e.target.checked) printSel.add(it.key); else printSel.delete(it.key); render(); } }),
     qrBox(it.svg),
     h('div', { class: 'pr-text' }, h('strong', null, it.title), h('span', { class: 'tiny muted' }, it.sub)),
-    h('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => { e.preventDefault(); openPrint(d.groups.find((g) => g.items.includes(it)).kind, [it.key]); } }, 'Stampa'));
+    h('div', { class: 'pr-actions' },
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => { e.preventDefault(); openPrint(d.groups.find((g) => g.items.includes(it)).kind, [it.key]); } }, 'Stampa'),
+      // QR liberi: si eliminano anche da qui (come in Doni QR).
+      it.deleteUrl ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: async (e) => { e.preventDefault(); if (await call('DELETE', it.deleteUrl, undefined, `${it.title} eliminato`)) { printSel.delete(it.key); loadPrints(); } } }, 'Elimina') : null));
   return h('div', { class: 'stack' },
     sectionActions('Stampe', [
       printSel.size ? h('button', { class: 'btn btn-sm', onclick: () => { printSel.clear(); render(); } }, 'Deseleziona') : null,
