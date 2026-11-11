@@ -1636,3 +1636,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .chip-x:hover { opacity: 1; }
 .pick-gift { display: flex; justify-content: space-between; gap: 8px; text-align: left; }
 .pick-gift-list { max-height: 55vh; overflow: auto; }
+.pr-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.gift-sel label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.blank-chips .chip input { margin: 0 2px 0 0; }
