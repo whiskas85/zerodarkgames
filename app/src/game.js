@@ -1333,6 +1333,8 @@ function control(gameId, action, actor) {
       need('ready');
       setStatus(g, 'circle');
       pushTraccarOn(g);
+      // Premi del voto del pubblico assegnati prima: si consegnano adesso.
+      try { require('./vote').deliverPendingPrizes(g.id, actor); } catch (e) { console.error('premi del voto', e.message); }
       break;
     // VIA con il conto alla rovescia: tra 5 secondi parte davvero (le regie suonano 5-4-3-2-1 e il corno).
     case 'go': {

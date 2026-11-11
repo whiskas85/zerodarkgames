@@ -741,6 +741,8 @@ addColumn('games', 'voteNetDailyMax', 'INTEGER NOT NULL DEFAULT 3');
 addColumn('games', 'votePrize2', 'TEXT');
 addColumn('games', 'votePrize3', 'TEXT');
 addColumn('games', 'votePrizedAt', 'INTEGER');
+// Premi del voto assegnati prima dell'apertura del cerchio: si consegnano (doni, notifiche, annuncio) quando si apre.
+addColumn('games', 'votePrizesPending', 'TEXT');
 addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
 // Logo della coppia (immagine caricata dalla regia): compare nel voto del pubblico.
 addColumn('teams', 'logoFile', 'TEXT');
