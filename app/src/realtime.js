@@ -127,9 +127,11 @@ function toStaffEvent(event, data) {
   for (const c of clients) if (c.kind === 'user') write(c, event, data);
 }
 
-function pushMasters(payload) {
+// silent: solo la push (chi ha la regia aperta riceve già un suo avviso, es. il timer che suona).
+function pushMasters(payload, { silent = false } = {}) {
   const subs = q.all("SELECT p.* FROM push_subs p JOIN users u ON u.id = p.userId WHERE u.role = 'master'");
   sendPush(subs, payload).catch(() => {});
+  if (silent) return;
   for (const c of clients) if (c.kind === 'user' && c.role === 'master') write(c, 'notify', payload);
 }
 

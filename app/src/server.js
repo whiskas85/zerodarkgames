@@ -25,6 +25,7 @@ const EM = require('./emergency');
 const O = require('./ops');
 const St = require('./staff');
 const MN = require('./mines');
+const TM = require('./timers');
 const FD = require('./food');
 const SND = require('./sounds');
 
@@ -763,7 +764,12 @@ m.post('/games/:id/advance', wrap((req) => {
   F.tickAll();
   return { ok: true };
 }));
-m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), radio: G.radioOf(gameId(req)), electScores: MN.scoresOf(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)) })));
+m.get('/games/:id/state', wrap((req) => (q.run('UPDATE users SET lastGameId = ? WHERE id = ? AND coalesce(lastGameId, 0) != ?', gameId(req), req.user.id, gameId(req)), { ...G.masterState(gameId(req)), combat: K.masterCombat(gameId(req)), gameEvents: EV.masterEvents(gameId(req)), mapZones: Z.masterZones(gameId(req)), radio: G.radioOf(gameId(req)), electScores: MN.scoresOf(gameId(req)), councilPending: St.pendingCount(), appVersion: APP_VERSION, publicVote: VO.liveVote(gameId(req)), timers: TM.list(gameId(req)) })));
+// Timer della regia.
+m.post('/games/:id/timers', wrap((req) => TM.create(gameId(req), req.body || {}, actor(req))));
+m.put('/games/:id/timers/:tid', wrap((req) => TM.update(gameId(req), req.params.tid, req.body || {}, actor(req))));
+m.post('/games/:id/timers/:tid/action', wrap((req) => TM.action(gameId(req), req.params.tid, req.body || {}, actor(req))));
+m.delete('/games/:id/timers/:tid', wrap((req) => TM.remove(gameId(req), req.params.tid, actor(req))));
 m.post('/elect-fights/:fid/resolve', wrap((req) => { K.resolveElectFight(req.params.fid, req.body.decision, actor(req)); return { ok: true }; }));
 m.post('/engagements/:eid/resolve', wrap((req) => { K.resolveEngagement(req.params.eid, req.body.decision, actor(req)); return { ok: true }; }));
 // Ricarica delle mine dalla regia: un Eletto ({ playerId }) o tutti (senza playerId).
@@ -1215,6 +1221,7 @@ setInterval(() => { try { S.tickAll(); } catch (e) { console.error(e); } }, 5000
 setInterval(() => { try { EV.tickAll(); } catch (e) { console.error(e); } }, 3000).unref();
 setInterval(() => { try { Z.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
 setInterval(() => { try { MN.tickAll(); } catch (e) { console.error(e); } }, 5000).unref();
+setInterval(() => { try { TM.tickAll(); } catch (e) { console.error(e); } }, 2000).unref();
 G.tickAll();
 
 app.listen(PORT, () => console.log(`Zero Dark Games in ascolto sulla porta ${PORT}`));

@@ -749,6 +749,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS gift_blanks (
   n INTEGER NOT NULL, token TEXT UNIQUE NOT NULL, createdAt INTEGER NOT NULL,
   giftId INTEGER REFERENCES gifts(id) ON DELETE SET NULL, boundAt INTEGER, boundBy TEXT
 )`);
+// Timer della regia (per gestire gli eventi): titolo, descrizione, durata; suonano su tutte le regie aperte.
+db.exec(`CREATE TABLE IF NOT EXISTS staff_timers (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', durationMs INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ready', endsAt INTEGER, leftMs INTEGER, notifiedAt INTEGER,
+  snoozes INTEGER NOT NULL DEFAULT 0, doneAt INTEGER, doneBy TEXT, createdAt INTEGER NOT NULL, createdBy TEXT
+)`);
 addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
 // Logo della coppia (immagine caricata dalla regia): compare nel voto del pubblico.
 addColumn('teams', 'logoFile', 'TEXT');
