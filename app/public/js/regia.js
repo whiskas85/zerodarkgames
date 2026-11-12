@@ -43,6 +43,7 @@ const TABS = [
   ['comunicazioni', 'Annunci e messaggi'],
   ['avvisi', 'Avvisi'],
   ['eventi', 'Eventi'],
+  ['timer', 'Timer'],
   ['voto', 'Voto del pubblico'],
   // Gruppo «Ristoro» (terzo elemento): nel menù le voci stanno insieme sotto un'intestazione che si apre e chiude.
   ['ristoro', 'Ordini e richieste', 'ristoro'],
@@ -63,7 +64,7 @@ const TABS = [
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
   accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', alleanze: 'accountGroup', video: 'play', minigiochi: 'puzzle', catalogo: 'starFourPoints',
-  doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
+  doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', timer: 'timerOutline', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
   rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', 'ristoro-altri': 'accountPlus', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
 const NAV_GROUPS = { ristoro: { label: 'Ristoro' } };
@@ -116,6 +117,11 @@ async function start() {
       if (d.error) toast(`VIA non partito: ${d.error}`, 'error', 8000);
       goTick();
       load();
+    },
+    // Timer della regia: cambi fatti da un'altra regia (avvio, rimando, spegnimento) arrivano subito.
+    timers: (d) => {
+      if (d.gameId === R.gameId) { load(); return; }
+      if (d.ring) { toast(h('span', null, h('strong', null, '⏰ Timer scaduto'), h('div', { class: 'small' }, 'in un\'altra partita: aprila dal selettore in alto')), 'info', 12000); timerBeep(); }
     },
     // EMERGENZA reale: la regia passa subito alla partita e alla pagina Emergenze, con allarme sonoro.
     emergency: async (d) => {
@@ -326,9 +332,9 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, stampe: viewPrints, alleanze: viewAlliances, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, timer: viewTimers, stampe: viewPrints, alleanze: viewAlliances, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
-    mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
+    mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), timerAlarm(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
   });
   labelTables($root);
@@ -730,6 +736,7 @@ function fmtCountdown(ms) {
 
 function tick() {
   tickTimeline();
+  tickTimers();
   const recEl = document.getElementById('rec-time-regia');
   if (recEl && R.rec) recEl.textContent = fmtSec(Date.now() - R.rec.startedAt);
   const c = clock.snap;
@@ -982,6 +989,8 @@ function viewLive() {
 
     PRE.includes(st) ? readinessPanel() : null,
 
+    liveTimersPanel(),
+
     liveTimeline(),
 
     liveVotePanel(),
@@ -1094,6 +1103,170 @@ function electFightsPanel(c, tn) {
         h('button', { class: 'btn btn-sm btn-primary', onclick: () => confirmCall('Confermare l\'esito?', `${what(f)}.`, 'POST', `/api/m/elect-fights/${f.id}/resolve`, { decision: 'confirm' }, 'Esito confermato') }, 'Conferma'),
         h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Annullare lo scontro?', 'Nessun effetto per la coppia e per la caccia.', 'POST', `/api/m/elect-fights/${f.id}/resolve`, { decision: 'cancel' }, 'Scontro annullato', true) }, 'Annulla'))))) : null,
     done.length ? h('ul', { class: 'feed' }, done.map((f) => h('li', { class: 'ev' }, h('span', { class: 'mono tiny muted' }, fmtTime(f.resolvedAt || f.createdAt)), h('span', { class: 'ev-type' }, f.status === 'cancelled' ? 'Annullato' : 'Eletti'), h('span', { class: 'ev-text' }, what(f))))) : null];
+}
+
+
+// ---------------------------------------------------------------- Timer della regia
+// Titolo, descrizione e durata (ore e minuti). Lo stato è sul server: avvio, pausa, rimando e spegnimento valgono
+// per tutte le regie aperte; quando scade suona su tutte (e arriva una notifica push ai master).
+const timersOf = () => R.ms?.timers || [];
+const timerLeft = (t) => (t.status === 'running' ? t.endsAt - clock.serverNow() : t.status === 'paused' ? t.leftMs : t.durationMs);
+const isRinging = (t) => t.status === 'running' && t.endsAt <= clock.serverNow();
+const fmtTimer = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const hh = Math.floor(s / 3600); const mm = Math.floor((s % 3600) / 60); const ss = s % 60;
+  return hh ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+};
+const fmtDur = (ms) => { const m = Math.round(ms / 60000); const hh = Math.floor(m / 60); return hh ? `${hh} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`; };
+const timerUrl = (t, sub = '') => `/api/m/games/${R.gameId}/timers/${t.id}${sub}`;
+const timerAct = (t, action, minutes, okMsg) => call('POST', timerUrl(t, '/action'), { action, minutes }, okMsg);
+
+// Suono del timer: tre rintocchi acuti, diversi dall'allarme delle emergenze. Volume del VIA (Impostazioni).
+function timerBeep() {
+  const c = actx();
+  if (c) {
+    try {
+      const vol = Math.max(0.05, goSound().volume) * 0.35;
+      [0, 0.28, 0.56].forEach((at, i) => {
+        const o = c.createOscillator(); const g = c.createGain();
+        o.type = 'triangle'; o.frequency.value = i === 2 ? 1320 : 990;
+        o.connect(g); g.connect(c.destination);
+        const t0 = c.currentTime + at;
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+        o.start(t0); o.stop(t0 + 0.27);
+      });
+    } catch { /* audio non disponibile */ }
+  }
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+}
+let timerRingKey = '';
+let timerRingLoop = null;
+function tickTimers() {
+  for (const el of document.querySelectorAll('[data-timer]')) {
+    const t = timersOf().find((x) => x.id === Number(el.dataset.timer));
+    if (!t) continue;
+    const ring = isRinging(t);
+    const txt = ring ? fmtTimer(clock.serverNow() - t.endsAt) : fmtTimer(timerLeft(t));
+    if (el.textContent !== txt) el.textContent = txt;
+    const bar = el.closest('.timer-card')?.querySelector('.timer-bar > i');
+    if (bar) bar.style.width = `${t.status === 'ready' || t.status === 'done' ? 0 : Math.min(100, Math.max(0, 100 - (timerLeft(t) / t.durationMs) * 100))}%`;
+  }
+  const key = timersOf().filter(isRinging).map((t) => t.id).join(',');
+  if (key !== timerRingKey) {
+    timerRingKey = key;
+    clearInterval(timerRingLoop);
+    if (key) { timerBeep(); timerRingLoop = setInterval(() => { if (timersOf().some(isRinging)) timerBeep(); else clearInterval(timerRingLoop); }, 2500); }
+    render();
+  }
+}
+
+// Riquadro sopra ogni pagina mentre un timer suona: Rimanda (per tutti) o Spegni.
+function timerAlarm() {
+  const ringing = timersOf().filter(isRinging);
+  if (!ringing.length) return null;
+  return h('div', { class: 'timer-alarm', role: 'alertdialog', 'aria-live': 'assertive' }, ringing.map((t) => {
+    const custom = h('input', { class: 'input timer-snooze-in', type: 'number', min: 1, max: 120, placeholder: 'min', 'aria-label': 'Minuti per rimandare' });
+    return h('div', { class: 'timer-alarm-item' },
+      h('div', { class: 'timer-alarm-head' }, h('span', { class: 'timer-alarm-ico', 'aria-hidden': 'true' }, '⏰'),
+        h('div', null, h('strong', null, t.title), t.description ? h('div', { class: 'small' }, t.description) : null,
+          h('div', { class: 'tiny' }, 'Scaduto da ', h('span', { class: 'mono', 'data-timer': t.id }, '—'), t.snoozes ? ` · rimandato ${t.snoozes} ${t.snoozes === 1 ? 'volta' : 'volte'}` : ''))),
+      h('div', { class: 'timer-alarm-actions' },
+        h('span', { class: 'tiny' }, 'Rimanda per tutti:'),
+        [1, 5, 10, 15].map((m) => h('button', { class: 'btn btn-sm', onclick: () => timerAct(t, 'snooze', m, `Rimandato di ${m} min su tutti i dispositivi`) }, `${m}′`)),
+        custom,
+        h('button', { class: 'btn btn-sm', onclick: () => { const m = Math.floor(Number(custom.value)); if (!(m >= 1 && m <= 120)) { toast('Rimanda da 1 a 120 minuti', 'error'); return; } timerAct(t, 'snooze', m, `Rimandato di ${m} min su tutti i dispositivi`); } }, 'Rimanda'),
+        h('button', { class: 'btn btn-sm btn-primary', onclick: () => timerAct(t, 'stop', null, 'Timer spento su tutti i dispositivi') }, '✓ Spegni')));
+  }));
+}
+
+// Nuovo timer o modifica: titolo, descrizione, ore e minuti (massimo 23 h 59 min).
+async function timerDialog(t = null) {
+  const title = h('input', { class: 'input', maxlength: 80, value: t?.title || '', placeholder: 'es. Fine evento al Santuario', required: true });
+  const desc = h('textarea', { class: 'input', rows: 3, maxlength: 500, placeholder: 'Cosa fare quando suona (facoltativo)' }, t?.description || '');
+  const totMin = t ? Math.round(t.durationMs / 60000) : 15;
+  const hours = h('input', { class: 'input', type: 'number', min: 0, max: 23, value: Math.floor(totMin / 60) });
+  const mins = h('input', { class: 'input', type: 'number', min: 0, max: 59, value: totMin % 60 });
+  const presets = h('div', { class: 'chips' }, [5, 10, 15, 20, 30, 45, 60, 90].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => { hours.value = Math.floor(m / 60); mins.value = m % 60; } }, m < 60 ? `${m} min` : fmtDur(m * 60000))));
+  let startNow = false;
+  const startBtn = t ? null : h('button', { type: 'button', class: 'btn', onclick: (e) => { startNow = true; e.target.closest('form').requestSubmit(); } }, '▶ Crea e avvia');
+  return modal({ title: t ? 'Modifica timer' : 'Nuovo timer', okLabel: t ? 'Salva' : 'Crea',
+    onOpen: () => setTimeout(() => title.focus(), 50),
+    body: h('div', { class: 'stack' },
+      h('label', { class: 'field' }, h('span', null, 'Titolo'), title),
+      h('label', { class: 'field' }, h('span', null, 'Descrizione'), desc),
+      h('div', { class: 'form-grid timer-dur' },
+        h('label', { class: 'field' }, h('span', null, 'Ore'), hours),
+        h('label', { class: 'field' }, h('span', null, 'Minuti'), mins)),
+      presets,
+      t?.status === 'running' ? h('p', { class: 'tiny muted' }, 'La nuova durata vale dal prossimo avvio («Ricomincia»): il conto in corso non cambia.') : null,
+      startBtn),
+    onOk: async () => {
+      const body = { title: title.value, description: desc.value, hours: hours.value, minutes: mins.value, start: startNow };
+      startNow = false;
+      await api(t ? 'PUT' : 'POST', t ? timerUrl(t) : `/api/m/games/${R.gameId}/timers`, body);
+      toast(t ? 'Timer salvato' : body.start ? 'Timer avviato' : 'Timer creato', 'ok');
+      load();
+      return true;
+    } });
+}
+
+const TIMER_STATE = { ready: 'Da avviare', running: 'In corso', paused: 'In pausa', done: 'Spento' };
+function timerCard(t, compact = false) {
+  const ring = isRinging(t);
+  const st = ring ? 'ringing' : t.status;
+  const actions = [];
+  if (ring) {
+    actions.push(h('button', { class: 'btn btn-sm', onclick: () => timerAct(t, 'snooze', 5, 'Rimandato di 5 min') }, 'Rimanda 5′'));
+    actions.push(h('button', { class: 'btn btn-sm btn-primary', onclick: () => timerAct(t, 'stop', null, 'Timer spento') }, '✓ Spegni'));
+  } else if (t.status === 'running') {
+    actions.push(h('button', { class: 'btn btn-sm', onclick: () => timerAct(t, 'pause') }, '⏸ Pausa'));
+    actions.push(h('button', { class: 'btn btn-sm', onclick: () => timerAct(t, 'add', 1) }, '+1′'));
+    actions.push(h('button', { class: 'btn btn-sm', onclick: () => timerAct(t, 'add', 5) }, '+5′'));
+    if (!compact) actions.push(h('button', { class: 'btn btn-sm btn-ghost', onclick: () => timerAct(t, 'stop', null, 'Timer fermato') }, '■ Ferma'));
+  } else if (t.status === 'paused') {
+    actions.push(h('button', { class: 'btn btn-sm btn-primary', onclick: () => timerAct(t, 'resume') }, '▶ Riprendi'));
+    if (!compact) actions.push(h('button', { class: 'btn btn-sm btn-ghost', onclick: () => timerAct(t, 'stop', null, 'Timer fermato') }, '■ Ferma'));
+  } else {
+    actions.push(h('button', { class: 'btn btn-sm btn-primary', onclick: () => timerAct(t, 'start', null, 'Timer avviato') }, t.status === 'done' ? '↻ Riavvia' : '▶ Avvia'));
+  }
+  if (!compact && (t.status === 'running' || t.status === 'paused') && !ring) actions.push(h('button', { class: 'btn btn-sm btn-ghost', onclick: () => timerAct(t, 'start', null, 'Timer ricominciato') }, '↻ Ricomincia'));
+  if (!compact) {
+    actions.push(h('button', { class: 'btn btn-sm btn-ghost', onclick: () => timerDialog(t) }, '✎ Modifica'));
+    actions.push(h('button', { class: 'btn btn-sm btn-ghost', onclick: () => confirmCall('Eliminare il timer?', `«${t.title}» sparisce da tutte le regie.`, 'DELETE', timerUrl(t), null, 'Timer eliminato', true) }, 'Elimina'));
+  }
+  const endTxt = t.status === 'running' && !ring ? `suona alle ${fmtTime(t.endsAt)}` : t.status === 'done' ? `spento${t.doneAt ? ` alle ${fmtTime(t.doneAt)}` : ''}` : `durata ${fmtDur(t.durationMs)}`;
+  return h('div', { class: `timer-card timer-${st} ${compact ? 'timer-compact' : ''}` },
+    h('div', { class: 'timer-top' },
+      h('div', { class: 'timer-txt' }, h('strong', null, t.title), !compact && t.description ? h('div', { class: 'small muted' }, t.description) : null),
+      h('span', { class: `chip timer-chip-${st}` }, ring ? '⏰ Suona' : TIMER_STATE[t.status])),
+    h('div', { class: 'timer-clock mono', 'data-timer': t.id }, ring ? '—' : fmtTimer(timerLeft(t))),
+    h('div', { class: 'timer-bar' }, h('i')),
+    h('div', { class: 'tiny muted' }, endTxt, t.snoozes ? ` · rimandato ${t.snoozes}×` : ''),
+    h('div', { class: 'row-actions timer-actions' }, actions));
+}
+
+function viewTimers() {
+  const all = timersOf();
+  const active = all.filter((t) => t.status !== 'done');
+  const done = all.filter((t) => t.status === 'done');
+  return h('div', { class: 'stack' },
+    h('div', { class: 'panel' },
+      h('div', { class: 'panel-head' }, h('h2', null, 'Timer'),
+        h('div', { class: 'row-actions' }, h('button', { class: 'btn btn-primary', onclick: () => timerDialog() }, '＋ Nuovo timer'))),
+      h('p', { class: 'muted tiny' }, 'Per gestire gli eventi: titolo, descrizione e durata (fino a 23 ore e 59 minuti). Quando scade suona su tutte le regie aperte e arriva una notifica ai master; «Rimanda» e «Spegni» valgono per tutti i dispositivi. Il suono usa il volume del VIA (Impostazioni → Questo dispositivo).'),
+      active.length ? h('div', { class: 'timer-grid' }, active.map((t) => timerCard(t))) : h('p', { class: 'empty' }, 'Nessun timer: creane uno con «＋ Nuovo timer».')),
+    done.length ? h('details', { class: 'panel', 'data-keep': 'timers-done' }, h('summary', null, `Spenti (${done.length})`), h('div', { class: 'timer-grid' }, done.map((t) => timerCard(t)))) : null);
+}
+
+// Dashboard (Regia): i timer attivi in breve, con il link alla pagina.
+function liveTimersPanel() {
+  const active = timersOf().filter((t) => t.status === 'running' || t.status === 'paused');
+  return h('div', { class: 'panel live-timers' },
+    h('div', { class: 'panel-head' }, h('h2', null, '⏱ Timer'),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn btn-sm btn-primary', onclick: () => timerDialog() }, '＋ Nuovo timer'),
+        h('a', { class: 'btn btn-sm', href: '#timer' }, `Tutti i timer${timersOf().length ? ` (${timersOf().length})` : ''}`))),
+    active.length ? h('div', { class: 'timer-grid' }, active.map((t) => timerCard(t, true))) : h('p', { class: 'muted tiny' }, 'Nessun timer in corso.'));
 }
 
 function nextCard(title, content) {

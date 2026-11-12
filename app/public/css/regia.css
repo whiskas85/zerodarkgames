@@ -1658,3 +1658,39 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* Un solo scorrimento: le card dei doni scorrono con la finestra, la ricerca resta in cima. */
 .wiz .gift-cards { max-height: none; overflow: visible; }
 .wiz .omnibar { position: sticky; top: 0; z-index: 3; box-shadow: 0 -14px 0 var(--paper), 0 8px 0 var(--paper); }
+
+/* Timer della regia */
+.timer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.timer-card { display: grid; gap: 8px; padding: 14px; border: 2px solid var(--line); border-radius: 12px; background: var(--bg); }
+.timer-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.timer-txt { min-width: 0; display: grid; gap: 2px; }
+.timer-txt strong { font-size: 17px; overflow-wrap: anywhere; }
+.timer-clock { font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: .02em; }
+.timer-compact .timer-clock { font-size: 32px; }
+.timer-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.timer-bar > i { display: block; height: 100%; width: 0; background: var(--brass); transition: width 1s linear; }
+.timer-actions { flex-wrap: wrap; }
+.timer-running { border-color: color-mix(in srgb, var(--brass) 60%, var(--line)); }
+.timer-paused .timer-clock { opacity: .6; }
+.timer-done { opacity: .7; }
+.timer-ringing { border-color: var(--blood); background: color-mix(in srgb, var(--blood) 16%, var(--bg)); animation: timer-pulse 1s ease-in-out infinite; }
+.timer-ringing .timer-clock { color: var(--blood); }
+.timer-ringing .timer-bar > i { background: var(--blood); width: 100% !important; }
+.timer-chip-ringing { background: var(--blood); color: #fff; border-color: var(--blood); }
+.timer-chip-running { border-color: var(--brass); color: var(--brass); }
+@keyframes timer-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--blood) 45%, transparent); } }
+.timer-dur { grid-template-columns: 1fr 1fr; }
+.live-timers .timer-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+/* Timer che suona: sopra ogni pagina della regia, finché qualcuno rimanda o spegne. */
+.timer-alarm { position: fixed; z-index: 4000; left: 50%; top: calc(var(--top-h, 64px) + 8px); transform: translateX(-50%); width: min(640px, calc(100vw - 24px)); display: grid; gap: 8px; }
+.timer-alarm-item { display: grid; gap: 10px; padding: 14px 16px; border: 3px solid var(--blood); border-radius: 14px; background: color-mix(in srgb, var(--blood) 22%, var(--paper)); color: var(--ink); box-shadow: 0 10px 30px rgba(0, 0, 0, .55); animation: timer-pulse 1s ease-in-out infinite; }
+.timer-alarm-head { display: flex; gap: 12px; align-items: flex-start; }
+.timer-alarm-head strong { font-size: 20px; }
+.timer-alarm-ico { font-size: 34px; line-height: 1; animation: timer-shake .5s ease-in-out infinite; }
+@keyframes timer-shake { 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+.timer-alarm-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.timer-snooze-in { width: 74px; min-height: 34px; padding: 4px 8px; }
+@media (prefers-reduced-motion: reduce) { .timer-ringing, .timer-alarm-item, .timer-alarm-ico { animation: none; } }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.chip { cursor: pointer; background: transparent; color: inherit; }
+button.chip:hover { border-color: var(--brass); }

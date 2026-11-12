@@ -4154,3 +4154,58 @@ test('Dono dalla regia prima del via: la coppia lo vede ma non lo usa fino al vi
   G.control(g.id, 'start', 'test');
   assert.equal(F.useGift(A, r.gift.id).ok, true);
 });
+
+test('Timer della regia: durata ore e minuti, scadenza, rimando e spegnimento per tutti', () => {
+  const TM = require('../src/timers');
+  const g = setupGame(2);
+  assert.throws(() => TM.create(g.id, { title: '', minutes: 5 }, 'regia'), /titolo/);
+  assert.throws(() => TM.create(g.id, { title: 'X', hours: 0, minutes: 0 }, 'regia'), /almeno un minuto/);
+  assert.throws(() => TM.create(g.id, { title: 'X', hours: 24, minutes: 0 }, 'regia'), /Durata non valida/);
+  assert.throws(() => TM.create(g.id, { title: 'X', hours: 1, minutes: 60 }, 'regia'), /Durata non valida/);
+  const { id } = TM.create(g.id, { title: 'Fine evento', description: 'Chiudere il Santuario', hours: 1, minutes: 30 }, 'regia');
+  let t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.status, 'ready');
+  assert.equal(t.durationMs, 90 * 60000);
+  TM.action(g.id, id, { action: 'start' }, 'regia');
+  t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.status, 'running');
+  assert.ok(Math.abs(t.endsAt - Date.now() - 90 * 60000) < 2000);
+  assert.equal(t.ringing, false);
+  assert.throws(() => TM.action(g.id, id, { action: 'snooze', minutes: 5 }, 'regia'), /non sta suonando/);
+  // Pausa e ripresa: il tempo che resta si conserva.
+  TM.action(g.id, id, { action: 'pause' }, 'regia');
+  t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.status, 'paused');
+  assert.ok(t.leftMs > 89 * 60000);
+  TM.action(g.id, id, { action: 'resume' }, 'regia');
+  // Scade: suona (per tutti: lo stato è sul server) e la notifica parte una volta sola.
+  q.run('UPDATE staff_timers SET endsAt = ? WHERE id = ?', Date.now() - 1000, id);
+  t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.ringing, true);
+  TM.tickAll();
+  const notified = q.get('SELECT notifiedAt FROM staff_timers WHERE id = ?', id).notifiedAt;
+  assert.ok(notified);
+  TM.tickAll();
+  assert.equal(q.get('SELECT notifiedAt FROM staff_timers WHERE id = ?', id).notifiedAt, notified);
+  // Rimanda di 5 minuti: smette di suonare per tutti e torna a suonare dopo.
+  TM.action(g.id, id, { action: 'snooze', minutes: 5 }, 'regia');
+  t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.ringing, false);
+  assert.equal(t.snoozes, 1);
+  assert.ok(Math.abs(t.endsAt - Date.now() - 5 * 60000) < 2000);
+  assert.equal(t.notifiedAt, null);
+  // Spegni.
+  q.run('UPDATE staff_timers SET endsAt = ? WHERE id = ?', Date.now() - 1000, id);
+  TM.action(g.id, id, { action: 'stop' }, 'regia');
+  t = TM.list(g.id).find((x) => x.id === id);
+  assert.equal(t.status, 'done');
+  assert.equal(t.ringing, false);
+  // Modifica ed eliminazione.
+  TM.update(g.id, id, { title: 'Fine evento 2', hours: 0, minutes: 10 }, 'regia');
+  assert.equal(TM.list(g.id).find((x) => x.id === id).durationMs, 10 * 60000);
+  TM.remove(g.id, id, 'regia');
+  assert.ok(!TM.list(g.id).some((x) => x.id === id));
+  // Crea e avvia subito.
+  const r2 = TM.create(g.id, { title: 'Subito', minutes: 2, start: true }, 'regia');
+  assert.equal(TM.list(g.id).find((x) => x.id === r2.id).status, 'running');
+});
