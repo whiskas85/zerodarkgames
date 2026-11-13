@@ -4324,3 +4324,20 @@ test('Ristoro: offerto, spese e bilancio (incassato, speso, guadagno)', () => {
   assert.equal(bal.income, 12);
   assert.equal(bal.offered, 8);
 });
+
+test('Ristoro: ordina per altri anche per i membri del Consiglio', () => {
+  const FD = require('../src/food');
+  const g = G.createGame({ name: 'Ristoro consiglio' }, 'test');
+  const panino = FD.saveItem(g.id, { title: 'Panino', price: '5' }, 'addetto');
+  const uid = Number(q.run("INSERT INTO users (username, passHash, role, displayName, createdAt) VALUES ('cons1', 'x', 'validator', 'Consigliere Uno', ?)", Date.now()).lastInsertRowid);
+  const pp = FD.people(g.id);
+  const c = pp.council.find((x) => x.userId === uid);
+  assert.ok(c);
+  assert.equal(c.key, `u${uid}`);
+  const r = FD.orderFor(g.id, { userId: uid, lines: [{ itemId: panino.id, qty: 1 }] }, 'addetto');
+  assert.equal(r.owner.kind, 'consiglio');
+  // Lo vede anche lui nella sua app del Consiglio (stessa chiave «u<id>»).
+  const mine = FD.forOwner({ key: `u${uid}`, name: 'Consigliere Uno', gameId: g.id, kind: 'consiglio' });
+  assert.ok(mine.orders.some((o) => o.id === r.id));
+  assert.throws(() => FD.orderFor(g.id, { userId: 999999, lines: [{ itemId: panino.id, qty: 1 }] }, 'addetto'), /Consiglio non trovato/);
+});
