@@ -134,7 +134,25 @@ export async function ensureCompass(ask = false) {
   if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onDevOri);
   window.addEventListener('deviceorientation', onDevOri);
   devListening = true;
+  // Alcuni Android non danno la bussola con deviceorientation: dopo un secondo senza dati si prova il sensore
+  // di orientamento assoluto (Generic Sensor API, Chrome).
+  setTimeout(() => { if (!devHeadingAt) startOrientationSensor(); }, 1000);
   return true;
+}
+function startOrientationSensor() {
+  if (!('AbsoluteOrientationSensor' in window)) return;
+  try {
+    const sensor = new window.AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'screen' });
+    sensor.addEventListener('reading', () => {
+      const [x, y, z, w] = sensor.quaternion;
+      const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) * 180 / Math.PI;
+      // referenceFrame 'screen': l'orientamento dello schermo è già compreso.
+      devHeading = (((360 - yaw) % 360) + 360) % 360;
+      devHeadingAt = Date.now();
+      for (const f of devSubs) f(devHeading);
+    });
+    sensor.start();
+  } catch { /* sensore non disponibile o permesso negato */ }
 }
 // Da dove prende la direzione la freccia della posizione: 'gps' (direzione di marcia) o 'compass' (bussola).
 export const arrowSource = () => { try { return localStorage.getItem('zdg_arrow_src') === 'compass' ? 'compass' : 'gps'; } catch { return 'gps'; } };
@@ -310,12 +328,12 @@ export function createMapView({ className = '', remember = null, nav = false, ro
   // Direzione di marcia: quella del GPS se c'è (in movimento), altrimenti dagli spostamenti di almeno 6 m.
   function gpsHeading(pos) {
     if (rot.mode !== 'gps' || !pos) return;
-    if (Number.isFinite(pos.heading) && (pos.speed == null || pos.speed > 0.6)) { aimBearing(pos.heading); rot.last = pos; return; }
+    if (Number.isFinite(pos.heading) && (pos.speed == null || pos.speed > 0.4)) { aimBearing(pos.heading); rot.last = pos; return; }
     if (!rot.last) { rot.last = pos; return; }
     const R = 6371000; const toR = Math.PI / 180;
     const dy = (pos.lat - rot.last.lat) * toR * R;
     const dx = (pos.lng - rot.last.lng) * toR * R * Math.cos(pos.lat * toR);
-    if (Math.hypot(dx, dy) < Math.max(6, (pos.acc || 0) / 2)) return;
+    if (Math.hypot(dx, dy) < Math.max(2.5, (pos.acc || 0) * 0.25)) return;
     aimBearing(wrap360(Math.atan2(dx, dy) / toR));
     rot.last = pos;
   }
@@ -355,13 +373,13 @@ export function createMapView({ className = '', remember = null, nav = false, ro
   const paintMeSoon = () => { if (arrow.raf) return; arrow.raf = requestAnimationFrame(() => { arrow.raf = 0; paintMe(); }); };
   function trackMove(pos) {
     const now = Date.now();
-    const gpsOk = Number.isFinite(pos.heading) && Number.isFinite(pos.speed) && pos.speed > 0.7;
+    const gpsOk = Number.isFinite(pos.heading) && Number.isFinite(pos.speed) && pos.speed > 0.4;
     if (gpsOk) { arrow.lastMoveAt = now; arrow.gpsHd = pos.heading; }
     if (!arrow.anchor) { arrow.anchor = pos; return; }
     const R = 6371000; const toR = Math.PI / 180;
     const dy = (pos.lat - arrow.anchor.lat) * toR * R;
     const dx = (pos.lng - arrow.anchor.lng) * toR * R * Math.cos(pos.lat * toR);
-    if (Math.hypot(dx, dy) < Math.max(5, (pos.acc || 0) * 0.6)) return;
+    if (Math.hypot(dx, dy) < Math.max(2.5, (pos.acc || 0) * 0.25)) return;
     if (!gpsOk) arrow.gpsHd = wrap360(Math.atan2(dx, dy) / toR);
     arrow.lastMoveAt = now;
     arrow.anchor = pos;
@@ -677,7 +695,7 @@ export function watchPosition(onPos, onError) {
   const id = navigator.geolocation.watchPosition(
     (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: p.timestamp, heading: Number.isFinite(p.coords.heading) ? p.coords.heading : null, speed: Number.isFinite(p.coords.speed) ? p.coords.speed : null }),
     (e) => onError?.(e.code === 1 ? 'Permesso di posizione negato: consentilo dalle impostazioni del browser' : 'Posizione non disponibile: andate all\'aperto e riprovate'),
-    { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 },
   );
   return () => navigator.geolocation.clearWatch(id);
 }
