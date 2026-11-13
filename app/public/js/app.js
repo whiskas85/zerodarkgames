@@ -1,5 +1,5 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
-import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC, tilesFor, arrowSource, setArrowSource, ensureCompass } from './map.js';
+import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC, tilesFor, arrowSource, setArrowSource, ensureCompass, compassStatus } from './map.js';
 import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
@@ -5243,7 +5243,10 @@ function viewSettings() {
       h('div', { class: 'seg' }, [['gps', '🛰️ GPS (direzione di marcia)'], ['compass', '🧭 Bussola del telefono']].map(([k, l]) => h('button', { type: 'button', class: `btn btn-sm ${arrowSource() === k ? 'btn-primary' : ''}`, onclick: async () => {
         if (k === 'compass' && !(await ensureCompass(true))) { toast('La bussola non è disponibile su questo telefono (o il permesso è negato): resta il GPS', 'error', 6000); return; }
         setArrowSource(k); toast(k === 'compass' ? 'Freccia: bussola del telefono' : 'Freccia: direzione di marcia (GPS)', 'ok'); render();
-      } }, l)))),
+      } }, l))),
+      // Diagnosi: cosa manda davvero la bussola di questo telefono (gira il telefono: i gradi devono cambiare).
+      h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-sm', onclick: async () => { const ok = await ensureCompass(true); if (!ok) toast('Questo telefono (o il browser) non dà la bussola all\'app', 'error', 6000); compassDiagStart(); } }, '🧪 Prova la bussola')),
+      h('div', { class: 'tiny mono compass-diag', id: 'compass-diag' }, compassDiagText())),
     dimRow(),
     offlineRow(),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
@@ -5255,6 +5258,24 @@ function viewSettings() {
     st?.player ? h('a', { class: `card toggle-row track-link ${st.tracking?.state === 'ok' ? '' : 'warn'}`, href: '#/traccar' }, h('div', null, h('strong', null, 'Traccar Client'), h('div', { class: 'muted small' }, st.tracking?.state === 'ok' ? 'Verificato: la posizione arriva anche a schermo spento.' : st.tracking?.state === 'stale' ? 'Verificato, ma non manda la posizione.' : 'Da attivare: posizione anche a schermo spento.')), h('span', { class: `chip ${st.tracking?.state === 'ok' ? 'chip-ok' : 'chip-warn'}` }, st.tracking?.state === 'ok' ? 'attivo' : 'da fare')) : null,
     h('button', { class: 'btn btn-block', onclick: () => openTour() }, '▶ Rivedi il tour dell\'app'),
     h('button', { class: 'btn btn-danger btn-block', onclick: logout }, 'Esci da questo dispositivo'));
+}
+
+// Prova della bussola (Impostazioni): la riga si aggiorna da sola finché la pagina è aperta.
+function compassDiagText() {
+  const c = compassStatus();
+  if (!c.listening) return 'Bussola non ancora accesa: tocca «Prova la bussola».';
+  if (c.heading == null) return `Nessun dato dalla bussola${c.ignored ? ` (${c.ignored} letture senza il nord: il telefono dà solo l'orientamento relativo)` : ''}. Su questo telefono usate il GPS.`;
+  const stale = c.ageMs > 2000;
+  return `${stale ? '⚠️ FERMA · ' : ''}Bussola ${c.heading}° (grezza ${c.raw}°) · ${c.perSec} letture/s · ultima ${(c.ageMs / 1000).toFixed(1)} s fa · ${c.source}. Girate il telefono: i gradi devono cambiare.`;
+}
+let compassDiagTimer = null;
+function compassDiagStart() {
+  clearInterval(compassDiagTimer);
+  compassDiagTimer = setInterval(() => {
+    const el = document.getElementById('compass-diag');
+    if (!el) { clearInterval(compassDiagTimer); compassDiagTimer = null; return; }
+    el.textContent = compassDiagText();
+  }, 300);
 }
 
 // ---------------------------------------------------------------- tour guidato (primo accesso)

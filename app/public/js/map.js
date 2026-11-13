@@ -112,15 +112,41 @@ let devHeading = null;
 let devHeadingAt = 0;
 let devListening = false;
 const devSubs = new Set();
+// Media circolare pesata di direzioni (gradi): [{ hd, w }] → gradi, oppure null se i campioni si annullano.
+function meanHeading(samples) {
+  let x = 0; let y = 0;
+  for (const m of samples) { const r = m.hd * Math.PI / 180; x += Math.sin(r) * (m.w ?? 1); y += Math.cos(r) * (m.w ?? 1); }
+  if (Math.hypot(x, y) < 1e-6) return null;
+  return ((Math.atan2(x, y) * 180 / Math.PI) + 360) % 360;
+}
+const angDiff = (a, b) => { let d = Math.abs(a - b) % 360; if (d > 180) d = 360 - d; return d; };
+// Letture della bussola dell'ultimo mezzo secondo: la direzione usata è la loro media (niente tremolio).
+const DEV_WINDOW_MS = 500;
+const devBuf = [];
+const devDiag = { source: null, raw: null, count: 0, firstAt: 0, ignored: 0 };
+function pushDevHeading(hd, source) {
+  const now = Date.now();
+  devBuf.push({ hd, at: now });
+  while (devBuf.length && now - devBuf[0].at > DEV_WINDOW_MS) devBuf.shift();
+  devDiag.source = source; devDiag.raw = hd; devDiag.count += 1; devDiag.firstAt ||= now;
+  devHeading = meanHeading(devBuf) ?? hd;
+  devHeadingAt = now;
+  for (const f of devSubs) f(devHeading);
+}
 function onDevOri(e) {
   let hd = null;
   if (Number.isFinite(e.webkitCompassHeading)) hd = e.webkitCompassHeading;
   else if (e.alpha != null && (e.type === 'deviceorientationabsolute' || e.absolute)) hd = 360 - e.alpha;
-  if (hd == null) return;
+  if (hd == null) { devDiag.ignored += 1; return; }
   const scr = Number(window.screen?.orientation?.angle) || Number(window.orientation) || 0;
-  devHeading = (((hd + scr) % 360) + 360) % 360;
-  devHeadingAt = Date.now();
-  for (const f of devSubs) f(devHeading);
+  pushDevHeading((((hd + scr) % 360) + 360) % 360, Number.isFinite(e.webkitCompassHeading) ? 'bussola di iOS' : 'orientamento assoluto del browser');
+}
+// Per la diagnosi (Impostazioni): cosa sta mandando la bussola del telefono adesso.
+export function compassStatus() {
+  const now = Date.now();
+  const secs = devDiag.firstAt ? Math.max(1, (now - devDiag.firstAt) / 1000) : 0;
+  return { listening: devListening, heading: devHeading == null ? null : Math.round(devHeading), raw: devDiag.raw == null ? null : Math.round(devDiag.raw),
+    ageMs: devHeadingAt ? now - devHeadingAt : null, source: devDiag.source, perSec: secs ? Math.round(devDiag.count / secs) : 0, ignored: devDiag.ignored };
 }
 // Accende la bussola; ask: dentro un tocco si può chiedere il permesso (iPhone). Torna true se è accesa.
 export async function ensureCompass(ask = false) {
@@ -147,9 +173,7 @@ function startOrientationSensor() {
       const [x, y, z, w] = sensor.quaternion;
       const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) * 180 / Math.PI;
       // referenceFrame 'screen': l'orientamento dello schermo è già compreso.
-      devHeading = (((360 - yaw) % 360) + 360) % 360;
-      devHeadingAt = Date.now();
-      for (const f of devSubs) f(devHeading);
+      pushDevHeading((((360 - yaw) % 360) + 360) % 360, 'sensore di orientamento');
     });
     sensor.start();
   } catch { /* sensore non disponibile o permesso negato */ }
@@ -325,17 +349,10 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     await new Promise((r) => setTimeout(r, 1500));
     return (devHeading != null && Date.now() - devHeadingAt < 3000) || rot.mode !== 'compass' ? null : 'La bussola del telefono non risponde: prova il modo GPS';
   }
-  // Direzione di marcia: quella del GPS se c'è (in movimento), altrimenti dagli spostamenti di almeno 6 m.
+  // Modo GPS: la mappa segue la direzione di marcia media (la stessa della freccia), solo mentre ci si muove.
   function gpsHeading(pos) {
     if (rot.mode !== 'gps' || !pos) return;
-    if (Number.isFinite(pos.heading) && (pos.speed == null || pos.speed > 0.4)) { aimBearing(pos.heading); rot.last = pos; return; }
-    if (!rot.last) { rot.last = pos; return; }
-    const R = 6371000; const toR = Math.PI / 180;
-    const dy = (pos.lat - rot.last.lat) * toR * R;
-    const dx = (pos.lng - rot.last.lng) * toR * R * Math.cos(pos.lat * toR);
-    if (Math.hypot(dx, dy) < Math.max(2.5, (pos.acc || 0) * 0.25)) return;
-    aimBearing(wrap360(Math.atan2(dx, dy) / toR));
-    rot.last = pos;
+    if (arrow.gpsHd != null && Date.now() - arrow.lastMoveAt < 4000) aimBearing(arrow.gpsHd);
   }
   async function setRotMode(mode, toNorth) {
     stopRotSource();
@@ -355,34 +372,54 @@ export function createMapView({ className = '', remember = null, nav = false, ro
   let lastPos = null;
   // Freccia della posizione: in movimento il pallino diventa un triangolo verso la direzione (GPS o bussola, da
   // Impostazioni); fermi da più di 12 secondi torna il pallino.
-  const arrow = { lastMoveAt: 0, anchor: null, gpsHd: null, raf: 0 };
+  // Direzione GPS: si tengono le posizioni degli ultimi 10 secondi e si prende la direzione tra la media della
+  // prima metà e la media della seconda metà (l'errore del singolo punto pesa poco). Se il telefono dà anche la
+  // sua direzione di marcia (in movimento), si usa la media delle ultime letture. La freccia disegnata cambia
+  // solo se la direzione si sposta di almeno 10° (GPS) o 4° (bussola).
+  const arrow = { lastMoveAt: 0, gpsHd: null, raf: 0, pts: [], hds: [], shown: null };
   const MOVE_HOLD_MS = 12000;
+  const GPS_WINDOW_MS = 10000;
   function meHeading() {
-    if (arrowSource() === 'compass' && devHeading != null && Date.now() - devHeadingAt < 5000) return devHeading;
-    return arrow.gpsHd;
+    if (arrowSource() === 'compass' && devHeading != null && Date.now() - devHeadingAt < 5000) return { hd: devHeading, step: 4 };
+    return arrow.gpsHd == null ? null : { hd: arrow.gpsHd, step: 10 };
   }
   function paintMe() {
     const node = me?.getElement?.();
     if (!node) return;
-    const hd = meHeading();
-    const show = Date.now() - arrow.lastMoveAt < MOVE_HOLD_MS && hd != null;
+    const h0 = meHeading();
+    const show = Date.now() - arrow.lastMoveAt < MOVE_HOLD_MS && h0 != null;
     const want = show ? 'arrow' : 'dot';
-    if (node.dataset.mode !== want) { node.innerHTML = show ? ARROW_HTML : pinHtml({ kind: 'me' }); node.dataset.mode = want; }
-    if (show) node.firstChild.style.transform = `rotate(${wrap360(hd - (map.getBearing ? map.getBearing() : 0))}deg)`;
+    if (node.dataset.mode !== want) { node.innerHTML = show ? ARROW_HTML : pinHtml({ kind: 'me' }); node.dataset.mode = want; arrow.shown = null; }
+    if (!show) return;
+    if (arrow.shown == null || angDiff(arrow.shown, h0.hd) >= h0.step) arrow.shown = h0.hd;
+    node.firstChild.style.transform = `rotate(${wrap360(arrow.shown - (map.getBearing ? map.getBearing() : 0))}deg)`;
   }
   const paintMeSoon = () => { if (arrow.raf) return; arrow.raf = requestAnimationFrame(() => { arrow.raf = 0; paintMe(); }); };
   function trackMove(pos) {
     const now = Date.now();
-    const gpsOk = Number.isFinite(pos.heading) && Number.isFinite(pos.speed) && pos.speed > 0.4;
-    if (gpsOk) { arrow.lastMoveAt = now; arrow.gpsHd = pos.heading; }
-    if (!arrow.anchor) { arrow.anchor = pos; return; }
+    arrow.pts.push({ lat: pos.lat, lng: pos.lng, at: now });
+    while (arrow.pts.length && now - arrow.pts[0].at > GPS_WINDOW_MS) arrow.pts.shift();
+    while (arrow.hds.length && now - arrow.hds[0].at > 5000) arrow.hds.shift();
+    // Direzione di marcia data dal telefono (affidabile solo in movimento).
+    if (Number.isFinite(pos.heading) && Number.isFinite(pos.speed) && pos.speed > 0.5) arrow.hds.push({ hd: pos.heading, w: Math.min(3, pos.speed), at: now });
+    if (arrow.hds.length >= 3) {
+      const m = meanHeading(arrow.hds);
+      if (m != null) { arrow.gpsHd = m; arrow.lastMoveAt = now; return; }
+    }
+    const n = arrow.pts.length;
+    if (n < 2) return;
+    const half = Math.floor(n / 2);
+    const avg = (list) => ({ lat: list.reduce((t, q) => t + q.lat, 0) / list.length, lng: list.reduce((t, q) => t + q.lng, 0) / list.length });
+    const a = avg(arrow.pts.slice(0, half));
+    const b = avg(arrow.pts.slice(n - half));
     const R = 6371000; const toR = Math.PI / 180;
-    const dy = (pos.lat - arrow.anchor.lat) * toR * R;
-    const dx = (pos.lng - arrow.anchor.lng) * toR * R * Math.cos(pos.lat * toR);
-    if (Math.hypot(dx, dy) < Math.max(2.5, (pos.acc || 0) * 0.25)) return;
-    if (!gpsOk) arrow.gpsHd = wrap360(Math.atan2(dx, dy) / toR);
+    const dy = (b.lat - a.lat) * toR * R;
+    const dx = (b.lng - a.lng) * toR * R * Math.cos(b.lat * toR);
+    // Con pochi punti serve uno spostamento più netto; con tanti basta meno (la media toglie l'errore).
+    const need = Math.max(n < 4 ? 4 : 2.5, (pos.acc || 0) * (n < 4 ? 0.5 : 0.3));
+    if (Math.hypot(dx, dy) < need) return;
+    arrow.gpsHd = wrap360(Math.atan2(dx, dy) / toR);
     arrow.lastMoveAt = now;
-    arrow.anchor = pos;
   }
   devSubs.add(() => { if (arrowSource() === 'compass') paintMeSoon(); });
   window.addEventListener('zdg-arrow-src', () => { if (arrowSource() === 'compass') ensureCompass(false); paintMeSoon(); });
@@ -596,7 +633,7 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     },
     setMe(pos) {
       if (!map) return;
-      if (pos) { lastPos = pos; gpsHeading(pos); trackMove(pos); }
+      if (pos) { lastPos = pos; trackMove(pos); gpsHeading(pos); }
       if (!pos) { me?.remove(); meCircle?.remove(); me = null; meCircle = null; return; }
       const ll = [pos.lat, pos.lng];
       const first = !me || (meAcc > 300 && pos.acc <= 300);

@@ -1340,3 +1340,4 @@ input, textarea, [contenteditable="true"], .allow-select { -webkit-user-select: 
 .zone-boost.zone-boost-off { border-color: #e5484d; color: #ffb3b0; background: rgba(40, 10, 10, .9); box-shadow: 0 0 14px rgba(229, 72, 77, .45); animation: none; }
 .note.warn { border-left-color: #e5484d; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.compass-diag { padding: 6px 8px; border: 1px dashed var(--line); border-radius: 6px; line-height: 1.4; }
