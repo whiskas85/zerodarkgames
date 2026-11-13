@@ -1,5 +1,5 @@
 // PWA delle coppie (i Legati). Mobile first, offline first.
-import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC, tilesFor } from './map.js';
+import { createMapView, watchPosition, landmarkItem, accuracyHint, SEND_MAX_ACC, tilesFor, arrowSource, setArrowSource, ensureCompass } from './map.js';
 import { mdi, mdiSvg, watchGlyphs } from './mdi.js';
 import { guideOf, skillShot } from './skill-guide.js';
 import { createField } from './field-ui.js';
@@ -5238,6 +5238,12 @@ function viewSettings() {
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Suono'), h('div', { class: 'muted small' }, 'Spento di default: nel softair il rumore tradisce la posizione.')),
       h('button', { class: `btn ${S.settings.sound ? 'btn-primary' : ''}`, onclick: () => { set('sound', !S.settings.sound); if (S.settings.sound) beep(true); } }, S.settings.sound ? 'Attivo' : 'Spento')),
     keepAwakeRow(render),
+    // Freccia della posizione sulla mappa: in movimento il pallino diventa un triangolo verso la direzione.
+    h('div', { class: 'card stack-sm' }, h('div', null, h('strong', null, 'Freccia della posizione'), h('div', { class: 'muted small' }, 'Sulla mappa, quando vi muovete, il pallino diventa un triangolo che punta dove andate; da fermi torna il pallino. Da dove prende la direzione:')),
+      h('div', { class: 'seg' }, [['gps', '🛰️ GPS (direzione di marcia)'], ['compass', '🧭 Bussola del telefono']].map(([k, l]) => h('button', { type: 'button', class: `btn btn-sm ${arrowSource() === k ? 'btn-primary' : ''}`, onclick: async () => {
+        if (k === 'compass' && !(await ensureCompass(true))) { toast('La bussola non è disponibile su questo telefono (o il permesso è negato): resta il GPS', 'error', 6000); return; }
+        setArrowSource(k); toast(k === 'compass' ? 'Freccia: bussola del telefono' : 'Freccia: direzione di marcia (GPS)', 'ok'); render();
+      } }, l)))),
     dimRow(),
     offlineRow(),
     h('div', { class: 'card toggle-row' }, h('div', null, h('strong', null, 'Modalità sole'), h('div', { class: 'muted small' }, 'Tema chiaro ad alto contrasto per la luce diretta.')),
