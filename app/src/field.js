@@ -1207,6 +1207,7 @@ function claimGift(team, token) {
   if (team.kind === 'elect') throw err(403, 'Gli Eletti piazzano i doni, non li prendono');
   const game = G.getGame(team.gameId);
   if (!C.ACTIVE.includes(game.status)) throw err(409, game.status === 'paused' ? 'Partita sospesa' : 'I doni si prendono a partita in corso');
+  if (game.status === 'exfil') throw err(409, 'Esfiltrazione: i doni sulla mappa non si prendono più. Andate alla Soglia');
   const g = q.get('SELECT * FROM gifts WHERE gameId = ? AND qrToken = ?', game.id, String(token || ''));
   if (!g && q.get('SELECT 1 FROM gift_blanks WHERE gameId = ? AND token = ? AND giftId IS NULL', game.id, String(token || ''))) throw err(409, 'Questo cartello non è ancora attivo: il Consiglio non ci ha ancora abbinato un dono');
   if (!g) throw err(404, 'Dono non riconosciuto per questa partita');

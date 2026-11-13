@@ -756,6 +756,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS staff_timers (
   status TEXT NOT NULL DEFAULT 'ready', endsAt INTEGER, leftMs INTEGER, notifiedAt INTEGER,
   snoozes INTEGER NOT NULL DEFAULT 0, doneAt INTEGER, doneBy TEXT, createdAt INTEGER NOT NULL, createdBy TEXT
 )`);
+// Extra time (esfiltrazione) dopo la durata della gara; all'uscita dalla Soglia si bloccano frammenti e tempo di gara.
+addColumn('games', 'exfilMin', 'INTEGER NOT NULL DEFAULT 15');
+addColumn('teams', 'exitFragments', 'INTEGER');
+addColumn('teams', 'exitElapsedMs', 'INTEGER');
 addColumn('teams', 'votable', 'INTEGER NOT NULL DEFAULT 0');
 // Logo della coppia (immagine caricata dalla regia): compare nel voto del pubblico.
 addColumn('teams', 'logoFile', 'TEXT');

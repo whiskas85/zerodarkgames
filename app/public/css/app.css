@@ -35,6 +35,7 @@ body.no-scroll { overflow: hidden; }
 .banner-traccar strong { color: var(--warn); }
 .banner-traccar .trk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .banner-last { background: var(--blood-soft); border-left: 6px solid var(--blood); }
+.banner-exfil { display: grid; gap: 2px; background: color-mix(in srgb, var(--brass) 22%, transparent); border-left: 6px solid var(--brass); color: inherit; text-decoration: none; }
 .banner-queue { background: var(--paper-2); border-left: 6px solid var(--warn); font-size: 14px; }
 
 .main { padding: 16px; max-width: 640px; margin: 0 auto; }

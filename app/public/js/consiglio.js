@@ -4,7 +4,7 @@ import { createFoodOrder, createFoodAdmin } from './food-ui.js';
 
 const $root = document.getElementById('root');
 const C = { me: null, status: null, games: [], gameId: store.get('zdg_consiglio_game'), gifts: null, busy: false };
-const LIVE = ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'draft'];
+const LIVE = ['truce', 'hunt', 'last_half_hour', 'exfil', 'paused', 'circle', 'ready', 'draft'];
 
 // Le azioni: dove portano (pagina) o la scheda qui dentro (#doni, #annunci).
 const ACTIONS = [

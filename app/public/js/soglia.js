@@ -23,7 +23,7 @@ const V = { me: null, games: [], gameId: store.get('zdg_soglia_game'), data: nul
 async function start() {
   V.games = await api('GET', '/api/v/games');
   // Partita ricordata finita o sparita: si passa a quella in corso (o pronta), la stessa della regia.
-  const live = V.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready'].includes(g.status));
+  const live = V.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'exfil', 'paused', 'circle', 'ready'].includes(g.status));
   const kept = V.games.find((g) => g.id === V.gameId);
   if (!kept || (kept.status === 'ended' && live)) V.gameId = (live || V.games[0])?.id || null;
   stream('/api/stream?as=staff', {
@@ -75,7 +75,7 @@ function exitPanel() {
     d.exitSvg ? box : h('p', { class: 'muted' }, 'Codice di uscita non ancora creato: si crea quando la Soglia è segnata sulla mappa.'),
     d.exitCode ? h('div', { class: 'mono exit-code' }, `${d.game.name} · codice ${d.exitCode}`) : null,
     d.exitCode ? h('p', { class: 'tiny muted' }, 'Lo stesso codice è scritto sotto il QR del cartello stampato: se non coincide, avete scelto un\'altra partita in alto.') : null,
-    h('p', { class: 'small' }, 'Con la Parola intera la coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'),
+    h('p', { class: 'small' }, 'La coppia lo inquadra con l\'app («Leggi il codice di uscita») ed esce, con la Parola completa o no: frammenti e tempo di gara si bloccano. Chi è ancora in alleanza non esce. Uscendo, il suo Sigillo viene rivelato a tutti.'),
     // Prova a schermo (solo in test), senza toccare la partita: gli stessi effetti che partono quando una coppia inquadra il codice.
     d.tryEffects ? h('div', { class: 'exit-try' }, h('div', { class: 'eyebrow' }, 'Prova gli effetti'),
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => sogliaEffect({ ok: false, reason: 'missing', missing: 2, total: 6, sectorName: 'di prova', roman: '' }) }, '✕ Uscita negata'),
@@ -85,7 +85,7 @@ function exitPanel() {
 function sogliaEffect(d) {
   const who = `${d.roman ? `${d.roman} · ` : ''}Settore ${d.sectorName}`;
   if (d.ok) {
-    wordCeremony(d.word, { eyebrow: `${who} · la Soglia si apre`, title: d.position ? `${d.position}° posto` : 'Esfiltrati' });
+    wordCeremony(d.word.map((x) => x ?? '…'), { eyebrow: `${who} · la Soglia si apre`, title: d.total ? `${d.fragments}/${d.total} frammenti${d.raceMs != null ? ` · ${fmtDuration(d.raceMs)}` : ''}` : 'Esfiltrati' });
     return;
   }
   exitDenied({ lines: [who, d.reason === 'alliance'
@@ -111,7 +111,7 @@ function teamList() {
 
 function teamView() {
   const { team, fragments, complete, validations } = V.team;
-  const active = ['truce', 'hunt', 'last_half_hour'].includes(V.data?.clock.status);
+  const active = ['truce', 'hunt', 'last_half_hour', 'exfil'].includes(V.data?.clock.status);
   const canValidate = active && team.status === 'active';
   const checkBy = Object.fromEntries((V.check || []).map((c) => [c.position, c.status]));
   const notes = h('input', { class: 'input', placeholder: 'Note (facoltative)' });

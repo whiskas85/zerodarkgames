@@ -26,6 +26,8 @@ const DEFAULT_TEMPLATES = {
   supply: 'Il Consiglio è generoso. Al Cuore vi aspettano dei doni. Andate a prenderli, se avete il coraggio.',
   last_half_hour: 'Restano trenta minuti. Il Consiglio non tradirà più nessuno. Da adesso ogni Sigillo va strappato con le repliche.',
   victory: 'La Parola è stata pronunciata alla Soglia. Il Settore [settore] è libero. I Giochi continuano per il secondo e il terzo posto.',
+  exit: 'Il Settore [settore] ha varcato la Soglia con [frammenti] frammenti su [totale], in [tempo] di gara.',
+  exfil: 'Il tempo dei Giochi è finito: inizia l\'esfiltrazione. Avete [minuti] minuti per varcare la Soglia. Gli Altari sono chiusi e gli ingaggi non valgono più.',
   podium: 'Il Settore [settore] ha raggiunto la Soglia ed è [posizione].',
   pause: 'PARTITA SOSPESA. Fermatevi e ascoltate il canale radio d\'emergenza.',
   resume: 'La partita riprende.',
@@ -38,7 +40,7 @@ const DEFAULT_TEMPLATES = {
 
 const TEMPLATE_LABELS = {
   start: 'Via', hunt_open: 'Apertura caccia', revelation: 'Rivelazione', supply: 'Armamenti: apertura', supply_end: 'Armamenti: chiusura',
-  last_half_hour: 'Ultima mezz\'ora', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', gift: 'Dono comparso', gift_taken: 'Dono preso', gift_expired: 'Dono svanito',
+  last_half_hour: 'Ultima mezz\'ora', exfil: 'Esfiltrazione (extra time)', exit: 'Uscita dalla Soglia', victory: 'Vittoria', podium: 'Podio', pause: 'Sospensione', resume: 'Ripresa', end: 'Fine', gift: 'Dono comparso', gift_taken: 'Dono preso', gift_expired: 'Dono svanito',
 };
 
 const DEFAULT_TIMERS = [
@@ -50,13 +52,14 @@ const DEFAULT_TIMERS = [
 ];
 
 const LAST_PHASE_MIN = 30;
-const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
+// exfil: extra time dopo la durata della gara: si esce dalla Soglia, Altari chiusi e niente ingaggi.
+const ACTIVE = ['truce', 'hunt', 'last_half_hour', 'exfil'];
 // «Creata»: partita appena creata, solo in regia (le app di campo non la vedono, iscrizioni chiuse).
 const PRE_START = ['created', 'draft', 'ready', 'circle'];
 
 const STATUS_LABELS = {
   created: 'Creata', draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
-  last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',
+  last_half_hour: 'Ultima mezz\'ora', exfil: 'Esfiltrazione', paused: 'SOSPESA', ended: 'Terminata',
 };
 
 module.exports = {

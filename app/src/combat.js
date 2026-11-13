@@ -28,6 +28,7 @@ function requirePlaying(gameId, { engagement = false } = {}) {
   if (g.status === 'paused') throw err(409, 'Partita sospesa');
   if (!C.ACTIVE.includes(g.status)) throw err(409, 'Si gioca solo a partita in corso');
   if (engagement && g.status === 'truce') throw err(409, 'Tregua: nessun ingaggio');
+  if (engagement && g.status === 'exfil') throw err(409, 'Esfiltrazione: gli ingaggi non valgono più. Andate alla Soglia');
   return g;
 }
 
