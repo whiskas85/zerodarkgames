@@ -159,7 +159,10 @@ function people(gameId) {
     .map((p) => { const o = playerOwner(p); return { playerId: p.id, key: o.key, name: p.name, nickname: p.nickname || null, sub: o.sub }; });
   const guests = q.all("SELECT ownerKey, MAX(ownerName) AS name FROM food_orders WHERE gameId = ? AND ownerKey LIKE 'n:%' GROUP BY ownerKey ORDER BY name COLLATE NOCASE", Number(gameId))
     .map((r) => ({ key: r.ownerKey, name: r.name, nickname: null, sub: 'Scritto a mano', guest: true }));
-  return { players, guests };
+  // Consiglio Zero (regia e validatori): l'ordine è lo stesso che fanno dalla loro app («Ristoro: ordina»).
+  const council = q.all("SELECT id, username, displayName, role FROM users WHERE role IN ('master', 'validator') ORDER BY COALESCE(displayName, username) COLLATE NOCASE")
+    .map((u) => ({ userId: u.id, key: `u${u.id}`, name: u.displayName || u.username, nickname: null, sub: u.role === 'master' ? 'Consiglio Zero · Regia' : 'Consiglio Zero' }));
+  return { players, council, guests };
 }
 
 // L'addetto crea l'ordine a nome di un altro (come se l'avesse fatto lui, anche dopo l'ora limite).
@@ -169,7 +172,11 @@ function orderFor(gameId, data, actor) {
   if (!g) throw err(404, 'Partita non trovata');
   if (g.status === 'ended') throw err(409, 'La partita è finita');
   let owner;
-  if (data.playerId) {
+  if (data.userId) {
+    const u = q.get("SELECT * FROM users WHERE id = ? AND role IN ('master', 'validator')", Number(data.userId));
+    if (!u) throw err(404, 'Membro del Consiglio non trovato');
+    owner = { key: `u${u.id}`, name: u.displayName || u.username, gameId: g.id, kind: 'consiglio', sub: u.role === 'master' ? 'Regia' : 'Consiglio Zero' };
+  } else if (data.playerId) {
     const p = q.get('SELECT * FROM players WHERE id = ? AND gameId = ?', Number(data.playerId), g.id);
     if (!p) throw err(404, 'Persona non trovata in questa partita');
     owner = playerOwner(p);

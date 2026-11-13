@@ -512,7 +512,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '', otherHref 
   }
   function personPicker() {
     if (!O.people || O.gid !== gameId()) { loadPeople(); return h('p', { class: 'empty' }, 'Caricamento dell\'elenco…'); }
-    const all = [...O.people.players.map((p) => ({ ...p, label: p.nickname ? `${p.name} «${p.nickname}»` : p.name })), ...O.people.guests.map((g) => ({ ...g, label: g.name }))];
+    const all = [...O.people.players.map((p) => ({ ...p, label: p.nickname ? `${p.name} «${p.nickname}»` : p.name })), ...(O.people.council || []).map((c) => ({ ...c, label: c.name })), ...O.people.guests.map((g) => ({ ...g, label: g.name }))];
     const manual = h('button', { type: 'button', class: 'btn btn-block food-manual', hidden: true, onclick: () => { const n = O.q.trim(); if (n.length < 2) return; O.person = { name: n, label: n, sub: 'Scritto a mano', guest: true }; rerender(); } });
     const empty = h('p', { class: 'empty', hidden: true }, 'Nessuno con questo nome nell\'elenco.');
     const list = h('ul', { class: 'food-pick-list' }, all.map((p) => h('li', { 'data-q': `${p.label} ${p.sub || ''}`.toLowerCase() },
@@ -554,7 +554,7 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '', otherHref 
         onOk: () => { extra = { close: true, method, amount: amount.value.trim().replace(',', '.') }; return true; } });
       if (!ok) return;
     }
-    const body = { lines, note: O.note, ...(O.person.playerId ? { playerId: O.person.playerId } : { name: O.person.name }), ...extra };
+    const body = { lines, note: O.note, ...(O.person.playerId ? { playerId: O.person.playerId } : O.person.userId ? { userId: O.person.userId } : { name: O.person.name }), ...extra };
     try {
       const r = await api('POST', `${base()}/order-for`, body);
       toast(r.closed ? `Ordine di ${O.person.label} creato e chiuso (${extra.method === 'offerto' ? 'offerto' : euro(r.amount) || 'offerta libera'})` : `Ordine creato per ${O.person.label}`, 'ok', 5000);
