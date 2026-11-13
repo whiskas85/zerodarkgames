@@ -4281,3 +4281,46 @@ test('Timer della regia: durata ore e minuti, scadenza, rimando e spegnimento pe
   const r2 = TM.create(g.id, { title: 'Subito', minutes: 2, start: true }, 'regia');
   assert.equal(TM.list(g.id).find((x) => x.id === r2.id).status, 'running');
 });
+
+test('Ristoro: offerto, spese e bilancio (incassato, speso, guadagno)', () => {
+  const FD = require('../src/food');
+  const g = G.createGame({ name: 'Ristoro conti' }, 'test');
+  const panino = FD.saveItem(g.id, { title: 'Panino', price: '5' }, 'addetto');
+  const birra = FD.saveItem(g.id, { title: 'Birra', price: '3' }, 'addetto');
+  const a = { key: 'pa', name: 'Lince', kind: 'legato', gameId: g.id };
+  const b = { key: 'pb', name: 'Gufo', kind: 'legato', gameId: g.id };
+  const oa = FD.placeOrder(a, { lines: [{ itemId: panino.id, qty: 2 }] });
+  FD.placeOrder(b, { lines: [{ itemId: birra.id, qty: 1 }] });
+  // A paga 12 € in contanti (offerta libera); B ha l'ordine offerto.
+  FD.pay(g.id, 'pa', { method: 'contanti', amount: '12', orderIds: [oa.id] }, 'addetto');
+  const off = FD.pay(g.id, 'pb', { method: 'offerto' }, 'addetto');
+  assert.equal(off.amount, 0);
+  assert.equal(off.offered, 3);
+  const st = FD.forStaff(g.id);
+  const pb = st.delivery.find((p) => p.key === 'pb');
+  assert.equal(pb.paidAll, true);
+  assert.equal(pb.toPay, 0);
+  assert.throws(() => FD.pay(g.id, 'pb', { method: 'offerto' }, 'addetto'), /già pagati/);
+  // Spese.
+  assert.throws(() => FD.addExpense(g.id, { title: 'Pane', amount: '' }, 'addetto'), /quanto/);
+  const e1 = FD.addExpense(g.id, { title: 'Pane e affettati', amount: '7,50' }, 'addetto');
+  FD.addExpense(g.id, { title: 'Birre', amount: '2' }, 'addetto');
+  let bal = FD.balanceOf(g.id);
+  assert.equal(bal.income, 12);
+  assert.equal(bal.spent, 9.5);
+  assert.equal(bal.profit, 2.5);
+  assert.equal(bal.offered, 3);
+  assert.equal(bal.offeredCount, 1);
+  assert.deepEqual(bal.byMethod.map((x) => [x.method, x.amount]), [['contanti', 12]]);
+  FD.updateExpense(g.id, e1.id, { title: 'Pane e affettati', amount: '10' }, 'addetto');
+  FD.removeExpense(g.id, FD.forStaff(g.id).expenses.find((x) => x.title === 'Birre').id, 'addetto');
+  bal = FD.balanceOf(g.id);
+  assert.equal(bal.spent, 10);
+  assert.equal(bal.profit, 2);
+  // Ordina per altri, già offerto: saldato, niente in cassa.
+  const r = FD.orderFor(g.id, { name: 'Ospite', lines: [{ itemId: panino.id, qty: 1 }], close: true, method: 'offerto' }, 'addetto');
+  assert.equal(r.amount, 0);
+  bal = FD.balanceOf(g.id);
+  assert.equal(bal.income, 12);
+  assert.equal(bal.offered, 8);
+});

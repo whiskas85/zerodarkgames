@@ -566,3 +566,18 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .scanner-btn { width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .5); color: #fff; font-size: 22px; display: grid; place-items: center; cursor: pointer; }
 .scanner-btn.on { background: var(--brass); color: #000; border-color: var(--brass); }
 .scanner-cam { justify-self: center; max-width: 92vw; min-height: 44px; padding: 8px 12px; border-radius: 22px; border: 2px solid rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-weight: 700; }
+
+/* Ristoro: spese e bilancio */
+.food-bal { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.food-bal-card { display: grid; gap: 4px; padding: 12px 14px; border: 2px solid var(--line); border-radius: 12px; background: var(--paper); }
+.food-bal-card strong { font-size: 28px; font-family: var(--f-mono, monospace); line-height: 1.1; }
+.food-bal-card.in { border-color: var(--ok); }
+.food-bal-card.out { border-color: var(--blood); }
+.food-bal-card.profit { border-color: var(--ok); background: var(--ok-soft); }
+.food-bal-card.loss { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--paper)); }
+.food-bal-card.gift { border-color: var(--brass); }
+.food-exp { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.food-exp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--paper); }
+.food-exp-amt { font-size: 18px; color: var(--blood); }
+.food-exp-actions { display: flex; gap: 4px; }
+.food-offer-note { padding: 8px 10px; border-left: 4px solid var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); border-radius: 6px; margin: 0; }
