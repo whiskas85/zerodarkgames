@@ -515,8 +515,8 @@ export function createFoodAdmin({ gameId, rerender, methodsHref = '', otherHref 
     const all = [...O.people.players.map((p) => ({ ...p, label: p.nickname ? `${p.name} «${p.nickname}»` : p.name })), ...O.people.guests.map((g) => ({ ...g, label: g.name }))];
     const manual = h('button', { type: 'button', class: 'btn btn-block food-manual', hidden: true, onclick: () => { const n = O.q.trim(); if (n.length < 2) return; O.person = { name: n, label: n, sub: 'Scritto a mano', guest: true }; rerender(); } });
     const empty = h('p', { class: 'empty', hidden: true }, 'Nessuno con questo nome nell\'elenco.');
-    const list = h('ul', { class: 'food-people' }, all.map((p) => h('li', { 'data-q': `${p.label} ${p.sub || ''}`.toLowerCase() },
-      h('button', { type: 'button', class: 'food-person', onclick: () => { O.person = p; rerender(); } }, h('strong', null, p.label), p.sub ? h('span', { class: 'tiny muted' }, p.sub) : null))));
+    const list = h('ul', { class: 'food-pick-list' }, all.map((p) => h('li', { 'data-q': `${p.label} ${p.sub || ''}`.toLowerCase() },
+      h('button', { type: 'button', class: 'food-pick', onclick: () => { O.person = p; rerender(); } }, h('strong', null, p.label), p.sub ? h('span', { class: 'tiny muted' }, p.sub) : null))));
     const apply = () => {
       const words = O.q.toLowerCase().split(/\s+/).filter(Boolean);
       let shown = 0;
