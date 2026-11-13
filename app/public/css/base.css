@@ -581,3 +581,10 @@ a.food-pend-alert { display: block; text-decoration: none; }
 .food-exp-amt { font-size: 18px; color: var(--blood); }
 .food-exp-actions { display: flex; gap: 4px; }
 .food-offer-note { padding: 8px 10px; border-left: 4px solid var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); border-radius: 6px; margin: 0; }
+
+/* Editor markdown: scelta della pagina dell'app da collegare */
+.app-link-list { display: grid; gap: 6px; }
+.app-link-item { display: flex !important; align-items: center; gap: 10px; text-align: left; justify-content: flex-start; padding: 8px 12px; min-height: 52px; }
+.app-link-ico { font-size: 22px; width: 28px; text-align: center; flex: none; }
+.app-link-txt { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.app-link-txt .tiny { font-weight: 400; }

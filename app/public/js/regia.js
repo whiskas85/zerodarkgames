@@ -60,7 +60,6 @@ const TABS = [
   ['regolamento-eletti', 'Regolamento Eletti'],
   ['impostazioni', 'Impostazioni'],
 ];
-// Nei testi markdown: pulsante che porta alla pagina ICE dell'app.
 // Icone (MDI) del menu della regia; Emergenze è rossa.
 const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
@@ -70,7 +69,6 @@ const TAB_ICONS = {
 };
 const NAV_GROUPS = { ristoro: { label: 'Ristoro' } };
 const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
-const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
 const ACTIVE = ['truce', 'hunt', 'last_half_hour', 'exfil'];
 const PRE = ['created', 'draft', 'ready', 'circle'];
 
@@ -5682,7 +5680,7 @@ function noticeReadsView(rd) {
 async function newNoticeDialog() {
   const ms = R.ms;
   const title = h('input', { class: 'input', placeholder: 'Titolo (es. Ritrovo anticipato)', maxlength: 80 });
-  const editor = mdEditor({ rows: 6, maxlength: 4000, placeholder: 'Testo dell\'avviso', extra: ICE_TOOL });
+  const editor = mdEditor({ rows: 6, maxlength: 4000, placeholder: 'Testo dell\'avviso' });
   const body = editor.textarea;
   const teamSel = h('select', { class: 'input' }, ms.teams.map((t) => h('option', { value: t.id }, `${t.roman} · Settore ${t.sectorName}${t.displayName ? ` (${t.displayName})` : ''}`)));
   const teamWrap = h('label', { class: 'field hidden' }, h('span', null, 'Coppia'), teamSel);
@@ -7109,7 +7107,7 @@ function viewNewGame(first) {
 
 // Prima della gara: testo in markdown (test repliche, partenza…) che le coppie vedono nell'app finché la partita è in preparazione.
 function prepSection(g) {
-  const editor = mdEditor({ value: g.prepInfo || '', rows: 12, maxlength: 8000, keep: 'prep-info', placeholder: '## Test repliche\nAlle 8:30 al cronografo…', extra: ICE_TOOL });
+  const editor = mdEditor({ value: g.prepInfo || '', rows: 12, maxlength: 8000, keep: 'prep-info', placeholder: '## Test repliche\nAlle 8:30 al cronografo…' });
   const preview = h('div', { class: 'np-card' });
   const draw = () => mount(preview, editor.value.trim() ? h('div', { class: 'md' }, md(editor.value)) : h('p', { class: 'muted tiny' }, 'Il testo comparirà qui, come nell\'app.'));
   editor.textarea.addEventListener('input', draw);

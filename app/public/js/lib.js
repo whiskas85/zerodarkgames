@@ -836,6 +836,79 @@ export function md(text) {
 
 // Editor markdown completo: barra (titoli, grassetto, corsivo, barrato, elenchi, citazione, linea, link come
 // pulsante, strumenti extra) e «Schermo intero» con l'anteprima di fianco (sotto, se lo schermo è stretto).
+// Pagine dell'app (coppie ed Eletti) da collegare nei testi: [testo](#/pagina) diventa un pulsante che la apre.
+// who: chi la vede (tutti, coppie, eletti).
+export const APP_PAGES = [
+  { route: 'home', label: 'Home', icon: '🏠', who: 'tutti', hint: 'La pagina iniziale, con il tempo e gli avvisi' },
+  { route: 'mappa', label: 'Mappa', icon: '🗺️', who: 'tutti', hint: 'Altari, doni, zone, la vostra posizione' },
+  { route: 'mappa/soglia', label: 'Mappa sulla Soglia', icon: '⛩', who: 'coppie', hint: 'La mappa centrata sulla Soglia, per uscire' },
+  { route: 'altari', label: 'Altari', icon: '🏛️', who: 'coppie', hint: 'Gli Altari inquadrati e da aprire' },
+  { route: 'frammenti', label: 'La Parola (frammenti)', icon: '🧩', who: 'coppie', hint: 'I frammenti raccolti' },
+  { route: 'codici', label: 'Taccuino dei Sigilli', icon: '🔑', who: 'coppie', hint: 'I Sigilli conosciuti' },
+  { route: 'sigillo', label: 'Il vostro Sigillo', icon: '🔐', who: 'coppie', hint: 'Mostra il Sigillo della coppia' },
+  { route: 'skill', label: 'Skill', icon: '✦', who: 'coppie', hint: 'Scelta e uso delle Skill' },
+  { route: 'doni', label: 'I vostri doni', icon: '🎁', who: 'coppie', hint: 'I Doni presi, da usare' },
+  { route: 'scontri', label: 'Scontri', icon: '⚔️', who: 'tutti', hint: 'Dichiarare vinto o perso, storico' },
+  { route: 'alleanze', label: 'Alleanze', icon: '🤝', who: 'coppie', hint: 'Proporre, accettare, rompere' },
+  { route: 'eventi', label: 'Eventi', icon: '🏁', who: 'tutti', hint: 'Sfide del Consiglio con premio' },
+  { route: 'zone', label: 'Zone', icon: '⬡', who: 'tutti', hint: 'Cosa fanno le zone della mappa' },
+  { route: 'timer', label: 'Timer', icon: '⏱', who: 'tutti', hint: 'Veglia, stallo, blocco ingaggio…' },
+  { route: 'annunci', label: 'Annunci', icon: '📣', who: 'tutti', hint: 'Gli annunci del Consiglio' },
+  { route: 'avvisi', label: 'Avvisi', icon: '🔔', who: 'tutti', hint: 'Gli avvisi della regia (con sondaggi)' },
+  { route: 'messaggi', label: 'Messaggi', icon: '💬', who: 'tutti', hint: 'Chat con il Consiglio' },
+  { route: 'messaggi/solo', label: 'Messaggi solo per te', icon: '✉️', who: 'tutti', hint: 'La chat privata con il Consiglio' },
+  { route: 'compagno', label: 'Chat con il compagno', icon: '👥', who: 'coppie', hint: 'La chat della coppia' },
+  { route: 'radio', label: 'Radio', icon: '📻', who: 'tutti', hint: 'Canali radio della partita' },
+  { route: 'regolamento', label: 'Regolamento', icon: '📖', who: 'tutti', hint: 'Le regole dei Giochi' },
+  { route: 'ice', label: 'Dati ICE', icon: '🆘', who: 'tutti', hint: 'Contatto e dati per le emergenze' },
+  { route: 'profilo', label: 'Profilo', icon: '👤', who: 'tutti', hint: 'Nome, nick, telefono, foto' },
+  { route: 'impostazioni', label: 'Impostazioni', icon: '⚙️', who: 'tutti', hint: 'Notifiche, suoni, schermo' },
+  { route: 'traccar', label: 'Traccar Client', icon: '📡', who: 'tutti', hint: 'Configurazione del tracciamento' },
+  { route: 'installa', label: 'Installa l\'app', icon: '📲', who: 'tutti', hint: 'Aggiungere l\'app alla schermata home' },
+  { route: 'indicazioni', label: 'Indicazioni campo', icon: '🧭', who: 'tutti', hint: 'Parcheggio, accettazione, punti utili' },
+  { route: 'accettazione', label: 'Accettazione', icon: '✅', who: 'tutti', hint: 'Il pass per l\'accettazione all\'arrivo' },
+  { route: 'statoarmi', label: 'Test repliche', icon: '🔫', who: 'tutti', hint: 'Esito del cronografo delle repliche' },
+  { route: 'ristoro', label: 'Ristoro', icon: '🥪', who: 'tutti', hint: 'Ordinare panini e bevande' },
+  { route: 'voto', label: 'Voto del pubblico', icon: '🏅', who: 'tutti', hint: 'La classifica del voto' },
+  { route: 'campo', label: 'Campo (Eletti)', icon: '📍', who: 'eletti', hint: 'Piazzamenti di Altari e doni' },
+  { route: 'incarichi', label: 'Incarichi (Eletti)', icon: '🎯', who: 'eletti', hint: 'Gli incarichi della squadra' },
+  { route: 'mine', label: 'Mine (Eletti)', icon: '💣', who: 'eletti', hint: 'Posare e ricaricare le mine' },
+  { route: 'beacon', label: 'Beacon (Eletti)', icon: '📶', who: 'eletti', hint: 'Disattivare gli Altari' },
+  { route: 'punteggio', label: 'Punteggio (Eletti)', icon: '🏆', who: 'eletti', hint: 'Classifica degli Eletti' },
+];
+const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+// Scelta di una pagina dell'app (con ricerca) o di un indirizzo esterno: torna { url, label } o null.
+export async function pickAppLink() {
+  let chosen = null;
+  const list = h('div', { class: 'stack-xs app-link-list' });
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Cerca una pagina: mappa, skill, ICE, regolamento…', autocomplete: 'off', oninput: () => draw() });
+  const ext = h('input', { class: 'input', type: 'url', inputmode: 'url', placeholder: 'https://… (link esterno)' });
+  const draw = () => {
+    const words = norm(search.value).split(/\s+/).filter(Boolean);
+    const hits = APP_PAGES.filter((p) => words.every((w) => norm(`${p.label} ${p.hint} ${p.route} ${p.who}`).includes(w)));
+    list.replaceChildren(...(hits.length ? hits.map((p) => h('button', { type: 'button', class: 'btn btn-block app-link-item', onclick: (e) => { chosen = { url: `#/${p.route}`, label: p.label }; e.target.closest('form').requestSubmit(); } },
+      h('span', { class: 'app-link-ico', 'aria-hidden': 'true' }, p.icon),
+      h('span', { class: 'app-link-txt' }, h('strong', null, p.label), h('span', { class: 'tiny muted' }, p.hint)),
+      p.who !== 'tutti' ? h('span', { class: 'chip' }, p.who) : null)) : [h('p', { class: 'empty' }, 'Nessuna pagina con questa ricerca.')]));
+  };
+  draw();
+  const ok = await modal({ title: '🔗 Collegamento', okLabel: 'Inserisci il link esterno', tall: true,
+    onOpen: () => setTimeout(() => search.focus(), 50),
+    body: h('div', { class: 'stack-sm' },
+      h('p', { class: 'tiny muted' }, 'Tocca una pagina dell\'app: nel testo diventa un pulsante che la apre. Il testo selezionato diventa la scritta del pulsante.'),
+      search, list,
+      h('div', { class: 'field' }, h('span', null, 'Oppure un indirizzo esterno'), ext)),
+    onOk: () => {
+      if (chosen) return true;
+      const u = ext.value.trim();
+      if (!/^https?:\/\/\S+$/i.test(u)) { toast('Scegli una pagina oppure scrivi un indirizzo https://…', 'error'); return false; }
+      chosen = { url: u, label: 'Apri il link' };
+      return true;
+    } });
+  return ok ? chosen : null;
+}
+
 export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8000, extra = [], onInput = null, keep = null } = {}) {
   const ta = h('textarea', { class: 'input md-input', rows, maxlength, placeholder, ...(keep ? { 'data-keep': keep } : {}) });
   ta.value = value;
@@ -872,9 +945,14 @@ export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8
     ta.setSelectionRange(at, at);
     changed();
   };
+  // Collegamento: una pagina dell'app (con ricerca) o un indirizzo esterno; diventa un pulsante.
   const link = async () => {
-    const url = await dialog({ title: 'Link (diventa un pulsante)', text: 'Indirizzo https://… o pagina dell\'app (#/ice, #/skill, #/mappa, #/doni, #/regolamento).', input: { placeholder: 'https://… oppure #/ice', value: 'https://' }, okLabel: 'Inserisci' });
-    if (url && url.trim()) wrap('[', `](${url.trim()})`, 'Testo del pulsante');
+    const range = sel();
+    const r = await pickAppLink();
+    if (!r) return;
+    ta.focus();
+    ta.setSelectionRange(...range);
+    wrap('[', `](${r.url})`, r.label);
   };
   const tool = (label, title, fn) => h('button', { type: 'button', class: 'btn btn-sm md-tool', title, 'aria-label': title, onmousedown: (e) => e.preventDefault(), onclick: fn }, label);
   const preview = h('div', { class: 'md md-preview' });
@@ -895,7 +973,7 @@ export function mdEditor({ value = '', placeholder = '', rows = 8, maxlength = 8
     tool('❝', 'Citazione', () => prefix((l) => `> ${l}`, /^\s*>\s?/)),
     tool('―', 'Linea di separazione', () => insertBlock('---')),
     h('span', { class: 'md-sep' }),
-    tool('🔗 Link', 'Link come pulsante', link),
+    tool('🔗 Link all\'app', 'Pulsante che apre una pagina dell\'app (o un link esterno)', link),
     ...extra.map((x) => tool(x.label, x.title, () => wrap(x.before, x.after, x.sample))),
     tool('¶', 'Nuovo paragrafo', () => insertBlock('')),
     h('span', { class: 'md-grow' }),
