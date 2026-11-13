@@ -922,6 +922,14 @@ db.exec("UPDATE food_orders SET kind = 'order', status = 'active', fromRequest =
 addColumn('food_payments', 'confirmedAt', 'INTEGER');
 // Gli ordini che un pagamento copre (JSON di id): un ordine pagato risulta pagato, gli altri no.
 addColumn('food_payments', 'orderIds', 'TEXT');
+// «Offerto»: l'ordine è saldato senza incasso (amount 0); offered ne ricorda il valore indicativo.
+addColumn('food_payments', 'offered', 'REAL');
+// Spese del Ristoro (pane, affettati, bevande…): con gli incassi danno il bilancio della partita.
+db.exec(`CREATE TABLE IF NOT EXISTS food_expenses (
+  id INTEGER PRIMARY KEY, gameId INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  title TEXT NOT NULL, amount REAL NOT NULL, note TEXT, at INTEGER NOT NULL, by TEXT,
+  createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, cancelledAt INTEGER, cancelledBy TEXT
+)`);
 // Pagamenti di prima (senza ordini collegati). Quelli dichiarati da chi ha ordinato (in anticipo) coprono l'ordine
 // con lo stesso importo, altrimenti i più vecchi fino all'importo; quelli registrati alla cassa coprono tutti gli
 // ordini attivi fatti fino a quel momento.

@@ -52,6 +52,7 @@ const TABS = [
   ['ristoro-pagamenti', 'Metodi di pagamento', 'ristoro'],
   ['ordina', 'Ordina per te', 'ristoro'],
   ['ristoro-altri', 'Ordina per altri', 'ristoro'],
+  ['ristoro-conti', 'Spese e bilancio', 'ristoro'],
   ['classifica', 'Classifica'],
   ['registro', 'Registro'],
   ['rewind', 'Rewind'],
@@ -65,7 +66,7 @@ const TAB_ICONS = {
   live: 'broadcast', emergenze: 'alarmLight', persone: 'accountGroup', coppie: 'handshake', squadre: 'shieldAccount', consiglio: 'crown',
   accettazione: 'clipboardCheck', altari: 'pillar', sigilli: 'key', mappa: 'map', doniqr: 'qrcodeScan', stampe: 'fileDocument', alleanze: 'accountGroup', video: 'play', minigiochi: 'puzzle', catalogo: 'starFourPoints',
   doni: 'pistol', comunicazioni: 'bullhorn', avvisi: 'bell', eventi: 'flagCheckered', timer: 'timerOutline', voto: 'medal', notifiche: 'cellphone', classifica: 'trophy', registro: 'clipboardText',
-  rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', 'ristoro-altri': 'accountPlus', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
+  rewind: 'timerSand', 'group-ristoro': 'food', ristoro: 'clipboardText', 'ristoro-menu': 'fileDocument', 'ristoro-consegna': 'cash', 'ristoro-pagamenti': 'creditCard', ordina: 'coffee', 'ristoro-altri': 'accountPlus', 'ristoro-conti': 'cash', regolamento: 'bookOpenVariant', 'regolamento-eletti': 'shieldCheck', impostazioni: 'cog',
 };
 const NAV_GROUPS = { ristoro: { label: 'Ristoro' } };
 const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
@@ -109,7 +110,7 @@ async function start() {
   loadSounds();
   stream('/api/stream?as=staff', {
     open: () => load(),
-    refresh: (d) => { if (d.reason === 'food' && ['ristoro', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti', 'ristoro-altri'].includes(tab())) foodAdmin.load(); if (d.reason === 'food' && tab() === 'ordina') foodOrderR.load(); if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
+    refresh: (d) => { if (d.reason === 'food' && ['ristoro', 'ristoro-menu', 'ristoro-consegna', 'ristoro-pagamenti', 'ristoro-altri', 'ristoro-conti'].includes(tab())) foodAdmin.load(); if (d.reason === 'food' && tab() === 'ordina') foodOrderR.load(); if (d.reason === 'council' && tab() === 'consiglio') loadCouncil(); if (d.reason === 'vote' && tab() === 'voto') loadVote(); if (d.gameId === R.gameId || d.gameId == null) { load(); if (tab() === 'notifiche' && !R.pushLoading) { R.pushLoading = true; loadPushReport().finally(() => { R.pushLoading = false; }); } } },
     // VIA: conto alla rovescia sincronizzato (anche se il tasto l'ha premuto un'altra regia, es. dal telefono).
     go: (d) => {
       if (d.gameId !== R.gameId) return;
@@ -332,7 +333,7 @@ function render() {
     // Settori e Altari valgono per tutte le partite: la loro pagina delle Impostazioni c'è anche senza partita.
     const body = tab() === 'settori' || (tab() === 'impostazioni' && settingsPage() === 'settori') ? h('div', { class: 'stack' }, ...settingsHead('settori'), viewSectors()) : tab() === 'consiglio' ? viewCouncil() : tab() === 'regolamento' ? viewRules() : tab() === 'regolamento-eletti' ? viewRules(ELECT_RULES) : !R.gameId ? viewNewGame(true) : !ms ? h('p', { class: 'empty' }, 'Caricamento…') : ({
       live: viewLive, persone: viewPeople, coppie: viewTeams, altari: viewAltars, sigilli: viewCodes, doni: viewSupply, mappa: viewFieldMap, doniqr: viewGiftsQR, catalogo: viewCatalog, accettazione: viewCheckin, armi: viewChrono, squadre: viewSquads,
-      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, timer: viewTimers, stampe: viewPrints, alleanze: viewAlliances, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
+      comunicazioni: viewComms, voto: viewVote, avvisi: viewNotices, eventi: viewEvents, timer: viewTimers, stampe: viewPrints, alleanze: viewAlliances, video: viewTeamVideo, ristoro: viewRistoro, minigiochi: viewMinigames, 'ristoro-menu': () => foodAdmin.view('menu'), 'ristoro-consegna': () => foodAdmin.view('delivery'), 'ristoro-pagamenti': () => foodAdmin.view('methods'), 'ristoro-altri': () => foodAdmin.view('other'), 'ristoro-conti': () => foodAdmin.view('balance'), ordina: viewOrdina, rewind: viewRewind, notifiche: viewPushReport, emergenze: viewEmergencies, classifica: viewStandings, registro: viewLog, impostazioni: viewSettings,
     }[tab()] || viewLive)();
     mount($root, topbar(), updateBanner(), offlineBanner(), emergencyBanner(), taskBanner(), timerAlarm(), h('div', { class: 'shell' }, sidebar(), h('section', { class: 'content' }, body)));
     goTick();
