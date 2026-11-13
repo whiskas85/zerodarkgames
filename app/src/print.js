@@ -110,7 +110,7 @@ async function exitSign(g, base, sel) {
   <div class="sub mono">Codice di uscita</div>
   <div class="qr">${await qr(`${base}/u/${soglia.exitToken}`)}</div>
   <div class="mono code">Codice ${esc(soglia.exitToken.slice(-6).toUpperCase())}</div>
-  <p class="how">Con la Parola intera, inquadrate questo segno con l'app dei Giochi («Leggi il codice di uscita»). Chi è ancora in alleanza non esce: rompete prima l'alleanza. Uscendo, il vostro Sigillo viene rivelato a tutti.</p>
+  <p class="how">Per uscire dai Giochi inquadrate questo segno con l'app («Leggi il codice di uscita»), con la Parola completa o no: frammenti e tempo di gara si bloccano. Chi è ancora in alleanza non esce: rompete prima l'alleanza. Uscendo, il vostro Sigillo viene rivelato a tutti.</p>
   <div class="keep display">Non rimuovere</div>
 </div></section>`],
     css: `

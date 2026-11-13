@@ -83,7 +83,7 @@ function changed(gameId, { couples = false } = {}) {
 function placeMine(team, player, body) {
   requireElect(team, player);
   const g = G.getGame(team.gameId);
-  if (!PLACE_STATUSES.includes(g.status)) throw err(409, g.status === 'ended' ? 'La partita è finita' : 'Le mine si posano da quando la partita è pronta');
+  if (!PLACE_STATUSES.includes(g.status)) throw err(409, g.status === 'ended' ? 'La partita è finita' : g.status === 'exfil' ? 'Esfiltrazione: le mine non si posano più' : 'Le mine si posano da quando la partita è pronta');
   const pos = readPos(body);
   if (pos.acc != null && pos.acc > 50) throw err(409, `GPS troppo impreciso (±${pos.acc} m): aspettate qualche secondo all'aperto e riprovate`);
   const pl = q.get('SELECT * FROM players WHERE id = ?', player.id);
@@ -163,7 +163,8 @@ function removeMine(gameId, mineId, actor) {
 function onPosition(team, pos, now = Date.now()) {
   if (!team || team.kind !== 'couple' || team.status !== 'active') return;
   const g = G.getGame(team.gameId);
-  if (!C.ACTIVE.includes(g.status)) return;
+  // Nell'extra time (esfiltrazione) le mine non scattano più.
+  if (!C.ACTIVE.includes(g.status) || g.status === 'exfil') return;
   const armed = q.all(`SELECT * FROM elect_mines WHERE gameId = ? AND ${ARMED}`, g.id, now);
   if (!armed.length) return;
   const S = SK();

@@ -430,7 +430,7 @@ export function keepAwakeRow(onChange) {
 
 export const STATUS_LABELS = {
   created: 'Creata', draft: 'In preparazione', ready: 'Pronta', circle: 'Nel cerchio', truce: 'Tregua', hunt: 'Caccia aperta',
-  last_half_hour: 'Ultima mezz\'ora', paused: 'SOSPESA', ended: 'Terminata',
+  last_half_hour: 'Ultima mezz\'ora', exfil: 'Esfiltrazione', paused: 'SOSPESA', ended: 'Terminata',
 };
 
 // ---- messaggi vocali (stile WhatsApp): registrazione e lettore

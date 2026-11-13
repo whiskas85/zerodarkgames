@@ -144,7 +144,8 @@ test('3-12. partita completa', () => {
   assert.equal(ok.result, 'valid');
   assert.equal(ok.position, 1);
   assert.equal(q.get('SELECT status FROM teams WHERE id = ?', A.id).status, 'won');
-  assert.ok(q.get("SELECT 1 FROM announcements WHERE gameId = ? AND type = 'victory'", g.id));
+  assert.ok(q.get("SELECT 1 FROM announcements WHERE gameId = ? AND type = 'exit'", g.id));
+  assert.equal(q.get('SELECT exitFragments FROM teams WHERE id = ?', A.id).exitFragments, 8);
   // Dettati: uno sbagliato → errata
   const typed = q.all('SELECT position, text FROM fragments WHERE gameId = ?', g.id);
   typed[0].text = 'sbagliato';
@@ -152,16 +153,24 @@ test('3-12. partita completa', () => {
 
   // 11. dopo la prima vittoria le rivelazioni continuano e gli sblocchi funzionano
   advanceTo(g.id, 105.01);
-  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'fired'", g.id).n, 3);
+  // 3 rivelazioni dal calendario (una può essere già partita a mano con l'uscita di A).
+  assert.ok(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status IN ('fired', 'manual')", g.id).n >= 3);
   assert.equal(scanUnlock(B, pointOf(g.id, A.sectorId).qrToken, codeOf(g.id, A.sectorId)).ok, true);
 
   // Ultima mezz'ora a 210: l'ultima rivelazione (210) parte, poi niente più
   advanceTo(g.id, 210.01);
   assert.equal(G.getGame(g.id).status, 'last_half_hour');
-  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'fired'", g.id).n, 6);
+  // Le 6 del calendario sono partite; l'uscita di A ha rivelato anche il suo Sigillo (a mano, se non era già uscito).
+  assert.ok(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status IN ('fired', 'manual')", g.id).n >= 6);
+  assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === A.sectorId));
+  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'scheduled'", g.id).n, 0);
 
-  // 12. fine tempo: sblocchi disabilitati, classifica corretta
+  // 12. fine della gara (240): extra time di esfiltrazione (15 min di base), Altari chiusi; poi la chiusura
   advanceTo(g.id, 240.01);
+  assert.equal(G.getGame(g.id).status, 'exfil');
+  assert.throws(() => scanUnlock(B, pointOf(g.id, B.sectorId).qrToken, codeOf(g.id, B.sectorId)), /Altari sono chiusi/);
+  assert.equal(G.clockOf(G.getGame(g.id)).durationMs, 255 * 60000);
+  advanceTo(g.id, 255.01);
   assert.equal(G.getGame(g.id).status, 'ended');
   assert.throws(() => scanUnlock(B, pointOf(g.id, B.sectorId).qrToken, codeOf(g.id, B.sectorId)), /finiti/);
   const st = G.standings(g.id);
@@ -170,6 +179,7 @@ test('3-12. partita completa', () => {
   assert.ok(st.slice(2).every((r) => r.fragments === 0));
   anns = q.all('SELECT type FROM announcements WHERE gameId = ? ORDER BY id', g.id).map((a) => a.type);
   assert.ok(anns.includes('last_half_hour'));
+  assert.ok(anns.includes('exfil'));
   assert.equal(anns.at(-1), 'end');
 });
 
@@ -1315,11 +1325,13 @@ test('esfiltrazione con il QR della Soglia e rottura delle alleanze per distanza
   assert.equal(K.allianceOf(B.id), null);
   assert.ok(q.get("SELECT 1 FROM event_log WHERE gameId = ? AND type = 'alliance_broken_distance'", g.id));
   assert.ok(K.serverTimers(A.id).some((t) => t.timerId === 'blocco'));
-  // B senza la Parola intera: uscita negata.
+  // B senza la Parola intera: si può uscire, ma serve la conferma.
   const missing = G.exfiltrate(B, token);
   assert.equal(missing.exfiltrated, false);
-  assert.equal(missing.reason, 'missing');
+  assert.equal(missing.reason, 'confirm');
   assert.equal(missing.missing, 3);
+  assert.equal(missing.have, 0);
+  assert.equal(q.get('SELECT status FROM teams WHERE id = ?', B.id).status, 'active');
   // A esce: vittoria e Sigillo rivelato a tutti.
   const out = G.exfiltrate(A, token);
   assert.equal(out.exfiltrated, true);
@@ -1330,6 +1342,66 @@ test('esfiltrazione con il QR della Soglia e rottura delle alleanze per distanza
   assert.equal(q.get('SELECT status FROM teams WHERE id = ?', A.id).status, 'won');
   assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === A.sectorId));
   assert.equal(G.exfiltrate(A, token).already, true);
+  // B conferma: esce con 0 frammenti, tempo bloccato, Sigillo rivelato.
+  const outB = G.exfiltrate(B, token, { confirm: true });
+  assert.equal(outB.exfiltrated, true);
+  assert.equal(outB.fragments, 0);
+  assert.equal(outB.complete, false);
+  assert.ok(G.revealedCodes(g.id).some((r) => r.sectorId === B.sectorId));
+  const st = G.standings(g.id);
+  assert.equal(st[0].teamId, A.id);
+  assert.equal(st[1].teamId, B.id);
+  assert.ok(st[1].exited && st[1].raceMs >= 0);
+});
+
+test('Soglia e classifica: a parità di frammenti vince il tempo minore; chi non esce è dietro a tutti gli usciti', () => {
+  const g = setupGame(4);
+  const [A, B, Cc, D] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  const token = G.landmarksOf(g.id).find((l) => l.kind === 'soglia').exitToken;
+  const frags = q.all('SELECT id FROM fragments WHERE gameId = ? ORDER BY position', g.id);
+  const give = (t, n) => { for (const f of frags.slice(0, n)) q.run("INSERT OR IGNORE INTO team_fragments (teamId, fragmentId, source, acquiredAt) VALUES (?, ?, 'altar', ?)", t.id, f.id, Date.now()); };
+  give(A, 2); give(B, 2); give(Cc, 3); give(D, 3);
+  // B esce per primo (tempo minore), poi A, con gli stessi frammenti: B davanti ad A.
+  G.exfiltrate(B, token, { confirm: true });
+  q.run('UPDATE teams SET exitElapsedMs = 1000 WHERE id = ?', B.id);
+  G.exfiltrate(A, token, { confirm: true });
+  q.run('UPDATE teams SET exitElapsedMs = 2000 WHERE id = ?', A.id);
+  // C non esce, con più frammenti: resta dietro a tutti gli usciti.
+  let st = G.standings(g.id);
+  assert.deepEqual(st.map((r) => r.teamId), [B.id, A.id, Cc.id, D.id].slice(0, 2).concat(st.slice(2).map((r) => r.teamId)));
+  assert.ok(st.slice(2).every((r) => !r.exited));
+  // D esce dopo con 3 frammenti: passa davanti a A e B (più frammenti).
+  G.exfiltrate(D, token, { confirm: true });
+  st = G.standings(g.id);
+  assert.equal(st[0].teamId, D.id);
+  assert.equal(st[1].teamId, B.id);
+  assert.equal(st[2].teamId, A.id);
+  assert.equal(st[3].teamId, Cc.id);
+  assert.equal(st[3].exited, false);
+  // I frammenti presi dopo l'uscita non contano (bloccati all'uscita).
+  give(B, 4);
+  assert.equal(G.standings(g.id).find((r) => r.teamId === B.id).fragments, 2);
+});
+
+test('Extra time di esfiltrazione: niente ingaggi, Altari, doni sulla mappa, scontri con gli Eletti e mine; la Soglia resta aperta', () => {
+  const K = require('../src/combat');
+  const F = require('../src/field');
+  const g = setupGame(3);
+  const [A, B, Cc] = teamsOf(g.id).filter((t) => t.kind === 'couple');
+  for (const a of ['ready', 'circle', 'start']) G.control(g.id, a, 'test');
+  G.updateGame(g.id, { exfilMin: 20 }, 'test');
+  advanceTo(g.id, 240.01);
+  assert.equal(G.getGame(g.id).status, 'exfil');
+  assert.throws(() => K.reportEngagement(A, B.id, 'won'), /ingaggi non valgono/);
+  const gift = F.createGifts(g.id, { typeId: 'scudo', count: 1 }, 'test');
+  const tok = q.get('SELECT qrToken FROM gifts WHERE id = ?', gift.ids[0]).qrToken;
+  assert.throws(() => F.claimGift(A, tok), /doni sulla mappa/);
+  const token = G.landmarksOf(g.id).find((l) => l.kind === 'soglia').exitToken;
+  assert.equal(G.exfiltrate(Cc, token, { confirm: true }).exfiltrated, true);
+  advanceTo(g.id, 260.01);
+  assert.equal(G.getGame(g.id).status, 'ended');
+  assert.throws(() => G.exfiltrate(A, token, { confirm: true }), /chiusi/);
 });
 
 test('Skill e Doni (fase 1): scelta prima del via, ricariche, effetti e posizioni viste solo durante l\'effetto', () => {

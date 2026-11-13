@@ -9,7 +9,7 @@ import { cropSquare, parseWall, h, mount, md, eventStatusCard, api, ApiError, ma
 import { withMinigame, playMinigame } from './minigame-ui.js';
 import { forcePasswordChange } from './pwchange.js';
 
-const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
+const ACTIVE = ['truce', 'hunt', 'last_half_hour', 'exfil'];
 const clock = makeClock();
 const S = {
   state: null,
@@ -874,6 +874,7 @@ function banners() {
   // Password reimpostata dalla regia mentre l'app era aperta su un altro accesso: va cambiata subito.
   if (st.account?.mustChangePassword && !forcePasswordChange.open) { forcePasswordChange.open = true; forcePasswordChange(st.account.username).then(() => { forcePasswordChange.open = false; refresh(); }); }
   if (c.status === 'last_half_hour') out.push(h('div', { class: 'banner banner-last' }, h('strong', null, 'Ultima mezz\'ora'), h('span', null, 'Il Consiglio non tradirà più nessuno.')));
+  if (c.status === 'exfil' && st.team?.status !== 'won') out.push(h('a', { class: 'banner banner-exfil', href: '#/mappa/soglia' }, h('strong', null, 'Esfiltrazione: andate alla Soglia'), h('span', null, 'Altari chiusi, niente ingaggi né doni. Chiusura tra ', h('b', { class: 'mono', 'data-clock': 'remaining' }, '—'), ': chi non varca la Soglia finisce dietro a tutti in classifica.')));
   // Nuova versione: in mappa tra gli avvisi in alto; altrove fissa sotto la barra (updateBar).
   if (document.body.dataset.view === 'mappa') { const u = updateBar(); if (u) out.push(u); }
   // Prima della gara: avviso ROSSO di sicurezza (EMERGENZA e ICE) finché non viene letto e compreso.
@@ -1761,11 +1762,14 @@ function viewHome() {
   if (startAt() && startAt() > clock.serverNow()) phase = startCountdown(st);
   else if (c.status === 'draft' || c.status === 'ready') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'In attesa'), h('div', { class: 'phase-big' }, 'Il cerchio non è ancora aperto'), h('p', { class: 'muted' }, st.game.scheduledStart ? `Inizio previsto: ${new Date(parseWall(st.game.scheduledStart)).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })}. ` : '', 'Leggete il regolamento. Il vostro Sigillo apparirà nel cerchio.'));
   else if (c.status === 'circle') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Nel cerchio'), h('div', { class: 'phase-big' }, 'In attesa del via'), h('p', { class: 'muted' }, 'Il vostro Sigillo è svelato. Memorizzatelo e non mostratelo a nessuno.'));
-  else if (c.status === 'ended') phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, st.team.finishPosition ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][st.team.finishPosition] || st.team.finishPosition + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le repliche e tornate al Cuore.'));
-  else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));
+  else if (c.status === 'ended') {
+    const myRank = (st.standings || []).find((r) => r.mine)?.rank;
+    phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, 'Fine'), h('div', { class: 'phase-big' }, myRank ? `Siete arrivati ${['', 'primi', 'secondi', 'terzi'][myRank] || myRank + '°'}` : 'I Giochi del Buio sono finiti'), h('p', { class: 'muted' }, 'Abbassate le repliche e tornate al Cuore.'));
+  } else phase = h('div', { class: 'phase' }, h('div', { class: 'eyebrow' }, c.status === 'exfil' ? 'Esfiltrazione · chiusura tra' : 'Tempo rimanente'), h('div', { class: 'phase-clock mono', 'data-clock': 'remaining' }, '—'), h('div', { class: 'muted mono small' }, 'trascorso ', h('span', { 'data-clock': 'elapsed' }, '—')));
 
   return h('div', { class: 'home' },
-    st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete pronunciato la Parola alla Soglia${st.team.finishPosition ? ` · ${st.team.finishPosition}° posto` : ''}`), h('span', null, 'Il vostro Settore è libero.')) : null,
+    st.team.status === 'won' ? h('div', { class: 'won' }, h('strong', null, `Avete varcato la Soglia${st.team.exitFragments != null ? ` con ${st.team.exitFragments}/${total} frammenti` : ''}`),
+      h('span', null, st.team.exitElapsedMs != null ? `Tempo di gara ${fmtDuration(st.team.exitElapsedMs)}. ` : '', c.status === 'ended' ? 'La classifica è chiusa.' : 'La classifica si decide alla chiusura: più frammenti, poi tempo minore.')) : null,
     st.team.status === 'withdrawn' ? h('div', { class: 'banner banner-pause' }, h('strong', null, 'Coppia ritirata dalla regia')) : null,
     publicVoteCard(st),
     mineMarkBanner(st),
@@ -2681,7 +2685,7 @@ function viewCombat() {
 // ---------------------------------------------------------------- Posizione condivisa con il Consiglio
 // Coppie: solo a partita iniziata. Eletti: da quando la partita è pronta. Funziona con l'app aperta (limite dei browser).
 
-const ACTIVE_OR_PAUSED = ['truce', 'hunt', 'last_half_hour', 'paused'];
+const ACTIVE_OR_PAUSED = ['truce', 'hunt', 'last_half_hour', 'exfil', 'paused'];
 const deviceId = deviceIdOf();
 let trackStop = null;
 let lastSent = { at: 0, lat: 0, lng: 0 };
@@ -2796,15 +2800,25 @@ function exitVictory(r) {
     h('div', { class: 'battle-burst', 'aria-hidden': 'true' }),
     h('div', { class: 'eyebrow' }, 'La Soglia'),
     h('h2', { class: 'battle-title' }, 'Esfiltrati'),
-    h('p', null, `Avete portato la Parola oltre la Soglia${r.position ? `: ${r.position}° posto` : ''}. Il vostro Settore è libero.`),
+    h('p', null, r.complete === false || (r.total && r.fragments < r.total) ? `Avete varcato la Soglia con ${r.fragments}/${r.total} frammenti.` : 'Avete portato la Parola intera oltre la Soglia.'),
+    r.raceMs != null ? h('p', { class: 'mono' }, `Tempo di gara bloccato: ${fmtDuration(r.raceMs)}`) : null,
+    h('p', { class: 'muted' }, 'La classifica si decide alla chiusura: più frammenti, poi tempo di gara minore.'),
     r.already ? null : h('p', { class: 'muted' }, 'Il vostro Sigillo ora è rivelato a tutte le coppie, come in un tradimento.'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: close }, 'Chiudi'));
 }
 
-async function tryExit(token) {
+async function tryExit(token, confirm = false) {
   let r;
-  try { r = await api('POST', '/api/team/exit', { token }); } catch (e) {
+  try { r = await api('POST', '/api/team/exit', { token, confirm }); } catch (e) {
     toast(e.offline ? 'Serve la rete per esfiltrare: riprovate dove c\'è segnale' : e.message, 'error', 8000);
+    if (location.hash.startsWith('#/uscita/')) location.hash = '#/mappa/soglia';
+    return;
+  }
+  // Parola incompleta: si esce lo stesso, ma solo confermando (non si rientra più in gioco).
+  if (r.reason === 'confirm') {
+    const ok = await dialog({ title: 'Varcare la Soglia adesso?', danger: true, okLabel: `Esci con ${r.have}/${r.total}`,
+      text: `Avete ${r.have} frammenti su ${r.total} (ne mancano ${r.missing}). Uscendo bloccate frammenti e tempo di gara (${fmtDuration(r.raceMs || 0)}) e non rientrate più in gioco; il vostro Sigillo viene rivelato a tutti. In classifica conta prima il numero di frammenti, poi il tempo.` });
+    if (ok) return tryExit(token, true);
     if (location.hash.startsWith('#/uscita/')) location.hash = '#/mappa/soglia';
     return;
   }
@@ -2814,8 +2828,9 @@ async function tryExit(token) {
   let el;
   if (r.exfiltrated) {
     // Prima la Parola che si compone dai frammenti (~10 s), poi l'esito.
-    const word = r.word?.length ? r.word : (S.state?.fragments || []).map((f) => f.text);
-    if (word.length && !r.already) {
+    const word = (r.word?.length ? r.word : (S.state?.fragments || []).map((f) => f.text)).map((x) => x ?? '…');
+    // La Parola che si compone solo se è intera; con la Parola incompleta si va dritti all'esito.
+    if (word.length && !r.already && r.complete !== false) {
       wordCeremony(word, { eyebrow: 'La Soglia si apre', title: 'La Parola', done: () => exitVictory(r) });
       return;
     }
@@ -2900,7 +2915,7 @@ function viewMap(focus = null) {
     bountyStrip(),
     sightingsNote(),
     canExit() ? h('button', { class: 'btn btn-primary btn-xl btn-exit', type: 'button', onclick: scanExit }, '⌖ Leggi il codice di uscita') : null,
-    focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Portateci la Parola intera e, senza alleati, leggete il codice di uscita appeso lì.' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
+    focus === 'soglia' ? h('p', { class: 'note' }, soglia ? 'La Soglia è il segnaposto ⛩. Senza alleati, leggete il codice di uscita appeso lì: si esce anche con la Parola incompleta (conta prima il numero di frammenti, poi il tempo di gara).' : 'La Soglia non è ancora sulla mappa: chiedete al Consiglio dove si trova.') : null,
     h('p', { class: 'mono small bad-text', id: 'map-gps', hidden: !!myPos || !gpsMsg }, myPos ? '' : gpsMsg || ''),
     h('div', { class: 'map-wrap' },
       teamMapView.el,

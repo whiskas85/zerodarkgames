@@ -64,7 +64,11 @@ function elapsedMs(g, now = Date.now()) {
 
 function clockOf(g, now = Date.now()) {
   const e = elapsedMs(g, now);
-  const dur = g.durationMin * 60000;
+  const race = g.durationMin * 60000;
+  const exfilMs = Math.max(0, g.exfilMin || 0) * 60000;
+  // Nell'extra time il «rimanente» conta fino alla chiusura (fine dell'esfiltrazione).
+  const inExfil = g.status === 'exfil' || (g.status === 'paused' && g.pausedFrom === 'exfil') || (g.status === 'ended' && e > race);
+  const dur = inExfil ? race + exfilMs : race;
   return {
     serverNow: now,
     status: g.status,
@@ -75,6 +79,8 @@ function clockOf(g, now = Date.now()) {
     durationMs: dur,
     huntAtMs: g.truceMin * 60000,
     lastPhaseAtMs: (g.durationMin - C.LAST_PHASE_MIN) * 60000,
+    raceMs: race,
+    exfilMs,
     startedAt: g.startedAt,
     // VIA dato dalla regia: istante in cui parte la partita (conto alla rovescia anche nelle app).
     goAt: g.status === 'circle' && g.goAt ? g.goAt : null,
@@ -145,8 +151,8 @@ function emgOut(g) {
   return { emergencyRadioChannel: swap ? g.emergencyRadioBackup : g.emergencyRadioChannel, emergencyRadioBackup: (swap ? g.emergencyRadioChannel : g.emergencyRadioBackup) || null, emergencyRadioOnBackup: swap };
 }
 const GAME_FIELDS = ['name', 'scheduledStart', 'durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin',
-  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'emergencyRadioOnBackup', 'altarMinigame', 'beaconMinigame', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo'];
-const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine']);
+  'neverRevealedCount', 'codeLength', 'emergencyRadioChannel', 'emergencyRadioBackup', 'emergencyRadioOnBackup', 'altarMinigame', 'beaconMinigame', 'bookUrl', 'registrationOpen', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'altarCheckOn', 'zoneCountdown', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'prepInfo', 'exfilMin'];
+const INT_FIELDS = new Set(['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength', 'altarScanMin', 'altarBeaconMin', 'altarRadiusM', 'maxCouples', 'maxSingles', 'maxActiveSkills', 'maxPassiveSkills', 'activeSlots', 'passiveSlots', 'nodeScanMin', 'eyeMin', 'eyeRadiusM', 'mineCount', 'mineRadiusM', 'mineMarkMin', 'mineLifeMin', 'scoreFight', 'scoreBounty', 'scoreBeacon', 'scoreMine', 'exfilMin']);
 // Campi numerici facoltativi: vuoto = nessun valore (si usa il predefinito).
 const NULLABLE_INT = new Set(['maxCouples', 'maxSingles', 'activeSlots', 'passiveSlots']);
 // Parametri che cambiano tempi o Sigilli: modificabili solo prima del via.
@@ -178,6 +184,7 @@ function updateGame(id, data, actor) {
     }
     if (f === 'codeLength' && (v < 4 || v > 12)) throw err(400, 'La lunghezza del Sigillo deve essere tra 4 e 12');
     if (f === 'durationMin' && v < 40) throw err(400, 'Durata troppo breve');
+    if (f === 'exfilMin' && v > 180) throw err(400, 'Extra time di esfiltrazione: al massimo 180 minuti');
     // Gli slot sono almeno quante Skill si scelgono all'inizio.
     if ((f === 'activeSlots' || f === 'passiveSlots') && v != null) {
       const start = Number(data[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? g[f === 'activeSlots' ? 'maxActiveSkills' : 'maxPassiveSkills'] ?? 1);
@@ -1621,7 +1628,14 @@ function tickGame(g) {
     announce(g.id, 'last_half_hour');
     notifyState(g.id);
   }
-  if (e >= g.durationMin) {
+  // Fine della gara: parte l'extra time di esfiltrazione (se c'è); alla sua fine la partita si chiude.
+  const exfil = Math.max(0, g.exfilMin || 0);
+  if (e >= g.durationMin && g.status !== 'exfil' && exfil > 0 && e < g.durationMin + exfil) {
+    setStatus(g, 'exfil');
+    log(g.id, 'sistema', 'phase_exfil', { minutes: exfil });
+    announce(g.id, 'exfil', { minuti: exfil });
+    notifyState(g.id);
+  } else if (e >= g.durationMin + exfil) {
     endGame(g, 'sistema');
     notifyState(g.id);
   }
@@ -1658,6 +1672,7 @@ function gameForTeam(team) {
 function requireActive(g) {
   if (g.status === 'paused') throw err(409, 'Partita sospesa: gli Altari sono fermi');
   if (g.status === 'ended') throw err(409, 'I Giochi sono finiti: gli Altari sono chiusi');
+  if (g.status === 'exfil') throw err(409, 'Esfiltrazione: gli Altari sono chiusi. Andate alla Soglia');
   if (!C.ACTIVE.includes(g.status)) throw err(409, 'Gli Altari si aprono al via');
 }
 
@@ -2112,36 +2127,55 @@ function validate(teamId, { mode, typed, notes }, user) {
   }
   const now = Date.now();
   let position = null;
-  tx(() => {
-    q.run('INSERT INTO validations (gameId, teamId, validatorId, at, result, missing, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      g.id, t.id, user.id, now, result, JSON.stringify(missing), notes || null);
-    if (result === 'valid') {
-      position = (q.get("SELECT MAX(finishPosition) AS m FROM teams WHERE gameId = ? AND status = 'won'", g.id).m || 0) + 1;
-      q.run("UPDATE teams SET status = 'won', finishPosition = ?, wonAt = ? WHERE id = ?", position, now, t.id);
-    }
-  });
-  const s = sectorById(t.sectorId);
+  // Parola valida: la coppia esce dalla Soglia (frammenti e tempo di gara bloccati, Sigillo rivelato a tutti).
+  if (result === 'valid') position = lockExit(g, t, now, { validatorId: user.id, notes }).position;
+  else q.run('INSERT INTO validations (gameId, teamId, validatorId, at, result, missing, notes) VALUES (?, ?, ?, ?, ?, ?, ?)', g.id, t.id, user.id, now, result, JSON.stringify(missing), notes || null);
   log(g.id, user.username, 'validation', { teamId: t.id, result, position });
-  if (result === 'valid') {
-    if (position === 1) announce(g.id, 'victory', { settore: s.name }, { teamId: t.id, position });
-    else announce(g.id, 'podium', { settore: s.name, posizione: ordinal(position) }, { teamId: t.id, position });
-  }
   notifyState(g.id);
   return { result, position, missing };
 }
 
-// Esfiltrazione: la coppia inquadra il QR di uscita della Soglia. Con la Parola intera e senza alleati esce
-// (come una validazione) e il suo Sigillo viene rivelato a tutti, come in un tradimento.
-function exfiltrate(team, token) {
+// Tempo di gara in parole («3 h 42 min 10 s»): per gli annunci di uscita.
+function fmtRace(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60;
+  return [h ? `${h} h` : null, `${m} min`, `${sec} s`].filter(Boolean).join(' ');
+}
+
+// Uscita dalla Soglia (QR di uscita o validazione allo staff): la coppia lascia il gioco e blocca il numero di
+// frammenti e il suo tempo di gara (pause escluse). In classifica, a parità di frammenti, vince il tempo minore.
+// Il suo Sigillo viene rivelato a tutti, come in un tradimento.
+function lockExit(g, t, now, { validatorId = null, notes, result = 'valid', missing = [] } = {}) {
+  const board = teamFragmentsBoard(t);
+  const have = board.filter((f) => f.source).length;
+  const raceMs = elapsedMs(g, now);
+  let position;
+  tx(() => {
+    q.run('INSERT INTO validations (gameId, teamId, validatorId, at, result, missing, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      g.id, t.id, validatorId, now, result, JSON.stringify(missing), notes || null);
+    position = (q.get("SELECT MAX(finishPosition) AS m FROM teams WHERE gameId = ? AND status = 'won'", g.id).m || 0) + 1;
+    q.run("UPDATE teams SET status = 'won', finishPosition = ?, wonAt = ?, exitFragments = ?, exitElapsedMs = ? WHERE id = ?", position, now, have, raceMs, t.id);
+  });
+  const s = sectorById(t.sectorId);
+  announce(g.id, 'exit', { settore: s.name, frammenti: have, totale: board.length, tempo: fmtRace(raceMs) }, { teamId: t.id, position, fragments: have, total: board.length, raceMs });
+  let revealed = false;
+  try { revealSector(g.id, t.sectorId, 'esfiltrazione'); revealed = true; } catch { /* già rivelato */ }
+  notifyState(g.id);
+  return { position, have, total: board.length, raceMs, revealed, word: board.map((f) => (f.source ? f.text : null)) };
+}
+
+// Esfiltrazione: la coppia inquadra il QR di uscita della Soglia, con la Parola completa o no. Senza alleati.
+// Con la Parola incompleta serve la conferma (confirm): uscita definitiva con i frammenti che ha.
+function exfiltrate(team, token, { confirm = false } = {}) {
   requireCouple(team);
   const g = getGame(team.gameId);
   landmarksOf(g.id);
   const soglia = q.get("SELECT * FROM landmarks WHERE gameId = ? AND kind = 'soglia'", g.id);
   if (!token || !soglia?.exitToken || String(token) !== soglia.exitToken) throw err(404, 'Questo non è il codice di uscita della Soglia di questa partita');
   if (g.status === 'paused') throw err(409, 'Partita sospesa: non si esce adesso');
-  if (!C.ACTIVE.includes(g.status)) throw err(409, 'Si esfiltra solo a partita in corso');
+  if (!C.ACTIVE.includes(g.status)) throw err(409, g.status === 'ended' ? 'I Giochi sono chiusi: la Soglia non si varca più' : 'Si esfiltra solo a partita in corso');
   const t = q.get('SELECT * FROM teams WHERE id = ?', team.id);
-  if (t.status === 'won') return { exfiltrated: true, already: true, position: t.finishPosition, word: teamFragmentsBoard(t).map((f) => f.text) };
+  if (t.status === 'won') return { exfiltrated: true, already: true, position: t.finishPosition, fragments: t.exitFragments, raceMs: t.exitElapsedMs, word: teamFragmentsBoard(t).map((f) => (f.source ? f.text : null)) };
   if (t.status !== 'active') throw err(409, 'Coppia ritirata');
   const s = sectorById(t.sectorId);
   const ally = q.get('SELECT allianceId FROM alliance_members WHERE teamId = ? AND leftAt IS NULL', t.id);
@@ -2154,48 +2188,43 @@ function exfiltrate(team, token) {
   }
   const board = teamFragmentsBoard(t);
   const missing = board.filter((f) => !f.source).length;
-  if (!board.length || missing) {
-    log(g.id, `coppia:${t.id}`, 'exit_denied', { settore: s.name, reason: 'frammenti', missing });
-    rt.toStaffEvent('soglia', { gameId: g.id, ok: false, reason: 'missing', missing, total: board.length, sectorName: s.name, roman: s.roman });
-    return { exfiltrated: false, reason: 'missing', missing, total: board.length };
+  if (missing && !confirm) {
+    log(g.id, `coppia:${t.id}`, 'exit_confirm_asked', { settore: s.name, missing });
+    return { exfiltrated: false, reason: 'confirm', missing, have: board.length - missing, total: board.length, raceMs: elapsedMs(g) };
   }
   const now = Date.now();
-  let position;
-  tx(() => {
-    q.run('INSERT INTO validations (gameId, teamId, validatorId, at, result, missing, notes) VALUES (?, ?, NULL, ?, ?, ?, ?)',
-      g.id, t.id, now, 'valid', '[]', 'Esfiltrazione con il QR di uscita della Soglia');
-    position = (q.get("SELECT MAX(finishPosition) AS m FROM teams WHERE gameId = ? AND status = 'won'", g.id).m || 0) + 1;
-    q.run("UPDATE teams SET status = 'won', finishPosition = ?, wonAt = ? WHERE id = ?", position, now, t.id);
-  });
-  log(g.id, `coppia:${t.id}`, 'exfiltration', { teamId: t.id, settore: s.name, position });
-  if (position === 1) announce(g.id, 'victory', { settore: s.name }, { teamId: t.id, position });
-  else announce(g.id, 'podium', { settore: s.name, posizione: ordinal(position) }, { teamId: t.id, position });
-  // Il Sigillo di chi esce arriva a tutti, come un tradimento (se non era già stato rivelato).
-  let revealed = false;
-  try { revealSector(g.id, t.sectorId, 'esfiltrazione'); revealed = true; } catch { /* già rivelato */ }
-  notifyState(g.id);
+  const r = lockExit(g, t, now, { notes: missing ? `Uscita dalla Soglia con ${board.length - missing}/${board.length} frammenti` : 'Esfiltrazione con il QR di uscita della Soglia',
+    result: missing ? 'incomplete' : 'valid', missing: board.filter((f) => !f.source).map((f) => ({ position: f.position, status: 'missing' })) });
+  log(g.id, `coppia:${t.id}`, 'exfiltration', { teamId: t.id, settore: s.name, position: r.position, fragments: r.have, total: r.total, raceMs: r.raceMs });
   // La Soglia (pagina dello staff) mostra la Parola che si compone, come l'app della coppia.
-  const word = board.map((f) => f.text);
-  rt.toStaffEvent('soglia', { gameId: g.id, ok: true, position, word, sectorName: s.name, roman: s.roman });
-  return { exfiltrated: true, position, revealed, word };
+  rt.toStaffEvent('soglia', { gameId: g.id, ok: true, position: r.position, word: r.word, fragments: r.have, total: r.total, raceMs: r.raceMs, sectorName: s.name, roman: s.roman });
+  return { exfiltrated: true, position: r.position, revealed: r.revealed, word: r.word, fragments: r.have, total: r.total, raceMs: r.raceMs, complete: !missing };
 }
 
-// ---------------------------------------------------------------- classifica (7.2)
-
+// ---------------------------------------------------------------- classifica
+// Prima le coppie uscite dalla Soglia: più frammenti, poi tempo di gara minore. Dietro, quelle mai uscite:
+// più frammenti, poi chi li ha completati prima.
 function standings(gameId) {
+  const g = getGame(gameId);
   const teams = teamsOf(gameId).filter((t) => t.status !== 'withdrawn');
   const stats = Object.fromEntries(q.all(`SELECT tf.teamId, COUNT(*) AS n, MAX(tf.acquiredAt) AS lastAt
                                           FROM team_fragments tf JOIN teams t ON t.id = tf.teamId
                                           WHERE t.gameId = ? GROUP BY tf.teamId`, gameId).map((r) => [r.teamId, r]));
-  const rows = teams.map((t) => ({
-    teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status,
-    finishPosition: t.finishPosition, fragments: stats[t.id]?.n || 0, lastAt: stats[t.id]?.lastAt || null,
-  }));
-  const won = rows.filter((r) => r.status === 'won').sort((a, b) => a.finishPosition - b.finishPosition);
-  const others = rows.filter((r) => r.status !== 'won').sort((a, b) => b.fragments - a.fragments || (a.lastAt ?? Infinity) - (b.lastAt ?? Infinity));
-  return [...won, ...others].map((r, i) => ({ ...r, rank: i + 1 }));
+  const rows = teams.map((t) => {
+    const raw = q.get('SELECT exitFragments, exitElapsedMs, wonAt FROM teams WHERE id = ?', t.id) || {};
+    const exited = t.status === 'won';
+    return {
+      teamId: t.id, sectorName: t.sectorName, roman: t.roman, displayName: t.displayName, status: t.status,
+      finishPosition: t.finishPosition, exited,
+      fragments: exited && raw.exitFragments != null ? raw.exitFragments : stats[t.id]?.n || 0,
+      raceMs: exited ? (raw.exitElapsedMs ?? (raw.wonAt && g.startedAt ? raw.wonAt - g.startedAt : null)) : null,
+      lastAt: stats[t.id]?.lastAt || null,
+    };
+  });
+  const out = rows.filter((r) => r.exited).sort((a, b) => b.fragments - a.fragments || (a.raceMs ?? Infinity) - (b.raceMs ?? Infinity) || a.finishPosition - b.finishPosition);
+  const others = rows.filter((r) => !r.exited).sort((a, b) => b.fragments - a.fragments || (a.lastAt ?? Infinity) - (b.lastAt ?? Infinity));
+  return [...out, ...others].map((r, i) => ({ ...r, rank: i + 1 }));
 }
-
 
 // ---------------------------------------------------------------- partita di prova
 
@@ -2294,7 +2323,8 @@ function advanceDemo(gameId, minutes, actor) {
     // Tornando prima dell'inizio di una fase si torna anche alla fase precedente.
     const now = getGame(g.id);
     const e = elapsedMs(now) / 60000;
-    if (now.status === 'last_half_hour' && e < now.durationMin - C.LAST_PHASE_MIN) setStatus(now, 'hunt');
+    if (now.status === 'exfil' && e < now.durationMin) setStatus(now, e < now.durationMin - C.LAST_PHASE_MIN ? 'hunt' : 'last_half_hour');
+    if (getGame(g.id).status === 'last_half_hour' && e < now.durationMin - C.LAST_PHASE_MIN) setStatus(getGame(g.id), 'hunt');
     if (getGame(g.id).status === 'hunt' && e < now.truceMin) setStatus(getGame(g.id), 'truce');
   }
   tickGame(getGame(g.id));
@@ -2325,7 +2355,7 @@ function electState(team, player = null) {
     messages: q.all('SELECT id, squadId, fromRole, author, text, audioMime, audioMs, createdAt FROM messages WHERE teamId = ? AND (squadId IS NULL OR squadId = ?) ORDER BY id', team.id, squadId)
       .map((m) => ({ ...m, squadName: m.squadId ? squads[m.squadId] || null : null })),
     supplyOpen: openSupply(g.id),
-    standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, status: r.status, finishPosition: r.finishPosition, mine: false })) : null,
+    standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, raceMs: r.raceMs, exited: r.exited, status: r.status, finishPosition: r.finishPosition, mine: false })) : null,
   };
 }
 
@@ -2468,6 +2498,7 @@ function teamStateCore(team, player = null) {
     },
     team: {
       id: team.id, kind: 'couple', displayName: team.displayName, status: team.status, finishPosition: team.finishPosition, logoAt: team.logoAt || null,
+      exitFragments: team.exitFragments ?? null, exitElapsedMs: team.exitElapsedMs ?? null,
       sector: s ? { id: s.id, name: s.name, roman: s.roman, motto: s.motto, element: s.element, color: s.color || null } : null,
       // Niente nomi e cognomi nell'app delle coppie: solo soprannome (e squadra softair).
       members: membersOf(team.id).map((m) => ({ id: m.id, nickname: m.nickname || null, softairTeam: m.softairTeam || null, me: !!player && m.id === player.id })),
@@ -2489,7 +2520,7 @@ function teamStateCore(team, player = null) {
     chatRead: player ? { pair: q.get('SELECT pairReadId, directReadId FROM players WHERE id = ?', player.id)?.pairReadId || 0, direct: q.get('SELECT directReadId FROM players WHERE id = ?', player.id)?.directReadId || 0 } : { pair: 0, direct: 0 },
     supplyOpen: openSupply(g.id),
     // A fine partita la classifica è pubblica.
-    standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, status: r.status, finishPosition: r.finishPosition, mine: r.teamId === team.id })) : null,
+    standings: g.status === 'ended' ? standings(g.id).map((r) => ({ rank: r.rank, sectorName: r.sectorName, roman: r.roman, fragments: r.fragments, raceMs: r.raceMs, exited: r.exited, status: r.status, finishPosition: r.finishPosition, mine: r.teamId === team.id })) : null,
   };
 }
 
@@ -2694,7 +2725,7 @@ function boardState(gameId) {
       status: t.status, finishPosition: t.finishPosition,
     })),
     nextRevelationAtMs: g.status === 'hunt' || g.status === 'truce' || g.status === 'paused' ? next.revelation?.atMs ?? null : null,
-    standings: standings(g.id).map((s) => ({ rank: s.rank, sectorName: s.sectorName, roman: s.roman, fragments: s.fragments, status: s.status, finishPosition: s.finishPosition })),
+    standings: standings(g.id).map((s) => ({ rank: s.rank, sectorName: s.sectorName, roman: s.roman, fragments: s.fragments, raceMs: s.raceMs, exited: s.exited, status: s.status, finishPosition: s.finishPosition })),
     fragmentsTotal: q.get('SELECT COUNT(*) AS n FROM fragments WHERE gameId = ?', g.id).n,
     announcements: q.all('SELECT id, type, text, createdAt FROM announcements WHERE gameId = ? ORDER BY id DESC LIMIT 6', g.id),
   };

@@ -70,7 +70,7 @@ const TAB_ICONS = {
 const NAV_GROUPS = { ristoro: { label: 'Ristoro' } };
 const navLabel = (id, label) => h('span', { class: `nav-l ${id === 'emergenze' ? 'nav-sos' : ''}` }, mdi(TAB_ICONS[id] || 'circleMedium', 20), h('span', null, label));
 const ICE_TOOL = [{ label: '✚ ICE', title: 'Pulsante per compilare i dati ICE', before: '[', after: '](#/ice)', sample: 'Compila i dati ICE' }];
-const ACTIVE = ['truce', 'hunt', 'last_half_hour'];
+const ACTIVE = ['truce', 'hunt', 'last_half_hour', 'exfil'];
 const PRE = ['created', 'draft', 'ready', 'circle'];
 
 // #pagina oppure #pagina/… (es. #comunicazioni/team/4/123 apre una conversazione su un messaggio).
@@ -841,7 +841,7 @@ const draftWipe = () => (R.ms?.env === 'test' ? ' Ambiente di test: il gioco tor
 
 const PHASES = [
   ['created', 'Creata', 'status_created'], ['draft', 'In preparazione', 'status_draft'], ['ready', 'Pronta', 'status_ready'], ['circle', 'Cerchio', 'status_circle'],
-  ['truce', 'Tregua', 'game_started'], ['hunt', 'Caccia', 'phase_hunt'], ['last_half_hour', 'Ultima mezz\'ora', 'phase_last_half_hour'], ['ended', 'Fine', 'game_ended'],
+  ['truce', 'Tregua', 'game_started'], ['hunt', 'Caccia', 'phase_hunt'], ['last_half_hour', 'Ultima mezz\'ora', 'phase_last_half_hour'], ['exfil', 'Esfiltrazione', 'phase_exfil'], ['ended', 'Chiusura', 'game_ended'],
 ];
 function phaseSteps() {
   const ms = R.ms;
@@ -851,7 +851,7 @@ function phaseSteps() {
   const log = ms.phaseLog || [];
   const lastAt = (type) => [...log].reverse().find((e) => e.type === type)?.at;
   // Minuti di gioco in cui partono le fasi dopo il via.
-  const atMs = { truce: 0, hunt: c.huntAtMs, last_half_hour: c.lastPhaseAtMs, ended: c.durationMs };
+  const atMs = { truce: 0, hunt: c.huntAtMs, last_half_hour: c.lastPhaseAtMs, exfil: c.raceMs ?? c.durationMs, ended: (c.raceMs ?? c.durationMs) + (c.exfilMs || 0) };
   const pauses = log.filter((e) => e.type === 'game_paused').length;
   const when = (p, i) => {
     if (i <= idx) {
@@ -979,7 +979,7 @@ function viewLive() {
   return h('div', { class: 'live' },
     h('div', { class: `control status-bg-${st}` },
       h('div', null, h('div', { class: 'eyebrow' }, ms.game.name), h('div', { class: 'control-status' }, STATUS_LABELS[st]),
-        c.startedAt ? h('div', { class: 'muted mono' }, ms.game.isDemo ? `Tempo simulato · durata ${ms.game.durationMin} min` : `Via alle ${fmtTime(c.startedAt)} · durata ${ms.game.durationMin} min`) : h('div', { class: 'muted mono' }, `Durata ${ms.game.durationMin} min · ${ms.teams.length} coppie`)),
+        c.startedAt ? h('div', { class: 'muted mono' }, ms.game.isDemo ? `Tempo simulato · durata ${ms.game.durationMin} min${ms.game.exfilMin ? ` + ${ms.game.exfilMin}′ esfiltrazione` : ''}` : `Via alle ${fmtTime(c.startedAt)} · durata ${ms.game.durationMin} min${ms.game.exfilMin ? ` + ${ms.game.exfilMin}′ esfiltrazione` : ''}`) : h('div', { class: 'muted mono' }, `Durata ${ms.game.durationMin} min${ms.game.exfilMin ? ` + ${ms.game.exfilMin}′ esfiltrazione` : ''} · ${ms.teams.length} coppie`)),
       preCircle() ? h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'All\'evento'), h('div', { class: 'mono huge', 'data-clock': 'event' }, '—'), h('div', { class: 'muted tiny' }, eventAtLabel()))
         : h('div', { class: 'control-clock' }, h('div', { class: 'eyebrow' }, 'Rimanente'), h('div', { class: 'mono huge', 'data-clock': 'remaining' }, '—')),
       h('div', { class: 'control-actions' }, controlButtons()),
@@ -2405,7 +2405,7 @@ function viewAltars() {
             l.photoFile ? h('a', { class: 'btn btn-sm btn-ghost', href: `/api/media/landmark/${l.id}?v=${l.placedAt}`, target: '_blank' }, 'Foto') : null,
             h('a', { class: 'btn btn-sm btn-ghost', href: '/campo', target: '_blank' }, 'Piazzalo io'),
             l.kind === 'soglia' ? h('a', { class: 'btn btn-sm btn-primary', href: `/regia/stampa/uscita/${R.gameId}`, target: '_blank' }, 'Stampa QR di uscita') : null),
-          l.kind === 'soglia' ? h('p', { class: 'tiny muted' }, 'Il QR di uscita va appeso alla Soglia: una coppia con la Parola intera e senza alleati lo inquadra ed esfiltra da sola (il suo Sigillo viene rivelato a tutti). Resta valida anche la verifica dell\'Ufficiale.') : null))))),
+          l.kind === 'soglia' ? h('p', { class: 'tiny muted' }, 'Il QR di uscita va appeso alla Soglia: una coppia senza alleati lo inquadra ed esce da sola, con la Parola completa o no (frammenti e tempo di gara si bloccano) (il suo Sigillo viene rivelato a tutti). Resta valida anche la verifica dell\'Ufficiale.') : null))))),
 
     minigameCard(ms),
     sectionActions(`Altari (${ms.points.length}) · piazzati ${placed}/${ms.points.length}`, [
@@ -3895,7 +3895,8 @@ function timelineEvents(exclude = null) {
     { at: 0, label: 'VIA', kind: 'phase' },
     { at: g.truceMin, label: 'Fine tregua: si apre la caccia', kind: 'phase' },
     { at: g.durationMin - 30, label: 'Ultima mezz\'ora', kind: 'phase' },
-    { at: g.durationMin, label: 'Fine dei Giochi', kind: 'phase' },
+    { at: g.durationMin, label: g.exfilMin ? `Esfiltrazione (${g.exfilMin}′)` : 'Fine dei Giochi', kind: 'phase' },
+    ...(g.exfilMin ? [{ at: g.durationMin + g.exfilMin, label: 'Chiusura', kind: 'phase' }] : []),
   ];
   for (const r of ms.revelations) {
     if (r.status === 'skipped') continue;
@@ -6336,15 +6337,15 @@ function viewStandings() {
   const ms = R.ms;
   return h('div', { class: 'stack' },
     sectionActions('Classifica', [h('a', { class: 'btn btn-sm btn-primary', href: '/soglia', target: '_blank' }, 'Apri la Soglia (validazione)')],
-      h('p', { class: 'muted tiny' }, 'Prima le coppie validate in ordine di arrivo, poi le altre per frammenti posseduti; a parità vince chi ha ottenuto l\'ultimo frammento prima. Le ritirate sono escluse. I frammenti ricevuti a mano contano come quelli sbloccati.'),
+      h('p', { class: 'muted tiny' }, 'Prima le coppie uscite dalla Soglia (con la Parola completa o no): più frammenti, poi tempo di gara minore (pause escluse). Dietro, quelle che non sono uscite: più frammenti, poi chi ha ottenuto l\'ultimo frammento prima. Le ritirate sono escluse. I frammenti ricevuti a mano contano come quelli sbloccati.'),
       h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['#', 'Settore', 'Frammenti', 'Ultimo frammento', 'Stato'].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['#', 'Settore', 'Frammenti', 'Tempo di gara', 'Stato'].map((x) => h('th', null, x)))),
         h('tbody', null, ms.standings.map((s) => h('tr', { class: s.status === 'won' ? 'row-won' : '' },
           h('td', { class: 'mono big' }, s.rank),
           h('td', null, h('strong', null, `${s.roman} ${s.sectorName}`), s.displayName ? h('div', { class: 'tiny muted' }, s.displayName) : null),
           h('td', { class: 'mono' }, s.fragments),
-          h('td', { class: 'mono tiny' }, s.lastAt ? fmtTime(s.lastAt, true) : '—'),
-          h('td', null, s.status === 'won' ? h('span', { class: 'chip chip-ok' }, `validata · ${s.finishPosition}°`) : h('span', { class: 'chip' }, 'in gioco')))))))),
+          h('td', { class: 'mono' }, s.raceMs != null ? fmtDuration(s.raceMs) : h('span', { class: 'tiny muted' }, s.lastAt ? `ultimo fr. ${fmtTime(s.lastAt, true)}` : '—')),
+          h('td', null, s.status === 'won' ? h('span', { class: 'chip chip-ok' }, `uscita · ${s.finishPosition}ª`) : h('span', { class: 'chip' }, ms.clock.status === 'ended' ? 'non uscita' : 'in gioco')))))))),
     section('Validazioni alla Soglia',
       ms.validations.length ? h('div', { class: 'table-wrap' }, h('table', null,
         h('thead', null, h('tr', null, ['Ora', 'Coppia', 'Esito', 'Mancanti', 'Validatore', 'Note'].map((x) => h('th', null, x)))),
@@ -6533,7 +6534,8 @@ function gameForm(g, isNew, only = null) {
       emergencyRadioChannel: () => emgField('emergencyRadioChannel', 'Canale radio d\'emergenza', 'es. PMR 8 · 446.09375', 'emergency', 'Canale d\'emergenza (SOS)'),
       emergencyRadioBackup: () => emgField('emergencyRadioBackup', 'Riserva del canale d\'emergenza', 'es. LPD 3 · 433.125', 'emergency-backup', 'Riserva d\'emergenza (SOS)'),
       bookUrl: () => f('bookUrl', 'Link al regolamento', 'text', { def: '/regolamento.html' }),
-      durationMin: () => f('durationMin', 'Durata (min)', 'number', { def: 240, lock: true }),
+      durationMin: () => f('durationMin', 'Durata della gara (min)', 'number', { def: 240, lock: true }),
+      exfilMin: () => f('exfilMin', 'Extra time di esfiltrazione (min)', 'number', { def: 15 }),
       truceMin: () => f('truceMin', 'Tregua iniziale (min)', 'number', { def: 5, lock: true }),
       firstRevelationDelayMin: () => f('firstRevelationDelayMin', 'Prima rivelazione dopo la caccia (min)', 'number', { def: 30, lock: true }),
       lastRevelationBeforeEndMin: () => f('lastRevelationBeforeEndMin', 'Nessuna rivelazione negli ultimi (min)', 'number', { def: 30, lock: true }),
@@ -7152,7 +7154,7 @@ function viewSettings() {
   const body = {
     partita: () => [section('Partita', gameForm(g, false, ['name', 'scheduledStart', 'bookUrl']),
       h('p', { class: 'small' }, '🚨 Il canale radio d\'emergenza e la sua riserva si impostano in ', h('a', { href: '#impostazioni/radio' }, 'Impostazioni → Canali radio'), '.')), prepSection(g)],
-    tempi: () => [section('Tempi e Sigilli', gameForm(g, false, ['durationMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength'])),
+    tempi: () => [section('Tempi e Sigilli', gameForm(g, false, ['durationMin', 'exfilMin', 'truceMin', 'firstRevelationDelayMin', 'lastRevelationBeforeEndMin', 'neverRevealedCount', 'codeLength'])),
       section('Timer delle coppie',
         h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); call('PATCH', `/api/m/games/${g.id}`, { timers: Object.fromEntries(new FormData(e.target).entries()) }, 'Timer salvati'); } },
           timers(), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva timer')))],

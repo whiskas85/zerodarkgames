@@ -562,7 +562,7 @@ app.post('/api/team/emergency', needMember, wrap((req) => {
   if (!req.team && !req.player) throw new HttpError(403, 'Entrate in una partita per chiamare la Direzione');
   return EM.fromApp(req.team, req.player, req.body || {});
 }));
-app.post('/api/team/exit', needTeam, teamRateLimit, wrap((req) => G.exfiltrate(req.team, req.body.token)));
+app.post('/api/team/exit', needTeam, teamRateLimit, wrap((req) => G.exfiltrate(req.team, req.body.token, { confirm: !!req.body.confirm })));
 app.post('/api/team/gift/claim', needTeam, teamRateLimit, wrap((req) => F.claimGift(req.team, req.body.token)));
 app.post('/api/team/gift/:id/use', needTeam, teamRateLimit, wrap((req) => F.useGift(req.team, req.params.id, req.body || {})));
 // Skill: scelta prima del via (tutta la coppia), uso a partita in corso.

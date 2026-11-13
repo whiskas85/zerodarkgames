@@ -32,7 +32,7 @@ setInterval(() => { for (const el of document.querySelectorAll('[data-cd]')) el.
   if (!A.me) { location.replace('/'); return; }
   if (A.me.role !== 'master' && !A.me.perms?.includes(PAGE.perm)) { location.replace('/consiglio'); return; }
   A.games = await api('GET', '/api/v/games');
-  const live = A.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'paused', 'circle', 'ready', 'draft'].includes(g.status));
+  const live = A.games.find((g) => ['truce', 'hunt', 'last_half_hour', 'exfil', 'paused', 'circle', 'ready', 'draft'].includes(g.status));
   if (!A.games.some((g) => g.id === A.gameId)) A.gameId = (live || A.games[0])?.id || null;
   stream('/api/stream?as=staff', { refresh: (d) => { if (d.gameId === A.gameId) load(); } });
   await load();
