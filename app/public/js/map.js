@@ -239,6 +239,86 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     }).observe(el);
   }
 
+  // Orientamento della mappa: north (a mano), compass (bussola del telefono), gps (direzione di marcia).
+  const rot = { mode: 'north', paint: null, target: null, raf: 0, last: null, stop: null };
+  const wrap360 = (d) => ((d % 360) + 360) % 360;
+  // Gira la mappa verso la direzione (gradi dal nord), dolcemente e senza scatti oltre lo 0/360.
+  function aimBearing(heading) {
+    if (!map?.setBearing || !Number.isFinite(heading)) return;
+    const scr = Number(window.screen?.orientation?.angle) || Number(window.orientation) || 0;
+    rot.target = wrap360(heading + scr);
+    if (rot.raf) return;
+    rot.raf = requestAnimationFrame(function step() {
+      rot.raf = 0;
+      if (rot.mode === 'north' || rot.target == null) return;
+      const cur = wrap360(map.getBearing());
+      let diff = rot.target - cur;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      if (Math.abs(diff) < 1) return;
+      map.setBearing(wrap360(cur + diff * 0.35));
+      rot.raf = requestAnimationFrame(step);
+    });
+  }
+  function stopRotSource() { rot.stop?.(); rot.stop = null; rot.target = null; rot.last = null; }
+  async function startCompass() {
+    const D = window.DeviceOrientationEvent;
+    if (!D) return 'La bussola non c\'è su questo dispositivo';
+    if (typeof D.requestPermission === 'function') {
+      try { if ((await D.requestPermission()) !== 'granted') return 'Permesso della bussola negato'; } catch { return 'Permesso della bussola negato'; }
+    }
+    let got = false;
+    const onAbs = (e) => { if (e.alpha == null) return; got = true; aimBearing(360 - e.alpha); };
+    const onRel = (e) => {
+      if (Number.isFinite(e.webkitCompassHeading)) { got = true; aimBearing(e.webkitCompassHeading); return; }
+      if (e.absolute && e.alpha != null) { got = true; aimBearing(360 - e.alpha); }
+    };
+    const abs = 'ondeviceorientationabsolute' in window;
+    if (abs) window.addEventListener('deviceorientationabsolute', onAbs);
+    window.addEventListener('deviceorientation', onRel);
+    rot.stop = () => { if (abs) window.removeEventListener('deviceorientationabsolute', onAbs); window.removeEventListener('deviceorientation', onRel); };
+    await new Promise((r) => setTimeout(r, 1500));
+    return got || rot.mode !== 'compass' ? null : 'La bussola del telefono non risponde: prova il modo GPS';
+  }
+  // Direzione di marcia: quella del GPS se c'è (in movimento), altrimenti dagli spostamenti di almeno 6 m.
+  function gpsHeading(pos) {
+    if (rot.mode !== 'gps' || !pos) return;
+    if (Number.isFinite(pos.heading) && (pos.speed == null || pos.speed > 0.6)) { aimBearing(pos.heading); rot.last = pos; return; }
+    if (!rot.last) { rot.last = pos; return; }
+    const R = 6371000; const toR = Math.PI / 180;
+    const dy = (pos.lat - rot.last.lat) * toR * R;
+    const dx = (pos.lng - rot.last.lng) * toR * R * Math.cos(pos.lat * toR);
+    if (Math.hypot(dx, dy) < Math.max(6, (pos.acc || 0) / 2)) return;
+    aimBearing(wrap360(Math.atan2(dx, dy) / toR));
+    rot.last = pos;
+  }
+  async function setRotMode(mode, toNorth) {
+    stopRotSource();
+    rot.mode = mode;
+    if (toNorth || mode === 'north') { if (toNorth) map.setBearing(0); }
+    rot.paint?.();
+    if (mode === 'compass') {
+      const msg = await startCompass();
+      if (msg && rot.mode === 'compass') { flash(msg); setRotMode('gps', false); return; }
+      flash('Mappa: segue la bussola del telefono');
+    } else if (mode === 'gps') {
+      if (lastPos) gpsHeading(lastPos);
+      flash('Mappa: segue la direzione di marcia (GPS). Camminate qualche metro');
+    } else if (!toNorth) flash('Mappa: nord in alto');
+    else flash('Mappa: nord in alto (0°)');
+  }
+  let lastPos = null;
+  // Avviso breve sulla mappa (senza dipendere dai toast della pagina).
+  function flash(text) {
+    const old = el.querySelector('.zdg-map-flash');
+    old?.remove();
+    const f = document.createElement('div');
+    f.className = 'zdg-map-flash';
+    f.textContent = text;
+    el.append(f);
+    setTimeout(() => f.remove(), 2600);
+  }
+
   const ready = loadLeaflet().then((lib) => {
     L = lib;
     const canRotate = rotate && !!L.Map.TouchRotate;
@@ -248,30 +328,52 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     // Gesto a due dita (zoom o rotazione): quando si alza un dito prima dell'altro, il dito rimasto non deve far
     // scivolare la mappa per inerzia. L'inerzia si spegne con il secondo dito e torna al prossimo tocco con un dito solo.
     if (canRotate) el.addEventListener('touchstart', (e) => { map.options.inertia = e.touches.length < 2; }, { passive: true, capture: true });
-    // Bussola: l'ago punta al nord, sotto i gradi di rotazione; toccandola la mappa torna dritta (0°).
+    // Bussola: l'ago punta al nord, sotto i gradi di rotazione. Tocco: cambia modo (Nord in alto → Bussola del
+    // telefono → Direzione del GPS). Pressione lunga: torna al nord (0°) e al modo Nord. Girando la mappa con due
+    // dita si torna al modo Nord (la rotazione resta quella scelta a mano).
     if (canRotate) {
+      const MODES = { north: ['NORD', 'Nord in alto (gira con due dita)'], compass: ['BUSSOLA', 'Segue la bussola del telefono'], gps: ['GPS', 'Segue la direzione di marcia (GPS)'] };
+      let btn = null;
+      const paint = () => {
+        if (!btn) return;
+        const deg = ((Math.round(map.getBearing()) % 360) + 360) % 360;
+        btn.querySelector('.zdg-compass-rose').style.transform = `rotate(${-deg}deg)`;
+        btn.querySelector('.zdg-compass-deg').textContent = `${deg}°`;
+        btn.querySelector('.zdg-compass-mode').textContent = MODES[rot.mode][0];
+        btn.classList.toggle('turned', deg !== 0 && rot.mode === 'north');
+        btn.classList.toggle('mode-compass', rot.mode === 'compass');
+        btn.classList.toggle('mode-gps', rot.mode === 'gps');
+        btn.title = `${MODES[rot.mode][1]}. Tocca per cambiare modo, tieni premuto per tornare al nord.`;
+        btn.setAttribute('aria-label', btn.title);
+      };
+      rot.paint = paint;
       const Compass = L.Control.extend({
         options: { position: 'bottomright' },
         onAdd() {
           const b = L.DomUtil.create('button', 'zdg-compass');
+          btn = b;
           b.type = 'button';
-          b.title = 'Riporta la mappa con il nord in alto (0°)';
-          b.setAttribute('aria-label', b.title);
-          b.innerHTML = '<span class="zdg-compass-rose" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2 L16 12 L12 10.5 L8 12 Z" fill="#e5484d"/><path d="M12 22 L8 12 L12 13.5 L16 12 Z" fill="#cbd5e1"/><text x="12" y="7.6" text-anchor="middle" font-size="4.2" font-weight="700" fill="#fff">N</text></svg></span><span class="zdg-compass-deg">0°</span>';
+          b.innerHTML = '<span class="zdg-compass-mode"></span><span class="zdg-compass-rose" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2 L16 12 L12 10.5 L8 12 Z" fill="#e5484d"/><path d="M12 22 L8 12 L12 13.5 L16 12 Z" fill="#cbd5e1"/><text x="12" y="7.6" text-anchor="middle" font-size="4.2" font-weight="700" fill="#fff">N</text></svg></span><span class="zdg-compass-deg">0°</span>';
           L.DomEvent.disableClickPropagation(b);
-          L.DomEvent.on(b, 'click', (e) => { L.DomEvent.stop(e); map.setBearing(0); });
-          const paint = () => {
-            const deg = ((Math.round(map.getBearing()) % 360) + 360) % 360;
-            b.querySelector('.zdg-compass-rose').style.transform = `rotate(${-deg}deg)`;
-            b.querySelector('.zdg-compass-deg').textContent = `${deg}°`;
-            b.classList.toggle('turned', deg !== 0);
-          };
+          let pressT = null;
+          let longDone = false;
+          const cancelPress = () => { clearTimeout(pressT); pressT = null; };
+          L.DomEvent.on(b, 'pointerdown', () => { longDone = false; cancelPress(); pressT = setTimeout(() => { longDone = true; setRotMode('north', true); try { navigator.vibrate?.(40); } catch { /* */ } }, 600); });
+          L.DomEvent.on(b, 'pointerup pointerleave pointercancel', cancelPress);
+          L.DomEvent.on(b, 'contextmenu', (e) => L.DomEvent.preventDefault(e));
+          L.DomEvent.on(b, 'click', (e) => {
+            L.DomEvent.stop(e);
+            if (longDone) { longDone = false; return; }
+            setRotMode(rot.mode === 'north' ? 'compass' : rot.mode === 'compass' ? 'gps' : 'north', rot.mode === 'gps');
+          });
           map.on('rotate', paint);
           paint();
           return b;
         },
       });
       map.addControl(new Compass());
+      // Due dita sulla mappa: rotazione a mano, si torna al modo Nord.
+      el.addEventListener('touchstart', (e) => { if (e.touches.length >= 2 && rot.mode !== 'north') setRotMode('north', false); }, { passive: true, capture: true });
     }
     if (savedZoom) fitted = true;
     if (zoomKey) map.on('zoomend', () => { try { localStorage.setItem(zoomKey, String(map.getZoom())); } catch { /* */ } });
@@ -414,6 +516,7 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     },
     setMe(pos) {
       if (!map) return;
+      if (pos) { lastPos = pos; gpsHeading(pos); }
       if (!pos) { me?.remove(); meCircle?.remove(); me = null; meCircle = null; return; }
       const ll = [pos.lat, pos.lng];
       const first = !me || (meAcc > 300 && pos.acc <= 300);
@@ -434,7 +537,8 @@ export function createMapView({ className = '', remember = null, nav = false, ro
     // "Dove siamo": scelta esplicita, la centratura automatica si ferma fino alla prossima apertura.
     // Centra su un punto qualsiasi (es. il bersaglio di un incarico): la centratura automatica si ferma.
     centerOn(lat, lng, zoom = 17) { if (!map) return; auto = false; focusAt = Date.now(); clearTimeout(fitTimer); map.setView([lat, lng], Math.max(map.getZoom(), zoom)); },
-    centerMe(zoom = 17) { if (map && me) { auto = false; map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
+    // Senza zoom: sposta solo la mappa con il pallino al centro, lo zoom resta com'è.
+    centerMe(zoom = null) { if (map && me) { auto = false; if (zoom == null) map.panTo(me.getLatLng()); else map.setView(me.getLatLng(), Math.max(map.getZoom(), zoom)); } },
     onTap(fn) { onTap = fn; },
     onMarkerTap(fn) { onMarkerTap = fn; },
     // Tocco su una zona (poligono con titolo o popup): riceve la sua chiave.
@@ -508,7 +612,7 @@ export function watchPosition(onPos, onError) {
     return () => {};
   }
   const id = navigator.geolocation.watchPosition(
-    (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: p.timestamp }),
+    (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: p.timestamp, heading: Number.isFinite(p.coords.heading) ? p.coords.heading : null, speed: Number.isFinite(p.coords.speed) ? p.coords.speed : null }),
     (e) => onError?.(e.code === 1 ? 'Permesso di posizione negato: consentilo dalle impostazioni del browser' : 'Posizione non disponibile: andate all\'aperto e riprovate'),
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 },
   );
