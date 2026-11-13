@@ -153,7 +153,8 @@ test('3-12. partita completa', () => {
 
   // 11. dopo la prima vittoria le rivelazioni continuano e gli sblocchi funzionano
   advanceTo(g.id, 105.01);
-  assert.equal(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status = 'fired'", g.id).n, 3);
+  // 3 rivelazioni dal calendario (una può essere già partita a mano con l'uscita di A).
+  assert.ok(q.get("SELECT COUNT(*) AS n FROM revelations WHERE gameId = ? AND status IN ('fired', 'manual')", g.id).n >= 3);
   assert.equal(scanUnlock(B, pointOf(g.id, A.sectorId).qrToken, codeOf(g.id, A.sectorId)).ok, true);
 
   // Ultima mezz'ora a 210: l'ultima rivelazione (210) parte, poi niente più
